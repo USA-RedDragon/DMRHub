@@ -61,6 +61,48 @@ func (h *Hub) InstanceID() string {
 	return h.instanceID
 }
 
+// ownerSinceKey is the KV key of the claim time of a repeater. It holds
+// "<replica> <claim time in Unix nanoseconds>", with the TTL of the
+// ownership record, apart from that record, whose plain replica ID older
+// replicas read.
+func ownerSinceKey(repeaterID uint) string {
+	return fmt.Sprintf("%s%d", peerOwnerSinceKeyPrefix, repeaterID)
+}
+
+const peerOwnerSinceKeyPrefix = "dmrhub:peer_owner_since:"
+
+func claimValue(instance string, since time.Time) []byte {
+	return []byte(instance + " " + strconv.FormatInt(since.UnixNano(), 10))
+}
+
+func parseClaimValue(v []byte) (string, time.Time) {
+	f := strings.Fields(string(v))
+	if len(f) != 2 {
+		return "", time.Time{}
+	}
+	ns, err := strconv.ParseInt(f[1], 10, 64)
+	if err != nil {
+		return "", time.Time{}
+	}
+	return f[0], time.Unix(0, ns)
+}
+
+// claimTime returns the time of the claim of owner on the repeater, or
+// zero when the KV store has none of owner, as for an older replica.
+func (h *Hub) claimTime(ctx context.Context, repeaterID uint, owner string) time.Time {
+	if h.kv == nil {
+		return time.Time{}
+	}
+	v, err := h.kv.Get(ctx, ownerSinceKey(repeaterID))
+	if err != nil {
+		return time.Time{}
+	}
+	if by, since := parseClaimValue(v); by == owner {
+		return since
+	}
+	return time.Time{}
+}
+
 // owner returns the replica that last claimed the repeater.
 func (h *Hub) owner(ctx context.Context, repeaterID uint) (string, bool) {
 	if h.kv == nil {
@@ -357,9 +399,11 @@ func (h *Hub) waitHanding(ctx context.Context) {
 const claimRecheck = time.Second
 
 // handOffMissed hands off each pending repeater that the KV store has
-// named another owner of at two rechecks in a row, as if its claim had
-// come at the first of them. A claim on pubsub follows its KV record at
-// once, so a repeater that is still here a recheck later lost its claim.
+// named another owner of at two rechecks in a row, from the time of the
+// claim that the KV store holds for that owner, or as if the claim had
+// come at the first recheck when it holds none, as for an older replica.
+// A claim on pubsub follows its KV record at once, so a repeater that is
+// still here a recheck later lost its claim.
 func (h *Hub) handOffMissed(ctx context.Context, pending map[uint]bool, noticed map[uint]time.Time) {
 	for id := range pending {
 		owner, ok := h.owner(ctx, id)
@@ -372,6 +416,9 @@ func (h *Hub) handOffMissed(ctx context.Context, pending map[uint]bool, noticed 
 		case !seen:
 			noticed[id] = h.clock.Now()
 		case !at.IsZero():
+			if claimed := h.claimTime(ctx, id, owner); !claimed.IsZero() {
+				at = claimed
+			}
 			slog.Warn("Handing off a repeater whose claim did not come", "repeaterID", id, "owner", owner)
 			h.handOff(context.WithoutCancel(ctx), id, owner, at)
 			noticed[id] = time.Time{}

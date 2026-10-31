@@ -558,3 +558,77 @@ func TestBarrierEndsWhenTheServerGoes(t *testing.T) {
 		assert.Equal(t, 300*time.Millisecond, <-returned, "the Barrier outlived its server")
 	})
 }
+
+// claimDropper is a PubSub that loses the claims of a replica.
+type claimDropper struct{ pubsub.PubSub }
+
+func (d claimDropper) Publish(topic string, message []byte) error {
+	if topic == "hub:claimed" {
+		return nil
+	}
+	return d.PubSub.Publish(topic, message) //nolint:wrapcheck
+}
+
+// TestAMissedClaimHandsOverFromTheClaimTime has a second replica claim a
+// repeater that the first one serves while the claim notice is lost, and
+// the first one wait for its repeaters to move as a draining replica does.
+// The first replica must find the claim in the KV store and hand the
+// repeater over from the time of the claim, not from when it found it, so
+// that the handover holds what it sent since the move.
+func TestAMissedClaimHandsOverFromTheClaimTime(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 1)
+		one, r1 := r[0].hub, r[0].reg
+		two := hub.NewHub(database, store, claimDropper{r[0].ps}, nil)
+		require.NoError(t, two.SetInstanceID("replica-2"))
+		t.Cleanup(func() { two.Stop(context.Background()) })
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		handed := make(chan time.Time, 1)
+		one.OnClaimedElsewhere(func(_ uint, since time.Time) { handed <- since })
+		one.ActivateRepeater(ctx, 100001)
+		r1.MarkDraining(ctx)
+
+		time.Sleep(300 * time.Millisecond)
+		claimed := time.Now()
+		two.ActivateRepeaterSince(ctx, 100001, claimed)
+		go one.WaitMoved(ctx)
+		select {
+		case since := <-handed:
+			assert.True(t, since.Equal(claimed), "handed over from %s, want the claim time %s", since, claimed)
+		case <-time.After(failAfter):
+			t.Fatal("the first replica did not hand the repeater over")
+		}
+	})
+}
+
+// TestAMissedClaimOfAnOlderReplicaHandsOver has a replica of an older
+// DMRHub claim a repeater: it writes its plain ID as the owner and no
+// claim time, and its claim notice is lost. The replica that served the
+// repeater must still hand it over, from when it found the claim.
+func TestAMissedClaimOfAnOlderReplicaHandsOver(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 1)
+		one, r1 := r[0].hub, r[0].reg
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		handed := make(chan time.Time, 1)
+		one.OnClaimedElsewhere(func(_ uint, since time.Time) { handed <- since })
+		one.ActivateRepeater(ctx, 100001)
+		r1.MarkDraining(ctx)
+
+		claimed := time.Now()
+		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-old")))
+		go one.WaitMoved(ctx)
+		select {
+		case since := <-handed:
+			assert.False(t, since.Before(claimed), "handed over from %s, before the claim at %s", since, claimed)
+		case <-time.After(failAfter):
+			t.Fatal("the first replica did not hand the repeater over")
+		}
+	})
+}

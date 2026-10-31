@@ -526,7 +526,7 @@ func (h *Hub) SetInstanceID(id string) error {
 // the shared KV store and tells the other replicas, so that a replica that
 // served the repeater before ends its session there.
 func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint, since time.Time) {
-	if h.writeOwner(ctx, repeaterID) {
+	if h.writeOwner(ctx, repeaterID, since) {
 		h.publishClaim(repeaterID, since)
 	}
 }
@@ -547,12 +547,32 @@ func (h *Hub) RenewOwnership(ctx context.Context, repeaterID uint) {
 		}
 		return mine, nil
 	})
+	if err != nil {
+		if !errors.Is(err, errOwnedElsewhere) {
+			slog.Warn("failed to renew peer ownership", "repeaterID", repeaterID, "error", err)
+		}
+		return
+	}
+	since, ok := h.claimedAt.Load(repeaterID)
+	if !ok {
+		since = h.clock.Now()
+	}
+	value := claimValue(h.instanceID, since)
+	err = h.kv.Update(ctx, ownerSinceKey(repeaterID), peerOwnerTTL, func(old []byte) ([]byte, error) {
+		if old == nil {
+			return value, nil
+		}
+		if owner, _ := parseClaimValue(old); owner != h.instanceID {
+			return nil, errOwnedElsewhere
+		}
+		return old, nil
+	})
 	if err != nil && !errors.Is(err, errOwnedElsewhere) {
-		slog.Warn("failed to renew peer ownership", "repeaterID", repeaterID, "error", err)
+		slog.Warn("failed to renew the claim time of a repeater", "repeaterID", repeaterID, "error", err)
 	}
 }
 
-func (h *Hub) writeOwner(ctx context.Context, repeaterID uint) bool {
+func (h *Hub) writeOwner(ctx context.Context, repeaterID uint, since time.Time) bool {
 	if h.instanceID == "" {
 		return false
 	}
@@ -564,7 +584,21 @@ func (h *Hub) writeOwner(ctx context.Context, repeaterID uint) bool {
 	if err := h.kv.Expire(ctx, key, peerOwnerTTL); err != nil {
 		slog.Warn("failed to set peer ownership TTL", "repeaterID", repeaterID, "error", err)
 	}
+	h.writeClaimTime(ctx, repeaterID, since)
 	return true
+}
+
+// writeClaimTime records since, the time of the packet that made this
+// replica claim the repeater, next to its ownership record.
+func (h *Hub) writeClaimTime(ctx context.Context, repeaterID uint, since time.Time) {
+	key := ownerSinceKey(repeaterID)
+	if err := h.kv.Set(ctx, key, claimValue(h.instanceID, since)); err != nil {
+		slog.Warn("failed to record the claim time of a repeater", "repeaterID", repeaterID, "error", err)
+		return
+	}
+	if err := h.kv.Expire(ctx, key, peerOwnerTTL); err != nil {
+		slog.Warn("failed to set the TTL of the claim time of a repeater", "repeaterID", repeaterID, "error", err)
+	}
 }
 
 // OwnsRepeater reports whether this hub owns the repeater, as

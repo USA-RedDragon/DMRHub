@@ -148,12 +148,18 @@ body {
     @apply bg-background text-foreground;
   }
   a:not(.no-underline):not([data-slot]) {
-    color: oklch(0.7 0.15 210);
+    color: oklch(0.52 0.12 215);
     text-decoration: underline;
     text-underline-offset: 0.2rem;
     transition: color 0.15s ease;
   }
   a:not(.no-underline):not([data-slot]):hover {
+    color: oklch(0.45 0.13 215);
+  }
+  .dark a:not(.no-underline):not([data-slot]) {
+    color: oklch(0.7 0.15 210);
+  }
+  .dark a:not(.no-underline):not([data-slot]):hover {
     color: oklch(0.6 0.18 210);
   }
   a:not(.no-underline):not([data-slot]):focus-visible {

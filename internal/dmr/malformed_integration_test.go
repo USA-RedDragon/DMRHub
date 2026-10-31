@@ -23,7 +23,6 @@ import (
 	"encoding/binary"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -93,11 +92,9 @@ func TestTruncatedPacketsDoNotCrash(t *testing.T) {
 			_, err := stranger.Write(p)
 			require.NoError(t, err)
 		}
-		time.Sleep(settleDuration)
-		_ = c2.Drain(100 * time.Millisecond)
 
 		require.NoError(t, c1.SendDMRD(makeGroupVoicePacket(1000001, 1, 6001, false)))
 		require.NoError(t, c1.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 6001, false)))
-		assert.Len(t, c2.Drain(drainWait), 2, "the server must keep routing after truncated packets")
+		assert.Len(t, ofStream(receiveCall(c2, 1), 6001), 2, "the server must keep routing after truncated packets")
 	})
 }

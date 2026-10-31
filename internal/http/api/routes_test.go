@@ -18,3 +18,20 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 package api
+
+import "testing"
+
+func TestSitemapURL(t *testing.T) {
+	t.Parallel()
+	for host, want := range map[string]string{
+		"https://dmrhub.net":          "https://dmrhub.net/sitemap.xml",
+		"https://dmrhub.net/":         "https://dmrhub.net/sitemap.xml",
+		"http://hub.example.com:3005": "http://hub.example.com:3005/sitemap.xml",
+		"dmrhub.example.com":          "https://dmrhub.example.com/sitemap.xml",
+		"https://example.com/hub/":    "https://example.com/hub/sitemap.xml",
+	} {
+		if got := sitemapURL(host); got != want {
+			t.Errorf("sitemapURL(%q) = %q, want %q", host, got, want)
+		}
+	}
+}

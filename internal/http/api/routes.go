@@ -21,6 +21,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -47,6 +48,14 @@ import (
 	"gorm.io/gorm"
 )
 
+func sitemapURL(canonicalHost string) string {
+	host := strings.TrimRight(strings.TrimSpace(canonicalHost), "/")
+	if !strings.Contains(host, "://") {
+		host = "https://" + host
+	}
+	return host + "/sitemap.xml"
+}
+
 // ApplyRoutes to the HTTP Mux.
 func ApplyRoutes(current configPkg.Source, router *gin.Engine, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, oauthServer *oauth.Server, ratelimit gin.HandlerFunc, userSuspension gin.HandlerFunc) {
 	config := current.Get()
@@ -56,9 +65,9 @@ func ApplyRoutes(current configPkg.Source, router *gin.Engine, dmrHub *hub.Hub, 
 		case configPkg.RobotsTXTModeDisabled:
 			c.String(http.StatusOK, "User-agent: *\nDisallow: /")
 		case configPkg.RobotsTXTModeAllow:
-			c.String(http.StatusOK, "User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: /sitemap.xml")
+			c.String(http.StatusOK, "User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: "+sitemapURL(current.Get().HTTP.CanonicalHost))
 		case configPkg.RobotsTXTModeCustom:
-			c.String(http.StatusOK, robots.Content+"\nSitemap: /sitemap.xml\nDisallow: /admin")
+			c.String(http.StatusOK, robots.Content+"\nSitemap: "+sitemapURL(current.Get().HTTP.CanonicalHost)+"\nDisallow: /admin")
 		}
 	})
 

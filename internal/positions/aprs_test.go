@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/aprs"
 	"github.com/USA-RedDragon/DMRHub/internal/aprs/aprstest"
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -90,15 +91,64 @@ func newGateway(t *testing.T) *gateway {
 	return &gateway{t: t, db: database, ps: ps, kv: kvStore, cfg: &cfg, srv: srv, pusher: pusher, clock: &testClock{Clock: clock.Real(), now: time.Now()}}
 }
 
-func (g *gateway) start() *positions.Gateway {
+type watch struct {
+	refreshed chan bool
+	handled   chan handled
+	logins    chan bool
+}
+
+type handled struct {
+	p    models.Position
+	sent bool
+}
+
+func (g *gateway) open() (*positions.Gateway, *watch) {
 	g.t.Helper()
+	w := &watch{refreshed: make(chan bool, 1), handled: make(chan handled, 32), logins: make(chan bool, 16)}
 	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
 	positions.SetClock(gw, 50*time.Millisecond, g.clock)
+	positions.Observe(gw, func(connected bool) {
+		select {
+		case w.refreshed <- connected:
+		default:
+		}
+	}, func(p models.Position, sent bool) { w.handled <- handled{p, sent} }, func(verified bool) { w.logins <- verified })
 	gw.Start(context.Background())
 	g.t.Cleanup(gw.Stop)
-	require.Eventually(g.t, func() bool { return len(g.srv.Logins()) >= 1 }, 3*time.Second, 10*time.Millisecond)
-	time.Sleep(100 * time.Millisecond)
-	return gw
+	return gw, w
+}
+
+func next[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), aprs.ReadTimeout)
+	defer cancel()
+	select {
+	case v := <-ch:
+		return v
+	case <-ctx.Done():
+		t.Fatalf("no %s within %s, the read timeout of the APRS-IS client", what, aprs.ReadTimeout)
+		var zero T
+		return zero
+	}
+}
+
+func (g *gateway) start() (*positions.Gateway, *watch) {
+	g.t.Helper()
+	gw, w := g.open()
+	require.True(g.t, next(g.t, w.logins, "login reply"), "the server did not verify the login")
+	return gw, w
+}
+
+func (g *gateway) lines(n int) []string {
+	g.t.Helper()
+	ctx, cancel := context.WithTimeout(g.t.Context(), aprs.ReadTimeout)
+	defer cancel()
+	return g.srv.WaitLines(ctx, n)
+}
+
+func (w *watch) sent(t *testing.T) bool {
+	t.Helper()
+	return next(t, w.handled, "handled position").sent
 }
 
 func (g *gateway) at(lat, lon float64) models.Position {
@@ -110,12 +160,13 @@ func (g *gateway) at(lat, lon float64) models.Position {
 func TestTheGatewaySendsATrackedRadioUnderItsOwnersCallsign(t *testing.T) {
 	t.Parallel()
 	g := newGateway(t)
-	g.start()
+	_, w := g.start()
 	p := g.at(30.2672, -97.7431)
 	speed, heading := 4.0, 45.0
 	p.SpeedMPS, p.HeadingDeg = &speed, &heading
 	g.pusher.Push(p)
-	assert.Equal(t, []string{"KI5VMF-9>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59W[045/008DMR 3191868"}, g.srv.WaitLines(1, 3*time.Second))
+	require.True(t, w.sent(t))
+	assert.Equal(t, []string{"KI5VMF-9>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59W[045/008DMR 3191868"}, g.lines(1))
 }
 
 func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
@@ -124,32 +175,35 @@ func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
 	require.NoError(t, models.SetPositionOptions(g.db, owner, owner, models.PositionOptions{
 		Interval: 10 * time.Minute, Retention: 24 * time.Hour, APRS: true, APRSSymbol: "bike",
 	}))
-	g.start()
+	_, w := g.start()
 	g.pusher.Push(g.at(30.2672, -97.7431))
-	assert.Equal(t, []string{"KI5VMF>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59Wb"}, g.srv.WaitLines(1, 3*time.Second))
+	require.True(t, w.sent(t))
+	assert.Equal(t, []string{"KI5VMF>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59Wb"}, g.lines(1))
 }
 
 func TestAtMostOnePacketPerRadioEachMinuteAndOnlyWhenItMoved(t *testing.T) {
 	t.Parallel()
 	g := newGateway(t)
-	g.start()
+	_, w := g.start()
 	acc := 50.0
 	first := g.at(30.2672, -97.7431)
 	first.AccuracyM = &acc
 	g.pusher.Push(first)
-	require.Len(t, g.srv.WaitLines(1, 3*time.Second), 1)
+	require.True(t, w.sent(t))
+	require.Len(t, g.lines(1), 1)
 
 	g.clock.Add(30 * time.Second)
 	g.pusher.Push(g.at(30.30, -97.7431))
+	assert.False(t, w.sent(t), "too soon")
 	g.clock.Add(31 * time.Second)
 	near := g.at(30.2675, -97.7431)
 	near.AccuracyM = &acc
 	g.pusher.Push(near)
-	time.Sleep(300 * time.Millisecond)
-	assert.Len(t, g.srv.Lines(), 1, "too soon, then within the accuracy")
+	assert.False(t, w.sent(t), "within the accuracy")
 
 	g.pusher.Push(g.at(30.30, -97.7431))
-	lines := g.srv.WaitLines(2, 3*time.Second)
+	require.True(t, w.sent(t))
+	lines := g.lines(2)
 	require.Len(t, lines, 2)
 	assert.Contains(t, lines[1], "!3018.00N/")
 }
@@ -212,13 +266,13 @@ func TestPositionsThatAreNotSent(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(g)
 			}
-			g.start()
+			_, w := g.start()
 			p := g.at(30.2672, -97.7431)
 			if tc.pos != nil {
 				p = tc.pos(g)
 			}
 			g.pusher.Push(p)
-			time.Sleep(300 * time.Millisecond)
+			assert.False(t, w.sent(t))
 			assert.Empty(t, g.srv.Lines())
 		})
 	}
@@ -227,38 +281,32 @@ func TestPositionsThatAreNotSent(t *testing.T) {
 func TestOnlyOneReplicaLogsIn(t *testing.T) {
 	t.Parallel()
 	g := newGateway(t)
-	g.start()
-	second := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(second, 50*time.Millisecond, g.clock)
-	second.Start(context.Background())
-	defer second.Stop()
-	time.Sleep(300 * time.Millisecond)
+	_, w := g.start()
+	_, w2 := g.open()
+	require.False(t, next(t, w2.refreshed, "lease check"), "the second replica took the lease")
 	assert.Len(t, g.srv.Logins(), 1)
 	g.pusher.Push(g.at(30.2672, -97.7431))
-	time.Sleep(300 * time.Millisecond)
-	assert.Len(t, g.srv.Lines(), 1, "one replica sends")
+	assert.True(t, w.sent(t), "the replica with the lease sends")
+	assert.False(t, w2.sent(t), "the other replica sends nothing")
+	assert.Len(t, g.lines(1), 1)
 }
 
 func TestTheReplicaThatIsLeftTakesOverTheLogin(t *testing.T) {
 	t.Parallel()
 	g := newGateway(t)
-	first := g.start()
-	second := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(second, 50*time.Millisecond, g.clock)
-	second.Start(context.Background())
-	defer second.Stop()
+	first, _ := g.start()
+	_, w2 := g.open()
+	require.False(t, next(t, w2.refreshed, "lease check"), "the second replica took the lease")
 	first.Stop()
-	require.Eventually(t, func() bool { return len(g.srv.Logins()) == 2 }, 3*time.Second, 10*time.Millisecond)
+	require.True(t, next(t, w2.logins, "login reply of the second replica"))
+	assert.Len(t, g.srv.Logins(), 2)
 }
 
 func TestWithoutALoginTheGatewayConnectsNowhere(t *testing.T) {
 	t.Parallel()
 	g := newGateway(t)
 	g.cfg.DMR.Positions.APRSIS.Callsign = ""
-	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
-	positions.SetClock(gw, 50*time.Millisecond, g.clock)
-	gw.Start(context.Background())
-	defer gw.Stop()
-	time.Sleep(300 * time.Millisecond)
+	_, w := g.open()
+	assert.False(t, next(t, w.refreshed, "lease check"), "the gateway started an APRS-IS client")
 	assert.Empty(t, g.srv.Logins())
 }

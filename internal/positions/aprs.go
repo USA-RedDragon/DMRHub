@@ -56,6 +56,12 @@ const (
 	defaultSymbol   = "car"
 )
 
+type observer struct {
+	refreshed func(connected bool)
+	handled   func(p models.Position, sent bool)
+	login     func(verified bool)
+}
+
 type sentPosition struct {
 	at       time.Time
 	lat, lon float64
@@ -78,6 +84,7 @@ type Gateway struct {
 	client *aprs.Client
 	leader bool
 	sent   map[uint]sentPosition
+	obs    observer
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -147,6 +154,9 @@ func (g *Gateway) refresh(ctx context.Context) {
 	want, on := g.login()
 	if !on {
 		g.release(ctx)
+		if g.obs.refreshed != nil {
+			g.obs.refreshed(false)
+		}
 		return
 	}
 	leader := g.holdLease(ctx)
@@ -159,7 +169,13 @@ func (g *Gateway) refresh(ctx context.Context) {
 	}
 	if leader && g.client == nil {
 		g.client = aprs.NewClient(want, g.version)
+		if g.obs.login != nil {
+			g.client.OnLogin(g.obs.login)
+		}
 		g.client.Start(ctx)
+	}
+	if g.obs.refreshed != nil {
+		g.obs.refreshed(g.client != nil)
 	}
 }
 
@@ -197,19 +213,27 @@ func (g *Gateway) release(ctx context.Context) {
 func (g *Gateway) handle(p models.Position) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if !g.leader || g.client == nil {
-		return
+	sent := g.send(&p)
+	if g.obs.handled != nil {
+		g.obs.handled(p, sent)
 	}
-	line, reason := g.line(&p)
+}
+
+func (g *Gateway) send(p *models.Position) bool {
+	if !g.leader || g.client == nil {
+		return false
+	}
+	line, reason := g.line(p)
 	if line == "" {
 		slog.Debug("APRS-IS: not sending a position", "radio", p.RadioID, "reason", reason)
-		return
+		return false
 	}
 	if err := g.client.Send(line); err != nil {
 		slog.Warn("APRS-IS: cannot send a position", "radio", p.RadioID, "error", err)
-		return
+		return false
 	}
 	g.sent[p.RadioID] = sentPosition{at: p.ReceivedAt, lat: p.Latitude, lon: p.Longitude}
+	return true
 }
 
 // line returns the packet of p, or why p is not sent.

@@ -77,14 +77,13 @@ func rig(t *testing.T) (*gorm.DB, pubsub.PubSub, *positions.Pusher) {
 func frames(t *testing.T, sub pubsub.Subscription) []apimodels.PositionPush {
 	t.Helper()
 	var out []apimodels.PositionPush
-	deadline := time.After(300 * time.Millisecond)
 	for {
 		select {
 		case b := <-sub.Channel():
 			var f apimodels.PositionPush
 			require.NoError(t, json.Unmarshal(b, &f))
 			out = append(out, f)
-		case <-deadline:
+		default:
 			return out
 		}
 	}
@@ -152,7 +151,7 @@ func TestEveryPositionGoesOnTheTopicOfAll(t *testing.T) {
 		assert.Equal(t, uint(5057), got.ServiceID)
 		require.NotNil(t, got.AccuracyM)
 		assert.InDelta(t, 12.5, *got.AccuracyM, 1e-9)
-	case <-time.After(time.Second):
-		t.Fatal("no position on the topic of all")
+	default:
+		t.Fatal("no position on the topic of all after the push")
 	}
 }

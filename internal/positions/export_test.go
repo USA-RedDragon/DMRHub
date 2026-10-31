@@ -23,9 +23,17 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
 
 // SetClock sets how often g checks its lease and the clock of g.
 func SetClock(g *Gateway, every time.Duration, c clock.Clock) {
 	g.every, g.clock = every, c
+}
+
+// Observe sets the funcs that g calls after each lease check, with
+// whether g has an APRS-IS client; after each position, with whether g
+// sent it; and with each login reply to its clients. Call it before Start.
+func Observe(g *Gateway, refreshed func(connected bool), handled func(p models.Position, sent bool), login func(verified bool)) {
+	g.obs = observer{refreshed: refreshed, handled: handled, login: login}
 }

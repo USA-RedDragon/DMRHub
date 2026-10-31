@@ -109,7 +109,6 @@ func hbrpPair(t *testing.T, stack *testutils.IntegrationStack) (*testutils.Sessi
 	require.NoError(t, mm.Connect(stack.MMDVMAddr))
 	t.Cleanup(mm.Close)
 	require.NoError(t, mm.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return hb, mm
 }
 
@@ -121,9 +120,8 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 		hb, mm := hbrpPair(t, stack)
 
 		require.NoError(t, hb.SendDMRD(makeGroupVoicePacket(1000001, 1, 7201, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, hb.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7201, false)))
-		pkts := mm.Drain(drainWait)
+		pkts := receiveCall(mm, 1)
 		require.NotEmpty(t, pkts, "the MMDVM repeater should get the group call of the HBRP repeater")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst)
@@ -133,9 +131,8 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 
 		time.Sleep(callHoldTime)
 		require.NoError(t, mm.SendDMRD(makeGroupVoicePacket(1000001, 1, 7202, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, mm.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7202, false)))
-		pkts = hb.Drain(drainWait)
+		pkts = hb.Receive(deliverWait, callEnds(1))
 		require.NotEmpty(t, pkts, "the HBRP repeater should get the group call of the MMDVM repeater")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst)
@@ -145,9 +142,8 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 
 		time.Sleep(callHoldTime)
 		require.NoError(t, hb.SendDMRD(makePrivateVoicePacket(100002, 7203)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, hb.SendDMRD(makePrivateVoiceTermPacket(100002, 7203)))
-		pkts = mm.Drain(drainWait)
+		pkts = receiveCall(mm, 100002)
 		require.NotEmpty(t, pkts, "the MMDVM repeater should get the private call of the HBRP repeater")
 		for _, p := range pkts {
 			assert.Equal(t, uint(100002), p.Dst)
@@ -156,9 +152,8 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 
 		time.Sleep(callHoldTime)
 		require.NoError(t, mm.SendDMRD(makePrivateVoicePacket(100001, 7204)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, mm.SendDMRD(makePrivateVoiceTermPacket(100001, 7204)))
-		pkts = hb.Drain(drainWait)
+		pkts = hb.Receive(deliverWait, callEnds(100001))
 		require.NotEmpty(t, pkts, "the HBRP repeater should get the private call of the MMDVM repeater")
 		for _, p := range pkts {
 			assert.Equal(t, uint(100001), p.Dst)
@@ -221,7 +216,7 @@ func TestHBRPRPTOIsIgnored(t *testing.T) {
 		require.NoError(t, hb.SendDMRD(makeGroupVoicePacket(1000001, 1, 7301, false)))
 		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, hb.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7301, false)))
-		assert.NotEmpty(t, mm.Drain(drainWait), "calls should pass after the RPTO")
+		assert.NotEmpty(t, receiveCall(mm, 1), "calls should pass after the RPTO")
 		assert.Equal(t, dmrdsession.StateRunning, hb.State())
 		assert.Zero(t, hb.Downs())
 	})

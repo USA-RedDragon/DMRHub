@@ -33,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -132,6 +133,7 @@ func scanFile(cs []class, name string, b []byte) (map[string]int, error) {
 			break
 		}
 	}
+	short := shortBounds(lines)
 	counts := map[string]int{}
 	for i, line := range lines {
 		if bubbled[i+1] || strings.HasPrefix(strings.TrimSpace(line), "//") {
@@ -141,12 +143,39 @@ func scanFile(cs []class, name string, b []byte) (map[string]int, error) {
 			if c.name == "fixedport" && !sockets {
 				continue
 			}
-			if c.re.MatchString(line) {
+			if c.re.MatchString(line) || c.name == "deadline" && short != nil && deadlineCall.MatchString(line) && short.MatchString(line) {
 				counts[c.name]++
 			}
 		}
 	}
 	return counts, nil
+}
+
+var (
+	deadlineCall = regexp.MustCompile(`(\bcontext\.With(Timeout|Deadline)|\.Set(Read|Write)?Deadline)\(`)
+	durationDecl = regexp.MustCompile(`^\s*(?:const\s+|var\s+)?(\w+)\s*(?:time\.Duration\s*)?=\s*(?:(\d+)\s*\*\s*)?time\.(Nanosecond|Microsecond|Millisecond|Second|Minute|Hour)\s*$`)
+)
+
+func shortBounds(lines []string) *regexp.Regexp {
+	units := map[string]time.Duration{"Nanosecond": time.Nanosecond, "Microsecond": time.Microsecond, "Millisecond": time.Millisecond, "Second": time.Second, "Minute": time.Minute, "Hour": time.Hour}
+	var names []string
+	for _, line := range lines {
+		m := durationDecl.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		n := int64(1)
+		if m[2] != "" {
+			n, _ = strconv.ParseInt(m[2], 10, 64)
+		}
+		if time.Duration(n)*units[m[3]] < time.Minute {
+			names = append(names, regexp.QuoteMeta(m[1]))
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return regexp.MustCompile(`\b(` + strings.Join(names, "|") + `)\b`)
 }
 
 // bubbleLines returns the lines of the bodies of the funcs that the
@@ -324,4 +353,29 @@ func TestX(t *testing.T) {
 	counts, err := scanFile(classes(), "x_test.go", data)
 	require.NoError(t, err)
 	require.Equal(t, 5, counts["deadline"])
+}
+
+// TestADeadlineCountsWhenItsNamedBoundIsShort counts a deadline whose
+// duration is a const of the source with a literal value under a minute,
+// and not one whose const is a minute or more.
+func TestADeadlineCountsWhenItsNamedBoundIsShort(t *testing.T) {
+	t.Parallel()
+	data := []byte(`package x_test
+
+const (
+	readTimeout = 500 * time.Millisecond
+	replyWait   = time.Minute
+)
+
+var dialWait = 2 * time.Second
+
+func TestX(t *testing.T) {
+	_ = conn.SetReadDeadline(time.Now().Add(readTimeout))
+	ctx, cancel := context.WithTimeout(t.Context(), dialWait)
+	_ = conn.SetReadDeadline(time.Now().Add(replyWait))
+}
+`)
+	counts, err := scanFile(classes(), "x_test.go", data)
+	require.NoError(t, err)
+	require.Equal(t, 2, counts["deadline"])
 }

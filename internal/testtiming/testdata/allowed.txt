@@ -50,6 +50,7 @@ timer	internal/dmr/hub/subscription_manager_test.go	2	baseline of 2026-10-28, no
 sleep	internal/dmr/hub/talkgroup_lookup_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/undeliverable_view_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/integration_test.go	48	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/iplists_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/iplists_integration_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/iplists_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/ipsc_fanout_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -118,6 +119,7 @@ eventually	internal/dmr/rpto_integration_test.go	2	baseline of 2026-10-28, not r
 sleep	internal/dmr/rpto_integration_test.go	9	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
+deadline	internal/dmr/servers/ipsc/register_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/ipsc/server_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
 elapsed	internal/dmr/servers/manager/drain_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -133,6 +135,7 @@ sleep	internal/dmr/servers/mmdvm/handover_internal_test.go	4	baseline of 2026-10
 deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/login_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/modem_login_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/options_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/mmdvm/options_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

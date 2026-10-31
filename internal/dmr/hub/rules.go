@@ -20,11 +20,9 @@
 package hub
 
 import (
-	"errors"
 	"log/slog"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
@@ -135,7 +133,7 @@ func (h *Hub) listed(users map[uint]struct{}, radio uint) (bool, bool) {
 	owner, err := h.radioOwners.Get(radio)
 	if err != nil {
 		slog.Error("Cannot find the owner of a radio on a locked slot", "radio", radio, "error", err)
-		return false, errors.Is(err, lookup.ErrSlow)
+		return false, waitedOut(err)
 	}
 	_, ok := users[owner]
 	return ok, false

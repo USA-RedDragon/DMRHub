@@ -107,6 +107,7 @@ func (h *Hub) peerSet(ctx context.Context, packet models.Packet) (streamPeerSet,
 	peers, err := h.egressPeers(ctx, packet)
 	if err != nil {
 		slog.Error("Failed to list peers for publishing", "error", err)
+		countLookupWait(err)
 		return streamPeerSet{}, false
 	}
 	set := streamPeerSet{peers: peers, at: h.clock.Now()}

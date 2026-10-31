@@ -30,9 +30,9 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/puzpuzpuz/xsync/v4"
 )
@@ -295,16 +295,21 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 // in the last seconds, which the record may not hold yet; and, for an
 // account ID, its last call on a repeater that the user owns or an admin
 // trusts.
-func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config.PrivateRoute) (uint, bool, bool) {
+func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config.PrivateRoute) (uint, bool, string) {
 	anyone := route.Reach == config.PrivateReachAnyone
 	now := h.clock.Now()
 	var best heardAt
+	repeaterSlow := false
 	consider := func(c heardAt) {
 		if c.repeater == 0 || !c.at.After(best.at) || (route.MaxAge > 0 && now.Sub(c.at) > route.MaxAge) {
 			return
 		}
 		rpt, err := h.routingRepeater(c.repeater)
-		if err != nil || (!anyone && owner != 0 && rpt.OwnerID != owner && !rpt.Trusted) {
+		if err != nil {
+			repeaterSlow = repeaterSlow || waitedOut(err)
+			return
+		}
+		if !anyone && owner != 0 && rpt.OwnerID != owner && !rpt.Trusted {
 			return
 		}
 		best = c
@@ -312,7 +317,7 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 	key := lastHeardKey(radioID)
 	read := context.WithoutCancel(ctx)
 	v, err := h.lastSeen.Do(radioID, func() ([]byte, error) { return h.kv.Get(read, key) }) //nolint:wrapcheck
-	slow := errors.Is(err, lookup.ErrSlow)
+	slow := waitedOut(err)
 	if err == nil {
 		var rec lastHeard
 		if json.Unmarshal(v, &rec) == nil {
@@ -334,7 +339,15 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 			consider(call)
 		}
 	}
-	return best.repeater, best.repeater != 0, slow
+	switch {
+	case best.repeater != 0:
+		return best.repeater, true, ""
+	case slow:
+		return 0, false, metrics.DropReasonLastSeenWait
+	case repeaterSlow:
+		return 0, false, metrics.DropReasonLookupWait
+	}
+	return 0, false, ""
 }
 
 // lastCallRepeater returns the repeater and time of the last call of the

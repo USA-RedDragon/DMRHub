@@ -20,13 +20,11 @@
 package hub
 
 import (
-	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
@@ -105,7 +103,7 @@ func (h *Hub) mayTransmit(policy config.Transmit, packet models.Packet, sourceNa
 		owner, err := h.radioOwners.Get(packet.Src)
 		if err != nil {
 			slog.Warn("Cannot find the owner of a radio, dropping its burst", "src", packet.Src, "error", err)
-			return false, false, errors.Is(err, lookup.ErrSlow)
+			return false, false, waitedOut(err)
 		}
 		return owner != 0, true, false
 	case config.TransmitAny:

@@ -29,7 +29,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
@@ -219,6 +218,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 	exists, err := h.talkgroupExists(packet.Dst)
 	if err != nil {
 		slog.Error("Error checking if talkgroup exists", "error", err)
+		countLookupWait(err)
 		return true
 	}
 	return !exists
@@ -232,6 +232,7 @@ func (h *Hub) handleGroupCall(key sourceSlot, packet models.Packet) {
 		exists, err := h.talkgroupExists(packet.Dst)
 		if err != nil {
 			slog.Error("Error checking if talkgroup exists", "error", err)
+			countLookupWait(err)
 			return
 		}
 		if !exists {
@@ -269,6 +270,7 @@ func (h *Hub) routeToRepeater(key sourceSlot, packet models.Packet) bool {
 			slog.Error("Repeater does not exist", "repeaterID", packet.Dst)
 		} else {
 			slog.Error("Error checking if repeater exists", "error", err)
+			countLookupWait(err)
 		}
 		return false
 	}
@@ -335,20 +337,18 @@ func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bo
 	owner, err := h.radioOwners.Get(packet.Dst)
 	if err != nil {
 		slog.Error("Error finding the owner of a radio", "error", err)
-		if errors.Is(err, lookup.ErrSlow) {
-			metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLookupWait)
-		}
+		countLookupWait(err)
 		return 0, false
 	}
 	if owner == 0 && route.Reach == config.PrivateReachMembers {
 		h.logPrivateDrop(key, packet, route, "the radio ID is not a member's")
 		return 0, false
 	}
-	repeaterID, ok, slow := h.locateRadio(ctx, packet.Dst, owner, route)
+	repeaterID, ok, waited := h.locateRadio(ctx, packet.Dst, owner, route)
 	if !ok {
 		if route.Unknown != config.PrivateUnknownFlood {
-			if slow {
-				metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLastSeenWait)
+			if waited != "" {
+				metrics.NewMetrics().IncrementIngressDropped(waited)
 			}
 			h.logPrivateDrop(key, packet, route, "the radio was not heard where its traffic may follow it")
 			return 0, false

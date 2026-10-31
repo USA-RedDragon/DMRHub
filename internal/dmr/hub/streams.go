@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 )
 
@@ -387,7 +389,19 @@ func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, ca
 	if r.err != nil && !errors.Is(r.err, errNoClaimStore) {
 		slog.Warn("Failed to check the shared claim of a stream", "stream", claim.stream, "src", claim.src, "error", r.err)
 	}
-	return owner, errors.Is(r.err, errClaimSlow)
+	return owner, waitedOut(r.err)
+}
+
+func countLookupWait(err error) {
+	if waitedOut(err) {
+		metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLookupWait)
+	}
+}
+
+func waitedOut(err error) bool {
+	var netErr net.Error
+	return errors.Is(err, lookup.ErrSlow) || errors.Is(err, errClaimSlow) || errors.Is(err, context.DeadlineExceeded) ||
+		(errors.As(err, &netErr) && netErr.Timeout())
 }
 
 // admitFrom reports whether owner is src, and counts and logs packet as a

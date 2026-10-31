@@ -84,8 +84,7 @@ func TestTheMatchOfAPairStaysBounded(t *testing.T) {
 // naiveAssign is assign as one loop over the rows for each answer, which
 // assign must agree with.
 func naiveAssign(st *matchState, heardFirst bool) assignment {
-	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
-	at := map[uint]time.Time{}
+	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}, from: map[uint]matchAnswer{}}
 	for _, r := range st.Rows {
 		a.resp[r.ID] = models.CallResponseNone
 	}
@@ -109,20 +108,16 @@ func naiveAssign(st *matchState, heardFirst bool) assignment {
 			continue
 		}
 		a.winner[ans.Stream] = best.ID
-		if t, ok := at[best.ID]; !ok || ans.At.After(t) {
-			at[best.ID], a.resp[best.ID] = ans.At, ans.Response
+		if f, ok := a.from[best.ID]; !ok || ans.At.After(f.At) {
+			a.from[best.ID], a.resp[best.ID] = ans, ans.Response
 		}
 	}
-	for _, r := range st.Rows {
-		if !st.knows(r.Start) {
-			a.resp[r.ID] = r.Resp
-		}
-	}
+	st.keepDropped(&a)
 	return a
 }
 
 // TestAssignAgreesWithTheNaiveMatch compares assign with naiveAssign on
-// random matches with ties, both kinds of answers and pruned answers.
+// random matches with ties, both kinds of answers and dropped answers.
 func TestAssignAgreesWithTheNaiveMatch(t *testing.T) {
 	t.Parallel()
 	rnd := rand.New(rand.NewPCG(1, 2))
@@ -131,13 +126,10 @@ func TestAssignAgreesWithTheNaiveMatch(t *testing.T) {
 	for range 2000 {
 		var st matchState
 		for i := range rnd.IntN(12) {
-			st.Rows = append(st.Rows, matchRow{ID: uint(rnd.IntN(40) + 1 + i*40), Start: at(), Resp: models.CallResponse([]string{"", "ack", "nack"}[rnd.IntN(3)])})
+			st.Rows = append(st.Rows, matchRow{ID: uint(rnd.IntN(40) + 1 + i*40), Start: at(), Resp: models.CallResponse([]string{"", "ack", "nack"}[rnd.IntN(3)]), RespStream: uint(rnd.IntN(20)), RespAt: at()})
 		}
 		for i := range rnd.IntN(12) {
 			st.Answers = append(st.Answers, matchAnswer{Stream: uint(i + 1), At: at(), Response: models.CallResponse([]string{"ack", "nack"}[rnd.IntN(2)])})
-		}
-		if rnd.IntN(3) == 0 {
-			st.Cut = at()
 		}
 		for _, hf := range []bool{false, true} {
 			want := naiveAssign(&st, hf)
@@ -174,4 +166,60 @@ func BenchmarkMatchStep(b *testing.B) {
 			}
 		})
 	}
+}
+
+func memoryStore(t testing.TB) kv.KV {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	store, err := kv.MakeKV(context.TODO(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+func mustStep(t *testing.T, c *CallTracker, k pair, op matchOp) stepResult {
+	t.Helper()
+	r, err := c.step(k, answerData, op)
+	require.NoError(t, err)
+	return r
+}
+
+// TestARowThatKeepsItsResponseLosesAnAnswerThatAnotherRowTakes lets the
+// match drop an old answer of a row, so that the row keeps its response,
+// and then makes a row that started later but before the answer that gave
+// the response. Only the later row may have that answer. (Fourth review,
+// R4-2.)
+func TestARowThatKeepsItsResponseLosesAnAnswerThatAnotherRowTakes(t *testing.T) {
+	t.Parallel()
+	c := &CallTracker{kv: memoryStore(t)}
+	k := pair{src: 1, dst: 2}
+	b := time.Unix(2_000_000, 0)
+	s := func(d float64) time.Time { return b.Add(time.Duration(d * float64(time.Second))) }
+	mustStep(t, c, k, matchOp{answer: &matchAnswer{Stream: 100, At: s(0), Response: models.CallResponseACK}, keep: true})
+	mustStep(t, c, k, matchOp{row: &matchRow{ID: 1, Start: s(9.5)}})
+	mustStep(t, c, k, matchOp{answer: &matchAnswer{Stream: 101, At: s(19), Response: models.CallResponseACK}, keep: true})
+	mustStep(t, c, k, matchOp{row: &matchRow{ID: 9, Start: s(85)}})
+	mustStep(t, c, k, matchOp{row: &matchRow{ID: 2, Start: s(15)}})
+	m1, _ := c.matched(k, answerData, 1)
+	m2, _ := c.matched(k, answerData, 2)
+	assert.Equal(t, models.CallResponseACK, m2, "the later row has no ACK")
+	assert.Equal(t, models.CallResponseNone, m1, "one answer gives an ACK to two rows")
+}
+
+// TestARowNearDroppedAnswersTakesANewAnswer has the cap drop an answer
+// just before a row starts, and then answers the row. The row must have
+// the answer. (Fourth review, R4-3.)
+func TestARowNearDroppedAnswersTakesANewAnswer(t *testing.T) {
+	t.Parallel()
+	c := &CallTracker{kv: memoryStore(t)}
+	k := pair{src: 1, dst: 2}
+	b := time.Unix(3_000_000, 0)
+	for i := range matchCap + 1 {
+		mustStep(t, c, k, matchOp{answer: &matchAnswer{Stream: uint(1000 + i), At: b.Add(time.Duration(i) * time.Millisecond), Response: models.CallResponseACK}, keep: true})
+	}
+	mustStep(t, c, k, matchOp{row: &matchRow{ID: 2, Start: b.Add(600 * time.Millisecond)}})
+	mustStep(t, c, k, matchOp{answer: &matchAnswer{Stream: 5000, At: b.Add(time.Second), Response: models.CallResponseNACK}, keep: true})
+	m2, _ := c.matched(k, answerData, 2)
+	assert.Equal(t, models.CallResponseNACK, m2, "the row did not take the newest answer")
 }

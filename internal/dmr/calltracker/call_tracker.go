@@ -599,11 +599,14 @@ func inWindow(start, at time.Time) bool {
 }
 
 // matchRow is a row that answers can be set on, when it started, and the
-// response that the last step gave it.
+// response that the last step gave it, from the answer of RespStream that
+// the hub got at RespAt.
 type matchRow struct {
-	ID    uint                `json:"id"`
-	Start time.Time           `json:"start"`
-	Resp  models.CallResponse `json:"resp,omitempty"`
+	ID         uint                `json:"id"`
+	Start      time.Time           `json:"start"`
+	Resp       models.CallResponse `json:"resp,omitempty"`
+	RespStream uint                `json:"resp_stream,omitempty"`
+	RespAt     time.Time           `json:"resp_at,omitzero"`
 }
 
 // matchAnswer is an answer of one stream, the time the hub got its newest
@@ -622,29 +625,15 @@ type matchAnswer struct {
 type matchState struct {
 	Rows    []matchRow    `json:"rows,omitempty"`
 	Answers []matchAnswer `json:"answers,omitempty"`
-	// Cut is the time of the newest answer that the match dropped. A row
-	// that started less than the response window after it may have lost
-	// an answer, so it keeps the response that it had.
-	Cut time.Time `json:"cut,omitzero"`
-}
-
-// knows reports whether the match still has every answer that the row
-// that started at start could take.
-func (st *matchState) knows(start time.Time) bool {
-	return start.Add(-responseWindow).After(st.Cut)
-}
-
-func (st *matchState) cutAt(t time.Time) {
-	if t.After(st.Cut) {
-		st.Cut = t
-	}
 }
 
 // assignment is what a matchState makes of its answers: the row that each
-// answer stream goes to, and the response of each row.
+// answer stream goes to, and the response of each row and the answer it
+// comes from.
 type assignment struct {
 	winner map[uint]uint
 	resp   map[uint]models.CallResponse
+	from   map[uint]matchAnswer
 }
 
 // assign gives each answer to the row that started last within its
@@ -652,11 +641,9 @@ type assignment struct {
 // answer it takes, or none. With heardFirst, an answer that no row before
 // it takes goes to the row that started first within the window after
 // it, the smaller ID on a tie, as a CSBK request that the hub hears after
-// its answer. A row that may have lost an answer to the pruning keeps the
-// response that the last step gave it.
+// its answer. See keepDropped for the answers that the match dropped.
 func (st *matchState) assign(heardFirst bool) assignment {
-	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
-	at := map[uint]time.Time{}
+	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}, from: map[uint]matchAnswer{}}
 	rows := slices.Clone(st.Rows)
 	slices.SortFunc(rows, func(x, y matchRow) int {
 		if c := x.Start.Compare(y.Start); c != 0 {
@@ -684,16 +671,34 @@ func (st *matchState) assign(heardFirst bool) assignment {
 			continue
 		}
 		a.winner[ans.Stream] = best.ID
-		if t, ok := at[best.ID]; !ok || ans.At.After(t) {
-			at[best.ID], a.resp[best.ID] = ans.At, ans.Response
+		if f, ok := a.from[best.ID]; !ok || ans.At.After(f.At) {
+			a.from[best.ID], a.resp[best.ID] = ans, ans.Response
 		}
 	}
-	for _, r := range rows {
-		if !st.knows(r.Start) {
-			a.resp[r.ID] = r.Resp
-		}
-	}
+	st.keepDropped(&a)
 	return a
+}
+
+// keepDropped gives each row whose response came from an answer that the
+// match dropped that response again, unless an answer that the match
+// still has, and that the hub got later, now gives the row its response.
+// So pruning and the cap never take a response away, and a response from
+// an answer that the match still has follows that answer.
+func (st *matchState) keepDropped(a *assignment) {
+	held := make(map[uint]bool, len(st.Answers))
+	for _, ans := range st.Answers {
+		held[ans.Stream] = true
+	}
+	for _, r := range st.Rows {
+		if r.RespStream == 0 || held[r.RespStream] {
+			continue
+		}
+		if f, ok := a.from[r.ID]; ok && !r.RespAt.After(f.At) {
+			continue
+		}
+		a.resp[r.ID] = r.Resp
+		a.from[r.ID] = matchAnswer{Stream: r.RespStream, At: r.RespAt, Response: r.Resp}
+	}
 }
 
 func (st *matchState) newest() time.Time {
@@ -720,8 +725,6 @@ func (st *matchState) prune(ref time.Time) {
 	for _, a := range st.Answers {
 		if a.At.After(answerCut) {
 			answers = append(answers, a)
-		} else {
-			st.cutAt(a.At)
 		}
 	}
 	st.Answers = answers
@@ -738,9 +741,6 @@ func (st *matchState) prune(ref time.Time) {
 func (st *matchState) limit() {
 	if n := len(st.Answers); n > matchCap {
 		slices.SortFunc(st.Answers, func(a, b matchAnswer) int { return a.At.Compare(b.At) })
-		for _, a := range st.Answers[:n-matchCap] {
-			st.cutAt(a.At)
-		}
 		st.Answers = st.Answers[n-matchCap:]
 	}
 	if n := len(st.Rows); n > matchCap {
@@ -847,7 +847,9 @@ func (c *CallTracker) step(k pair, what string, op matchOp) (stepResult, error) 
 			a.OwnRow = 0
 		}
 		for i := range st.Rows {
-			st.Rows[i].Resp = after.resp[st.Rows[i].ID]
+			r := &st.Rows[i]
+			f := after.from[r.ID]
+			r.Resp, r.RespStream, r.RespAt = after.resp[r.ID], f.Stream, f.At
 		}
 		st.limit()
 		return json.Marshal(st)

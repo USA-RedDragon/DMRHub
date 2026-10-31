@@ -265,7 +265,7 @@ timer	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in 
 elapsed	internal/testutils/clockstep/clockstep_linux.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/droidstar.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 pickport	internal/testutils/freeport_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/hubdelivery.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+timer	internal/testutils/hubdelivery.go	1	negative window: GroupBurstReaches is for checks that a burst does not arrive, where a slow machine can only hide a fault; positive checks use RequireGroupBurst, an event wait
 elapsed	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/ipsc_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

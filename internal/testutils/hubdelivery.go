@@ -46,9 +46,51 @@ func NewHubDelivery(t *testing.T, h *hub.Hub) *HubDelivery {
 }
 
 // GroupBurstReaches routes one group voice burst to tg from a repeater that
-// does not exist and reports whether the hub delivered it to repeaterID.
+// does not exist and reports whether the hub delivered it to repeaterID
+// within 500 ms. Use it only to check that a burst does not arrive: a slow
+// machine can only hide a wrong delivery from it. RequireGroupBurst checks
+// that one does.
 func (d *HubDelivery) GroupBurstReaches(t *testing.T, tg, repeaterID uint) bool {
 	t.Helper()
+	d.route(tg)
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case rp := <-d.handle.Packets:
+			if rp.RepeaterID == repeaterID && rp.Packet.Dst == tg {
+				return true
+			}
+		case <-deadline:
+			return false
+		}
+	}
+}
+
+// DeliveryWait bounds the wait of RequireGroupBurst. The hub delivers a
+// burst at once when it works, so the bound only ends a test that fails.
+const DeliveryWait = time.Minute
+
+// RequireGroupBurst routes one group voice burst to tg from a repeater that
+// does not exist and fails t unless the hub delivers it to repeaterID
+// within DeliveryWait.
+func (d *HubDelivery) RequireGroupBurst(t *testing.T, tg, repeaterID uint) {
+	t.Helper()
+	d.route(tg)
+	ctx, cancel := context.WithTimeout(t.Context(), DeliveryWait)
+	defer cancel()
+	for {
+		select {
+		case rp := <-d.handle.Packets:
+			if rp.RepeaterID == repeaterID && rp.Packet.Dst == tg {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatalf("the hub did not deliver a burst of talkgroup %d to repeater %d within %s", tg, repeaterID, DeliveryWait)
+		}
+	}
+}
+
+func (d *HubDelivery) route(tg uint) {
 	d.stream++
 	d.hub.RoutePacket(context.Background(), models.Packet{
 		Signature:   string(dmrconst.CommandDMRD),
@@ -62,15 +104,4 @@ func (d *HubDelivery) GroupBurstReaches(t *testing.T, tg, repeaterID uint) bool 
 		BER:         -1,
 		RSSI:        -1,
 	}, models.RepeaterTypeMMDVM)
-	deadline := time.After(500 * time.Millisecond)
-	for {
-		select {
-		case rp := <-d.handle.Packets:
-			if rp.RepeaterID == repeaterID && rp.Packet.Dst == tg {
-				return true
-			}
-		case <-deadline:
-			return false
-		}
-	}
 }

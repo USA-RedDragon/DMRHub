@@ -211,6 +211,45 @@ func (kv *redisKV) LRange(ctx context.Context, key string) ([][]byte, error) {
 	return result, nil
 }
 
+type fnError struct{ err error }
+
+func (e fnError) Error() string { return e.err.Error() }
+
+func (kv *redisKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	for range updateTries {
+		err := kv.client.Watch(ctx, func(tx *redis.Tx) error {
+			old, err := tx.Get(ctx, key).Bytes()
+			switch {
+			case errors.Is(err, redis.Nil):
+				old = nil
+			case err != nil:
+				return err //nolint:wrapcheck
+			}
+			next, err := fn(old)
+			if err != nil {
+				return fnError{err}
+			}
+			_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+				p.Set(ctx, key, next, ttl)
+				return nil
+			})
+			return err //nolint:wrapcheck
+		}, key)
+		var fe fnError
+		switch {
+		case err == nil:
+			return nil
+		case errors.As(err, &fe):
+			return fe.err
+		case errors.Is(err, redis.TxFailedErr):
+			continue
+		default:
+			return fmt.Errorf("redis update %s: %w", key, err)
+		}
+	}
+	return fmt.Errorf("redis update %s: %w", key, ErrConflict)
+}
+
 const deleteIfEqualScript = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0`
 
 func (kv *redisKV) DeleteIfEqual(ctx context.Context, key string, value []byte) (bool, error) {

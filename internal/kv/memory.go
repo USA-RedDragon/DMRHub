@@ -321,6 +321,32 @@ func (kv inMemoryKV) DeleteIfEqual(_ context.Context, key string, value []byte) 
 	return deleted, nil
 }
 
+func (kv inMemoryKV) Update(_ context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	start := time.Now()
+	defer func() {
+		kv.metrics.RecordKVOperation("update", kvStatusSuccess, time.Since(start).Seconds())
+	}()
+
+	var err error
+	kv.kv.Compute(key, func(v kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		var old []byte
+		if loaded && (v.ttl.IsZero() || !v.ttl.Before(time.Now())) {
+			old = v.value
+		}
+		next, ferr := fn(old)
+		if ferr != nil {
+			err = ferr
+			return v, xsync.CancelOp
+		}
+		nv := kvValue{value: next}
+		if ttl > 0 {
+			nv.ttl = time.Now().Add(ttl)
+		}
+		return nv, xsync.UpdateOp
+	})
+	return err
+}
+
 // dropExpired deletes key only if its value is still expired, so that a
 // value set after an expired one was read stays.
 func (kv inMemoryKV) dropExpired(key string) {

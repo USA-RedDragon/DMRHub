@@ -21,8 +21,11 @@ package kv_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -248,4 +251,96 @@ func TestKVRPushTrimRefusesAKeepBelowOne(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, got)
 	})
+}
+
+func TestKVUpdateSetsTheValueAndTTL(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		var seen [][]byte
+		for _, v := range []string{"a", "b"} {
+			require.NoError(t, store.Update(ctx, "up", time.Minute, func(old []byte) ([]byte, error) {
+				seen = append(seen, old)
+				return append(append([]byte(nil), old...), v...), nil
+			}))
+		}
+		assert.Equal(t, [][]byte{nil, []byte("a")}, seen)
+		got, err := store.Get(ctx, "up")
+		require.NoError(t, err)
+		assert.Equal(t, []byte("ab"), got)
+		expiry, err := kv.ExpiryOf(ctx, store, "up")
+		require.NoError(t, err)
+		assert.True(t, expiry.After(time.Now()), "the key has no TTL")
+		assert.False(t, expiry.After(time.Now().Add(time.Minute+time.Second)), "the TTL is longer than asked")
+	})
+}
+
+func TestKVUpdateWithAnErrorChangesNothing(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "up", []byte("a")))
+		boom := errors.New("boom")
+		err := store.Update(ctx, "up", time.Minute, func([]byte) ([]byte, error) { return []byte("b"), boom })
+		require.ErrorIs(t, err, boom)
+		got, err := store.Get(ctx, "up")
+		require.NoError(t, err)
+		assert.Equal(t, []byte("a"), got)
+	})
+}
+
+// TestKVUpdateIsOneStep counts up one key from many goroutines at once.
+// No update may be lost.
+func TestKVUpdateIsOneStep(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		const writers, each = 8, 25
+		var wg sync.WaitGroup
+		var failed atomic.Int64
+		for range writers {
+			wg.Go(func() {
+				for range each {
+					err := store.Update(ctx, "count", time.Minute, func(old []byte) ([]byte, error) {
+						n, _ := strconv.Atoi(string(old))
+						return strconv.AppendInt(nil, int64(n+1), 10), nil
+					})
+					if errors.Is(err, kv.ErrConflict) {
+						failed.Add(1)
+						continue
+					}
+					assert.NoError(t, err)
+				}
+			})
+		}
+		wg.Wait()
+		got, err := store.Get(ctx, "count")
+		require.NoError(t, err)
+		assert.Equal(t, strconv.Itoa(writers*each-int(failed.Load())), string(got), "%d updates ran out of tries", failed.Load())
+	})
+}
+
+// TestKVUpdateRunsOutOfTriesOnRedis changes the key from within fn on
+// every try, so that each try finds the key changed. Update must give up
+// with ErrConflict and leave the other writer's value.
+func TestKVUpdateRunsOutOfTriesOnRedis(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	testutils.PostgresRedisBackend().Setup(t, &cfg)
+	store, err := kv.MakeKV(t.Context(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+	tries := 0
+	err = store.Update(ctx, "fight", time.Minute, func([]byte) ([]byte, error) {
+		tries++
+		require.NoError(t, store.Set(ctx, "fight", []byte("theirs")))
+		return []byte("mine"), nil
+	})
+	require.ErrorIs(t, err, kv.ErrConflict)
+	assert.Equal(t, kv.UpdateTries, tries)
+	got, err := store.Get(ctx, "fight")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("theirs"), got)
 }

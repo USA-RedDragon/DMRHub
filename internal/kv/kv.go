@@ -36,6 +36,13 @@ var ErrNotFound = errors.New("not found")
 // ErrKeep is the error of an RPushTrim that would keep no element.
 var ErrKeep = errors.New("keep must be at least 1")
 
+// ErrConflict is the error of an Update that found the key changed by
+// another writer on each of its tries.
+var ErrConflict = errors.New("the key changed on every try")
+
+// updateTries is how many times Update tries on Redis before ErrConflict.
+const updateTries = 16
+
 type KV interface {
 	Has(ctx context.Context, key string) (bool, error)
 	Get(ctx context.Context, key string) ([]byte, error)
@@ -60,6 +67,15 @@ type KV interface {
 	// DeleteIfEqual deletes key only if its value equals value, in one
 	// step, and reports whether it deleted it.
 	DeleteIfEqual(ctx context.Context, key string, value []byte) (bool, error)
+	// Update sets key to the value that fn returns for its current value,
+	// nil for a key that does not exist or has expired, and sets its TTL
+	// to ttl, in one step. fn must be pure: on Redis it runs again each
+	// time another writer changes the key first, up to 16 times, so the
+	// caller uses only the result of the last run before Update returns
+	// nil, the run that was stored. An error of fn stops Update, which
+	// returns it and changes nothing. After the last try Update returns
+	// ErrConflict and changes nothing.
+	Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error
 	Close() error
 }
 

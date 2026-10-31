@@ -69,3 +69,6 @@ func ExpiryOf(ctx context.Context, store KV, key string) (time.Time, error) {
 	}
 	return time.Time{}, errors.New("unknown store")
 }
+
+// UpdateTries is how many times Update tries on Redis.
+const UpdateTries = updateTries

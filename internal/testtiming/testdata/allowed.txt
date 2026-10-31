@@ -21,10 +21,9 @@ timer	internal/dmr/hub/rules_test.go	3	baseline of 2026-10-28, not reviewed: rep
 sleep	internal/dmr/hub/slow_claim_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/hub/slow_db_test.go	1	virtual time: worstDelay runs only inside synctest bubbles, so the delay it measures is virtual
 sleep	internal/dmr/hub/slow_db_test.go	2	virtual time: slowDownBy and sendStream run only inside synctest bubbles, so each sleep is a slow query or the burst period in virtual time
-elapsed	internal/dmr/hub/slow_redis_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/hub/slow_redis_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/slow_redis_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hub/slow_redis_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/hub/slow_redis_test.go	1	virtual time: gather runs only inside synctest bubbles, so the delay it measures is virtual
+sleep	internal/dmr/hub/slow_redis_test.go	3	virtual time: stalledPubSub and stalledPlugins are made, and sendSlotStream runs, only inside synctest bubbles, so each sleep is a slow Redis call or the burst period in virtual time
+timer	internal/dmr/hub/slow_redis_test.go	2	virtual time: gather runs only inside synctest bubbles, so its quiet window and deadline are virtual
 sleep	internal/dmr/hub/stream_order_test.go	3	virtual time: claimSlowFor and slowTopic are made only inside synctest bubbles, so each sleep is the delay of a slow KV store or pubsub in virtual time
 elapsed	internal/dmr/hub/streams_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/streams_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

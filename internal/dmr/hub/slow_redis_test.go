@@ -140,7 +140,7 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 	})
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	synctest.Wait()
 	worstDelay(t, arrivals, 70200, sendStream(h, 1, 70200, true, 4), "mmdvm:100002", "peers:3100100")
 	worstDelay(t, arrivals, 70210, sendSlotStream(h, 2, 70210, true, 4), "mmdvm:100002", "peers:3100100")
 	return h, stalled, arrivals
@@ -425,32 +425,34 @@ func TestTheOutboxHoldsALongOutage(t *testing.T) { //nolint:paralleltest
 	rate := runtime.MemProfileRate
 	runtime.MemProfileRate = 1
 	t.Cleanup(func() { runtime.MemProfileRate = rate })
-	blocked := &blockedPubSub{release: make(chan struct{})}
-	h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
-		blocked.PubSub = ps
-		return blocked
-	}, func(k kv.KV) kv.KV { return k })
-	seedStalledRedisHub(t, h, database)
-	h.ActivateRepeater(context.Background(), testRepeaterID)
-	h.ActivateRepeater(context.Background(), 100002)
-	time.Sleep(100 * time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		blocked := &blockedPubSub{release: make(chan struct{})}
+		h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub {
+			blocked.PubSub = ps
+			return blocked
+		}, func(k kv.KV) kv.KV { return k })
+		seedStalledRedisHub(t, h, database)
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		time.Sleep(100 * time.Millisecond)
 
-	const bursts, batch = 20000, 250
-	before := outboxHeap(t)
-	for i := range bursts {
-		p := makeVoicePacket(1, 70500, true, false)
-		p.Seq = uint(i % 256)
-		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-		if i%batch == batch-1 {
-			require.Eventually(t, func() bool { return h.OutboxDepth() == int64(i+1) }, 10*time.Second, time.Millisecond, "the outbox did not take burst %d", i)
+		const bursts, batch = 20000, 250
+		before := outboxHeap(t)
+		for i := range bursts {
+			p := makeVoicePacket(1, 70500, true, false)
+			p.Seq = uint(i % 256)
+			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+			if i%batch == batch-1 {
+				bubble.Eventually(t, func() bool { return h.OutboxDepth() == int64(i+1) }, 10*time.Second, time.Millisecond, "the outbox did not take burst %d", i)
+			}
 		}
-	}
-	held := outboxHeap(t) - before
-	perBurst := held / bursts
-	t.Logf("%d bursts in the outbox take %.1f MB of heap, %.0f bytes each", bursts, held/1e6, perBurst)
-	assert.Less(t, perBurst, 600.0, "a burst in the outbox takes too much memory")
+		held := outboxHeap(t) - before
+		perBurst := held / bursts
+		t.Logf("%d bursts in the outbox take %.1f MB of heap, %.0f bytes each", bursts, held/1e6, perBurst)
+		assert.Less(t, perBurst, 600.0, "a burst in the outbox takes too much memory")
 
-	close(blocked.release)
-	require.Eventually(t, func() bool { return h.OutboxDepth() == 0 }, 30*time.Second, 10*time.Millisecond, "the outbox did not empty")
-	assert.Equal(t, int64(bursts), blocked.took.Load(), "pubsub did not get every burst once")
+		close(blocked.release)
+		bubble.Eventually(t, func() bool { return h.OutboxDepth() == 0 }, 30*time.Second, 10*time.Millisecond, "the outbox did not empty")
+		assert.Equal(t, int64(bursts), blocked.took.Load(), "pubsub did not get every burst once")
+	})
 }

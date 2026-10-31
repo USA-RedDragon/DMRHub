@@ -22,7 +22,6 @@ package testutils
 import (
 	"context"
 	"database/sql"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,36 +36,22 @@ func TestTheTestsOfAProcessShareOneServerOfEachMySQLFamily(t *testing.T) {
 			t.Parallel()
 			f := &mysqlFamily{name: base.name, image: base.image, tag: base.tag, envPrefix: base.envPrefix, fast: base.fast}
 			const tests = 4
-			var acquired, released sync.WaitGroup
-			acquired.Add(tests)
-			released.Add(tests - 1)
 			ports := make([]int, tests)
-			t.Run("group", func(t *testing.T) {
-				for i := range tests {
-					t.Run("", func(t *testing.T) {
-						t.Parallel()
-						if i > 0 {
-							t.Cleanup(released.Done)
-						}
-						port, name := f.shared(t)
-						ports[i] = port
-						acquired.Done()
-						acquired.Wait()
-						if i > 0 {
-							return
-						}
-						db, err := sql.Open("mysql", mysqlDSN(port, name))
-						require.NoError(t, err)
-						t.Cleanup(func() { _ = db.Close() })
-						conn, err := db.Conn(t.Context())
-						require.NoError(t, err)
-						released.Wait()
-						_, err = conn.ExecContext(t.Context(), "SELECT 1")
-						assert.NoError(t, err, "the cleanup of the other tests ended no session of this test")
-						_ = conn.Close()
-					})
-				}
-			})
+			port, name := f.shared(t)
+			ports[0] = port
+			db, err := sql.Open("mysql", mysqlDSN(port, name))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			conn, err := db.Conn(t.Context())
+			require.NoError(t, err)
+			for i := 1; i < tests; i++ {
+				t.Run("", func(t *testing.T) { //nolint:paralleltest // each ends, with its cleanup, before the next starts
+					ports[i], _ = f.shared(t)
+				})
+			}
+			_, err = conn.ExecContext(t.Context(), "SELECT 1")
+			assert.NoError(t, err, "the cleanup of the other tests ended no session of this test")
+			_ = conn.Close()
 			for i := range ports {
 				assert.Equal(t, ports[0], ports[i], "the tests run on one %s server", f.name)
 			}

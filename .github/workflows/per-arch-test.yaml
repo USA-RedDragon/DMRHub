@@ -67,7 +67,7 @@ jobs:
       - name: Pull database images
         run: for image in postgres:16-alpine redis:7-alpine mysql:8.4 mariadb:12.3; do docker pull -q "$image"; done
 
-      - uses: Wandalen/wretry.action@master
+      - uses: Wandalen/wretry.action@e94c43bf2e865e7dbbd90b0c1061053f5888932a # master
         with:
           command: make build-ci && make test
           attempt_limit: 3

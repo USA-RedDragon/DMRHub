@@ -129,13 +129,60 @@ func newService(t *testing.T, addr string) *transcode.Service {
 // newServers returns a service for list whose streams measure the budget
 // of a burst on a clock that does not move and wait patientAttempt for
 // each answer, so that what a test converts does not depend on how loaded
-// the machine is.
+// the machine is. Each server is probed once, when the service starts.
 func newServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) *transcode.Service {
 	t.Helper()
-	s := newRealServers(t, store, list...)
-	s.SetTiming(3*patientAttempt, patientAttempt)
-	transcode.SetClock(s, clock.NewFake(time.Now()))
+	s, _ := newProbedServers(t, store, list...)
 	return s
+}
+
+// newProbedServers is newServers with the clock of its probes, which
+// moves only on Advance.
+func newProbedServers(t *testing.T, store kv.KV, list ...transcode.ServerConfig) (*transcode.Service, *probeClock) {
+	t.Helper()
+	c := &probeClock{Fake: clock.NewFake(time.Now()), rounds: make(chan struct{}, 64)}
+	s := transcode.NewService(store, c)
+	t.Cleanup(s.Close)
+	s.SetTiming(3*patientAttempt, patientAttempt)
+	s.SetServers(list)
+	return s, c
+}
+
+// probeClock is a clock.Fake that reports each round of the probe loop of
+// a server: the loop takes the channel of its ticker once it has probed.
+type probeClock struct {
+	*clock.Fake
+	rounds chan struct{}
+}
+
+func (c *probeClock) NewTicker(d time.Duration) clock.Ticker {
+	return probeTicker{Ticker: c.Fake.NewTicker(d), rounds: c.rounds}
+}
+
+type probeTicker struct {
+	clock.Ticker
+	rounds chan<- struct{}
+}
+
+func (t probeTicker) C() <-chan time.Time {
+	select {
+	case t.rounds <- struct{}{}:
+	default:
+	}
+	return t.Ticker.C()
+}
+
+// probed waits for n rounds of the probe loops of c. A probe gives up on
+// a server after the probe timeout of the service, so each round ends.
+func (c *probeClock) probed(n int) {
+	for range n {
+		<-c.rounds
+	}
+}
+
+func probedService(t *testing.T, addr string) (*transcode.Service, *probeClock) {
+	t.Helper()
+	return newProbedServers(t, nil, transcode.ServerConfig{Addr: addr})
 }
 
 // newRealService returns a service for addr with the timing of the hub,
@@ -436,7 +483,7 @@ func TestServerDownMissesWithoutWaiting(t *testing.T) {
 	for i := 7; i < 13; i++ {
 		start := clock.now()
 		r, ok := st.Convert(t.Context(), &in[i], start.Add(st.Budget()))
-		took := clock.now().Sub(start)
+		took := clock.Since(start)
 		require.True(t, ok)
 		assert.Equal(t, 3, r.Missed, "burst %d", i)
 		assert.Equal(t, transcode.ReasonTimeout, r.Reason, "burst %d", i)
@@ -493,22 +540,30 @@ func checkDecoded(t *testing.T, slots [][9]byte, pcm [][160]int16) {
 }
 
 // TestUnreachableServerFailsFast points the service at a port where nothing
-// listens. Bursts come back at once with silence.
+// listens. Bursts come back with silence for the refusal of the port. A
+// stream that waited for an answer would give ReasonTimeout, after the
+// patientAttempt of each request.
 func TestUnreachableServerFailsFast(t *testing.T) {
 	t.Parallel()
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 	addr := conn.LocalAddr().String()
 	require.NoError(t, conn.Close())
-	svc := newRealService(t, addr)
+	svc := newService(t, addr)
 	in := call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 6*layer2.VoiceSlotsPerBurst))
 	st, err := svc.NewStream(transcode.CodecCodec2, transcode.CodecAMBE, codec2.ModeAuto)
 	require.NoError(t, err)
 	t.Cleanup(st.Close)
-	start := time.Now()
-	_, missed := convert(t, st, in)
+	missed := 0
+	for i := range in {
+		r, ok := st.Convert(t.Context(), &in[i], deadline(st))
+		require.True(t, ok, "burst %d has no copy", i)
+		missed += r.Missed
+		if r.Missed > 0 {
+			assert.Equal(t, transcode.ReasonUnreachable, r.Reason, "burst %d waited for a server that refused it", i)
+		}
+	}
 	assert.Equal(t, 6*3, missed)
-	assert.Less(t, time.Since(start), time.Duration(len(in))*transcode.Budget)
 	assert.False(t, answered(svc, 0))
 }
 
@@ -534,8 +589,9 @@ func TestServiceOff(t *testing.T) {
 func TestProbeShowsTheServerAnswers(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
-	svc := newService(t, srv.Addr())
-	require.Eventually(t, func() bool { return answered(svc, 0) }, 5*time.Second, 10*time.Millisecond)
+	svc, probes := probedService(t, srv.Addr())
+	probes.probed(1)
+	require.True(t, answered(svc, 0), "the server did not answer the probe")
 	assert.Positive(t, srv.Queries())
 	assert.Empty(t, srv.Errors())
 
@@ -553,8 +609,11 @@ func TestProbesComeFromOneSocket(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
 	srv.SetControlParity(false)
-	newService(t, srv.Addr())
-	require.Eventually(t, func() bool { return srv.Queries() >= 2 }, 3*transcode.ProbeInterval, 50*time.Millisecond)
+	_, probes := probedService(t, srv.Addr())
+	probes.probed(1)
+	probes.Advance(transcode.ProbeInterval)
+	probes.probed(1)
+	assert.Equal(t, 2, srv.Queries())
 	assert.Equal(t, 1, srv.QuerySources())
 }
 
@@ -564,8 +623,9 @@ func TestProbeTakesAReplyWithoutParity(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
 	srv.SetControlParity(false)
-	svc := newService(t, srv.Addr())
-	require.Eventually(t, func() bool { return answered(svc, 0) }, 5*time.Second, 10*time.Millisecond)
+	svc, probes := probedService(t, srv.Addr())
+	probes.probed(1)
+	require.True(t, answered(svc, 0), "the server did not answer the probe")
 	assert.Empty(t, srv.Errors())
 }
 
@@ -696,7 +756,8 @@ type overlap struct {
 }
 
 // overlapping converts two Codec2 calls burst by burst at once, each in a
-// goroutine of its own, as two streams of the hub do.
+// goroutine of its own, as two streams of the hub do. The calls convert
+// each burst in step.
 func overlapping(t *testing.T, svc *transcode.Service) [2]*overlap {
 	t.Helper()
 	var calls [2]*overlap
@@ -706,18 +767,23 @@ func overlapping(t *testing.T, svc *transcode.Service) [2]*overlap {
 		t.Cleanup(st.Close)
 		calls[i] = &overlap{in: call(t, voiceLC(t, transcode.Codec2FID), codec2Frames(t, codec2.Mode2400, 6*layer2.VoiceSlotsPerBurst)), st: st}
 	}
+	steps := make([]sync.WaitGroup, len(calls[0].in))
+	for i := range steps {
+		steps[i].Add(len(calls))
+	}
 	var wg sync.WaitGroup
 	for _, c := range calls {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range c.in {
+				steps[i].Done()
+				steps[i].Wait()
 				r, ok := c.st.Convert(context.Background(), &c.in[i], deadline(c.st))
 				if ok {
 					c.out = append(c.out, r.Burst)
 					c.res = append(c.res, r)
 				}
-				time.Sleep(5 * time.Millisecond)
 			}
 		}()
 	}
@@ -757,8 +823,9 @@ func TestALimitOneServerTakesOneCallAtOnce(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
 	srv.SetLastClientOnly(true)
-	svc := newServers(t, memoryKV(t), transcode.ServerConfig{Addr: srv.Addr(), Calls: 1})
-	require.Eventually(t, func() bool { return answered(svc, 0) }, 5*time.Second, 10*time.Millisecond)
+	svc, probes := newProbedServers(t, memoryKV(t), transcode.ServerConfig{Addr: srv.Addr(), Calls: 1})
+	probes.probed(1)
+	require.True(t, answered(svc, 0), "the server did not answer the probe")
 	busy, converted := busyAndConverted(t, overlapping(t, svc))
 	require.NotNil(t, busy, "both calls used the server with one chip")
 	require.NotNil(t, converted)
@@ -799,8 +866,9 @@ func TestTwoServersOfOneCallEachTakeTwoCalls(t *testing.T) {
 	one, two := testutils.StartFakeAMBEServer(t), testutils.StartFakeAMBEServer(t)
 	one.SetLastClientOnly(true)
 	two.SetLastClientOnly(true)
-	svc := newServers(t, memoryKV(t), transcode.ServerConfig{Addr: one.Addr(), Calls: 1}, transcode.ServerConfig{Addr: two.Addr(), Calls: 1})
-	require.Eventually(t, func() bool { return answered(svc, 0) && answered(svc, 1) }, 5*time.Second, 10*time.Millisecond)
+	svc, probes := newProbedServers(t, memoryKV(t), transcode.ServerConfig{Addr: one.Addr(), Calls: 1}, transcode.ServerConfig{Addr: two.Addr(), Calls: 1})
+	probes.probed(2)
+	require.True(t, answered(svc, 0) && answered(svc, 1), "a server did not answer the probe")
 	for _, c := range overlapping(t, svc) {
 		requireConverted(t, c)
 	}

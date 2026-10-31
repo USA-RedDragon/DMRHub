@@ -179,10 +179,7 @@ timer	internal/dmr/stream_order_integration_test.go	1	baseline of 2026-10-28, no
 elapsed	internal/dmr/terminate_inbound_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/terminate_inbound_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/terminate_inbound_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/transcode/clockstep_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/transcode/transcode_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/transcode/transcode_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/transcode/transcode_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/transcode/clockstep_test.go	1	steps the wall clock of a VM under hack/clockstep.sh and checks that time.Since on the monotonic reading of the answer does not move with it; it needs the real clock
 eventually	internal/dmr/transcode_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/transcode_integration_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/transparency_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

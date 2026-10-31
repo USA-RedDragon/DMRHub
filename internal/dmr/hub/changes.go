@@ -30,6 +30,7 @@ import (
 const (
 	talkgroupChangedTopic = "hub:talkgroups:changed"
 	userChangedTopic      = "hub:users:changed"
+	radioChangedTopic     = "hub:radios:changed"
 	peerChangedTopic      = "hub:peers:changed"
 	repeaterRekeyTopic    = "hub:repeaters:rekey"
 	rulesChangedTopic     = "hub:rules:changed"
@@ -141,6 +142,12 @@ func (h *Hub) UserChanged(id uint) {
 	h.announce(userChangedTopic, id)
 }
 
+// RadioChanged makes every replica read the owner of the radio ID id
+// again. Call it after a user adds the ID to their list or removes it.
+func (h *Hub) RadioChanged(id uint) {
+	h.announce(radioChangedTopic, id)
+}
+
 // PeerChanged makes every replica read the OpenBridge peer id and its rules
 // again. Call it after the peer or one of its rules is made, changed or
 // deleted.
@@ -168,6 +175,9 @@ func (h *Hub) applyChange(topic string, id uint) {
 		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)
 		h.watchers.call(userChangedTopic, id)
+	case radioChangedTopic:
+		h.radioOwners.Reload(id)
+		h.radioCalls.Drop(id)
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})
 		h.watchers.call(peerChangedTopic, id)

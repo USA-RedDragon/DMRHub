@@ -342,7 +342,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
 		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
-		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic} {
+		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic} {
 			go h.listenChanges(topic, ps.Subscribe(topic))
 		}
 	}

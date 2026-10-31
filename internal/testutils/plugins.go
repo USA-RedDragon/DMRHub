@@ -82,6 +82,12 @@ func (p *Plugins) Run(t testing.TB, name string, ranges []models.PluginRange, se
 	return p.RunAt(t, p.Server.Addr().String(), name, ranges, serve)
 }
 
+// PluginConnectWait bounds the waits of RunAt for its plugin to connect,
+// and of ServeIgnoresUnknownMessages for serve to end with its stream. Both
+// come at once when the hub and the plugin work, so the bound only ends a
+// test that fails.
+const PluginConnectWait = time.Minute
+
 // RunAt is Run with the plugin connecting to address, such as that of a
 // Balancer in front of the listeners of several replicas.
 func (p *Plugins) RunAt(t testing.TB, address, name string, ranges []models.PluginRange,
@@ -90,10 +96,9 @@ func (p *Plugins) RunAt(t testing.TB, address, name string, ranges []models.Plug
 	added, token, err := models.CreatePlugin(p.db, name, ranges, time.Now())
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(p.ps))
-	require.Eventually(t, func() bool {
-		owner, ok := p.Server.Registry().Owner(ranges[0].First)
-		return ok && owner == added.ID
-	}, 5*time.Second, 10*time.Millisecond, "the hub learns the IDs of %s", name)
+	require.NoError(t, p.Server.Registry().Reload())
+	owner, ok := p.Server.Registry().Owner(ranges[0].First)
+	require.True(t, ok && owner == added.ID, "the hub did not learn the IDs of %s", name)
 	certs, err := plugins.NewCertSource(p.cfg.GetDerivedSecret(), "", "")
 	require.NoError(t, err)
 	fp, err := certs.Fingerprint()
@@ -104,14 +109,25 @@ func (p *Plugins) RunAt(t testing.TB, address, name string, ranges []models.Plug
 		cancel()
 		<-done
 	})
+	connected := make(chan struct{})
+	var once sync.Once
 	go func() {
 		defer close(done)
-		plugin.Run(ctx, plugin.Options{Address: address, Token: token, Fingerprint: fp}, serve)
+		plugin.Run(ctx, plugin.Options{Address: address, Token: token, Fingerprint: fp}, func(ctx context.Context, c *plugin.Conn) error {
+			once.Do(func() { close(connected) })
+			return serve(ctx, c)
+		})
 	}()
-	require.Eventually(t, func() bool {
-		got, err := models.FindPlugin(p.db, added.ID)
-		return err == nil && got.Online(time.Now())
-	}, 5*time.Second, 10*time.Millisecond, "the plugin %s connects", name)
+	wait, stop := context.WithTimeout(t.Context(), PluginConnectWait)
+	defer stop()
+	select {
+	case <-connected:
+	case <-wait.Done():
+		require.FailNow(t, "the plugin did not connect", "%s, within %s", name, PluginConnectWait)
+	}
+	got, err := models.FindPlugin(p.db, added.ID)
+	require.NoError(t, err)
+	require.True(t, got.Online(time.Now()), "the hub did not note %s connected before its welcome", name)
 	return added
 }
 
@@ -319,10 +335,12 @@ func ServeIgnoresUnknownMessages(t *testing.T, serve func(context.Context, *plug
 	case <-time.After(500 * time.Millisecond):
 	}
 	close(end)
+	wait, stop := context.WithTimeout(t.Context(), PluginConnectWait)
+	defer stop()
 	select {
 	case err := <-done:
 		require.Equal(t, codes.Unavailable, status.Code(err), "serve ends with the stream: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("serve did not end with the stream")
+	case <-wait.Done():
+		t.Fatalf("serve did not end with the stream within %s", PluginConnectWait)
 	}
 }

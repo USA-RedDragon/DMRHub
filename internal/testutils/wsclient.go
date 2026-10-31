@@ -129,7 +129,7 @@ func dialWS(t *testing.T, serverURL, path string, jar CookieJar, origin string, 
 	t.Helper()
 	u, err := url.Parse(serverURL)
 	require.NoError(t, err)
-	dialer := net.Dialer{Timeout: 5 * time.Second}
+	var dialer net.Dialer
 	conn, err := dialer.DialContext(t.Context(), "tcp", u.Host)
 	require.NoError(t, err)
 	var key [16]byte

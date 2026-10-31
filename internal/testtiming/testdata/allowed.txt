@@ -220,29 +220,28 @@ sleep	internal/stress/transport_test.go	9	release stress battery (stress build t
 timer	internal/stress/transport_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 elapsed	internal/stress/web_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 sleep	internal/stress/web_test.go	3	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 101, 161, 187 are settle waits between stress phases; should become an event wait (open item)
-sleep	internal/testutils/ambeserver.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/testutils/ambeserver.go	2	protocol pacing of the fake AMBE server: the sleeps model the reply delay of a real device, which the tests set on purpose
 sleep	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
 timer	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
-elapsed	internal/testutils/clockstep/clockstep_linux.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/droidstar.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/testutils/freeport_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/testutils/clockstep/clockstep_linux.go	1	checks a real wall-clock step: Step moves the wall clock of the VM and verifies that it moved by d; only a real clock can show that
+timer	internal/testutils/droidstar.go	1	event wait: WaitLine wakes on each new line of the external DroidStar process; the timer only ends a wait that fails
+pickport	internal/testutils/freeport_test.go	1	tests FreeUDPPort itself
 timer	internal/testutils/hubdelivery.go	1	negative window: GroupBurstReaches is for checks that a burst does not arrive, where a slow machine can only hide a fault; positive checks use RequireGroupBurst, an event wait
 elapsed	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/ipsc_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-fixedport	internal/testutils/live.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/testutils/live.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+fixedport	internal/testutils/live.go	1	data: http://localhost:3005 is the canonical host of the config, not a socket
+pickport	internal/testutils/live.go	4	a live config must name its server ports (the live-config tests change and lock them), so :0 cannot be used; FreeUDPPort picks below the ephemeral range and the replica tries other ports on EADDRINUSE
 sleep	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/mmdvm_client.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/openbridge_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/testutils/plugins.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/plugins.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+timer	internal/testutils/plugins.go	1	negative window: ServeIgnoresUnknownMessages checks that serve does not end within 500 ms of an unknown message; serve gives no sign that it handled it, and a slow machine can only hide a fault, never fail the test
 elapsed	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/testutils/starvation.go	2	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
 sleep	internal/testutils/starvation.go	1	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
-timer	internal/testutils/wsclient.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/wsclient_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
+timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails
 elapsed	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/wt_peer.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

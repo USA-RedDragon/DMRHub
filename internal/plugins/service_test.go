@@ -80,7 +80,7 @@ type rig struct {
 	svc      *plugins.Service
 }
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T, opts ...plugins.ServiceOption) *rig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func newRig(t *testing.T) *rig {
 	registry.Follow(done)
 	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20), stored: make(chan models.Position, 64)}
 	srv := grpc.NewServer()
-	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify)
+	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify, opts...)
 	pluginv1.RegisterPluginServiceServer(srv, r.svc)
 	go func() { _ = srv.Serve(r.lis) }()
 	t.Cleanup(func() {

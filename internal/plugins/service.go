@@ -113,14 +113,27 @@ type openStream struct {
 	send func(*pluginv1.ConnectResponse)
 }
 
+// ServiceOption changes how NewService makes the service.
+type ServiceOption func(*Service)
+
+// WithClock makes the service note when plugins connect and are seen, and
+// time their heartbeats and handoffs, on c. Nil is the real clock.
+func WithClock(c clock.Clock) ServiceOption {
+	return func(s *Service) { s.clock = clock.Or(c) }
+}
+
 // NewService returns the plugin service. Bursts that plugins send go to
 // router; registry tells who owns each ID; notify gets each position that
 // a plugin sent and the hub stored.
-func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router, notify func(models.Position)) *Service {
-	return &Service{
+func NewService(db *gorm.DB, ps pubsub.PubSub, registry *Registry, router Router, notify func(models.Position), opts ...ServiceOption) *Service {
+	s := &Service{
 		db: db, pubsub: ps, registry: registry, router: router, notify: notify, clock: clock.Real(), heartbeat: heartbeatEvery,
 		grace: handoffGrace, streams: map[*openStream]struct{}{}, drained: make(chan struct{}),
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // open adds st to the open streams, and returns false when this replica

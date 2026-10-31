@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -34,6 +35,7 @@ import (
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +49,7 @@ const (
 	resetSent     = `{"message":"If that account has an email address, a link is on its way. It works for 1 hour."}`
 	resetBadLink  = `{"error":"This link does not work. It is older than 1 hour or was used already. Ask for a new one."}`
 	resetDone     = `{"message":"Your password is set. Log in with it now."}`
+	mailTimeout   = 10 * time.Second
 	resetHost     = "https://hub.example.com"
 	resetUserMail = "n0call@example.com"
 )
@@ -66,7 +69,7 @@ func (f *fakeMailer) SendText(to, subject, body string) error {
 
 func (f *fakeMailer) next(t *testing.T) sentMail {
 	t.Helper()
-	return <-f.sent
+	return bubble.Receive(t, f.sent, mailTimeout, "no email was sent")
 }
 
 var linkToken = regexp.MustCompile(`https://hub\.example\.com/reset-password#token=([0-9a-f]{64})\n`)
@@ -112,66 +115,71 @@ func resets(t *testing.T, db *gorm.DB, id uint) int64 {
 
 func TestForgotPasswordAnswersTheSameForEveryAccount(t *testing.T) {
 	t.Parallel()
-	router, db, mailer := resetRouter(t, true)
+	synctest.Test(t, func(t *testing.T) {
+		router, db, mailer := resetRouter(t, true)
 
-	for _, name := range []string{"nobody", "nomail", "N1CALL"} {
-		assert.JSONEq(t, resetSent, forgot(t, router, name), name)
-	}
-	assert.Zero(t, resets(t, db, 1000002), "an account without an email gets no link")
-	assert.Empty(t, mailer.sent)
+		for _, name := range []string{"nobody", "nomail", "N1CALL"} {
+			assert.JSONEq(t, resetSent, forgot(t, router, name), name)
+		}
+		assert.Zero(t, resets(t, db, 1000002), "an account without an email gets no link")
+		synctest.Wait()
+		assert.Empty(t, mailer.sent)
 
-	assert.JSONEq(t, resetSent, forgot(t, router, "n0call"), "a callsign in any case finds the account")
-	m := mailer.next(t)
-	assert.Equal(t, resetUserMail, m.to)
-	assert.Equal(t, "Choose a new Test Hub password", m.subject)
-	assert.Regexp(t, `^Someone asked for a new password for N0CALL on Test Hub\.\n\n`+
-		`To choose one, open this link\. It works once, for 1 hour:\n`+
-		`https://hub\.example\.com/reset-password#token=[0-9a-f]{64}\n\n`+
-		`If you did not ask, ignore this email\. Your password stays the same\.\n$`, m.body)
+		assert.JSONEq(t, resetSent, forgot(t, router, "n0call"), "a callsign in any case finds the account")
+		m := mailer.next(t)
+		assert.Equal(t, resetUserMail, m.to)
+		assert.Equal(t, "Choose a new Test Hub password", m.subject)
+		assert.Regexp(t, `^Someone asked for a new password for N0CALL on Test Hub\.\n\n`+
+			`To choose one, open this link\. It works once, for 1 hour:\n`+
+			`https://hub\.example\.com/reset-password#token=[0-9a-f]{64}\n\n`+
+			`If you did not ask, ignore this email\. Your password stays the same\.\n$`, m.body)
 
-	assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"), "the username finds the account")
-	mailer.next(t)
-	assert.Equal(t, int64(2), resets(t, db, 1000001))
+		assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"), "the username finds the account")
+		mailer.next(t)
+		assert.Equal(t, int64(2), resets(t, db, 1000001))
 
-	var stored []models.PasswordReset
-	require.NoError(t, db.Find(&stored).Error)
-	for _, r := range stored {
-		assert.Len(t, r.TokenHash, 32, "only the hash of the token is kept")
-	}
+		var stored []models.PasswordReset
+		require.NoError(t, db.Find(&stored).Error)
+		for _, r := range stored {
+			assert.Len(t, r.TokenHash, 32, "only the hash of the token is kept")
+		}
+	})
 }
 
 func TestPasswordResetLinkWorksOnceAndEndsEverySession(t *testing.T) {
 	t.Parallel()
-	router, _, mailer := resetRouter(t, true)
-	first := testutils.Login(t, router, "jdoe")
-	second := testutils.Login(t, router, "jdoe")
-	forgot(t, router, "jdoe")
-	token := mailer.token(t)
+	synctest.Test(t, func(t *testing.T) {
+		router, _, mailer := resetRouter(t, true)
+		first := testutils.Login(t, router, "jdoe")
+		second := testutils.Login(t, router, "jdoe")
+		forgot(t, router, "jdoe")
+		token := mailer.token(t)
 
-	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, checkPath, map[string]string{"token": token})
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"callsign":"N0CALL"}`, w.Body.String())
+		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, checkPath, map[string]string{"token": token})
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"callsign":"N0CALL"}`, w.Body.String())
 
-	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token})
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.JSONEq(t, `{"error":"Enter a new password."}`, w.Body.String())
+		w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.JSONEq(t, `{"error":"Enter a new password."}`, w.Body.String())
 
-	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "my-new-password"})
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.JSONEq(t, resetDone, w.Body.String())
-	for _, jar := range []testutils.CookieJar{first, second} {
-		assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil).Code, "every session ends")
-	}
-	_, lw, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "jdoe", Password: "my-new-password"})
-	assert.Equal(t, http.StatusOK, lw.Code)
+		w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "my-new-password"})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.JSONEq(t, resetDone, w.Body.String())
+		for _, jar := range []testutils.CookieJar{first, second} {
+			assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me", nil).Code, "every session ends")
+		}
+		_, lw, _ := testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "jdoe", Password: "my-new-password"})
+		assert.Equal(t, http.StatusOK, lw.Code)
 
-	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "another-password"})
-	assert.Equal(t, http.StatusBadRequest, w.Code, "a link works once")
-	assert.JSONEq(t, resetBadLink, w.Body.String())
-	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, checkPath, map[string]string{"token": token})
-	assert.JSONEq(t, resetBadLink, w.Body.String())
-	_, lw, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "jdoe", Password: "my-new-password"})
-	assert.Equal(t, http.StatusOK, lw.Code)
+		w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "another-password"})
+		assert.Equal(t, http.StatusBadRequest, w.Code, "a link works once")
+		assert.JSONEq(t, resetBadLink, w.Body.String())
+		w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, checkPath, map[string]string{"token": token})
+		assert.JSONEq(t, resetBadLink, w.Body.String())
+		_, lw, _ = testutils.LoginUser(t, router, apimodels.AuthLogin{Username: "jdoe", Password: "my-new-password"})
+		assert.Equal(t, http.StatusOK, lw.Code)
+	})
 }
 
 func TestPasswordResetLinkExpiresAfterAnHour(t *testing.T) {
@@ -216,21 +224,23 @@ func TestAnyNewPasswordEndsTheResetLinks(t *testing.T) {
 
 func TestForgotPasswordIsLimitedPerAccountAndPerAddress(t *testing.T) {
 	t.Parallel()
-	router, db, mailer := resetRouter(t, true)
-	for range 4 {
-		assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"))
-	}
-	for range 3 {
-		mailer.next(t)
-	}
-	assert.Equal(t, int64(3), resets(t, db, 1000001), "3 links per account and hour")
+	synctest.Test(t, func(t *testing.T) {
+		router, db, mailer := resetRouter(t, true)
+		for range 4 {
+			assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"))
+		}
+		for range 3 {
+			mailer.next(t)
+		}
+		assert.Equal(t, int64(3), resets(t, db, 1000001), "3 links per account and hour")
 
-	require.NoError(t, db.Exec("DELETE FROM ratelimits WHERE key LIKE ?", "password-reset:user:%").Error)
-	for i := range 6 {
-		assert.JSONEq(t, resetSent, forgot(t, router, fmt.Sprintf("nobody%d", i)))
-	}
-	assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"), "over the limit of the address the answer stays the same")
-	assert.Equal(t, int64(3), resets(t, db, 1000001), "10 requests per address and hour")
+		require.NoError(t, db.Exec("DELETE FROM ratelimits WHERE key LIKE ?", "password-reset:user:%").Error)
+		for i := range 6 {
+			assert.JSONEq(t, resetSent, forgot(t, router, fmt.Sprintf("nobody%d", i)))
+		}
+		assert.JSONEq(t, resetSent, forgot(t, router, "jdoe"), "over the limit of the address the answer stays the same")
+		assert.Equal(t, int64(3), resets(t, db, 1000001), "10 requests per address and hour")
+	})
 }
 
 func TestForgotPasswordNeedsEmail(t *testing.T) {
@@ -266,34 +276,38 @@ func forgotFrom(t *testing.T, router *gin.Engine, addr, user string) {
 
 func TestForgotPasswordLimitsAnIPv6NetworkAsOneAddress(t *testing.T) {
 	t.Parallel()
-	router, db, mailer := resetRouter(t, true)
-	for i := range 10 {
-		forgotFrom(t, router, fmt.Sprintf("[2001:db8:1:2::%x]:40000", i+1), "nobody")
-	}
-	forgotFrom(t, router, "[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:40000", "jdoe")
-	assert.Zero(t, resets(t, db, 1000001), "the 11th request from one /64 is over the limit")
+	synctest.Test(t, func(t *testing.T) {
+		router, db, mailer := resetRouter(t, true)
+		for i := range 10 {
+			forgotFrom(t, router, fmt.Sprintf("[2001:db8:1:2::%x]:40000", i+1), "nobody")
+		}
+		forgotFrom(t, router, "[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:40000", "jdoe")
+		assert.Zero(t, resets(t, db, 1000001), "the 11th request from one /64 is over the limit")
 
-	forgotFrom(t, router, "[2001:db8:1:3::1]:40000", "jdoe")
-	mailer.next(t)
-	assert.Equal(t, int64(1), resets(t, db, 1000001), "another /64 has a limit of its own")
+		forgotFrom(t, router, "[2001:db8:1:3::1]:40000", "jdoe")
+		mailer.next(t)
+		assert.Equal(t, int64(1), resets(t, db, 1000001), "another /64 has a limit of its own")
 
-	for i := range 10 {
-		forgotFrom(t, router, fmt.Sprintf("192.0.2.%d:40000", i+1), "nobody")
-	}
-	forgotFrom(t, router, "192.0.2.11:40000", "jdoe")
-	mailer.next(t)
-	assert.Equal(t, int64(2), resets(t, db, 1000001), "each IPv4 address has a limit of its own")
+		for i := range 10 {
+			forgotFrom(t, router, fmt.Sprintf("192.0.2.%d:40000", i+1), "nobody")
+		}
+		forgotFrom(t, router, "192.0.2.11:40000", "jdoe")
+		mailer.next(t)
+		assert.Equal(t, int64(2), resets(t, db, 1000001), "each IPv4 address has a limit of its own")
+	})
 }
 
 func TestPasswordResetNeedsEightCharacters(t *testing.T) {
 	t.Parallel()
-	router, _, mailer := resetRouter(t, true)
-	forgot(t, router, "jdoe")
-	token := mailer.token(t)
+	synctest.Test(t, func(t *testing.T) {
+		router, _, mailer := resetRouter(t, true)
+		forgot(t, router, "jdoe")
+		token := mailer.token(t)
 
-	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "seven77"})
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.JSONEq(t, `{"error":"The password must have at least 8 characters."}`, w.Body.String())
-	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "eight888"})
-	assert.Equal(t, http.StatusOK, w.Code, "the link still works: %s", w.Body.String())
+		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "seven77"})
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.JSONEq(t, `{"error":"The password must have at least 8 characters."}`, w.Body.String())
+		w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, resetPath, map[string]string{"token": token, "password": "eight888"})
+		assert.Equal(t, http.StatusOK, w.Code, "the link still works: %s", w.Body.String())
+	})
 }

@@ -1058,7 +1058,7 @@ func TestDeleteUserStopsTrafficToTheirRepeaters(t *testing.T) {
 		TS1StaticTalkgroups: []models.Talkgroup{{ID: 91}},
 	})
 	require.Equal(t, http.StatusOK, w.Code)
-	require.True(t, delivery.GroupBurstReaches(t, 91, id))
+	delivery.RequireGroupBurst(t, 91, id)
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
 	_, w = testutils.DeleteUser(t, router, user.DMRId, adminJar)

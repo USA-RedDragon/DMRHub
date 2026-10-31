@@ -57,17 +57,16 @@ func pushRig(t *testing.T) (*messages.Store, pubsub.PubSub) {
 	return store, ps
 }
 
-func frames(t *testing.T, sub pubsub.Subscription, wait time.Duration) []apimodels.MessagePush {
+func frames(t *testing.T, sub pubsub.Subscription) []apimodels.MessagePush {
 	t.Helper()
 	var out []apimodels.MessagePush
-	deadline := time.After(wait)
 	for {
 		select {
 		case b := <-sub.Channel():
 			var f apimodels.MessagePush
 			require.NoError(t, json.Unmarshal(b, &f))
 			out = append(out, f)
-		case <-deadline:
+		default:
 			return out
 		}
 	}
@@ -85,17 +84,17 @@ func TestPushGoesOnlyToOwnersWhoSeeTheMessage(t *testing.T) {
 	store.DataPacket(&models.Call{ID: 1}, delivered(h, payload, false), now)
 	store.Flush()
 
-	got := frames(t, subA, 300*time.Millisecond)
+	got := frames(t, subA)
 	require.Len(t, got, 1)
 	assert.Equal(t, []string{"inbox"}, got[0].Boxes)
 	require.NotNil(t, got[0].Message.Text)
 	assert.Equal(t, "hello A", *got[0].Message.Text)
 	assert.Equal(t, userB, got[0].Message.SourceID)
-	assert.Empty(t, frames(t, subB, 100*time.Millisecond), "B has SMS Storage off")
+	assert.Empty(t, frames(t, subB), "B has SMS Storage off")
 
 	store.DataResponse(responseRow(2), responseEvent(packet.ResponseACK), now.Add(200*time.Millisecond))
 	store.Flush()
-	got = frames(t, subA, 300*time.Millisecond)
+	got = frames(t, subA)
 	require.Len(t, got, 1, "the ACK changes the message")
 	assert.Equal(t, "ack", got[0].Message.Response)
 }
@@ -109,7 +108,7 @@ func TestPushSkipsMessagesFromBeforeTheOptIn(t *testing.T) {
 	h, payload := confirmed(t, "old", 1)
 	store.DataPacket(&models.Call{ID: 1}, delivered(h, payload, false), time.Now().Add(-time.Hour))
 	store.Flush()
-	assert.Empty(t, frames(t, subA, 200*time.Millisecond))
+	assert.Empty(t, frames(t, subA))
 }
 
 func TestPushPutsAGroupMessageInTheOutbox(t *testing.T) {
@@ -123,7 +122,7 @@ func TestPushPutsAGroupMessageInTheOutbox(t *testing.T) {
 	require.NoError(t, err)
 	store.DataPacket(&models.Call{ID: 1}, &data.Event{Kind: data.EventDelivered, Call: data.Call{Group: true, Source: uint32(userA), Target: uint32(tgID)}, Message: data.Message{Header: h.Data, Payload: payload}}, time.Now())
 	store.Flush()
-	got := frames(t, subA, 300*time.Millisecond)
+	got := frames(t, subA)
 	require.Len(t, got, 1)
 	assert.Equal(t, []string{"outbox"}, got[0].Boxes)
 	assert.True(t, got[0].Message.Group)

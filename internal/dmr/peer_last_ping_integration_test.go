@@ -54,8 +54,10 @@ func TestOpenBridgeRecordsTheLastPingOfAPeer(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
+		applied := noticesApplied(t, stack.PubSub, "hub:peers:changed", second.Hub.OnPeerChange)
 		stack.SeedPeer(t, peerID, 1000001, obPassword, "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, peerID, true, 1, 1)
+		applied()
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
 		defer mc.Close()
@@ -76,7 +78,6 @@ func TestOpenBridgeRecordsTheLastPingOfAPeer(t *testing.T) {
 			c := testutils.NewOpenBridgeClient(peerID, obPassword)
 			t.Cleanup(c.Close)
 			require.NoError(t, c.Connect(addr))
-			time.Sleep(settleDuration)
 			sent := time.Now()
 			for range 2 {
 				require.NoError(t, c.SendGroupVoice(1000001, 1, stream))

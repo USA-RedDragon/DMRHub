@@ -29,7 +29,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync/atomic"
+	"strconv"
 	"testing"
 	"time"
 
@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -113,17 +114,21 @@ func waitClaimed(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
 	}
 }
 
-func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func(n int) {
+func noticesApplied(t *testing.T, ps pubsub.PubSub, topic string, on func(func(uint)) func()) func() {
 	t.Helper()
-	var count atomic.Int32
-	t.Cleanup(on(func(got uint) {
-		if got == id {
-			count.Add(1)
+	seen := make(chan struct{}, 4)
+	t.Cleanup(on(func(id uint) {
+		if id == noticeMarker {
+			select {
+			case seen <- struct{}{}:
+			default:
+			}
 		}
 	}))
-	return func(n int) {
+	return func() {
 		t.Helper()
-		waitFor(t, fmt.Sprintf("%d change notices of %d take effect", n, id), func() bool { return count.Load() >= int32(n) })
+		require.NoError(t, ps.Publish(topic, []byte("notice-test:"+strconv.Itoa(noticeMarker))))
+		require.Len(t, testutils.Collect(seen, deliverWait, gotN[struct{}](1)), 1, "the replica did not take the notices of %s", topic)
 	}
 }
 

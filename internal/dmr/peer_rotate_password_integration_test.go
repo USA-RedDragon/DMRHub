@@ -46,10 +46,10 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
-		applied := noticeApplied(t, second.Hub.OnPeerChange, peerID)
+		applied := noticesApplied(t, stack.PubSub, "hub:peers:changed", second.Hub.OnPeerChange)
 		stack.SeedPeer(t, peerID, 1000001, obPassword, "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, peerID, true, 1, 1)
-		applied(2)
+		applied()
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
 		defer mc.Close()
@@ -78,10 +78,10 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		}
 
 		stack.Hub.PeerChanged(peerID)
-		applied(3)
+		applied()
 		require.NoError(t, models.SetPeerPassword(stack.DB, peerID, rotatedPeerPassword))
 		stack.Hub.PeerChanged(peerID)
-		applied(4)
+		applied()
 
 		streams := make([]uint32, len(replicas))
 		for i := range replicas {

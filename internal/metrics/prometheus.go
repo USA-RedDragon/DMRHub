@@ -59,6 +59,11 @@ type Metrics struct {
 	// MessagesDroppedTotal counts data messages that the message store dropped.
 	MessagesDroppedTotal prometheus.Counter
 
+	// PubSubDroppedTotal counts the messages that the in-memory pubsub
+	// dropped for a reader whose queue was full, by the kind of reader:
+	// feed or subscription.
+	PubSubDroppedTotal *prometheus.CounterVec
+
 	// TranscodeMissedSecondsTotal counts the audio of calls that could not
 	// be converted to the other codec, by the codec of the copy and reason.
 	TranscodeMissedSecondsTotal *prometheus.CounterVec
@@ -161,6 +166,10 @@ func NewMetrics() *Metrics {
 				Name: "message_store_dropped_total",
 				Help: "The total number of data messages that the message store did not save because its queue was full",
 			}),
+			PubSubDroppedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "pubsub_dropped_messages_total",
+				Help: "The total number of messages that the in-memory pubsub dropped for a reader whose queue was full, by the kind of reader",
+			}, []string{"reader"}),
 			TranscodeMissedSecondsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 				Name: "dmr_transcode_missed_seconds_total",
 				Help: "The total seconds of call audio that could not be converted to the other codec and went out as silence, by the codec of the copy and reason",
@@ -188,6 +197,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.PublishUnconfirmedTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
+	prometheus.MustRegister(m.PubSubDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
 	prometheus.MustRegister(m.TranscodeFramesTotal)
 }
@@ -230,6 +240,12 @@ func (m *Metrics) IncrementTrackerDropped() {
 // dropped.
 func (m *Metrics) IncrementMessagesDropped() {
 	m.MessagesDroppedTotal.Inc()
+}
+
+// IncrementPubSubDropped counts a message that the in-memory pubsub
+// dropped for a reader of the kind reader.
+func (m *Metrics) IncrementPubSubDropped(reader string) {
+	m.PubSubDroppedTotal.WithLabelValues(reader).Inc()
 }
 
 // AddTranscodeMissed counts seconds of audio that could not be converted

@@ -22,23 +22,30 @@ package pubsub
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 func makeInMemoryPubSub(_ *config.Config) (PubSub, error) {
 	return &inMemoryPubSub{
-		topics: make(map[string][]*inMemorySubscription),
-		feeds:  make(map[string]map[*inMemoryFeed]struct{}),
-		all:    make(map[*inMemoryFeed]struct{}),
+		metrics: metrics.NewMetrics(),
+		drops:   xsync.NewMap[string, *atomic.Uint64](),
+		topics:  make(map[string][]*inMemorySubscription),
+		feeds:   make(map[string]map[*inMemoryFeed]struct{}),
+		all:     make(map[*inMemoryFeed]struct{}),
 	}, nil
 }
 
 type inMemoryPubSub struct {
-	mu     sync.RWMutex
-	topics map[string][]*inMemorySubscription
-	feeds  map[string]map[*inMemoryFeed]struct{}
-	all    map[*inMemoryFeed]struct{}
+	metrics *metrics.Metrics
+	drops   *xsync.Map[string, *atomic.Uint64]
+	mu      sync.RWMutex
+	topics  map[string][]*inMemorySubscription
+	feeds   map[string]map[*inMemoryFeed]struct{}
+	all     map[*inMemoryFeed]struct{}
 	// publishing makes one Publish at a time, so that every subscriber of
 	// a topic gets its messages in the same order, as with Redis.
 	publishing sync.Mutex
@@ -56,18 +63,26 @@ func (ps *inMemoryPubSub) Publish(topic string, message []byte) error {
 		select {
 		case sub.ch <- msg:
 		default:
-			slog.Warn("Dropping message for slow in-memory subscriber", "topic", topic)
+			ps.dropped("subscription", "Dropping message for slow in-memory subscriber", topic)
 		}
 	}
 	for f := range ps.feeds[topic] {
 		select {
 		case f.ch <- Message{Topic: topic, Payload: append([]byte(nil), message...)}:
 		default:
-			slog.Warn("Dropping message for slow in-memory feed", "topic", topic)
+			ps.dropped("feed", "Dropping message for slow in-memory feed", topic)
 		}
 	}
 	ps.mu.RUnlock()
 	return nil
+}
+
+func (ps *inMemoryPubSub) dropped(reader, msg, topic string) {
+	ps.metrics.IncrementPubSubDropped(reader)
+	c, _ := ps.drops.LoadOrCompute(reader+"\x00"+topic, func() (*atomic.Uint64, bool) { return new(atomic.Uint64), false })
+	if n := c.Add(1); n&(n-1) == 0 {
+		slog.Warn(msg, "topic", topic, "dropped", n)
+	}
 }
 
 func (ps *inMemoryPubSub) Subscribe(topic string) Subscription {

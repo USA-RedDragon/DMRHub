@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -265,4 +267,157 @@ func TestAnAnswerOutlivesTheWindowOfItsMatch(t *testing.T) {
 			})
 		})
 	}
+}
+
+// readThenHold holds the first read of a match after arm until release.
+type readThenHold struct {
+	kv.KV
+	mu      sync.Mutex
+	armed   bool
+	first   chan struct{}
+	release chan struct{}
+}
+
+func newReadThenHold(inner kv.KV) *readThenHold {
+	return &readThenHold{KV: inner, first: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (g *readThenHold) arm() {
+	g.mu.Lock()
+	g.armed = true
+	g.mu.Unlock()
+}
+
+func (g *readThenHold) Get(ctx context.Context, key string) ([]byte, error) {
+	b, err := g.KV.Get(ctx, key)
+	g.mu.Lock()
+	if g.armed && strings.Contains(key, ":match:") {
+		g.armed = false
+		g.mu.Unlock()
+		close(g.first)
+		<-g.release
+		return b, gated(err)
+	}
+	g.mu.Unlock()
+	return b, gated(err)
+}
+
+// TestAFinishThatRacesASettleKeepsTheSettle holds the read of the match
+// that the finish of a message makes, while a late message takes its ACK
+// over. The first message must end with no response. (Third review, F1.)
+func TestAFinishThatRacesASettleKeepsTheSettle(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, store := trackerDeps(t)
+		g := newReadThenHold(store)
+		ct := calltracker.NewCallTracker(database, ps, g)
+		t.Cleanup(ct.Stop)
+		sub := ps.Subscribe("calls")
+		var pubMu sync.Mutex
+		pubAll := map[uint][]models.CallResponse{}
+		subCtx, subStop := context.WithCancel(context.Background())
+		go func() {
+			for {
+				select {
+				case msg := <-sub.Channel():
+					var c models.Call
+					if json.Unmarshal(msg, &c) == nil {
+						pubMu.Lock()
+						pubAll[c.ID] = append(pubAll[c.ID], c.Response)
+						pubMu.Unlock()
+					}
+				case <-subCtx.Done():
+					return
+				}
+			}
+		}()
+		t.Cleanup(func() { subStop(); _ = sub.Close() })
+		other := workerApart(repeaterA)
+		third := workerApart(repeaterA, other)
+		newSender(t, ct, userB, userA, false, 9501).data(confirmedText(t, "one")...)
+		ct.Flush()
+		time.Sleep(500 * time.Millisecond)
+		second := confirmedText(t, "two")
+		sentAt := time.Now()
+		time.Sleep(100 * time.Millisecond)
+		ack := newSender(t, ct, userA, userB, false, 9503)
+		ack.repeater = other
+		ack.data(confirmedACK(t, second)...)
+		ct.Flush()
+		synctest.Wait()
+		g.arm()
+		<-g.first
+		late := newSender(t, ct, userB, userA, false, 9502)
+		late.repeater, late.at = third, sentAt
+		late.data(second...)
+		synctest.Wait()
+		close(g.release)
+		got := byStream(waitDone(t, ct, database, 3))
+		time.Sleep(time.Second)
+		synctest.Wait()
+		pubMu.Lock()
+		pub := map[uint][]models.CallResponse{}
+		for k, v := range pubAll {
+			pub[k] = v
+		}
+		pubMu.Unlock()
+		assert.Equal(t, models.CallResponseNone, pub[got[9501].ID][len(pub[got[9501].ID])-1], "the last update of the first message keeps the ACK")
+		assert.Equal(t, models.CallResponseNone, got[9501].Response, "M1 kept the ACK in the DB")
+		assert.Equal(t, models.CallResponseACK, got[9502].Response)
+	})
+}
+
+// TestAFinishThatRacesASettleKeepsTheSettleAcrossReplicas is
+// TestAFinishThatRacesASettleKeepsTheSettle with the first message on one
+// replica and the ACK and the late message on another. (Third review, F1.)
+func TestAFinishThatRacesASettleKeepsTheSettleAcrossReplicas(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, store := trackerDeps(t)
+		g := newReadThenHold(store)
+		one := calltracker.NewCallTracker(database, ps, g)
+		t.Cleanup(one.Stop)
+		two := calltracker.NewCallTracker(database, ps, g)
+		t.Cleanup(two.Stop)
+		other := workerApart(repeaterA)
+		third := workerApart(repeaterA, other)
+		newSender(t, two, userB, userA, false, 9511).data(confirmedText(t, "one")...)
+		two.Flush()
+		time.Sleep(500 * time.Millisecond)
+		second := confirmedText(t, "two")
+		sentAt := time.Now()
+		time.Sleep(100 * time.Millisecond)
+		ack := newSender(t, one, userA, userB, false, 9513)
+		ack.repeater = other
+		ack.data(confirmedACK(t, second)...)
+		one.Flush()
+		synctest.Wait()
+		two.Flush()
+		synctest.Wait()
+		g.arm()
+		<-g.first
+		late := newSender(t, one, userB, userA, false, 9512)
+		late.repeater, late.at = third, sentAt
+		late.data(second...)
+		synctest.Wait()
+		close(g.release)
+		var got map[uint]models.Call
+		bubble.Eventually(t, func() bool {
+			one.Flush()
+			two.Flush()
+			got = byStream(rows(t, database))
+			for _, c := range got {
+				if c.Active {
+					return false
+				}
+			}
+			return len(got) == 3
+		}, 8*time.Second, 50*time.Millisecond)
+		time.Sleep(time.Second)
+		one.Flush()
+		two.Flush()
+		got = byStream(rows(t, database))
+		assert.Equal(t, models.CallResponseNone, got[9511].Response, "M1 kept the ACK in the DB")
+		assert.Equal(t, models.CallResponseACK, got[9512].Response)
+	})
 }

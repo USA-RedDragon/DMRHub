@@ -1290,16 +1290,24 @@ func (s *shard) finish(r *row, at time.Time) {
 	}
 	s.t.owned.Delete(call.ID)
 	if r.what != "" {
-		s.t.held.Delete(call.ID)
 		if resp, ok := s.t.matched(r.pair, r.what, call.ID); ok {
 			call.Response = resp
 		}
 	}
-	if err := s.t.db.Omit(clause.Associations).Save(call).Error; err != nil {
+	err := s.t.db.Omit(clause.Associations).Save(call).Error
+	if r.what != "" {
+		s.t.held.Delete(call.ID)
+	}
+	if err != nil {
 		slog.Error("CallTracker: error saving call", "error", err)
 		return
 	}
 	s.t.publishCall(s.idx, call)
+	if r.what != "" {
+		if resp, ok := s.t.matched(r.pair, r.what, call.ID); ok && resp != call.Response {
+			s.t.settleSaved(s.idx, r.pair, r.what, call.ID)
+		}
+	}
 	s.t.publishNetCheckIn(s.idx, call)
 	slog.Info("Transmission ended", "kind", call.Kind, "sub", call.SubKind, "streamID", call.StreamID, "src", call.SourceID, "dst", call.DestinationID, "repeater", call.IngressID, "duration", call.Duration, "loss", call.Loss*pct, "ber", call.BER*pct, "rssi", call.RSSI, "jitter", call.Jitter)
 }

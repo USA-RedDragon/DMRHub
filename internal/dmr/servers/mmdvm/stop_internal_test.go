@@ -23,7 +23,6 @@ import (
 	"context"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -62,20 +61,16 @@ func TestStopUnderAFlood(t *testing.T) {
 		_, err := c.Write([]byte("RPTPING\x00\x00\x00\x01"))
 		require.NoError(t, err)
 	}
-	require.Eventually(t, func() bool { return len(s.incomingChan) == cap(s.incomingChan) }, 2*time.Second, time.Millisecond)
+	fillIngress(&s)
 
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
 		_ = s.Stop(context.Background())
 	}()
-	time.Sleep(50 * time.Millisecond)
+	<-s.done
 	s.mu.Unlock()
-	select {
-	case <-stopped:
-	case <-time.After(3 * time.Second):
-		t.Fatal("Stop waits for the reader of the socket")
-	}
+	awaitClosed(t, stopped, "Stop waits for the reader of the socket")
 }
 
 // TestSendPacketAfterStop sends to a repeater after the writer of the
@@ -97,9 +92,29 @@ func TestSendPacketAfterStop(t *testing.T) {
 		defer close(sent)
 		s.sendPacket(context.Background(), 1, models.Packet{Signature: "DMRD"})
 	}()
+	awaitClosed(t, sent, "sendPacket waits on the queue of a stopped server")
+}
+
+// fillIngress fills the ingress queue of s, while the listener of s waits
+// for s.mu, so that the reader of the socket waits on the queue.
+func fillIngress(s *Server) {
+	for {
+		select {
+		case s.incomingChan <- models.RawDMRPacket{}:
+		default:
+			return
+		}
+	}
+}
+
+// awaitClosed fails t with msg when done does not close within answerWait.
+func awaitClosed(t *testing.T, done <-chan struct{}, msg string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+	defer cancel()
 	select {
-	case <-sent:
-	case <-time.After(2 * time.Second):
-		t.Fatal("sendPacket waits on the queue of a stopped server")
+	case <-done:
+	case <-ctx.Done():
+		t.Fatalf("%s: not done in %v", msg, answerWait)
 	}
 }

@@ -24,7 +24,6 @@ import (
 	"encoding/binary"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -71,15 +70,14 @@ func TestHandlePacketRejectsWhenStopped(t *testing.T) {
 	copy(rptlPacket[:4], []byte(dmrconst.CommandRPTL))
 	binary.BigEndian.PutUint32(rptlPacket[4:], repeaterID)
 
-	// handlePacket should return immediately without processing
+	// handlePacket returns after the work it starts, so a response is queued by then
 	s.handlePacket(context.Background(), remoteAddr, rptlPacket)
 
 	// Verify no response was queued (no RPTACK/MSTNAK sent)
 	select {
 	case pkt := <-s.outgoingChan:
 		t.Fatalf("expected no outgoing packet during shutdown, got %v", pkt)
-	case <-time.After(100 * time.Millisecond):
-		// Good — nothing was sent
+	default:
 	}
 
 	// Also verify no repeater was stored in KV
@@ -174,8 +172,7 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 			select {
 			case pkt := <-s.outgoingChan:
 				t.Fatalf("expected no outgoing packet for %s during shutdown, got %v", tc.name, pkt)
-			case <-time.After(50 * time.Millisecond):
-				// Good
+			default:
 			}
 		})
 	}

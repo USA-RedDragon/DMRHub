@@ -23,7 +23,6 @@ import (
 	"context"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -68,18 +67,14 @@ func TestStopWithFullIngressQueue(t *testing.T) {
 	for range 4 * channelBufferSize {
 		_, _ = conn.Write([]byte("RPTPING\x00\x00\x00\x01"))
 	}
-	require.Eventually(t, func() bool { return len(s.incomingChan) == cap(s.incomingChan) }, 5*time.Second, 10*time.Millisecond)
+	fillIngress(&s)
 
 	stopped := make(chan struct{})
 	go func() {
 		_ = s.Stop(context.Background())
 		close(stopped)
 	}()
-	time.Sleep(100 * time.Millisecond)
+	<-s.done
 	s.mu.Unlock()
-	select {
-	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Stop did not return within 5s with a full ingress queue")
-	}
+	awaitClosed(t, stopped, "Stop did not return with a full ingress queue")
 }

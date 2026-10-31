@@ -36,6 +36,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const dialWait = time.Minute
+
 func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -62,7 +64,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	require.NoError(t, err)
 	addr := srv.Addr().String()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dialWait)
 	defer cancel()
 	_, err = plugin.Dial(ctx, plugin.Options{Address: addr, Token: token})
 	require.Error(t, err, "a certificate of its own is not trusted without its fingerprint")

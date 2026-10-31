@@ -20,13 +20,16 @@
 package dmr_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/manager"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
@@ -51,22 +54,42 @@ func setRouting(cur *config.Current, r config.Routing) {
 	cur.Set(&next)
 }
 
-// oneHotspot seeds a user, talkgroups and the hotspot 100001 of the user,
-// starts the servers and logs the hotspot in.
-func oneHotspot(t *testing.T, stack *testutils.IntegrationStack, talkgroups ...uint) *testutils.MMDVMClient {
+func forAllBackendsOnTestClock(t *testing.T, f func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake)) {
+	t.Helper()
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			fake := clock.NewFake(time.Now())
+			be.HubOptions = []hub.Option{hub.WithClock(fake)}
+			f(t, testutils.SetupIntegrationStack(t, be), fake)
+		})
+	}
+}
+
+func hotspots(t *testing.T, stack *testutils.IntegrationStack, ids []uint32, talkgroups ...uint) []*testutils.MMDVMClient {
 	t.Helper()
 	stack.SeedUser(t, 1000001, "N0CALL")
 	for _, tg := range talkgroups {
 		stack.SeedTalkgroup(t, tg, "TG")
 	}
-	stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+	for _, id := range ids {
+		stack.SeedMMDVMRepeater(t, uint(id), 1000001, testPassword)
+	}
 	stack.StartServers(t)
-	c := testutils.NewMMDVMClient(100001, "", testPassword)
-	require.NoError(t, c.Connect(stack.MMDVMAddr))
-	t.Cleanup(c.Close)
-	require.NoError(t, c.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
-	return c
+	out := make([]*testutils.MMDVMClient, 0, len(ids))
+	for _, id := range ids {
+		c := testutils.NewMMDVMClient(id, "", testPassword)
+		require.NoError(t, c.Connect(stack.MMDVMAddr))
+		t.Cleanup(c.Close)
+		require.NoError(t, c.WaitReady(handshakeWait))
+		out = append(out, c)
+	}
+	return out
+}
+
+func oneHotspot(t *testing.T, stack *testutils.IntegrationStack, talkgroups ...uint) *testutils.MMDVMClient {
+	t.Helper()
+	return hotspots(t, stack, []uint32{100001}, talkgroups...)[0]
 }
 
 // dynamicTS2 returns the dynamic talkgroup of TS2 of the hotspot 100001.
@@ -77,42 +100,100 @@ func dynamicTS2(t *testing.T, stack *testutils.IntegrationStack) *uint {
 	return rpt.TS2DynamicTalkgroupID
 }
 
+func dynamicLinks(t *testing.T, stack *testutils.IntegrationStack, repeaterID uint) <-chan uint {
+	t.Helper()
+	ch := make(chan uint, 64)
+	t.Cleanup(stack.Hub.OnRepeaterChange(func(id uint) {
+		if id != repeaterID {
+			return
+		}
+		rpt, err := models.FindRepeaterByID(stack.DB, id)
+		if err != nil {
+			return
+		}
+		var tg uint
+		if rpt.TS2DynamicTalkgroupID != nil {
+			tg = *rpt.TS2DynamicTalkgroupID
+		}
+		ch <- tg
+	}))
+	return ch
+}
+
+func waitLinked(t *testing.T, links <-chan uint, tg uint, msg string) {
+	t.Helper()
+	got := testutils.Collect(links, deliverWait, func(got []uint) bool { return got[len(got)-1] == tg })
+	require.True(t, len(got) > 0 && got[len(got)-1] == tg, "%s: the dynamic talkgroups were %v", msg, got)
+}
+
+func talkgroupChanges(t *testing.T, stack *testutils.IntegrationStack) <-chan uint {
+	t.Helper()
+	ch := make(chan uint, 64)
+	t.Cleanup(stack.Hub.OnTalkgroupChange(func(id uint) { ch <- id }))
+	return ch
+}
+
+func waitChanged(t *testing.T, changes <-chan uint, tg uint, msg string) {
+	t.Helper()
+	got := testutils.Collect(changes, deliverWait, func(got []uint) bool { return got[len(got)-1] == tg })
+	require.True(t, len(got) > 0 && got[len(got)-1] == tg, msg)
+}
+
 // tgCall has c send a short call of radio 1000001 to dst on TS2.
 func tgCall(t *testing.T, c *testutils.MMDVMClient, dst, stream uint) {
 	t.Helper()
 	require.NoError(t, c.SendDMRD(makeGroupVoicePacket(1000001, dst, stream, true)))
-	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(1000001, dst, stream, true)))
+}
+
+func streamEnds(stream uint) func([]models.Packet) bool {
+	return func(got []models.Packet) bool {
+		p := got[len(got)-1]
+		return p.StreamID == stream && isTerminator(p)
+	}
+}
+
+func countStream(got []models.Packet, stream uint) int {
+	n := 0
+	for _, p := range got {
+		if p.StreamID == stream {
+			n++
+		}
+	}
+	return n
 }
 
 func TestDynamicTalkgroupTimesOut(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		routingStack(t, stack, config.Routing{DynamicTimeout: 600 * time.Millisecond})
+	forAllBackendsOnTestClock(t, func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake) {
+		const timeout = 600 * time.Millisecond
+		routingStack(t, stack, config.Routing{DynamicTimeout: timeout})
 		c := oneHotspot(t, stack, 3100)
+		links := dynamicLinks(t, stack, 100001)
 
 		tgCall(t, c, 3100, 501)
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack) != nil }, 5*time.Second, 20*time.Millisecond,
-			"a call on a talkgroup links it")
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack) == nil }, 5*time.Second, 20*time.Millisecond,
-			"the dynamic talkgroup must unlink after the timeout")
+		waitLinked(t, links, 3100, "a call on a talkgroup links it")
+		fake.Advance(timeout + time.Second)
+		waitLinked(t, links, 0, "the dynamic talkgroup must unlink after the timeout")
 	})
 }
 
 func TestDynamicTalkgroupWithNoTimeoutStays(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+	forAllBackendsOnTestClock(t, func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake) {
 		cur := routingStack(t, stack, config.Routing{DynamicTimeout: 0})
 		c := oneHotspot(t, stack, 3100)
+		links := dynamicLinks(t, stack, 100001)
 
 		tgCall(t, c, 3100, 701)
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack) != nil }, 5*time.Second, 20*time.Millisecond)
-		time.Sleep(1500 * time.Millisecond)
+		waitLinked(t, links, 3100, "a call on a talkgroup links it")
+		fake.Advance(3 * time.Second)
+		time.Sleep(drainWait)
 		require.NotNil(t, dynamicTS2(t, stack), "a timeout of 0 never unlinks")
 
 		setRouting(cur, config.Routing{DynamicTimeout: 500 * time.Millisecond})
-		require.Eventually(t, func() bool { return dynamicTS2(t, stack) == nil }, 5*time.Second, 20*time.Millisecond,
-			"a timeout that Setup sets while the hub runs applies to the links that exist")
+		fake.Advance(time.Second + 500*time.Millisecond)
+		waitLinked(t, links, 0, "a timeout that Setup sets while the hub runs applies to the links that exist")
 	})
 }
 
@@ -147,7 +228,6 @@ func TestRoutingSettingsReachEveryReplica(t *testing.T) { //nolint:paralleltest 
 			require.NoError(t, c.Connect(b.Addr(t, manager.MMDVM)))
 			t.Cleanup(c.Close)
 			require.NoError(t, c.WaitReady(handshakeWait))
-			time.Sleep(settleDuration)
 			tgCall(t, c, 3100, 901)
 			time.Sleep(time.Second)
 			assert.Nil(t, dynamicTS2(t, l.IntegrationStack), "the other replica must take the setting")
@@ -174,23 +254,24 @@ func listenerPair(t *testing.T, stack *testutils.IntegrationStack) (*testutils.M
 		require.NoError(t, c.WaitReady(handshakeWait))
 		out = append(out, c)
 	}
-	time.Sleep(settleDuration)
 	return out[0], out[1]
 }
 
-// heardFrom has talker key up TG 3100 on TS1 as radio src, and reports
-// whether listener got the call.
-func heardFrom(t *testing.T, talker, listener *testutils.MMDVMClient, src, stream uint) bool {
+// heardFrom has talker key up TG 3100 on TS1 as radio src, and then as
+// radio allowed, which the transmit setting takes, and reports whether
+// listener got the call of src. The hub routes the calls of a slot of a
+// repeater in the order they came, so the call of src was routed or
+// dropped before the call of allowed arrives.
+func heardFrom(t *testing.T, talker, listener *testutils.MMDVMClient, src, stream, allowed uint) bool {
 	t.Helper()
-	require.NoError(t, talker.SendDMRD(makeGroupVoicePacket(src, 3100, stream, false)))
-	time.Sleep(50 * time.Millisecond)
-	require.NoError(t, talker.SendDMRD(makeGroupVoiceTermPacket(src, 3100, stream, false)))
-	for _, p := range listener.Drain(drainWait) {
-		if p.StreamID == stream {
-			return true
-		}
+	probe := stream + 50
+	for _, c := range []struct{ src, stream uint }{{src, stream}, {allowed, probe}} {
+		require.NoError(t, talker.SendDMRD(makeGroupVoicePacket(c.src, 3100, c.stream, false)))
+		require.NoError(t, talker.SendDMRD(makeGroupVoiceTermPacket(c.src, 3100, c.stream, false)))
 	}
-	return false
+	got := testutils.Collect(listener.ReceivedPackets(), deliverWait, streamEnds(probe))
+	require.Positive(t, countStream(got, probe), "the call of radio %d did not arrive", allowed)
+	return countStream(got, stream) > 0
 }
 
 const (
@@ -204,7 +285,7 @@ func TestTransmitAnyTakesEveryRadio(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{})
 		a, b := listenerPair(t, stack)
-		assert.True(t, heardFrom(t, a, b, radioIDUnlisted, 1101), "by default any radio may transmit")
+		assert.True(t, heardFrom(t, a, b, radioIDUnlisted, 1101, 1000001), "by default any radio may transmit")
 	})
 }
 
@@ -217,8 +298,8 @@ func TestTransmitRadioIDTakesOnlyListedRadios(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{Transmit: config.TransmitRadioID})
 		a, b := listenerPair(t, stack)
-		assert.True(t, heardFrom(t, a, b, radioIDListed, 1201), "a radio ID that RadioID lists may transmit")
-		assert.False(t, heardFrom(t, a, b, radioIDUnlisted, 1202), "a radio ID that RadioID does not list may not")
+		assert.True(t, heardFrom(t, a, b, radioIDListed, 1201, radioIDListed), "a radio ID that RadioID lists may transmit")
+		assert.False(t, heardFrom(t, a, b, radioIDUnlisted, 1202, radioIDListed), "a radio ID that RadioID does not list may not")
 	})
 }
 
@@ -228,43 +309,43 @@ func TestTransmitMembersTakesAccountsAndTheirAddedIDs(t *testing.T) {
 		routingStack(t, stack, config.Routing{Transmit: config.TransmitMembers})
 		a, b := listenerPair(t, stack)
 		require.NoError(t, stack.DB.Create(&models.UserRadioID{UserID: 1000001, RadioID: addedRadioID, VerifiedAt: time.Now()}).Error)
-		assert.True(t, heardFrom(t, a, b, 1000001, 1301), "the DMR ID of an account may transmit")
-		assert.True(t, heardFrom(t, a, b, addedRadioID, 1302), "a radio ID that a user added may transmit")
-		assert.False(t, heardFrom(t, a, b, radioIDListed, 1303), "a radio ID with no account may not, even when RadioID lists it")
+		assert.True(t, heardFrom(t, a, b, 1000001, 1301, 1000001), "the DMR ID of an account may transmit")
+		assert.True(t, heardFrom(t, a, b, addedRadioID, 1302, 1000001), "a radio ID that a user added may transmit")
+		assert.False(t, heardFrom(t, a, b, radioIDListed, 1303, 1000001), "a radio ID with no account may not, even when RadioID lists it")
 	})
 }
 
-// longCall has talker send a voice call of n bursts, one each 60 ms, as
-// radio 1000001 on TG 3100, and returns the bursts of it that listener got.
-func longCall(t *testing.T, talker, listener *testutils.MMDVMClient, stream uint, n int) int {
+func sendBursts(t *testing.T, talker *testutils.MMDVMClient, stream uint, first, last int, end bool) {
 	t.Helper()
-	for i := range n {
+	for i := first; i <= last; i++ {
 		p := makeGroupVoicePacket(1000001, 3100, stream, false)
 		p.Seq = uint(i)
 		require.NoError(t, talker.SendDMRD(p))
-		time.Sleep(60 * time.Millisecond)
 	}
-	term := makeGroupVoiceTermPacket(1000001, 3100, stream, false)
-	term.Seq = uint(n)
-	require.NoError(t, talker.SendDMRD(term))
-	got := 0
-	for _, p := range listener.Drain(drainWait) {
-		if p.StreamID == stream {
-			got++
-		}
+	if end {
+		term := makeGroupVoiceTermPacket(1000001, 3100, stream, false)
+		term.Seq = uint(last + 1)
+		require.NoError(t, talker.SendDMRD(term))
 	}
-	return got
 }
 
 func TestMaxTransmissionCutsALongCall(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		routingStack(t, stack, config.Routing{MaxTransmission: 500 * time.Millisecond})
+	forAllBackendsOnTestClock(t, func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake) {
+		const most = 500 * time.Millisecond
+		routingStack(t, stack, config.Routing{MaxTransmission: most})
 		a, b := listenerPair(t, stack)
-		got := longCall(t, a, b, 1401, 25)
-		assert.Positive(t, got, "the start of a long call goes through")
-		assert.Less(t, got, 15, "DMRHub drops a call after the longest transmission")
-		assert.Equal(t, 4, longCall(t, a, b, 1402, 3), "a short call after it goes through whole")
+
+		sendBursts(t, a, 1401, 0, 2, false)
+		start := testutils.Collect(b.ReceivedPackets(), deliverWait, func(got []models.Packet) bool { return countStream(got, 1401) >= 3 })
+		assert.Equal(t, 3, countStream(start, 1401), "the start of a long call goes through")
+
+		fake.Advance(most + time.Millisecond)
+		sendBursts(t, a, 1401, 3, 24, true)
+		sendBursts(t, a, 1402, 0, 2, true)
+		rest := testutils.Collect(b.ReceivedPackets(), deliverWait, streamEnds(1402))
+		assert.Zero(t, countStream(rest, 1401), "DMRHub drops a call after the longest transmission")
+		assert.Equal(t, 4, countStream(rest, 1402), "a short call after it goes through whole")
 	})
 }
 
@@ -273,7 +354,9 @@ func TestNoMaxTransmissionKeepsALongCall(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{})
 		a, b := listenerPair(t, stack)
-		assert.Equal(t, 26, longCall(t, a, b, 1501, 25), "with no limit a long call goes through whole")
+		sendBursts(t, a, 1501, 0, 24, true)
+		got := testutils.Collect(b.ReceivedPackets(), deliverWait, streamEnds(1501))
+		assert.Equal(t, 26, countStream(got, 1501), "with no limit a long call goes through whole")
 	})
 }
 
@@ -288,13 +371,19 @@ func talkgroupOf(t *testing.T, stack *testutils.IntegrationStack) (models.Talkgr
 	return tgs[0], true
 }
 
+// TestUnknownTalkgroupIsDroppedByDefault sends a call to the unknown TG
+// 3999 and then one to TG 3100. The hub routes the calls of a slot in the
+// order they came, so once the second call links TG 3100 the first call
+// was routed.
 func TestUnknownTalkgroupIsDroppedByDefault(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{})
-		c := oneHotspot(t, stack)
+		c := oneHotspot(t, stack, 3100)
+		links := dynamicLinks(t, stack, 100001)
 		tgCall(t, c, 3999, 1601)
-		time.Sleep(time.Second)
+		tgCall(t, c, 3100, 1602)
+		waitLinked(t, links, 3100, "the call after it links its talkgroup")
 		_, ok := talkgroupOf(t, stack)
 		assert.False(t, ok, "by default a call to an unknown talkgroup makes no talkgroup")
 	})
@@ -304,75 +393,82 @@ func TestAutoCreateMakesTheTalkgroupOfACall(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		routingStack(t, stack, config.Routing{AutoCreate: true})
-		stack.SeedUser(t, 1000001, "N0CALL")
-		for _, id := range []uint{100001, 100002} {
-			stack.SeedMMDVMRepeater(t, id, 1000001, testPassword)
-		}
-		stack.StartServers(t)
-		cs := make([]*testutils.MMDVMClient, 0, 2)
-		for _, id := range []uint32{100001, 100002} {
-			c := testutils.NewMMDVMClient(id, "", testPassword)
-			require.NoError(t, c.Connect(stack.MMDVMAddr))
-			t.Cleanup(c.Close)
-			require.NoError(t, c.WaitReady(handshakeWait))
-			cs = append(cs, c)
-		}
-		time.Sleep(settleDuration)
+		changes := talkgroupChanges(t, stack)
+		cs := hotspots(t, stack, []uint32{100001, 100002})
+		links := dynamicLinks(t, stack, 100001)
 
 		tgCall(t, cs[0], 3999, 1701)
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return ok }, 5*time.Second, 20*time.Millisecond,
-			"a call to an unknown talkgroup makes it")
-		tg, _ := talkgroupOf(t, stack)
+		waitChanged(t, changes, 3999, "a call to an unknown talkgroup makes it")
+		tg, ok := talkgroupOf(t, stack)
+		require.True(t, ok)
 		assert.True(t, tg.AutoCreated)
-		require.Eventually(t, func() bool { d := dynamicTS2(t, stack); return d != nil && *d == 3999 }, 5*time.Second, 20*time.Millisecond,
-			"the call links the new talkgroup as the dynamic talkgroup of its timeslot")
+		waitLinked(t, links, 3999, "the call links the new talkgroup as the dynamic talkgroup of its timeslot")
 		cs[0].Drain(100 * time.Millisecond)
 
 		tgCall(t, cs[1], 3999, 1702)
-		heard := false
-		for _, p := range cs[0].Drain(drainWait) {
-			heard = heard || p.StreamID == 1702
-		}
-		assert.True(t, heard, "a call on the new talkgroup reaches the hotspot that linked it")
+		got := testutils.Collect(cs[0].ReceivedPackets(), deliverWait, streamEnds(1702))
+		assert.Positive(t, countStream(got, 1702), "a call on the new talkgroup reaches the hotspot that linked it")
 	})
 }
 
 func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: 1500 * time.Millisecond})
-		c := oneHotspot(t, stack)
+	forAllBackendsOnTestClock(t, func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake) {
+		const ttl = 1500 * time.Millisecond
+		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: ttl})
+		changes := talkgroupChanges(t, stack)
+		cs := hotspots(t, stack, []uint32{100001, 100002})
+		c, listener := cs[0], cs[1]
 		rules := stack.PubSub.Subscribe("hub:rules:changed")
 		t.Cleanup(func() { _ = rules.Close() })
+		links, heard := dynamicLinks(t, stack, 100001), dynamicLinks(t, stack, 100002)
+
+		tgCall(t, c, 3999, 1799)
+		waitChanged(t, changes, 3999, "a call to an unknown talkgroup makes it")
+		waitLinked(t, links, 3999, "the call links the new talkgroup")
+		tgCall(t, listener, 3999, 1798)
+		waitLinked(t, heard, 3999, "the call of the listener links the new talkgroup")
 
 		for i := range uint(6) {
 			tgCall(t, c, 3999, 1800+i)
-			time.Sleep(500 * time.Millisecond)
+			got := testutils.Collect(listener.ReceivedPackets(), deliverWait, streamEnds(1800+i))
+			require.Positive(t, countStream(got, 1800+i), "call %d reaches the listener", i)
+			fake.Advance(ttl / 3)
 			_, ok := talkgroupOf(t, stack)
 			require.True(t, ok, "each call restarts the TTL of the talkgroup")
 		}
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return !ok }, 10*time.Second, 50*time.Millisecond,
-			"the talkgroup goes after its TTL with no call")
+		fake.Advance(ttl + time.Second)
+		waitChanged(t, changes, 3999, "the talkgroup goes after its TTL with no call")
+		_, ok := talkgroupOf(t, stack)
+		assert.False(t, ok, "the talkgroup goes after its TTL with no call")
 		assert.Nil(t, dynamicTS2(t, stack), "the deleted talkgroup is no longer linked")
-		select {
-		case msg := <-rules.Channel():
-			assert.True(t, strings.HasSuffix(string(msg), ":3999"), "notice %q", msg)
-		case <-time.After(2 * time.Second):
-			assert.Fail(t, "the delete of the talkgroup did not announce a rules change")
-		}
+		want := fmt.Sprintf(":%d", 3999)
+		notices := testutils.Collect(rules.Channel(), deliverWait, func(got [][]byte) bool { return strings.HasSuffix(string(got[len(got)-1]), want) })
+		require.NotEmpty(t, notices, "the delete of the talkgroup did not announce a rules change")
+		assert.True(t, strings.HasSuffix(string(notices[len(notices)-1]), want), "notices %q", notices)
 	})
 }
 
+// TestEditedEphemeralTalkgroupStays edits TG 3999, which the hub made, and
+// then makes TG 3998. Once the TTL passed, the sweep that deletes TG 3998
+// must keep TG 3999.
 func TestEditedEphemeralTalkgroupStays(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: 500 * time.Millisecond})
+	forAllBackendsOnTestClock(t, func(t *testing.T, stack *testutils.IntegrationStack, fake *clock.Fake) {
+		const ttl = 500 * time.Millisecond
+		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: ttl})
+		changes := talkgroupChanges(t, stack)
 		c := oneHotspot(t, stack)
 		tgCall(t, c, 3999, 1901)
-		require.Eventually(t, func() bool { _, ok := talkgroupOf(t, stack); return ok }, 5*time.Second, 20*time.Millisecond)
+		waitChanged(t, changes, 3999, "a call to an unknown talkgroup makes it")
 		require.NoError(t, stack.DB.Model(&models.Talkgroup{}).Where("id = ?", 3999).Update("auto_created", false).Error)
 		stack.Hub.TalkgroupChanged(3999)
-		time.Sleep(2 * time.Second)
+		waitChanged(t, changes, 3999, "the hub takes the edit")
+		tgCall(t, c, 3998, 1902)
+		waitChanged(t, changes, 3998, "a call to another unknown talkgroup makes it")
+
+		fake.Advance(ttl + time.Second)
+		waitChanged(t, changes, 3998, "the talkgroup that the hub made and nobody edited goes after its TTL")
 		_, ok := talkgroupOf(t, stack)
 		assert.True(t, ok, "a talkgroup that an admin edited is no longer ephemeral")
 	})

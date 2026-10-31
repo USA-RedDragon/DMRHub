@@ -141,8 +141,8 @@ sleep	internal/dmr/transparency_test.go	8	baseline of 2026-10-28, not reviewed: 
 elapsed	internal/dmr/transparency_util_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/transparency_util_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/transparency_util_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/undeliverable_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/undeliverable_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/undeliverable_integration_test.go	1	polls the database for the call row, which the call tracker writes with no event; bounded by deliverWait
+sleep	internal/dmr/undeliverable_integration_test.go	1	minimum, not a wait: keeps the call past the 100 ms key-up threshold of the call tracker, which starvation only lengthens
 elapsed	internal/dmr/wt_forward_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/wt_forward_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/wt_move_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

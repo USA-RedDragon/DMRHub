@@ -77,15 +77,14 @@ func TestBurstsIPSCCannotCarryAreReported(t *testing.T) {
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
 		defer ic.Close()
 		require.NoError(t, ic.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		require.NoError(t, c1.SendDMRD(makeBurst(1000001, 1, 6101, true, dmrconst.FrameDataSync, uint(enums.DataTypeIdle), 0)))
-		assert.Len(t, c2.Drain(drainWait), 1, "the MMDVM repeater must get the idle burst")
+		assert.Len(t, testutils.Collect(c2.ReceivedPackets(), deliverWait, func([]models.Packet) bool { return true }), 1, "the MMDVM repeater must get the idle burst")
 		assert.Empty(t, ic.Drain(100*time.Millisecond), "the IPSC peer must not get a burst it cannot carry")
 
 		require.NoError(t, c1.SendDMRD(makeBurst(1000001, 1, 6102, true, dmrconst.FrameDataSync, uint(enums.DataTypeRate1), 0)))
-		assert.Len(t, c2.Drain(drainWait), 1, "the MMDVM repeater must get the rate 1 burst")
-		rate1 := ic.Drain(drainWait)
+		assert.Len(t, testutils.Collect(c2.ReceivedPackets(), deliverWait, func([]models.Packet) bool { return true }), 1, "the MMDVM repeater must get the rate 1 burst")
+		rate1 := ic.Receive(deliverWait, func([]testutils.IPSCBurst) bool { return true })
 		if assert.Len(t, rate1, 1, "the IPSC peer gets rate 1 as a raw block") {
 			assert.Equal(t, byte(ipscwire.BurstRaw), rate1[0].Data[30])
 		}
@@ -121,7 +120,6 @@ func TestDataBurstInAVoiceStreamIsMarkedOnItsCall(t *testing.T) {
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
 		defer ic.Close()
 		require.NoError(t, ic.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		var c pdu.CSBK
 		c.LastBlock = true
@@ -144,7 +142,7 @@ func TestDataBurstInAVoiceStreamIsMarkedOnItsCall(t *testing.T) {
 				return false
 			}
 			return slices.Contains(calls[0].Undeliverable, "A data burst for IPSC repeater 200001 came in the middle of a voice call.")
-		}, 5*time.Second, 50*time.Millisecond, "the Last Heard row must name the IPSC peer and the reason")
+		}, deliverWait, 50*time.Millisecond, "the Last Heard row must name the IPSC peer and the reason")
 		assert.GreaterOrEqual(t, undeliverableCount(t, models.RepeaterTypeIPSC, "data_in_voice"), before+1)
 	})
 }

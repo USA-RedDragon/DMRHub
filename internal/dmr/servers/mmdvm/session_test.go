@@ -45,15 +45,15 @@ func TestPendingSessionsAreCapped(t *testing.T) {
 	t.Parallel()
 	var s Server
 	for i := range maxPending {
-		_, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, byte(i>>8), byte(i)), Port: 62031}, dmrd.DialectMMDVM)
+		_, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, byte(i>>8), byte(i))}, dmrd.DialectMMDVM)
 		if err != nil {
 			t.Fatalf("link %d: %v", i, err)
 		}
 	}
-	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 1, 0, 0), Port: 62031}, dmrd.DialectMMDVM); !errors.Is(err, errTooManyPending) {
+	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 1, 0, 0)}, dmrd.DialectMMDVM); !errors.Is(err, errTooManyPending) {
 		t.Fatalf("got %v, want errTooManyPending", err)
 	}
-	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, 0, 0), Port: 62031}, dmrd.DialectMMDVM); err != nil {
+	if _, err := s.linkFor(net.UDPAddr{IP: net.IPv4(10, 0, 0, 0)}, dmrd.DialectMMDVM); err != nil {
 		t.Fatalf("known address: %v", err)
 	}
 }
@@ -85,7 +85,10 @@ func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	}
 	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	from := net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 62031}
+	peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = peer.Close() })
+	from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
 	s.handlePacket(context.Background(), from, rptl)
 	require.Len(t, s.links, 1)
 	require.Equal(t, dmrdsession.StateAuth, s.links[from.String()].m.State())

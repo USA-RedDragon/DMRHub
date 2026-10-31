@@ -40,16 +40,15 @@ sleep	internal/dmr/hub/talkgroup_lookup_test.go	1	baseline of 2026-10-28, not re
 timer	internal/dmr/hub/undeliverable_view_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/integration_test.go	1	poll step of waitFor, for the unlink of a dynamic talkgroup, which the hub makes off the routing path with no event a test can wait on
 deadline	internal/dmr/iplists_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/iplists_integration_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/iplists_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/iplists_integration_test.go	5	polls the MSTCL count and the closed flag of a client and the registration time in the database, which have no event; bounded by deliverWait
 eventually	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/ipsc_slow_db_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/ipsc_slow_redis_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/ipsc_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/live_config_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/dmr/live_config_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/live_config_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/live_config_integration_test.go	4	polls the MSTCL and down counts of the clients, bounded by deliverWait, and which server holds the OpenBridge egress lease, bounded by 2 or 3 EgressLeaseTTL, the product constant
+pickport	internal/dmr/live_config_integration_test.go	1	the test changes the MMDVM port in the live config, which takes a port number, not :0; the server binds the number it is given (a product limit, not a test choice)
+sleep	internal/dmr/live_config_integration_test.go	1	negative window of one EgressLeaseTTL, the product time a takeover of the egress lease needs: a restarted server must not take the lease from its holder in it
 elapsed	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/live_replicas_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 pickport	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

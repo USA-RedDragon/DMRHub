@@ -82,7 +82,6 @@ func seedLiveTraffic(t *testing.T, l *testutils.LiveStack) (*testutils.MMDVMClie
 	require.NoError(t, ic.Connect(l.Addr(t, manager.IPSC)))
 	t.Cleanup(ic.Close)
 	require.NoError(t, ic.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return mc, ic
 }
 
@@ -102,7 +101,7 @@ func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // FreeUDPPor
 
 	assert.Equal(t, loopback(newPort), l.Addr(t, manager.MMDVM))
 	assert.Equal(t, float64(newPort), l.DMRSetting(t, manager.MMDVM, "port"))
-	assert.Eventually(t, func() bool { return mc.MSTCLs() > 0 }, 2*time.Second, 10*time.Millisecond,
+	assert.Eventually(t, func() bool { return mc.MSTCLs() > 0 }, deliverWait, 10*time.Millisecond,
 		"the repeater on the old port must get an MSTCL")
 
 	stale := testutils.NewMMDVMClient(100001, "", testPassword)
@@ -114,11 +113,9 @@ func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // FreeUDPPor
 	require.NoError(t, mc2.Connect(loopback(newPort)))
 	defer mc2.Close()
 	require.NoError(t, mc2.WaitReady(handshakeWait), "the new port must take a login")
-	time.Sleep(settleDuration)
 
 	assert.Same(t, ipscBefore, l.Manager.Server(manager.IPSC), "the IPSC server must not restart")
 	require.NoError(t, mc2.SendDMRD(makeGroupVoicePacket(1000001, 1, 7101, false)))
-	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, mc2.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7101, false)))
 	assert.Len(t, ic.Receive(deliverWait, gotN[testutils.IPSCBurst](2)), 2, "the IPSC peer must get the call from the new MMDVM session")
 	assert.Zero(t, ic.Downs(), "the IPSC peer must stay registered")
@@ -174,7 +171,7 @@ func TestLiveIPSCNetworkIDChange(t *testing.T) { //nolint:paralleltest // FreeUD
 	w := l.SetDMR(t, manager.IPSC, map[string]any{"network-id": 888888})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, addr, l.Addr(t, manager.IPSC))
-	assert.Eventually(t, func() bool { return ic.Downs() > 0 }, 2*time.Second, 10*time.Millisecond,
+	assert.Eventually(t, func() bool { return ic.Downs() > 0 }, deliverWait, 10*time.Millisecond,
 		"the IPSC peer must be asked to deregister")
 	assert.Zero(t, mc.MSTCLs(), "the MMDVM repeater must stay logged in")
 

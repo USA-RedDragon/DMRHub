@@ -152,7 +152,7 @@ func TestIPListsEndRefusedMMDVMSessions(t *testing.T) {
 		require.NoError(t, c.WaitReady(handshakeWait))
 
 		stack.Hub.SetIPLists(mmdvmList(config.IPListBlock, []string{"127.0.0.0/8"}, nil))
-		require.Eventually(t, func() bool { return c.MSTCLs() > 0 }, time.Second, 10*time.Millisecond, "the session of a refused address must end")
+		require.Eventually(t, func() bool { return c.MSTCLs() > 0 }, deliverWait, 10*time.Millisecond, "the session of a refused address must end")
 		assert.False(t, c.Ping(ipListWait), "a refused hotspot must get no pong")
 		assert.Equal(t, dmrd.CommandMSTNAK, loginAnswer(t, stack.MMDVMAddr))
 	})
@@ -203,7 +203,6 @@ func TestIPListsRefuseOpenBridgePeers(t *testing.T) {
 		t.Cleanup(mc.Close)
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		stream := uint32(7100)
 		check := func(name string, lists config.IPLists, want bool) {
@@ -213,7 +212,6 @@ func TestIPListsRefuseOpenBridgePeers(t *testing.T) {
 			assert.Equal(t, want, len(testutils.Collect(mc.ReceivedPackets(), reachWait(want), callEnds(1))) > 0, "%s: ingress", name)
 			stream++
 			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, uint(stream), false)))
-			time.Sleep(50 * time.Millisecond)
 			require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, uint(stream), false)))
 			assert.Equal(t, want, len(testutils.Collect(obc.ReceivedPackets(), reachWait(want), callEnds(1))) > 0, "%s: egress", name)
 		}
@@ -254,7 +252,7 @@ func TestIPListsRefuseWebTransport(t *testing.T) {
 		require.NoError(t, browser.WaitReady(handshakeWait))
 
 		stack.Hub.SetIPLists(config.IPLists{WebTransport: config.IPList{Mode: config.IPListAllow, Allow: []string{"::1"}}})
-		require.Eventually(t, browser.SessionClosed, time.Second, 10*time.Millisecond, "the session of a refused address must end")
+		require.Eventually(t, browser.SessionClosed, deliverWait, 10*time.Millisecond, "the session of a refused address must end")
 	})
 }
 
@@ -289,7 +287,7 @@ func TestIPListsChangeOnOneReplicaAppliesAtOnceOnAnother(t *testing.T) { //nolin
 			require.True(t, ok)
 			require.True(t, other.Answered, "the other replica must take the save before it returns")
 			assert.Equal(t, dmrd.CommandMSTNAK, loginAnswer(t, addrB), "the other replica must refuse the address at once")
-			require.Eventually(t, func() bool { return c.MSTCLs() > 0 }, time.Second, 10*time.Millisecond, "the other replica must end the session of the address")
+			require.Eventually(t, func() bool { return c.MSTCLs() > 0 }, deliverWait, 10*time.Millisecond, "the other replica must end the session of the address")
 
 			code, _, raw = putSetting(t, l.First(), map[string]any{
 				"dmr.ip-lists.mmdvm": map[string]any{"mode": "off"},
@@ -325,7 +323,7 @@ func TestIPListsDropRefusedIPSCPeersOnEveryReplica(t *testing.T) { //nolint:para
 				require.NoError(t, err)
 				return r.Connected
 			}
-			require.Eventually(t, func() bool { return !connected(200001).IsZero() && !connected(200002).IsZero() }, handshakeWait, 10*time.Millisecond)
+			require.Eventually(t, func() bool { return !connected(200001).IsZero() && !connected(200002).IsZero() }, deliverWait, 10*time.Millisecond)
 			before := map[uint]time.Time{200001: connected(200001), 200002: connected(200002)}
 
 			code, _, raw := putSetting(t, l.First(), map[string]any{
@@ -337,7 +335,7 @@ func TestIPListsDropRefusedIPSCPeersOnEveryReplica(t *testing.T) { //nolint:para
 			})
 			require.Equal(t, http.StatusOK, code, raw)
 			for _, id := range ids {
-				assert.Eventually(t, func() bool { return connected(id).After(before[id]) }, 2*time.Second, 10*time.Millisecond,
+				assert.Eventually(t, func() bool { return connected(id).After(before[id]) }, deliverWait, 10*time.Millisecond,
 					"replica of IPSC repeater %d must drop it at once, so that it registers anew", id)
 			}
 		})

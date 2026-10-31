@@ -39,10 +39,13 @@ import (
 
 const slowPublish = 500 * time.Millisecond
 
-type slowPubSub struct{ pubsub.PubSub }
+type slowPubSub struct {
+	pubsub.PubSub
+	wait func()
+}
 
 func (p slowPubSub) Publish(topic string, message []byte) error {
-	time.Sleep(slowPublish)
+	p.wait()
 	return p.PubSub.Publish(topic, message) //nolint:wrapcheck
 }
 
@@ -55,7 +58,7 @@ func TestMarksForOtherReplicasWaitOnNoPublish(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		database, ps, kvStore := trackerDeps(t)
-		ct := calltracker.NewCallTracker(database, slowPubSub{ps}, kvStore)
+		ct := calltracker.NewCallTracker(database, slowPubSub{ps, func() { time.Sleep(slowPublish) }}, kvStore)
 		t.Cleanup(ct.Stop)
 		undeliverable := ps.Subscribe("calltracker:undeliverable")
 		t.Cleanup(func() { _ = undeliverable.Close() })
@@ -86,6 +89,7 @@ func TestMarksForOtherReplicasWaitOnNoPublish(t *testing.T) {
 // fails.
 type pausedPubSub struct {
 	pubsub.PubSub
+	sleep   func(time.Duration)
 	paused  atomic.Bool
 	notSent atomic.Bool
 	calls   atomic.Int64
@@ -97,10 +101,10 @@ func (p *pausedPubSub) Publish(topic string, message []byte) error {
 	}
 	p.calls.Add(1)
 	if p.notSent.Load() {
-		time.Sleep(5 * time.Millisecond)
+		p.sleep(5 * time.Millisecond)
 		return fmt.Errorf("dial tcp: connection refused: %w", pubsub.ErrNotSent)
 	}
-	time.Sleep(slowPublish)
+	p.sleep(slowPublish)
 	return errors.New("read tcp: i/o timeout")
 }
 
@@ -113,7 +117,7 @@ func TestAPausedRedisHoldsNoCallTracking(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		database, ps, kvStore := trackerDeps(t)
-		paused := &pausedPubSub{PubSub: ps}
+		paused := &pausedPubSub{PubSub: ps, sleep: func(d time.Duration) { time.Sleep(d) }}
 		ct := calltracker.NewCallTracker(database, paused, kvStore)
 		t.Cleanup(ct.Stop)
 
@@ -138,7 +142,7 @@ func TestCallUpdatesThatDidNotReachRedisAreSentAgain(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		database, ps, kvStore := trackerDeps(t)
-		paused := &pausedPubSub{PubSub: ps}
+		paused := &pausedPubSub{PubSub: ps, sleep: func(d time.Duration) { time.Sleep(d) }}
 		ct := calltracker.NewCallTracker(database, paused, kvStore)
 		t.Cleanup(ct.Stop)
 		sub := ps.Subscribe("calls")

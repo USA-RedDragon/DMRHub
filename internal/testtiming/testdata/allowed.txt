@@ -13,9 +13,6 @@ fixedport	internal/db/models/peer_password_test.go	2	baseline of 2026-10-28, not
 fixedport	internal/db/models/peer_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/db/models/repeater_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/db/params_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/calltracker/answer_replica_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/calltracker/masking_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/calltracker/publish_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/codec2_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/codec2_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/codec_detection_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

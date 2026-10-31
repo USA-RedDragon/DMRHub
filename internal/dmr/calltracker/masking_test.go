@@ -67,8 +67,8 @@ func TestMaskedSMSHidesItsResponseAndDuration(t *testing.T) {
 }
 
 type slowObserver struct {
-	next  *messages.Store
-	delay time.Duration
+	next *messages.Store
+	wait func()
 }
 
 func (o slowObserver) DataPacket(call *models.Call, ev *data.Event, at time.Time) {
@@ -76,7 +76,7 @@ func (o slowObserver) DataPacket(call *models.Call, ev *data.Event, at time.Time
 	e := *ev
 	e.Message.Payload = append([]byte(nil), ev.Message.Payload...)
 	go func() {
-		time.Sleep(o.delay)
+		o.wait()
 		o.next.DataPacket(&c, &e, at)
 	}()
 }
@@ -107,7 +107,7 @@ func TestPublicDataRowIsMaskedBeforeItsMessageIsStored(t *testing.T) {
 				if delay == 0 {
 					ct.SetDataObserver(store)
 				} else {
-					ct.SetDataObserver(slowObserver{next: store, delay: delay})
+					ct.SetDataObserver(slowObserver{next: store, wait: func() { time.Sleep(delay) }})
 				}
 				t.Cleanup(store.Stop)
 				sub := ps.Subscribe("calls:public")

@@ -39,50 +39,53 @@ func radioCheckPair(t *testing.T) (pdu.CSBK, pdu.CSBK) {
 	return req, ans
 }
 
-func radioCheckRows(t *testing.T, heardFirst bool) map[uint]models.Call {
+func radioCheckRows(t *testing.T, heardFirst bool, check func(t *testing.T, byStream map[uint]models.Call)) {
 	t.Helper()
 	req, ans := radioCheckPair(t)
-	return answeredRows(t, req, ans, heardFirst, 0)
+	answeredRows(t, req, ans, heardFirst, 0, check)
 }
 
-// answeredRows sends req from userA to userB to one tracker and ans from
-// userB to userA to another that shares its database, pubsub and KV, ans
-// first when heardFirst is set, gap after req otherwise. It returns the
-// rows by stream: 7062 for req and 7063 for ans.
-func answeredRows(t *testing.T, req, ans pdu.CSBK, heardFirst bool, gap time.Duration) map[uint]models.Call {
+// answeredRows runs check in a synctest bubble on the rows by stream, 7062
+// for req and 7063 for ans, after it sends req from userA to userB to one
+// tracker and ans from userB to userA to another that shares its database,
+// pubsub and KV, ans first when heardFirst is set, gap after req
+// otherwise.
+func answeredRows(t *testing.T, req, ans pdu.CSBK, heardFirst bool, gap time.Duration, check func(t *testing.T, byStream map[uint]models.Call)) {
 	t.Helper()
-	one, two, database := newReplicas(t)
-	req.LastBlock, ans.LastBlock = true, true
-	if heardFirst {
-		newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
-		two.Flush()
-		newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
-	} else {
-		newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
-		time.Sleep(gap)
-		newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
-	}
-	byStream := map[uint]models.Call{}
-	bubble.Eventually(t, func() bool {
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database := newReplicas(t)
+		req.LastBlock, ans.LastBlock = true, true
+		if heardFirst {
+			newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
+			two.Flush()
+			newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
+		} else {
+			newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
+			time.Sleep(gap)
+			newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
+		}
+		byStream := map[uint]models.Call{}
+		bubble.Eventually(t, func() bool {
+			one.Flush()
+			two.Flush()
+			clear(byStream)
+			for _, c := range rows(t, database) {
+				if c.Active {
+					return false
+				}
+				byStream[c.StreamID] = c
+			}
+			return len(byStream) > 0
+		}, 8*time.Second, 50*time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		one.Flush()
 		two.Flush()
 		clear(byStream)
 		for _, c := range rows(t, database) {
-			if c.Active {
-				return false
-			}
 			byStream[c.StreamID] = c
 		}
-		return len(byStream) > 0
-	}, 8*time.Second, 50*time.Millisecond)
-	time.Sleep(500 * time.Millisecond)
-	one.Flush()
-	two.Flush()
-	clear(byStream)
-	for _, c := range rows(t, database) {
-		byStream[c.StreamID] = c
-	}
-	return byStream
+		check(t, byStream)
+	})
 }
 
 func TestTrackCallAlertAnsweredOnAnotherReplica(t *testing.T) {
@@ -90,11 +93,10 @@ func TestTrackCallAlertAnsweredOnAnotherReplica(t *testing.T) {
 	for _, heardFirst := range []bool{false, true} {
 		t.Run(map[bool]string{false: "request first", true: "answer first"}[heardFirst], func(t *testing.T) {
 			t.Parallel()
-			synctest.Test(t, func(t *testing.T) {
-				var req, ans pdu.CSBK
-				require.NoError(t, req.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: uint32(userB), SourceAddress: uint32(userA)}))
-				require.NoError(t, ans.SetMotorolaCallAlertAck(pdu.MotorolaCallAlertAckPDU{Request: 0x9F, TargetAddress: uint32(userA), SourceAddress: uint32(userB)}))
-				byStream := answeredRows(t, req, ans, heardFirst, 0)
+			var req, ans pdu.CSBK
+			require.NoError(t, req.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: uint32(userB), SourceAddress: uint32(userA)}))
+			require.NoError(t, ans.SetMotorolaCallAlertAck(pdu.MotorolaCallAlertAckPDU{Request: 0x9F, TargetAddress: uint32(userA), SourceAddress: uint32(userB)}))
+			answeredRows(t, req, ans, heardFirst, 0, func(t *testing.T, byStream map[uint]models.Call) {
 				assert.Equal(t, "call_alert", byStream[7062].SubKind)
 				assert.Equal(t, models.CallResponseACK, byStream[7062].Response, "the call alert is answered")
 				_, own := byStream[7063]
@@ -109,9 +111,8 @@ func TestTrackCallAlertAnsweredOnAnotherReplica(t *testing.T) {
 // request and keeps a row of its own.
 func TestTrackLateAnswerOnAnotherReplica(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		req, ans := radioCheckPair(t)
-		byStream := answeredRows(t, req, ans, false, 10*time.Second+500*time.Millisecond)
+	req, ans := radioCheckPair(t)
+	answeredRows(t, req, ans, false, 10*time.Second+500*time.Millisecond, func(t *testing.T, byStream map[uint]models.Call) {
 		assert.Equal(t, models.CallResponseNone, byStream[7062].Response, "a late answer is not set on the request")
 		if assert.Contains(t, byStream, uint(7063), "the late answer keeps its own row") {
 			assert.Equal(t, "radio_check_answer", byStream[7063].SubKind)
@@ -121,8 +122,7 @@ func TestTrackLateAnswerOnAnotherReplica(t *testing.T) {
 
 func TestTrackAnswerOnAnotherReplicaAtOnce(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		byStream := radioCheckRows(t, false)
+	radioCheckRows(t, false, func(t *testing.T, byStream map[uint]models.Call) {
 		assert.Equal(t, models.CallResponseACK, byStream[7062].Response, "the radio check is answered")
 		_, own := byStream[7063]
 		assert.False(t, own, "the answer makes no row of its own")
@@ -131,8 +131,7 @@ func TestTrackAnswerOnAnotherReplicaAtOnce(t *testing.T) {
 
 func TestTrackAnswerHeardFirstOnAnotherReplica(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		byStream := radioCheckRows(t, true)
+	radioCheckRows(t, true, func(t *testing.T, byStream map[uint]models.Call) {
 		assert.Equal(t, models.CallResponseACK, byStream[7062].Response, "the radio check is answered")
 		_, own := byStream[7063]
 		assert.False(t, own, "the answer makes no row of its own")

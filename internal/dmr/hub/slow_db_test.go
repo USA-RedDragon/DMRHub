@@ -150,7 +150,7 @@ func worstDelay(t *testing.T, arrivals <-chan arrival, stream uint, sent []time.
 	t.Helper()
 	got := map[string]int{}
 	var worst time.Duration
-	deadline := time.After(time.Duration(len(sent))*burstPeriod + 30*time.Second)
+	within := time.Duration(len(sent))*burstPeriod + 30*time.Second
 	for {
 		done := true
 		for _, target := range targets {
@@ -159,21 +159,17 @@ func worstDelay(t *testing.T, arrivals <-chan arrival, stream uint, sent []time.
 		if done {
 			return worst
 		}
-		select {
-		case a := <-arrivals:
-			if a.rp.Packet.StreamID != stream {
-				continue
-			}
-			target := fmt.Sprintf("%s:%d", a.server, a.rp.RepeaterID)
-			if !slices.Contains(targets, target) {
-				continue
-			}
-			got[target]++
-			if d := a.at.Sub(sent[a.rp.Packet.Seq]); d > worst {
-				worst = d
-			}
-		case <-deadline:
-			t.Fatalf("stream %d: deliveries %v, want %d on each of %v", stream, got, len(sent), targets)
+		a := bubble.Receive(t, arrivals, within, "stream %d: deliveries %v, want %d on each of %v", stream, got, len(sent), targets)
+		if a.rp.Packet.StreamID != stream {
+			continue
+		}
+		target := fmt.Sprintf("%s:%d", a.server, a.rp.RepeaterID)
+		if !slices.Contains(targets, target) {
+			continue
+		}
+		got[target]++
+		if d := a.at.Sub(sent[a.rp.Packet.Seq]); d > worst {
+			worst = d
 		}
 	}
 }

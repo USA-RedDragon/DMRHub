@@ -66,12 +66,10 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 				require.NoError(t, rpt.Connect(stack.MMDVMAddr))
 				defer rpt.Close()
 				require.NoError(t, rpt.WaitReady(handshakeWait))
-				time.Sleep(settleDuration)
 
 				require.NoError(t, gw.SendDMRD(makeGroupVoicePacket(1000001, 1, 7001, false)))
-				time.Sleep(50 * time.Millisecond)
 				require.NoError(t, gw.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7001, false)))
-				pkts := rpt.Drain(drainWait)
+				pkts := receiveCall(rpt, 1)
 				require.NotEmpty(t, pkts, "repeater should receive the call of the peer")
 				for _, p := range pkts {
 					assert.Equal(t, uint(1), p.Dst)
@@ -80,9 +78,8 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 
 				time.Sleep(callHoldTime)
 				require.NoError(t, rpt.SendDMRD(makeGroupVoicePacket(1000001, 1, 7002, false)))
-				time.Sleep(50 * time.Millisecond)
 				require.NoError(t, rpt.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7002, false)))
-				pkts = gw.Drain(drainWait)
+				pkts = gw.Receive(deliverWait, callEnds(1))
 				require.NotEmpty(t, pkts, "peer should receive the call of the repeater")
 				for _, p := range pkts {
 					assert.Equal(t, uint(1), p.Dst)
@@ -125,15 +122,13 @@ func TestSessionPeerMovesToSecondReplica(t *testing.T) {
 		require.NoError(t, rpt.Connect(stack.MMDVMAddr))
 		defer rpt.Close()
 		require.NoError(t, rpt.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		require.NoError(t, gw.Retarget(second.MMDVMAddr))
 		time.Sleep(settleDuration)
 
 		require.NoError(t, gw.SendDMRD(makeGroupVoicePacket(1000001, 1, 7101, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, gw.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7101, false)))
-		pkts := rpt.Drain(drainWait)
+		pkts := receiveCall(rpt, 1)
 		assert.NotEmpty(t, pkts, "repeater should receive the call that the second replica took")
 		assert.Equal(t, dmrdsession.StateRunning, gw.State())
 		assert.Zero(t, gw.Downs(), "the second replica should not refuse the session")

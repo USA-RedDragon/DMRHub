@@ -703,3 +703,14 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 	m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
 }
+
+// Subscribes reports whether the active repeater repeaterID takes the
+// bursts of the talkgroup tg.
+func (h *Hub) Subscribes(repeaterID, tg uint) bool {
+	subs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
+	if !ok {
+		return false
+	}
+	_, ok = subs.Load(tg)
+	return ok
+}

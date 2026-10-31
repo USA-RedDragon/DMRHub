@@ -78,17 +78,6 @@ func (h *Hub) KnowRepeater(id uint) error {
 	return err
 }
 
-// Subscribes reports whether the active repeater repeaterID takes the
-// bursts of the talkgroup tg.
-func (h *Hub) Subscribes(repeaterID, tg uint) bool {
-	subs, ok := h.subscriptionMgr.subscriptions.Load(repeaterID)
-	if !ok {
-		return false
-	}
-	_, ok = subs.Load(tg)
-	return ok
-}
-
 // Settled returns a channel that is closed when the hub has routed the
 // bursts that came before from the source slot of packet from sourceName,
 // made the talkgroup link changes that they asked for, and published them.

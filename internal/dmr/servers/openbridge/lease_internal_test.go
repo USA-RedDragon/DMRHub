@@ -267,3 +267,29 @@ func TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage(t *testing.T) {
 		assert.NotEqual(t, roleFollower, s.role.Load(), "the holder takes the lease again once Redis is back")
 	})
 }
+
+// TestAStoppedServerDoesNotTakeTheLeaseAgain stops the holder of the
+// egress lease while a renewal of it waits on the role lock, as when the
+// ticker fired just before the stop. The renewal must not take the lease
+// that the stop gave up, or no replica sends until the lease runs out.
+func TestAStoppedServerDoesNotTakeTheLeaseAgain(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		store, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		s := &Server{clock: clock.Real(), kv: store, id: "a", done: make(chan struct{})}
+
+		ctx := context.Background()
+		s.renewLease(ctx)
+		require.True(t, s.IsEgressLeader())
+		close(s.done)
+		s.releaseLease(ctx)
+		s.renewLease(ctx)
+		_, err = store.Get(ctx, egressLeaseKey)
+		require.ErrorIs(t, err, kv.ErrNotFound, "the stopped server took the lease again")
+		assert.False(t, s.IsEgressLeader())
+	})
+}

@@ -189,9 +189,16 @@ func (s *Server) runLease(ctx context.Context) {
 // renewLease takes or renews the lease and moves the role of the replica
 // on: a replica that takes the lease announces it and waits for its
 // announcement before it sends, and one that lost the lease stops sending.
+// A stopped replica does nothing, so that a renewal that waited on the
+// role lock does not take the lease that the stop gave up.
 func (s *Server) renewLease(ctx context.Context) {
 	s.roleMu.Lock()
 	defer s.roleMu.Unlock()
+	select {
+	case <-s.done:
+		return
+	default:
+	}
 	role := s.role.Load()
 	if role == roleReleasing {
 		return

@@ -106,7 +106,9 @@ type heardNote struct {
 // for any other. A stream without a valid header takes the codec from the
 // first embedded voice LC that passes its checksum, in the same way; its
 // bursts before that LC take the codec of the timeslot they come from, and
-// AMBE from a network peer. A header later in the stream still decides.
+// AMBE from a network peer. A header later in the stream still decides. A
+// stream that starts at its Terminator with LC takes the codec of that
+// LC.
 // The LC that decides the codec of a call from a repeater timeslot records
 // the codec on the timeslot, and the Codec2 mode that the frames of a
 // Codec2 call show. A call without such an LC teaches nothing. It returns
@@ -122,11 +124,7 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		if !voice {
 			return nil
 		}
-		sc = &streamCodec{last: now}
-		_, isPlugin := plugins.PluginOfSource(sourceName)
-		sc.learns = !isPlugin && h.getServerRole(sourceName) == RoleRepeater && sourceName != models.RepeaterTypeIPSC
-		sc.repeater, sc.slot = packet.Repeater, packet.Slot
-		h.codecStreams.Store(packet.StreamID, sc)
+		sc = h.newCodecStream(packet, sourceName, now)
 	}
 	sc.touch(now)
 	if sc.ended {
@@ -170,6 +168,23 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		sc.noted = true
 		h.noteCallCodec(packet, sc)
 	}
+	return sc
+}
+
+// newCodecStream starts what the hub knows of the stream of packet. A
+// stream that the hub first sees at its Terminator with LC, such as a
+// repeated terminator of a call that the hub forgot, is ended at once
+// with the codec of that LC.
+func (h *Hub) newCodecStream(packet *models.Packet, sourceName string, now time.Time) *streamCodec {
+	sc := &streamCodec{last: now}
+	_, isPlugin := plugins.PluginOfSource(sourceName)
+	sc.learns = !isPlugin && h.getServerRole(sourceName) == RoleRepeater && sourceName != models.RepeaterTypeIPSC
+	sc.repeater, sc.slot = packet.Repeater, packet.Slot
+	if codec, lc, ok := transcode.TerminatorCodec(packet); ok {
+		sc.codec, sc.encrypted = codec, transcode.Encrypted(lc)
+		sc.end()
+	}
+	h.codecStreams.Store(packet.StreamID, sc)
 	return sc
 }
 

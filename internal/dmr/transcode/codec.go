@@ -143,6 +143,23 @@ func HeaderLC(p *models.Packet) (pdu.LCBytes, bool) {
 	return pdu.LCBytes(payload[:9]), true
 }
 
+// TerminatorCodec returns the codec of the call that the Terminator with
+// LC p ends, from the FID of its LC as HeaderCodec does: the terminator
+// carries the same LC as the Voice LC Header (ETSI TS 102 361-1 clause
+// 5.1.2). ok is false when p is not a Terminator with LC with a valid LC.
+func TerminatorCodec(p *models.Packet) (Codec, pdu.LCBytes, bool) {
+	dt, ok := DataTypeOf(p)
+	if !ok || dt != enums.DataTypeTerminatorWithLC {
+		return CodecUnknown, pdu.LCBytes{}, false
+	}
+	payload, ok := layer2.RawBurst(p.DMRData).MMDVMHostPayload(dt)
+	if !ok {
+		return CodecUnknown, pdu.LCBytes{}, false
+	}
+	lc := pdu.LCBytes(payload[:9])
+	return codecOfLC(lc), lc, true
+}
+
 // HeaderCodec returns the codec of the call that the Voice LC Header p
 // starts: Codec2 for the FID 0xC2, AMBE for any other. ok is false when p
 // is not a Voice LC Header with a valid LC. The codec never comes from the

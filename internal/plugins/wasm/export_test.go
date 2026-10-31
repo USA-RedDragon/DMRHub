@@ -50,3 +50,15 @@ func Waiting(i *Instance) bool {
 	defer i.meter.mu.Unlock()
 	return i.meter.waiting
 }
+
+// GuestCPU returns the CPU time that the thread of the plugin of i used,
+// and false when the kernel does not tell it.
+func GuestCPU(i *Instance) (time.Duration, bool) {
+	i.meter.mu.Lock()
+	tid := i.meter.tid
+	i.meter.mu.Unlock()
+	if tid == 0 {
+		return 0, false
+	}
+	return threadCPU(tid)
+}

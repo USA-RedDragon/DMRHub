@@ -231,12 +231,21 @@ func TestAPluginThatSpinsIsStopped(t *testing.T) {
 		l := wasm.DefaultLimits()
 		l.CPUWindow = time.Second
 		inst, _ := newRig(t).run(t, engine.Limited(l), "Spin", guestOf(t, compiler, "spin"), nil)
-		select {
-		case <-inst.Done():
-		case <-time.After(15 * time.Second):
-			t.Fatal("the plugin still spins")
+		limit := time.Duration(float64(l.CPUWindow) * l.CPUShare)
+		windows := time.NewTicker(l.CPUWindow)
+		defer windows.Stop()
+		for n := 0; ; n++ {
+			select {
+			case <-inst.Done():
+				require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
+				return
+			case <-windows.C:
+			}
+			cpu, ok := wasm.GuestCPU(inst)
+			if ok && cpu > limit*time.Duration(n+3) {
+				t.Fatalf("the plugin used %v of CPU in %d windows of %v, more than its %v in each, and still spins", cpu, n+1, l.CPUWindow, limit)
+			}
 		}
-		require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
 	})
 }
 

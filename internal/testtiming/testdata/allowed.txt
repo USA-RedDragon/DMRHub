@@ -63,7 +63,7 @@ sleep	internal/dmr/response_replica_integration_test.go	1	pace, not a wait: 20 m
 eventually	internal/dmr/rotate_password_integration_test.go	2	polls the MSTCL count of the client and the registration time in the database, which have no event; bounded by deliverWait
 sleep	internal/dmr/rotate_password_integration_test.go	1	minimum, not a wait: the call holds callHoldTime, past the 100 ms key-up threshold of the call tracker; starvation only lengthens it
 elapsed	internal/dmr/rotation_integration_test.go	4	the time.Until of the pace of the calls, and the times of the rotation steps that the test logs; not waits
-sleep	internal/dmr/rotation_integration_test.go	2	the scenario, not a wait: the pace of the calls, one burst each rotationInterval, and the 1.5 s into the calls at which the rotation starts, so that it comes mid-call; the starvation probe skips the timing checks when the machine stretched them
+sleep	internal/dmr/rotation_integration_test.go	2	the scenario, not a wait: the pace of the calls, one burst each rotationInterval, and the 1.5 s into the calls at which the rotation starts, so that it comes mid-call
 sleep	internal/dmr/routing_settings_integration_test.go	3	windows of negative checks where no state can be checked: that a call and a dial link nothing with dynamic links off, on this replica and on another (a refused link leaves no state and no event), and that a timeout of 0 unlinks nothing after the test clock moved 3 s (a sweep that unlinks nothing leaves no state)
 eventually	internal/dmr/rpto_integration_test.go	2	polls the static and dynamic talkgroups of a repeater in the database, which the options write with no event; bounded by deliverWait
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
@@ -160,8 +160,6 @@ timer	internal/testutils/mmdvm_client.go	4	baseline of 2026-10-28, not reviewed:
 timer	internal/testutils/plugins.go	1	negative window: ServeIgnoresUnknownMessages checks that serve does not end within 500 ms of an unknown message; serve gives no sign that it handled it, and a slow machine can only hide a fault, never fail the test
 elapsed	internal/testutils/session_peer.go	3	session clock, not a wait: the dmrdsession Peer takes the time since the start and has no clock option (a dmrgo finding)
 timer	internal/testutils/session_peer.go	2	the 20 ms tick that drives the dmrdsession Peer, and the WaitReady bound that the caller sets
-elapsed	internal/testutils/starvation.go	2	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
-sleep	internal/testutils/starvation.go	1	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
 timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
 timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails
 deadline	internal/testutils/wt_peer.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

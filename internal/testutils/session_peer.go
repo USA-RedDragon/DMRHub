@@ -69,9 +69,10 @@ type SessionPeer struct {
 
 // NewSessionPeer returns a SessionPeer for the repeater id with the
 // password and the RPTO options, which may be empty. It pings every 200 ms
-// and logs in again after 5 s without an answer.
+// and logs in again after dmrdsession.TimeoutDefault without an answer,
+// the session timeout of MMDVMHost.
 func NewSessionPeer(id uint32, password, options string) (*SessionPeer, error) {
-	return NewSessionPeerTimed(id, password, options, 200*time.Millisecond, 5*time.Second)
+	return NewSessionPeerTimed(id, password, options, 200*time.Millisecond, dmrdsession.TimeoutDefault)
 }
 
 // NewSessionPeerTimed is NewSessionPeer with the time between two pings, or
@@ -277,17 +278,13 @@ func (p *SessionPeer) SendDMRD(pkt models.Packet) error {
 
 // Drain collects the DMRD packets received within timeout.
 func (p *SessionPeer) Drain(timeout time.Duration) []models.Packet {
-	var result []models.Packet
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case pkt := <-p.packets:
-			result = append(result, pkt)
-		case <-timer.C:
-			return result
-		}
-	}
+	return Collect(p.packets, timeout, nil)
+}
+
+// Receive collects the DMRD packets received until done accepts them, or
+// until within passes, as Collect does.
+func (p *SessionPeer) Receive(within time.Duration, done func([]models.Packet) bool) []models.Packet {
+	return Collect(p.packets, within, done)
 }
 
 // Close ends the session and closes the socket.

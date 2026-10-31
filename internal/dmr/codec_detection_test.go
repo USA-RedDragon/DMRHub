@@ -48,7 +48,7 @@ const (
 	tcOBCodec2    = 3129302
 	tcBursts      = 6 * 3
 	tcFrames      = tcBursts * layer2.VoiceSlotsPerBurst
-	tcRowWait     = 10 * time.Second
+	tcRowWait     = deliverWait
 )
 
 // step runs one step of a test whose steps share a network and run in

@@ -73,7 +73,7 @@ func TestTerminateLosesNoInboundBurst(t *testing.T) {
 			_ = talker.SendDMRD(makeGroupVoicePacket(1000001, 1, probe, false))
 			_ = talker.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, probe, false))
 			return false
-		}, 2*handshakeWait, 300*time.Millisecond, "the call does not reach the other replica")
+		}, deliverWait, 300*time.Millisecond, "the call does not reach the other replica")
 
 		const bursts, stopAt = 60, 10
 		reached := make(chan struct{})

@@ -326,19 +326,9 @@ func (n *c2Net) drain(d time.Duration) c2Got {
 // awaitStream returns the first n packets of stream that c gets.
 func awaitStream(t *testing.T, c *testutils.MMDVMClient, stream uint, n int) []models.Packet {
 	t.Helper()
-	var got []models.Packet
-	deadline := time.After(handshakeWait)
-	for len(got) < n {
-		select {
-		case p := <-c.ReceivedPackets():
-			if p.StreamID == stream {
-				got = append(got, p)
-			}
-		case <-deadline:
-			require.Failf(t, "the packets did not come", "got %d of %d packets of stream %d", len(got), n, stream)
-		}
-	}
-	return got
+	got := ofStream(testutils.Collect(c.ReceivedPackets(), deliverWait, func(pkts []models.Packet) bool { return len(ofStream(pkts, stream)) >= n }), stream)
+	require.GreaterOrEqual(t, len(got), n, "got %d of %d packets of stream %d", len(got), n, stream)
+	return got[:n]
 }
 
 // sendC2 sends pkts one burst period apart, as a radio does. The queue of

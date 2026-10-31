@@ -763,7 +763,7 @@ func TestABusyAMBEServerLeavesACallUnconverted(t *testing.T) {
 		require.Eventually(t, func() bool {
 			st := svc.Status(t.Context())
 			return len(st) == 1 && st[0].Answered
-		}, 5*time.Second, 10*time.Millisecond)
+		}, deliverWait, 10*time.Millisecond)
 		busy, refused := missedBusy(), svc.Refused()
 
 		group := call{group: true, dst: tcTG, src: tcTalker}

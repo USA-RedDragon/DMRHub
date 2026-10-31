@@ -6,9 +6,6 @@ eventually	internal/dmr/codec_detection_test.go	3	baseline of 2026-10-28, not re
 sleep	internal/dmr/codec_detection_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/contention_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/contention_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/data_routing_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/data_routing_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/data_routing_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/droidstar_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/droidstar_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/freedmr_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

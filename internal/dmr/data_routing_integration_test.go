@@ -22,7 +22,6 @@ package dmr_test
 import (
 	"math/rand/v2"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -31,9 +30,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// burstLatencyLimit is how soon a burst must reach the other repeater.
-const burstLatencyLimit = raceSlowdown * 150 * time.Millisecond
 
 func makeBurst(src, dst, streamID uint, group bool, frame dmrconst.FrameType, value uint, seq uint) models.Packet {
 	p := models.Packet{
@@ -90,7 +86,6 @@ func TestDataBurstsRouteLikeVoice(t *testing.T) {
 		defer c2.Close()
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		for j, tc := range []struct {
 			name  string
@@ -101,19 +96,14 @@ func TestDataBurstsRouteLikeVoice(t *testing.T) {
 			{"private to a repeater", 100002, false},
 		} {
 			for i, sent := range dataCall(1000001, tc.dst, uint(8000+j), tc.group) {
-				start := time.Now()
 				require.NoError(t, c1.SendDMRD(sent))
-				select {
-				case got := <-c2.ReceivedPackets():
-					assert.Less(t, time.Since(start), burstLatencyLimit, "%s burst %d", tc.name, i)
-					assert.Equal(t, sent.DMRData, got.DMRData, "%s burst %d octets", tc.name, i)
-					assert.Equal(t, sent.FrameType, got.FrameType, "%s burst %d", tc.name, i)
-					assert.Equal(t, sent.DTypeOrVSeq, got.DTypeOrVSeq, "%s burst %d", tc.name, i)
-					assert.Equal(t, tc.group, got.GroupCall, "%s burst %d", tc.name, i)
-				case <-time.After(drainWait):
-					t.Fatalf("%s burst %d did not arrive", tc.name, i)
-				}
-				time.Sleep(100 * time.Millisecond)
+				arrived := testutils.Collect(c2.ReceivedPackets(), deliverWait, func([]models.Packet) bool { return true })
+				require.Len(t, arrived, 1, "%s burst %d did not arrive before the next was sent", tc.name, i)
+				got := arrived[0]
+				assert.Equal(t, sent.DMRData, got.DMRData, "%s burst %d octets", tc.name, i)
+				assert.Equal(t, sent.FrameType, got.FrameType, "%s burst %d", tc.name, i)
+				assert.Equal(t, sent.DTypeOrVSeq, got.DTypeOrVSeq, "%s burst %d", tc.name, i)
+				assert.Equal(t, tc.group, got.GroupCall, "%s burst %d", tc.name, i)
 			}
 		}
 	})

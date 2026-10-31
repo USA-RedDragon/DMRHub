@@ -303,6 +303,30 @@ func TestARuleEditOnOneReplicaTakesEffectAtOnceOnAnother(t *testing.T) {
 	})
 }
 
+func TestARepeaterChangeWatcherOnAnotherReplicaSeesTheNewSubscriptions(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		other := newRulesHub(t, e.db, e.ps, e.kv)
+		require.True(t, e.hub.Subscribes(ruleReceiver, 2))
+		seen := make(chan bool, 1)
+		t.Cleanup(e.hub.OnRepeaterChange(func(id uint) {
+			if id == ruleReceiver {
+				select {
+				case seen <- e.hub.Subscribes(ruleReceiver, 2):
+				default:
+				}
+			}
+		}))
+		var r models.Repeater
+		require.NoError(t, e.db.First(&r, ruleReceiver).Error)
+		require.NoError(t, e.db.Model(&r).Association("TS1StaticTalkgroups").Delete(&models.Talkgroup{ID: 2}))
+		other.ReloadRepeater(context.Background(), ruleReceiver)
+		got := testutils.Collect(seen, failAfter, func([]bool) bool { return true })
+		require.Len(t, got, 1, "the change notice did not arrive")
+		assert.False(t, got[0], "the watcher ran before the replica dropped the talkgroup")
+	})
+}
+
 func (e *rulesEnv) setAccess(t *testing.T, tg uint, restricted bool, repeaters ...uint) {
 	t.Helper()
 	require.NoError(t, models.SetTalkgroupAccess(e.db, tg, restricted, repeaters))

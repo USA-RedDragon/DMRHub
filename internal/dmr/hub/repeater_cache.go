@@ -202,8 +202,8 @@ func (h *Hub) listenRepeaterChanges(sub pubsub.Subscription) {
 				continue
 			}
 			h.reloadRepeater(id)
-			h.watchers.call(repeaterChangedTopic, id)
 			h.reloadLocal(context.Background(), id)
+			h.watchers.call(repeaterChangedTopic, id)
 		}
 	}
 }

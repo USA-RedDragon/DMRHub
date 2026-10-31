@@ -23,11 +23,11 @@ package aprstest
 
 import (
 	"bufio"
+	"context"
 	"net"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 // Server accepts APRS-IS logins on 127.0.0.1 and records the lines that
@@ -37,12 +37,13 @@ type Server struct {
 	// answered as unverified.
 	Passcode string
 
-	ln     net.Listener
-	mu     sync.Mutex
-	logins []string
-	lines  []string
-	conns  []net.Conn
-	wg     sync.WaitGroup
+	ln      net.Listener
+	mu      sync.Mutex
+	logins  []string
+	lines   []string
+	conns   []net.Conn
+	changed chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewServer starts a Server that verifies passcode, closed at the end of
@@ -54,7 +55,7 @@ func NewServer(t *testing.T, passcode string) *Server {
 	if err != nil {
 		t.Fatalf("could not listen: %v", err)
 	}
-	s := &Server{Passcode: passcode, ln: ln}
+	s := &Server{Passcode: passcode, ln: ln, changed: make(chan struct{})}
 	s.wg.Add(1)
 	go s.accept()
 	t.Cleanup(s.Close)
@@ -97,16 +98,40 @@ func (s *Server) Lines() []string {
 	return append([]string(nil), s.lines...)
 }
 
-// WaitLines waits up to wait for n lines and returns the lines it has.
-func (s *Server) WaitLines(n int, wait time.Duration) []string {
-	deadline := time.Now().Add(wait)
-	for time.Now().Before(deadline) {
-		if got := s.Lines(); len(got) >= n {
+// WaitLogins waits until the server has n login lines or ctx ends, and
+// returns the login lines it has.
+func (s *Server) WaitLogins(ctx context.Context, n int) []string {
+	return s.wait(ctx, func() []string { return s.logins }, n)
+}
+
+// WaitLines waits until verified clients sent n lines or ctx ends, and
+// returns the lines it has.
+func (s *Server) WaitLines(ctx context.Context, n int) []string {
+	return s.wait(ctx, func() []string { return s.lines }, n)
+}
+
+func (s *Server) wait(ctx context.Context, list func() []string, n int) []string {
+	for {
+		s.mu.Lock()
+		got, changed := append([]string(nil), list()...), s.changed
+		s.mu.Unlock()
+		if len(got) >= n {
 			return got
 		}
-		time.Sleep(10 * time.Millisecond)
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return got
+		}
 	}
-	return s.Lines()
+}
+
+func (s *Server) add(list *[]string, line string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	*list = append(*list, line)
+	close(s.changed)
+	s.changed = make(chan struct{})
 }
 
 func (s *Server) accept() {
@@ -135,9 +160,7 @@ func (s *Server) serve(c net.Conn) {
 		return
 	}
 	login := r.Text()
-	s.mu.Lock()
-	s.logins = append(s.logins, login)
-	s.mu.Unlock()
+	s.add(&s.logins, login)
 	fields := strings.Fields(login)
 	if len(fields) < 4 || fields[0] != "user" || fields[2] != "pass" {
 		return
@@ -154,8 +177,6 @@ func (s *Server) serve(c net.Conn) {
 		if !verified || strings.HasPrefix(r.Text(), "#") {
 			continue
 		}
-		s.mu.Lock()
-		s.lines = append(s.lines, r.Text())
-		s.mu.Unlock()
+		s.add(&s.lines, r.Text())
 	}
 }

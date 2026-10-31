@@ -38,12 +38,13 @@ var ErrNotLoggedIn = errors.New("not logged in to APRS-IS")
 const (
 	dialTimeout  = 10 * time.Second
 	writeTimeout = 10 * time.Second
-	// readTimeout is how long the client waits for a line from the server,
-	// which sends a comment at least every 20 seconds.
-	readTimeout = 2 * time.Minute
-	minBackoff  = 5 * time.Second
-	maxBackoff  = 5 * time.Minute
+	minBackoff   = 5 * time.Second
+	maxBackoff   = 5 * time.Minute
 )
+
+// ReadTimeout is how long the client waits for a line from the server,
+// which sends a comment at least every 20 seconds.
+const ReadTimeout = 2 * time.Minute
 
 // Client keeps one login to APRS-IS and sends lines on it.
 type Client struct {
@@ -54,6 +55,7 @@ type Client struct {
 	mu       sync.Mutex
 	conn     net.Conn
 	verified bool
+	onLogin  func(verified bool)
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -67,6 +69,12 @@ func NewClient(cfg Config, version string) *Client {
 // Config returns the login of the client.
 func (c *Client) Config() Config {
 	return c.cfg
+}
+
+// OnLogin sets f, which the client calls with each login reply of the
+// server: true when the server verified the login. Call it before Start.
+func (c *Client) OnLogin(f func(verified bool)) {
+	c.onLogin = f
 }
 
 // Start connects and logs in, and does again each time the connection
@@ -162,7 +170,7 @@ func (c *Client) session(ctx context.Context) error {
 	}
 	r := bufio.NewScanner(conn)
 	for {
-		if err := conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+		if err := conn.SetReadDeadline(time.Now().Add(ReadTimeout)); err != nil {
 			return fmt.Errorf("could not read: %w", err)
 		}
 		if !r.Scan() {
@@ -184,6 +192,9 @@ func (c *Client) serverLine(line string) {
 	c.mu.Lock()
 	c.verified = verified
 	c.mu.Unlock()
+	if c.onLogin != nil {
+		c.onLogin(verified)
+	}
 	if verified {
 		slog.Info("APRS-IS: logged in", "login", c.cfg.Login, "server", c.cfg.Server)
 	} else {

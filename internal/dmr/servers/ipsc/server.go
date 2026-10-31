@@ -536,7 +536,7 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			delete(s.peers, o.ID)
 			if s.hub != nil {
 				id := uint(o.ID)
-				s.peerJobs.Do(id, func() { s.hub.DeactivateRepeater(ctx, id) })
+				s.peerJobs.Always(id, func() { s.hub.DeactivateRepeater(ctx, id) })
 			}
 		case ipscsession.OutputDropped:
 			slog.Debug("IPSC packet dropped", "peerID", o.ID, "peer", toUDPAddr(o.Addr), "reason", o.Reason)
@@ -561,8 +561,9 @@ type joiningPeer struct {
 // up takes the peer of o, which is up, and activates it in the hub. A peer
 // that registers gets reply, its registration reply, only once the hub
 // has it active, since the peer expects every call from then on, and so
-// do the packets that the server sends to its address until then. The
-// caller holds s.mu.
+// do the packets that the server sends to its address until then. When
+// the queue of the peer does not move, the server drops the peer without
+// a reply, and the peer registers again. The caller holds s.mu.
 func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte) {
 	slog.Info("IPSC peer registered", "peerID", o.ID)
 	p := &peerState{lastClaim: s.clock.Now()}
@@ -584,7 +585,7 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 		}
 		s.joining[to] = j
 	}
-	queued := s.peerJobs.Do(id, func() {
+	queued := s.peerJobs.Must(id, func() {
 		if s.hub.OwnerLeaving(ctx, id) {
 			s.awaitHandover(peer, since)
 		}
@@ -593,9 +594,14 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 			s.sendJoined(j, to, reply, true)
 		}
 	})
-	if !queued && reply != nil {
+	if queued {
+		return
+	}
+	if reply != nil {
 		delete(s.joining, to)
-		s.write(to, reply)
+	}
+	if out, ok := s.m.Drop(peer, nil); ok {
+		s.apply(ctx, out)
 	}
 }
 

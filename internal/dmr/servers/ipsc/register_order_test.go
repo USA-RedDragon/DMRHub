@@ -23,6 +23,7 @@ import (
 	"context"
 	"net"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -37,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/configulator/v2"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -143,5 +145,144 @@ func TestAPeerGetsItsCallsFromTheReplyToItsRegistration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint32(1000001), u.Source)
 		return
+	}
+}
+
+// registerRig is an IPSC server with a hub, whose writes a probe keeps.
+type registerRig struct {
+	t     *testing.T
+	s     *IPSCServer
+	probe *registerProbe
+	ps    pubsub.PubSub
+	id    uint32
+	from  *net.UDPAddr
+	done  <-chan struct{}
+}
+
+func newRegisterRig(t *testing.T, id uint32) *registerRig {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	memdb.Use(&cfg)
+	cfg.DMR.IPSC.Bind = "127.0.0.1"
+	cfg.DMR.IPSC.Port = 0
+	cfg.DMR.IPSC.NetworkID = 311860
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
+		Type:                  models.RepeaterTypeIPSC,
+	}).Error)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	h := hub.NewHub(database, kvStore, ps, nil)
+	r := &registerRig{t: t, ps: ps, id: id, from: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}}
+	r.probe = &registerProbe{out: make(chan []byte, 64), atReply: func() {}}
+	r.s = NewIPSCServer(&cfg, h, database)
+	r.s.writer = r.probe
+	require.NoError(t, r.s.Start(context.Background()))
+	t.Cleanup(func() {
+		_ = r.s.Stop(context.Background())
+		h.Stop(context.Background())
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), registerWait)
+	t.Cleanup(cancel)
+	r.done = ctx.Done()
+	return r
+}
+
+// hold stops the job queue of the peer of r, then queues jobs until add
+// refuses one, as a hub that does not answer fills it. It returns the
+// func that lets the queue run again, which the cleanup also calls.
+func (r *registerRig) hold(add func(uint, func()) bool) func() {
+	r.t.Helper()
+	release, running := make(chan struct{}), make(chan struct{})
+	require.True(r.t, r.s.peerJobs.Do(uint(r.id), func() {
+		close(running)
+		<-release
+	}))
+	<-running
+	for add(uint(r.id), func() {}) {
+	}
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	r.t.Cleanup(free)
+	return free
+}
+
+func (r *registerRig) next(what string) []byte {
+	r.t.Helper()
+	select {
+	case p := <-r.probe.out:
+		return p
+	case <-r.done:
+		require.FailNow(r.t, "no "+what+" within "+registerWait.String())
+		return nil
+	}
+}
+
+// TestAPeerThatRegistersWhileTheQueueIsFullGetsItsCalls registers a peer
+// while its job queue is full and publishes a private call to it at the
+// registration reply. The reply must wait for the hub to subscribe the
+// peer, so that the call reaches it.
+func TestAPeerThatRegistersWhileTheQueueIsFullGetsItsCalls(t *testing.T) {
+	t.Parallel()
+	r := newRegisterRig(t, 311892)
+	call := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         uint(r.id),
+		Repeater:    100001,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		StreamID:    76103,
+		BER:         -1,
+		RSSI:        -1,
+	}
+	msg, err := (&models.RawDMRPacket{Data: call.Encode()}).MarshalMsg(nil)
+	require.NoError(t, err)
+	published := make(chan error, 1)
+	r.probe.atReply = func() {
+		published <- r.ps.Publish("hub:packets:repeater:"+strconv.FormatUint(uint64(r.id), 10), msg)
+	}
+	free := r.hold(r.s.peerJobs.Do)
+	require.NoError(t, r.s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, r.id), r.from))
+	free()
+	require.Equal(t, ipscwire.OpRegisterReply, ipscwire.Opcode(r.next("registration reply")[0]))
+	require.NoError(t, <-published)
+	for {
+		p := r.next("call that was published at the registration reply")
+		if isUserPacket(ipscwire.Opcode(p[0])) {
+			return
+		}
+	}
+}
+
+// TestAStuckQueueDropsAPeerThatRegisters registers a peer while its job
+// queue holds MaxStateJobsPerRepeater jobs, so that the queue refuses the
+// subscription of the peer. The server must drop the peer without a
+// reply, so that the peer registers again, and never reply to a peer that
+// the hub does not serve.
+func TestAStuckQueueDropsAPeerThatRegisters(t *testing.T) {
+	t.Parallel()
+	r := newRegisterRig(t, 311893)
+	r.hold(r.s.peerJobs.Must)
+	err := r.s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, r.id), r.from)
+	require.NoError(t, err)
+	r.s.mu.Lock()
+	_, registered := r.s.m.Peer(r.id)
+	r.s.mu.Unlock()
+	assert.False(t, registered)
+	for {
+		select {
+		case p := <-r.probe.out:
+			require.NotEqual(t, ipscwire.OpRegisterReply, ipscwire.Opcode(p[0]), "the server replied to a peer that the hub does not serve")
+		default:
+			return
+		}
 	}
 }

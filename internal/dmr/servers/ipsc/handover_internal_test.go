@@ -21,6 +21,7 @@ package ipsc
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -100,39 +101,41 @@ func handedVoice(seq int) models.Packet {
 // further behind.
 func TestHandOverKeepsTheCallOnTime(t *testing.T) {
 	t.Parallel()
-	const id, copies, live = uint32(311860), 9, 10
-	log := newSendLog()
-	p := newPacer(clock.Real(), log.send, nil)
-	t.Cleanup(p.stop)
-	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
-	var report handoverReport
-	for i := range copies {
-		pkt := handedVoice(i)
-		b, err := pkt.MarshalMsg(nil)
-		require.NoError(t, err)
-		report.Lost = append(report.Lost, b)
-	}
-	since := time.Now()
-	s.finishHandover(id, since, &report)
-	var last time.Time
-	next := since
-	for i := copies; i < copies+live; i++ {
-		next = next.Add(burstTime)
-		time.Sleep(time.Until(next))
-		last = time.Now()
-		s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(i)})
-	}
-drain:
-	for {
-		select {
-		case <-log.got:
-		case <-time.After(copies * burstTime):
-			break drain
+	synctest.Test(t, func(t *testing.T) {
+		const id, copies, live = uint32(311860), 9, 10
+		log := newSendLog()
+		p := newPacer(clock.Real(), log.send, nil)
+		t.Cleanup(p.stop)
+		s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
+		var report handoverReport
+		for i := range copies {
+			pkt := handedVoice(i)
+			b, err := pkt.MarshalMsg(nil)
+			require.NoError(t, err)
+			report.Lost = append(report.Lost, b)
 		}
-	}
-	times := log.times(slotKey{peer: id})
-	require.GreaterOrEqual(t, len(times), copies+live)
-	assert.Less(t, times[len(times)-1].Sub(last), 2*burstTime, "the call fell behind the copies of the handover")
+		since := time.Now()
+		s.finishHandover(id, since, &report)
+		var last time.Time
+		next := since
+		for i := copies; i < copies+live; i++ {
+			next = next.Add(burstTime)
+			time.Sleep(time.Until(next))
+			last = time.Now()
+			s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(i)})
+		}
+	drain:
+		for {
+			select {
+			case <-log.got:
+			case <-time.After(copies * burstTime):
+				break drain
+			}
+		}
+		times := log.times(slotKey{peer: id})
+		require.GreaterOrEqual(t, len(times), copies+live)
+		assert.Less(t, times[len(times)-1].Sub(last), 2*burstTime, "the call fell behind the copies of the handover")
+	})
 }
 
 func reportOf(t *testing.T, seqs ...int) *handoverReport {
@@ -154,49 +157,51 @@ func reportOf(t *testing.T, seqs ...int) *handoverReport {
 // the gap. The peer must get each burst once and in order.
 func TestAnEarlyHandoverSendsWhatFollowsIt(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311860)
-	got := make(chan uint16, 20)
-	p := newPacer(clock.Real(), func(_ slotKey, frame []byte) {
-		u, err := ipscwire.DecodeUser(frame)
-		if assert.NoError(t, err) {
-			got <- u.RTP.Seq
+	synctest.Test(t, func(t *testing.T) {
+		const id = uint32(311860)
+		got := make(chan uint16, 20)
+		p := newPacer(clock.Real(), func(_ slotKey, frame []byte) {
+			u, err := ipscwire.DecodeUser(frame)
+			if assert.NoError(t, err) {
+				got <- u.RTP.Seq
+			}
+		}, nil)
+		t.Cleanup(p.stop)
+		s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
+		since := time.Now()
+		s.startHandover(id, since, reportOf(t, 0, 1, 2))
+		s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(2)})
+		s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(3)})
+		var seqs []uint16
+		next := func() {
+			select {
+			case seq := <-got:
+				seqs = append(seqs, seq)
+			case <-time.After(time.Second):
+				require.FailNow(t, "a burst did not go out")
+			}
 		}
-	}, nil)
-	t.Cleanup(p.stop)
-	s := &IPSCServer{clock: clock.Real(), pacer: p, localID: 1, moving: map[uint32]*moving{id: newMoving()}}
-	since := time.Now()
-	s.startHandover(id, since, reportOf(t, 0, 1, 2))
-	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(2)})
-	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(3)})
-	var seqs []uint16
-	next := func() {
+		for range 4 {
+			next()
+		}
+		s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(5)})
+		s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(6)})
 		select {
 		case seq := <-got:
-			seqs = append(seqs, seq)
-		case <-time.After(time.Second):
-			require.FailNow(t, "a burst did not go out")
+			require.Failf(t, "a burst after a gap went out before the full report", "RTP sequence %d", seq)
+		case <-time.After(3 * burstTime):
 		}
-	}
-	for range 4 {
-		next()
-	}
-	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(5)})
-	s.route(hub.RoutedPacket{RepeaterID: uint(id), Packet: handedVoice(6)})
-	select {
-	case seq := <-got:
-		require.Failf(t, "a burst after a gap went out before the full report", "RTP sequence %d", seq)
-	case <-time.After(3 * burstTime):
-	}
-	s.finishHandover(id, since, reportOf(t, 0, 1, 2, 3, 4))
-	for range 3 {
-		next()
-	}
-	select {
-	case seq := <-got:
-		require.Failf(t, "the peer got a burst again", "RTP sequence %d", seq)
-	case <-time.After(3 * burstTime):
-	}
-	for i, seq := range seqs {
-		assert.Equal(t, seqs[0]+uint16(i), seq, "burst %d", i) //nolint:gosec
-	}
+		s.finishHandover(id, since, reportOf(t, 0, 1, 2, 3, 4))
+		for range 3 {
+			next()
+		}
+		select {
+		case seq := <-got:
+			require.Failf(t, "the peer got a burst again", "RTP sequence %d", seq)
+		case <-time.After(3 * burstTime):
+		}
+		for i, seq := range seqs {
+			assert.Equal(t, seqs[0]+uint16(i), seq, "burst %d", i) //nolint:gosec
+		}
+	})
 }

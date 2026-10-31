@@ -131,9 +131,6 @@ timer	internal/dmr/routing_settings_integration_test.go	1	baseline of 2026-10-28
 eventually	internal/dmr/rpto_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/rpto_integration_test.go	9	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/servers/ipsc/handover_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/servers/ipsc/handover_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/servers/ipsc/handover_internal_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
 timer	internal/dmr/servers/ipsc/hang_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/pacer_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

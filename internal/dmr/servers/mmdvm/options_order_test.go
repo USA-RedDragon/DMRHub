@@ -22,6 +22,7 @@ package mmdvm
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -254,4 +255,98 @@ func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
 	state := s.links[from.String()].m.State()
 	s.mu.Unlock()
 	require.Equal(t, dmrdsession.StateAuth, state)
+}
+
+// TestFullRecordsQueueWithholdsTheOptionsAck sends an RPTO while the
+// records queue of the repeater is full. The options cannot be applied,
+// so the server must not acknowledge them: the repeater sends the RPTO
+// again until it gets an RPTACK, and the next one, once the queue drains,
+// must be applied and acknowledged.
+func TestFullRecordsQueueWithholdsTheOptionsAck(t *testing.T) {
+	t.Parallel()
+	const id = uint32(311894)
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	memdb.Use(&cfg)
+	cfg.DMR.MMDVM.Bind = "127.0.0.1"
+	cfg.DMR.MMDVM.Port = 0
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
+		Type:                  models.RepeaterTypeMMDVM,
+		Password:              testPassword,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	h := hub.NewHub(database, kvStore, ps, nil)
+	s, err := MakeServer(&cfg, h, database, ps, kvStore, "test", "test")
+	require.NoError(t, err)
+	s.newSalt = func() (uint32, error) { return testSalt, nil }
+	require.NoError(t, s.Start(context.Background()))
+	t.Cleanup(func() {
+		_ = s.Stop(context.Background())
+		h.Stop(context.Background())
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
+
+	probe := &optionsProbe{out: make(chan []byte, 16), atAck: func() {}}
+	s.transports.Store(probeTransport, probe)
+	from := endpoint{transport: probeTransport, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}}
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+	defer cancel()
+	next := func(what string) []byte {
+		t.Helper()
+		select {
+		case p := <-probe.out:
+			return p
+		case <-ctx.Done():
+			require.FailNow(t, "no "+what+" within "+answerWait.String())
+			return nil
+		}
+	}
+	send := func(c dmrd.Control) {
+		p, err := c.AppendBinary(nil, dmrd.DialectMMDVM)
+		require.NoError(t, err)
+		s.handleFrom(context.Background(), from, p, time.Now())
+	}
+	send(dmrd.Control{Command: dmrd.CommandRPTL, ID: id})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("salt"), dmrd.DialectMMDVM))
+	token, err := dmrdauth.Token(dmrd.DialectMMDVM, testSalt, []byte(testPassword))
+	require.NoError(t, err)
+	send(dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the login"), dmrd.DialectMMDVM))
+	s.handleFrom(context.Background(), from, rptc(t, dmrd.DialectMMDVM, id), time.Now())
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the config"), dmrd.DialectMMDVM))
+	s.records.Wait()
+
+	gate := make(chan struct{})
+	release := sync.OnceFunc(func() { close(gate) })
+	t.Cleanup(release)
+	for s.records.Do(uint(id), func() { <-gate }) {
+	}
+	send(dmrd.Control{Command: dmrd.CommandRPTO, ID: id, Text: []byte("TS1=91;")})
+	select {
+	case p := <-probe.out:
+		require.Failf(t, "the options of a full queue were acknowledged", "%q", p)
+	default:
+	}
+	release()
+	s.records.Wait()
+	select {
+	case p := <-probe.out:
+		require.Failf(t, "a packet went out for options that were dropped", "%q", p)
+	default:
+	}
+
+	send(dmrd.Control{Command: dmrd.CommandRPTO, ID: id, Text: []byte("TS1=91;")})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the resent options"), dmrd.DialectMMDVM))
+	rpt, err := models.FindRepeaterByID(database, uint(id))
+	require.NoError(t, err)
+	require.Len(t, rpt.TS1StaticTalkgroups, 1)
+	require.Equal(t, uint(91), rpt.TS1StaticTalkgroups[0].ID)
 }

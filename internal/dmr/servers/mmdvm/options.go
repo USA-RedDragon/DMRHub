@@ -43,7 +43,8 @@ import (
 // text that cannot be read. ack, when not nil, is the RPTACK of the
 // options. It goes out after the options are applied, since the repeater
 // expects the calls of its new talkgroups from then on, and only while the
-// session still runs.
+// session still runs. Options that the full records queue of the repeater
+// cannot take get no RPTACK, so that the repeater sends them again.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack []byte) {
 	ep := l.ep
 	sendAck := func() {
@@ -84,7 +85,7 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 			slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
 		}
 	}) {
-		sendAck()
+		slog.Warn("Withholding the RPTACK of repeater options while the records queue of the repeater is full; the repeater sends them again", "repeaterID", id)
 	}
 }
 

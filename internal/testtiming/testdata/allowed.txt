@@ -43,8 +43,8 @@ elapsed	internal/dmr/mmdvm_slow_redis_integration_test.go	1	the time.Until of th
 sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the call lasts while the other repeaters ping, log out and send and Redis holds; a starved machine only spreads them
 sleep	internal/dmr/modem_integration_test.go	2	pace, not a wait: one burst each 60 ms, as a radio and a network repeater send a call
 elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
-sleep	internal/dmr/move_integration_test.go	2	pace of the call, one burst each rotationInterval as a radio sends it, and a 5 ms pause after the keepalive that makes the front move the peer, before the burst at the move
-timer	internal/dmr/move_integration_test.go	1	the bound of the wait for a burst at the move: drainWait for the burst before it, and reportHold, the product hold of the handover report, for the burst at the move, which the test checks did not wait for the full hold
+sleep	internal/dmr/move_integration_test.go	1	pace of the call, one burst each rotationInterval as a radio sends it
+timer	internal/dmr/move_integration_test.go	1	the step of the test clock of the IPSC move test, one rotationInterval as the bursts go, and the failure bound of its waits for a burst; the check of the burst at the move holds the test clock and has no time bound
 sleep	internal/dmr/net_integration_test.go	2	minimum, not a wait: callHoldTime keeps each call past the 100 ms key-up threshold of the call tracker, which drops shorter calls; starvation only lengthens it
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them

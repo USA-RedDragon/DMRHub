@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -366,137 +367,139 @@ func (s *heldSubscription) Close() error {
 // replica in a call, right before a burst. A peer plays each burst on the
 // 60 ms grid of the call and fills the slot of a burst that is not there
 // in time, so the burst at the move must not wait for the full handover
-// report, which comes handoverSettle after the claim. The new replica gets
-// the full report only once the peer got the burst at the move, or after
-// reportHold, which is less than handoverWait.
+// report, which comes handoverSettle after the claim, nor for
+// handoverWait. The replicas run on a test clock that moves with the
+// bursts and stops at the move: the peer must get the burst at the move
+// while the clock stands and the new replica does not have the full
+// report.
 func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		const bursts, moveAt, stream = 60, 25, 7601
-		const reportHold = 800 * time.Millisecond
-		stack.SeedUser(t, 1000001, "N0CALL")
-		stack.SeedTalkgroup(t, 1, "TG1")
-		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
-		stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
-		stack.AssignTS1StaticTG(t, 200001, 1)
-		first := testutils.Register(t, stack.Hub, stack.KV)
-		held := &heldReport{PubSub: stack.PubSub, topic: "hub:handover:" + models.RepeaterTypeIPSC + ":200001", release: make(chan struct{})}
-		shared := stack.PubSub
-		stack.PubSub = held
-		second, _ := stack.SpawnRegisteredReplica(t)
-		stack.PubSub = shared
-		stack.StartServers(t)
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			clk := clock.NewFake(time.Now())
+			checkIPSCMoveKeepsEachBurstInItsSlot(t, clk, testutils.SetupIntegrationStack(t, be, testutils.ClockOn(clk)))
+		})
+	}
+}
 
-		front := testutils.NewUDPFront(t)
-		front.Add(t, stack.IPSCAddr)
-		peer := testutils.NewIPSCClient(200001, ipscAuthKey)
-		require.NoError(t, peer.Connect(front.Addr()))
-		t.Cleanup(peer.Close)
-		require.NoError(t, peer.WaitReady(handshakeWait))
-		talker := testutils.NewMMDVMClient(100001, "", testPassword)
-		require.NoError(t, talker.Connect(second.MMDVMAddr))
-		defer talker.Close()
-		require.NoError(t, talker.WaitReady(handshakeWait))
-		waitClaimed(t, stack, 200001)
-		front.Add(t, second.IPSCAddr)
+func checkIPSCMoveKeepsEachBurstInItsSlot(t *testing.T, clk *clock.Fake, stack *testutils.IntegrationStack) {
+	t.Helper()
+	const bursts, moveAt, stream = 60, 25, 7601
+	stack.SeedUser(t, 1000001, "N0CALL")
+	stack.SeedTalkgroup(t, 1, "TG1")
+	stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+	stack.SeedIPSCRepeater(t, 200001, 1000001, ipscAuthKey)
+	stack.AssignTS1StaticTG(t, 200001, 1)
+	first := testutils.Register(t, stack.Hub, stack.KV)
+	held := &heldReport{PubSub: stack.PubSub, topic: "hub:handover:" + models.RepeaterTypeIPSC + ":200001", release: make(chan struct{})}
+	shared := stack.PubSub
+	stack.PubSub = held
+	second, _ := stack.SpawnRegisteredReplica(t)
+	stack.PubSub = shared
+	stack.StartServers(t)
 
-		var got []uint16
-		reached := make(chan int, 2*bursts)
-		stop := make(chan struct{})
-		collected := make(chan struct{})
-		go func() {
-			defer close(collected)
-			for {
+	front := testutils.NewUDPFront(t)
+	front.Add(t, stack.IPSCAddr)
+	peer := testutils.NewIPSCClient(200001, ipscAuthKey)
+	require.NoError(t, peer.Connect(front.Addr()))
+	t.Cleanup(peer.Close)
+	require.NoError(t, peer.WaitReady(handshakeWait))
+	talker := testutils.NewMMDVMClient(100001, "", testPassword)
+	require.NoError(t, talker.Connect(second.MMDVMAddr))
+	defer talker.Close()
+	require.NoError(t, talker.WaitReady(handshakeWait))
+	waitClaimed(t, stack, 200001)
+	front.Add(t, second.IPSCAddr)
+
+	var got []uint16
+	reached := make(chan int, 2*bursts)
+	stop := make(chan struct{})
+	collected := make(chan struct{})
+	go func() {
+		defer close(collected)
+		for {
+			select {
+			case <-stop:
+				return
+			case b := <-peer.ReceivedPackets():
+				u, err := ipscwire.DecodeUser(b.Data)
+				if err != nil {
+					continue
+				}
+				got = append(got, u.RTP.Seq)
 				select {
-				case <-stop:
-					return
-				case b := <-peer.ReceivedPackets():
-					u, err := ipscwire.DecodeUser(b.Data)
-					if err != nil {
-						continue
-					}
-					got = append(got, u.RTP.Seq)
-					select {
-					case reached <- int(u.RTP.Seq - got[0]):
-					default:
-					}
+				case reached <- int(u.RTP.Seq - got[0]):
+				default:
 				}
 			}
-		}()
-		waitFor := func(n int, d time.Duration) bool {
-			tm := time.NewTimer(d)
-			defer tm.Stop()
-			for {
-				select {
-				case r := <-reached:
-					if r == n {
-						return true
-					}
-				case <-tm.C:
+		}
+	}()
+	waitFor := func(n int, d time.Duration, step bool) bool {
+		tick := time.NewTicker(rotationInterval)
+		defer tick.Stop()
+		for left := d / rotationInterval; ; {
+			select {
+			case r := <-reached:
+				if r == n {
+					return true
+				}
+			case <-tick.C:
+				if left--; left < 0 {
 					return false
 				}
+				if step {
+					clk.Advance(rotationInterval)
+				}
 			}
 		}
+	}
 
-		released := make(chan bool, 1)
-		starvation := testutils.StartStarvationProbe(t)
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			next := time.Now()
-			for i := range bursts {
-				if i == moveAt {
-					if !assert.True(t, waitFor(moveAt-1, drainWait), "the peer got the burst before the move") {
-						released <- false
-						close(held.release)
-						return
-					}
-					first.MarkDraining(t.Context())
-					front.Drain(stack.IPSCAddr)
-					assert.NoError(t, peer.SendAlive())
-					time.Sleep(5 * time.Millisecond)
-					next = time.Now()
-				}
-				p := makeGroupVoicePacket(1000001, 1, stream, false)
-				p.Seq = uint(i)
-				p.DTypeOrVSeq = dmrconst.VoiceA + uint(i%6)
-				if i%6 == 0 {
-					p.FrameType = dmrconst.FrameVoiceSync
-				}
-				if i == bursts-1 {
-					p = makeGroupVoiceTermPacket(1000001, 1, stream, false)
-					p.Seq = uint(i)
-				}
-				assert.NoError(t, talker.SendDMRD(p))
-				if i == moveAt {
-					released <- waitFor(moveAt, reportHold)
-					close(held.release)
-					next = time.Now()
-				}
-				next = next.Add(rotationInterval)
-				time.Sleep(time.Until(next))
-			}
-		}()
-		<-done
-		waitFor(bursts-1, deliverWait)
-		close(stop)
-		<-collected
-		require.Equal(t, 1, front.Moves(), "the front moved the peer")
-		assert.Zero(t, peer.Downs(), "the peer lost its registration")
-		atMove := <-released
-		next := 0
-		for _, seq := range got {
-			switch n := int(seq - got[0]); {
-			case n == next:
-				next++
-			case n > next:
-				require.Failf(t, "the peer got a burst before an earlier one", "burst %d came before burst %d", n, next)
-			}
+	atMove := false
+	next := time.Now()
+	for i := range bursts {
+		if i == moveAt {
+			require.True(t, waitFor(moveAt-1, drainWait, true), "the peer got the burst before the move")
+			first.MarkDraining(t.Context())
+			front.Drain(stack.IPSCAddr)
+			require.NoError(t, peer.SendAlive())
 		}
-		require.Equal(t, bursts, next, "the peer lost bursts")
-		starvation.SkipIfStarved(t, starvationBound)
-		require.True(t, atMove, "the burst at the move waited for the full handover report")
-	})
+		p := makeGroupVoicePacket(1000001, 1, stream, false)
+		p.Seq = uint(i)
+		p.DTypeOrVSeq = dmrconst.VoiceA + uint(i%6)
+		if i%6 == 0 {
+			p.FrameType = dmrconst.FrameVoiceSync
+		}
+		if i == bursts-1 {
+			p = makeGroupVoiceTermPacket(1000001, 1, stream, false)
+			p.Seq = uint(i)
+		}
+		require.NoError(t, talker.SendDMRD(p))
+		if i == moveAt {
+			atMove = waitFor(moveAt, drainWait, false)
+			close(held.release)
+			next = time.Now()
+		}
+		clk.Advance(rotationInterval)
+		next = next.Add(rotationInterval)
+		time.Sleep(time.Until(next))
+	}
+	waitFor(bursts-1, deliverWait, true)
+	close(stop)
+	<-collected
+	require.Equal(t, 1, front.Moves(), "the front moved the peer")
+	assert.Zero(t, peer.Downs(), "the peer lost its registration")
+	require.True(t, atMove, "the burst at the move waited for the full handover report or for handoverWait")
+	want := 0
+	for _, seq := range got {
+		switch n := int(seq - got[0]); {
+		case n == want:
+			want++
+		case n > want:
+			require.Failf(t, "the peer got a burst before an earlier one", "burst %d came before burst %d", n, want)
+		}
+	}
+	require.Equal(t, bursts, want, "the peer lost bursts")
 }
 
 // TestAMovedCallIsOneRow moves the repeater of a talker to the other

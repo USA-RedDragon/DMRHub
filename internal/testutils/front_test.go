@@ -51,8 +51,9 @@ func readUDP(t *testing.T, c *net.UDPConn) (string, *net.UDPAddr) {
 // TestUDPFrontPassesOnWhatAMovedSessionReceived moves the session of a
 // client while the front holds what the draining backend sent it and has
 // not passed on yet, as when the front is slow under load. The client gets
-// all of it, then what the new backend sends, and nothing that the old
-// backend sends after the move.
+// all of it, and what the old backend sends until the front passed the
+// packet that moved the client on, then what the new backend sends, and
+// nothing that the old backend sends after.
 func TestUDPFrontPassesOnWhatAMovedSessionReceived(t *testing.T) {
 	t.Parallel()
 	f := NewUDPFront(t)
@@ -66,21 +67,24 @@ func TestUDPFrontPassesOnWhatAMovedSessionReceived(t *testing.T) {
 	_, oldUp := readUDP(t, oldBackend)
 	f.Add(t, newBackend.LocalAddr().String())
 
-	want := []string{"1", "2", "3", "4", "5", "new"}
-	sent := want[:5]
+	want := []string{"1", "2", "3", "4", "5", "before", "new"}
 	f.mu.Lock()
-	for _, p := range sent {
+	for _, p := range want[:5] {
 		_, err := oldBackend.WriteToUDP([]byte(p), oldUp)
 		require.NoError(t, err)
 	}
 	f.find(oldBackend.LocalAddr().String()).draining = true
+	f.mu.Unlock()
 	clientAddr, ok := client.LocalAddr().(*net.UDPAddr)
 	require.True(t, ok)
-	moved := f.sessionLocked(clientAddr)
+	moved, old := f.sessionFor(clientAddr)
 	require.NotNil(t, moved)
-	f.mu.Unlock()
+	require.NotNil(t, old)
+	_, err = oldBackend.WriteToUDP([]byte("before"), oldUp)
+	require.NoError(t, err)
 	_, err = moved.up.WriteToUDP([]byte("move"), moved.backend.addr)
 	require.NoError(t, err)
+	f.endMove(old)
 	_, newUp := readUDP(t, newBackend)
 	_, err = newBackend.WriteToUDP([]byte("new"), newUp)
 	require.NoError(t, err)

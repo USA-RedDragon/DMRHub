@@ -37,8 +37,11 @@ import (
 // of a session drains, as Envoy Gateway marks a pod that is terminating,
 // the next packet of the client opens a new session, from a new socket, to
 // a backend that does not drain; the client first gets what the front
-// already received of the old session, and nothing that the old backend
-// sends after. When a backend is removed, its sessions end, and the next
+// received of the old session until it passed that packet on to the new
+// backend, and nothing that the old backend sends after. The old backend
+// stamps what it sent after that time no earlier than the new backend
+// stamps the packet, so a handover from that time holds every packet that
+// the front drops, however late the machine runs the front. When a backend is removed, its sessions end, and the next
 // packet of each client opens a new one. Once a session ends, nothing more of
 // it reaches the client.
 type UDPFront struct {
@@ -166,19 +169,25 @@ func (f *UDPFront) end(key string, s *frontSession) {
 }
 
 // move ends the session s of the client key at a move: s passes on what it
-// received up to a marker that the front sends it now, and then closes. The
-// caller holds f.mu.
+// receives until endMove. The caller holds f.mu.
 func (f *UDPFront) move(key string, s *frontSession) {
 	delete(f.sessions, key)
 	f.ended[key] = append(f.ended[key], time.Now())
 	s.moved = true
 	f.moving[s] = struct{}{}
+}
+
+// endMove sends s, which moved, a marker after which it passes on nothing
+// and closes.
+func (f *UDPFront) endMove(s *frontSession) {
 	if a, ok := s.up.LocalAddr().(*net.UDPAddr); ok {
 		if _, err := f.marker.WriteToUDP([]byte{0}, a); err == nil {
 			return
 		}
 	}
+	f.mu.Lock()
 	delete(f.moving, s)
+	f.mu.Unlock()
 	_ = s.up.Close()
 }
 
@@ -239,49 +248,51 @@ func (f *UDPFront) serve() {
 			}
 			continue
 		}
-		if s := f.sessionFor(client); s != nil {
+		s, old := f.sessionFor(client)
+		if s != nil {
 			_, _ = s.up.WriteToUDP(buf[:n], s.backend.addr)
+		}
+		if old != nil {
+			f.endMove(old)
 		}
 	}
 }
 
-func (f *UDPFront) sessionFor(client *net.UDPAddr) *frontSession {
+// sessionFor returns the session of client for its next packet, and the
+// session that it replaced at a move, which the caller ends with endMove
+// once it passed the packet on.
+func (f *UDPFront) sessionFor(client *net.UDPAddr) (*frontSession, *frontSession) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.sessionLocked(client)
-}
-
-// sessionLocked returns the session of client for its next packet. The
-// caller holds f.mu.
-func (f *UDPFront) sessionLocked(client *net.UDPAddr) *frontSession {
 	s, ok := f.sessions[client.String()]
 	if ok && !s.backend.draining {
-		return s
+		return s, nil
 	}
 	if !ok && time.Now().Before(f.holdUntil) {
-		return nil
+		return nil, nil
 	}
 	b := f.pick()
 	if b == nil {
-		return s
+		return s, nil
 	}
+	up, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		return nil, nil
+	}
+	var old *frontSession
 	var after <-chan struct{}
 	if ok {
 		f.moves++
 		s.backend.sessions--
 		f.move(client.String(), s)
-		after = s.done
-	}
-	up, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		return nil
+		old, after = s, s.done
 	}
 	s = &frontSession{client: client, up: up, backend: b, done: make(chan struct{}), after: after}
 	b.sessions++
 	f.sessions[client.String()] = s
 	f.wg.Add(1)
 	go f.back(s)
-	return s
+	return s, old
 }
 
 func (f *UDPFront) back(s *frontSession) {

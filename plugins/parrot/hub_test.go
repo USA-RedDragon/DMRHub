@@ -34,6 +34,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const replyWait = time.Minute
+
 const (
 	caller   = uint(1000002)
 	repeater = uint(100003)
@@ -54,6 +56,8 @@ func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 		time.Sleep(burstTime)
 	}
+	wait, cancel := context.WithTimeout(t.Context(), replyDelay+replyWait)
+	defer cancel()
 	for i := range call {
 		select {
 		case rp := <-srv.Packets:
@@ -62,8 +66,8 @@ func TestTheParrotAnswersThroughTheHub(t *testing.T) {
 			require.Equal(t, parrotID, got.Src, "burst %d", i)
 			require.Equal(t, caller, got.Dst, "burst %d", i)
 			require.False(t, got.GroupCall, "burst %d", i)
-		case <-time.After(replyDelay + 3*time.Second):
-			t.Fatalf("burst %d of the reply did not reach the repeater", i)
+		case <-wait.Done():
+			t.Fatalf("burst %d of the reply did not reach the repeater within %s", i, replyDelay+replyWait)
 		}
 	}
 }

@@ -247,9 +247,7 @@ timer	internal/testutils/wsclient_test.go	1	baseline of 2026-10-28, not reviewed
 elapsed	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/wt_peer.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	plugins/locator/hub_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	plugins/locator/hub_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	plugins/locator/hub_test.go	2	radio pacing: the bursts go into a hub on the real clock 60 ms apart, as a radio sends them; the waits for the answers are events
 sleep	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (waitAnswers)
 timer	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (heardOften)
-sleep	plugins/parrot/hub_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	plugins/parrot/hub_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	plugins/parrot/hub_test.go	1	radio pacing: the bursts of the captured call go into a hub on the real clock one burst time apart, as a radio sends them; the wait for the reply is an event

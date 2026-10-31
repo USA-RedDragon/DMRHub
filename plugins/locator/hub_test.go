@@ -48,11 +48,13 @@ func packetOf(b *pluginv1.Burst) models.Packet {
 	}
 }
 
-// atRepeater collects the bursts that the hub sends to the repeater.
-func atRepeater(t *testing.T, srv *hub.ServerHandle) func() []*pluginv1.Burst {
+// atRepeater collects the bursts that the hub sends to the repeater. more
+// gets a value after each burst.
+func atRepeater(t *testing.T, srv *hub.ServerHandle) (sent func() []*pluginv1.Burst, more <-chan struct{}) {
 	t.Helper()
 	var mu sync.Mutex
 	var got []*pluginv1.Burst
+	moreCh := make(chan struct{}, 1)
 	done := make(chan struct{})
 	t.Cleanup(func() { close(done) })
 	go func() {
@@ -65,6 +67,10 @@ func atRepeater(t *testing.T, srv *hub.ServerHandle) func() []*pluginv1.Burst {
 					mu.Lock()
 					got = append(got, plugins.ToBurst(&rp.Packet))
 					mu.Unlock()
+					select {
+					case moreCh <- struct{}{}:
+					default:
+					}
 				}
 			}
 		}
@@ -73,6 +79,19 @@ func atRepeater(t *testing.T, srv *hub.ServerHandle) func() []*pluginv1.Burst {
 		mu.Lock()
 		defer mu.Unlock()
 		return append([]*pluginv1.Burst(nil), got...)
+	}, moreCh
+}
+
+const answerWait = time.Minute
+
+func await[T any](t *testing.T, ch <-chan T, what string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), answerWait)
+	defer cancel()
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		t.Fatalf("%s within %s", what, answerWait)
 	}
 }
 
@@ -83,25 +102,22 @@ func TestTheLocatorTracksARadioThroughTheHub(t *testing.T) {
 	t.Parallel()
 	h, database, ps, srv := testutils.RepeaterHub(t, radio, repeater)
 	require.NoError(t, models.SetPositionTracking(database, radio, radio, true, time.Now().Add(-time.Minute)))
-	var mu sync.Mutex
-	var notified []models.Position
+	notified := make(chan models.Position, 8)
 	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, func(p models.Position) {
-		mu.Lock()
-		defer mu.Unlock()
-		notified = append(notified, p)
+		notified <- p
 	})
 	listener.Run(t, "Location", []models.PluginRange{{First: 5050, Last: 5059}}, locator.Serve)
-	sent := atRepeater(t, srv)
+	sent, more := atRepeater(t, srv)
 
 	for _, b := range radioBursts(t, registration(t, ars.TypeDeviceRegistration), false) {
 		h.RoutePacket(context.Background(), packetOf(b), models.RepeaterTypeMMDVM)
 		time.Sleep(60 * time.Millisecond)
 	}
-	var got []answer
-	require.Eventually(t, func() bool {
+	got := answers(t, sent())
+	for len(got) < 2 {
+		await(t, more, "the locator did not answer the registration with an ACK and a request")
 		got = answers(t, sent())
-		return len(got) >= 2
-	}, 10*time.Second, 50*time.Millisecond)
+	}
 	require.NotNil(t, got[0].ars)
 	assert.Equal(t, ars.TypeAck, got[0].ars.Header.Type)
 	require.NotNil(t, got[1].lrrp)
@@ -116,11 +132,8 @@ func TestTheLocatorTracksARadioThroughTheHub(t *testing.T) {
 		h.RoutePacket(context.Background(), packetOf(b), models.RepeaterTypeMMDVM)
 		time.Sleep(60 * time.Millisecond)
 	}
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(notified) == 1
-	}, 5*time.Second, 20*time.Millisecond)
+	await(t, notified, "the hub did not notify the position")
+	require.Empty(t, notified, "the hub notified the position more than once")
 	var stored []models.Position
 	require.NoError(t, database.Find(&stored).Error)
 	require.Len(t, stored, 1)

@@ -31,7 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const droidStarReconnects = 5
+const (
+	droidStarReconnects = 5
+	droidStarRelogin    = 10 * time.Second
+)
 
 // TestExternalDroidStar runs a desktop DroidStar (nostar/DroidStar with the
 // DROIDSTAR_E2E_AUTOCONNECT hook) as an MMDVM client of the hub. It must
@@ -75,7 +78,7 @@ func TestExternalDroidStar(t *testing.T) {
 			t.Log(ds.Log())
 		}
 	}()
-	require.True(t, waitLogin(t, stack, hotspot, start, 30*time.Second), "DroidStar did not log in")
+	require.True(t, waitLogin(t, stack, hotspot, start, deliverWait), "DroidStar did not log in")
 	t.Logf("login after %s", time.Since(start).Round(time.Millisecond))
 
 	r := &droidStarRun{stack: stack, ds: ds, hotspot: hotspot, stream: 0x1D00}
@@ -106,7 +109,6 @@ func (r *droidStarRun) hearCalls(t *testing.T) {
 	defer src.Close()
 	require.NoError(t, src.Connect(r.stack.MMDVMAddr))
 	require.NoError(t, src.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	for _, c := range []struct {
 		tg    uint
 		slot2 bool
@@ -117,7 +119,7 @@ func (r *droidStarRun) hearCalls(t *testing.T) {
 		tx.slot2 = c.slot2
 		sendPackets(t, src.SendDMRD, tx.packets(r.stream))
 		want := fmt.Sprintf("New DMR stream from  %d  to  %d", mxRadio, c.tg)
-		_, ok := r.ds.WaitLine(from, want, 5*time.Second)
+		_, ok := r.ds.WaitLine(from, want, deliverWait)
 		assert.True(t, ok, "DroidStar did not show %q", want)
 		time.Sleep(time.Second)
 	}
@@ -130,9 +132,9 @@ func (r *droidStarRun) reconnects(t *testing.T, name, line string, mode testutil
 		from := r.ds.Lines()
 		at := time.Now()
 		r.stack.RestartMMDVM(t, mode)
-		_, ok := r.ds.WaitLine(from, line, 20*time.Second)
+		_, ok := r.ds.WaitLine(from, line, deliverWait)
 		require.True(t, ok, "try %d: DroidStar did not log %q", i, line)
-		require.True(t, waitLogin(t, r.stack, r.hotspot, at, 40*time.Second), "try %d: DroidStar did not log in again", i)
+		require.True(t, waitLogin(t, r.stack, r.hotspot, at, droidStarRelogin+deliverWait), "try %d: DroidStar did not log in again", i)
 		d := time.Since(at)
 		times = append(times, d)
 		t.Logf("%s try %d: logged in again after %s", name, i, d.Round(time.Millisecond))

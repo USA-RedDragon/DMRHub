@@ -138,7 +138,7 @@ func checkForgedPacketsAreDropped(t *testing.T, hubAddr string, peer uint32, pas
 		assert.False(t, heard(stale), "a stale packet reached the repeater")
 		quenched := false
 		buf := make([]byte, 512)
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(deliverWait)))
 		for !quenched {
 			n, _, err := conn.ReadFromUDP(buf)
 			if err != nil {

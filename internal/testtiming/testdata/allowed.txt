@@ -39,7 +39,6 @@ timer	internal/dmr/hub/subscription_manager_test.go	2	baseline of 2026-10-28, no
 sleep	internal/dmr/hub/talkgroup_lookup_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/undeliverable_view_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/integration_test.go	1	poll step of waitFor, for the unlink of a dynamic talkgroup, which the hub makes off the routing path with no event a test can wait on
-deadline	internal/dmr/iplists_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/iplists_integration_test.go	5	polls the MSTCL count and the closed flag of a client and the registration time in the database, which have no event; bounded by deliverWait
 eventually	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -64,7 +63,6 @@ timer	internal/dmr/move_integration_test.go	1	the bound of the wait for a burst 
 sleep	internal/dmr/net_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
-deadline	internal/dmr/openbridge_live_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them
 elapsed	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

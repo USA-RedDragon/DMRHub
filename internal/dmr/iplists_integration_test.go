@@ -42,7 +42,7 @@ const ipListWait = 1500 * time.Millisecond
 
 // loginAnswer sends an RPTL of the repeater 100001 to the MMDVM server at addr
 // from a new socket and returns the command of the answer, or
-// CommandUnknown for none within ipListWait.
+// CommandUnknown for none within deliverWait.
 func loginAnswer(t *testing.T, addr string) dmrd.Command {
 	t.Helper()
 	conn, err := (&net.Dialer{}).DialContext(t.Context(), "udp", addr)
@@ -52,7 +52,7 @@ func loginAnswer(t *testing.T, addr string) dmrd.Command {
 	require.NoError(t, err)
 	_, err = conn.Write(p)
 	require.NoError(t, err)
-	require.NoError(t, conn.SetReadDeadline(time.Now().Add(ipListWait)))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(deliverWait)))
 	buf := make([]byte, 64)
 	n, err := conn.Read(buf)
 	if err != nil {

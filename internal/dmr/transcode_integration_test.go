@@ -105,7 +105,20 @@ type tcGot struct {
 // least callWait. A stall of the hub then makes the drain wait for the
 // rest of the call, instead of taking it for the end of the call.
 func (n *tcNet) drainCall(sent []models.Packet) tcGot {
-	stream := sent[0].StreamID
+	var streams []uint
+	for _, p := range sent {
+		if !slices.Contains(streams, p.StreamID) {
+			streams = append(streams, p.StreamID)
+		}
+	}
+	callsEnded := func(out [][]models.Packet) bool {
+		for _, stream := range streams {
+			if !n.callEnded(stream) || !allEnded(out, stream) {
+				return false
+			}
+		}
+		return true
+	}
 	clients := []*testutils.MMDVMClient{n.c2, n.ambeListen, n.c2Listen, n.ambeTalk}
 	var g tcGot
 	ended := make(chan struct{})
@@ -136,7 +149,7 @@ func (n *tcNet) drainCall(sent []models.Packet) tcGot {
 				out[i] = append(out[i], got[i]...)
 			}
 		}
-		if time.Now().After(deadline) || (time.Now().After(earliest) && n.callEnded(stream) && allEnded(out[:len(clients)], stream)) {
+		if time.Now().After(deadline) || (time.Now().After(earliest) && callsEnded(out[:len(clients)])) {
 			break
 		}
 	}

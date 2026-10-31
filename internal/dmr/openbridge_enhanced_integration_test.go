@@ -57,7 +57,6 @@ func startEnhancedStack(t *testing.T, stack *testutils.IntegrationStack) enhance
 	t.Cleanup(mc.Close)
 	require.NoError(t, mc.Connect(stack.MMDVMAddr))
 	require.NoError(t, mc.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return enhancedStack{mc: mc, peer: peer}
 }
 
@@ -82,13 +81,10 @@ func TestOpenBridgeTakesEnhancedPackets(t *testing.T) {
 			sent := makeBurst(1000001, 1, uint(9300+i), true, dmrconst.FrameDataSync, uint(enums.DataTypeCSBK), 0)
 			sent.Repeater = 500001
 			require.NoError(t, s.peer.SendEnhancedPacket(sent, version))
-			select {
-			case got := <-s.mc.ReceivedPackets():
-				assert.Equal(t, sent.DMRData, got.DMRData, "version %d burst", version)
-				assert.Equal(t, sent.StreamID, got.StreamID, "version %d stream", version)
-			case <-time.After(drainWait):
-				t.Fatalf("the version %d DMRE packet did not reach the repeater", version)
-			}
+			arrived := testutils.Collect(s.mc.ReceivedPackets(), deliverWait, gotN[models.Packet](1))
+			require.Len(t, arrived, 1, "the version %d DMRE packet did not reach the repeater", version)
+			assert.Equal(t, sent.DMRData, arrived[0].DMRData, "version %d burst", version)
+			assert.Equal(t, sent.StreamID, arrived[0].StreamID, "version %d stream", version)
 		}
 	})
 }
@@ -104,7 +100,7 @@ func TestOpenBridgeSourceQuench(t *testing.T) {
 		require.Len(t, testutils.Collect(s.peer.ReceivedPackets(), deliverWait, gotN[models.Packet](1)), 1, "the peer gets the stream before the quench")
 
 		require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 9401}))
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the hub takes the quench of stream 9401", func() bool { return stack.OpenBridgeServer.IsQuenched(500001, 9401) })
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9401, false)))
 		assert.Empty(t, s.peer.Drain(drainWait), "the quenched stream must not go to the peer")
 

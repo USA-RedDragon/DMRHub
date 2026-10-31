@@ -278,9 +278,6 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 }
 
 func (p *WebTransportPeer) resume(ctx context.Context, sess *webtransport.Session, token string) bool {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer context.AfterFunc(sess.Context(), cancel)()
 	str, err := sess.OpenStreamSync(ctx)
 	if err != nil {
 		return false

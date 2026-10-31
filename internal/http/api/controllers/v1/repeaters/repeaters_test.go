@@ -738,14 +738,14 @@ func TestRepeaterEditsChangeRoutingAtOnce(t *testing.T) {
 		TS1StaticTalkgroups: []models.Talkgroup{{ID: 91}},
 	})
 	require.Equal(t, http.StatusOK, w.Code)
-	require.True(t, delivery.GroupBurstReaches(t, 91, id))
+	delivery.RequireGroupBurst(t, 91, id)
 
 	_, w = testutils.SetRepeaterTalkgroups(t, router, id, userJar, apimodels.RepeaterTalkgroupsPost{
 		TS1StaticTalkgroups: []models.Talkgroup{{ID: 92}},
 	})
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.False(t, delivery.GroupBurstReaches(t, 91, id), "removed static talkgroup")
-	assert.True(t, delivery.GroupBurstReaches(t, 92, id), "added static talkgroup")
+	delivery.RequireGroupBurst(t, 92, id)
 
 	_, w = testutils.DeleteRepeater(t, router, id, userJar)
 	require.Equal(t, http.StatusOK, w.Code)

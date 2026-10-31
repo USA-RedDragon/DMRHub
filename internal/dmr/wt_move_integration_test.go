@@ -60,7 +60,6 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 		require.NoError(t, talker.Connect(b.MMDVMAddr))
 		t.Cleanup(talker.Close)
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		const bursts = 80
 		var drained time.Time
@@ -136,7 +135,6 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 		require.NoError(t, talker.Connect(b.MMDVMAddr))
 		t.Cleanup(talker.Close)
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		const bursts = 80
 		var drained time.Time

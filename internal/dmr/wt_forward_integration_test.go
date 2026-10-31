@@ -91,7 +91,6 @@ func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 		require.NoError(t, talker.Connect(b.MMDVMAddr))
 		t.Cleanup(talker.Close)
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		regA.MarkDraining(t.Context())
 		front.Drain(stack.WebTransportAddr)

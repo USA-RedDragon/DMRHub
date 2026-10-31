@@ -42,6 +42,8 @@ type movingPlugin struct {
 	got     map[uint32]int
 	allSeen chan struct{}
 	want    int
+	stream  uint32
+	marked  chan struct{}
 }
 
 func (p *movingPlugin) serve(_ context.Context, conn *plugin.Conn) error {
@@ -57,7 +59,13 @@ func (p *movingPlugin) serve(_ context.Context, conn *plugin.Conn) error {
 			return fmt.Errorf("cannot receive: %w", err)
 		}
 		p.mu.Lock()
-		if b := m.GetBurst(); b != nil {
+		if b := m.GetBurst(); b != nil && b.GetStreamId() != p.stream {
+			select {
+			case <-p.marked:
+			default:
+				close(p.marked)
+			}
+		} else if b != nil {
 			p.got[b.GetSequence()]++
 			if len(p.got) == p.want {
 				select {
@@ -96,14 +104,13 @@ func TestAPluginMovesToAnotherReplicaWithoutLosingABurst(t *testing.T) {
 		second := replica.StartPlugins(t, stack)
 		lb := testutils.NewBalancer(t, first.Server.Addr().String())
 
-		p := &movingPlugin{got: map[uint32]int{}, allSeen: make(chan struct{}), want: voice + 2}
+		p := &movingPlugin{got: map[uint32]int{}, allSeen: make(chan struct{}), want: voice + 2, stream: uint32(streamID), marked: make(chan struct{})}
 		first.RunAt(t, lb.Addr(), "Mover", []models.PluginRange{{First: pluginID, Last: pluginID}}, p.serve)
 
 		c := testutils.NewMMDVMClient(uint32(repeater), "", testPassword)
 		require.NoError(t, c.Connect(stack.MMDVMAddr))
 		defer c.Close()
 		require.NoError(t, c.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		drained := make(chan int, 1)
 		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(caller, pluginID, streamID, false)))
@@ -127,17 +134,12 @@ func TestAPluginMovesToAnotherReplicaWithoutLosingABurst(t *testing.T) {
 		term.Seq = voice + 1
 		require.NoError(t, c.SendDMRD(term))
 
-		select {
-		case left := <-drained:
-			assert.Equal(t, 0, left, "the plugin's stream on the first replica ends")
-		case <-time.After(30 * time.Second):
-			t.Fatal("the drain did not end")
-		}
-		select {
-		case <-p.allSeen:
-		case <-time.After(10 * time.Second):
-		}
-		time.Sleep(2 * time.Second)
+		left := testutils.Collect(drained, deliverWait, gotN[int](1))
+		require.Len(t, left, 1, "the drain did not end")
+		assert.Equal(t, 0, left[0], "the plugin's stream on the first replica ends")
+		require.Len(t, testutils.Collect(p.allSeen, deliverWait, gotN[struct{}](1)), 1, "the plugin did not get every burst")
+		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(caller, pluginID, streamID+1, false)))
+		require.Len(t, testutils.Collect(p.marked, deliverWait, gotN[struct{}](1)), 1, "the plugin did not get the call after the moved one")
 
 		p.mu.Lock()
 		defer p.mu.Unlock()

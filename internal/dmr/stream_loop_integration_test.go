@@ -21,6 +21,7 @@ package dmr_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -69,7 +70,6 @@ func TestStreamLoopIsDropped(t *testing.T) {
 			defer c.Close()
 			require.NoError(t, c.WaitReady(handshakeWait))
 		}
-		time.Sleep(settleDuration)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		var mu sync.Mutex
@@ -114,6 +114,11 @@ func TestStreamLoopIsDropped(t *testing.T) {
 			require.NoError(t, talker.SendDMRD(p))
 			time.Sleep(60 * time.Millisecond)
 		}
+		waitFor(t, "every receiver gets the call", func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return got["listener"] >= len(call) && got["looper"] >= len(call) && got["peer"] >= len(call)
+		})
 		time.Sleep(drainWait)
 		cancel()
 		wg.Wait()
@@ -179,7 +184,6 @@ func TestStreamLoopIsDroppedAcrossReplicas(t *testing.T) {
 			defer c.Close()
 			require.NoError(t, c.WaitReady(handshakeWait))
 		}
-		time.Sleep(settleDuration)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		var mu sync.Mutex
@@ -218,6 +222,11 @@ func TestStreamLoopIsDroppedAcrossReplicas(t *testing.T) {
 			require.NoError(t, talker.SendDMRD(p))
 			time.Sleep(60 * time.Millisecond)
 		}
+		waitFor(t, "every receiver gets the call", func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return got["listener"] >= len(call) && got["looper"] >= len(call)
+		})
 		time.Sleep(drainWait)
 		cancel()
 		wg.Wait()
@@ -237,7 +246,7 @@ func TestStreamLoopIsDroppedAcrossReplicas(t *testing.T) {
 func endedCalls(t *testing.T, stack *testutils.IntegrationStack, stream uint) []models.Call {
 	t.Helper()
 	var calls []models.Call
-	require.Eventually(t, func() bool {
+	waitFor(t, fmt.Sprintf("the call tracker ends the calls of stream %d", stream), func() bool {
 		calls = nil
 		if stack.DB.Where("stream_id = ?", stream).Find(&calls).Error != nil || len(calls) == 0 {
 			return false
@@ -248,6 +257,6 @@ func endedCalls(t *testing.T, stack *testutils.IntegrationStack, stream uint) []
 			}
 		}
 		return true
-	}, time.Minute, 10*time.Millisecond, "the call tracker did not end the calls of stream %d", stream)
+	})
 	return calls
 }

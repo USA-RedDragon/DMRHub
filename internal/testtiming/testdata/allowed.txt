@@ -45,9 +45,8 @@ sleep	internal/dmr/ipsc_slow_redis_integration_test.go	1	pace, not a wait: one b
 eventually	internal/dmr/live_config_integration_test.go	4	polls the MSTCL and down counts of the clients, bounded by deliverWait, and which server holds the OpenBridge egress lease, bounded by 2 or 3 EgressLeaseTTL, the product constant
 pickport	internal/dmr/live_config_integration_test.go	1	the test changes the MMDVM port in the live config, which takes a port number, not :0; the server binds the number it is given (a product limit, not a test choice)
 sleep	internal/dmr/live_config_integration_test.go	1	negative window of one EgressLeaseTTL, the product time a takeover of the egress lease needs: a restarted server must not take the lease from its holder in it
-elapsed	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/live_replicas_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/live_replicas_integration_test.go	1	bound, not a wait: the save with a replica that does not answer must stop at its Wait of 300 ms and not at the 5 s default; liveconfig has no clock to inject, and the bound of 3 s is ten times Wait
+pickport	internal/dmr/live_replicas_integration_test.go	1	the save must name a port, which one replica binds and the other then fails to bind, so a :0 port cannot be used; FreeUDPPort picks below the ephemeral range and never twice
 elapsed	internal/dmr/mmdvm_slow_db_login_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event
 sleep	internal/dmr/mmdvm_slow_db_login_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the call lasts while the logins wait on the held database; a starved machine only spreads them
 elapsed	internal/dmr/mmdvm_slow_redis_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event
@@ -56,8 +55,7 @@ sleep	internal/dmr/modem_integration_test.go	2	pace, not a wait: one burst each 
 elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
 sleep	internal/dmr/move_integration_test.go	2	pace of the call, one burst each rotationInterval as a radio sends it, and a 5 ms pause after the keepalive that makes the front move the peer, before the burst at the move
 timer	internal/dmr/move_integration_test.go	1	the bound of the wait for a burst at the move: drainWait for the burst before it, and reportHold, the product hold of the handover report, for the burst at the move, which the test checks did not wait for the full hold
-sleep	internal/dmr/net_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/net_integration_test.go	2	minimum, not a wait: callHoldTime keeps each call past the 100 ms key-up threshold of the call tracker, which drops shorter calls; starvation only lengthens it
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them
 sleep	internal/dmr/openbridge_replica_integration_test.go	1	pace, not a wait: one burst each 30 ms, so that the call lasts while the holder of the lease stops; a starved machine only spreads them
@@ -67,8 +65,7 @@ sleep	internal/dmr/openbridge_slow_redis_integration_test.go	2	pace, not a wait:
 eventually	internal/dmr/peer_last_ping_integration_test.go	1	polls the count of peer writes from a gorm callback, which has no event; bounded by deliverWait
 sleep	internal/dmr/peer_last_ping_integration_test.go	1	the window of the negative check that no packet makes a peer write, which has no state to read instead
 deadline	internal/dmr/plugin_drain_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/plugin_drain_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/plugin_drain_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/plugin_drain_integration_test.go	2	pace, not a wait: one burst each 60 ms, so that the call lasts while the replica of the plugin drains; a starved machine only spreads them
 sleep	internal/dmr/replica_change_notice_test.go	1	pace, not a wait: one burst each 60 ms in sendPrivateBursts, as a radio sends a call; a starved machine only spreads them
 sleep	internal/dmr/replica_config_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call
 eventually	internal/dmr/response_replica_integration_test.go	2	polls the call and message rows, which the call tracker writes with no event a test can wait on
@@ -93,8 +90,7 @@ deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, n
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	an Origin header in the allow-list test, not a port the test binds or sends to
 deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	the UDP port of a peer row in the database; the test starts no server and sends nothing to it
-eventually	internal/dmr/stream_loop_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/stream_loop_integration_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/stream_loop_integration_test.go	4	the 60 ms pace of the bursts of the two tests, as a radio sends a call, and the windows of the negative checks that no looped copy arrives after each receiver got the call: a copy that the hub drops leaves no state of its stream, and the drop counter is shared by the whole process
 elapsed	internal/dmr/terminate_inbound_integration_test.go	1	the time.Until of that pace; not a wait for an event
 eventually	internal/dmr/terminate_inbound_integration_test.go	2	a probe that sends a call each step until the other replica routes it, bounded by deliverWait, and a poll of the bursts heard, bounded by a minute; neither passes on time alone
 sleep	internal/dmr/terminate_inbound_integration_test.go	1	pace, not a wait: one burst each rotationInterval, as a radio sends a call

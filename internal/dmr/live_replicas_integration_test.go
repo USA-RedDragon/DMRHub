@@ -300,8 +300,8 @@ func TestLiveConfigReplicaTakesASaveItMissed(t *testing.T) { //nolint:parallelte
 			require.NoError(t, err)
 			require.Empty(t, errs)
 
-			assert.Eventually(t, func() bool { return b.Live.Current().Get().DMR.Retention.Bursts == 7 }, 5*time.Second, 20*time.Millisecond)
-			assert.Eventually(t, func() bool { return l.Live.Current().Get().DMR.Retention.Bursts == 7 }, 5*time.Second, 20*time.Millisecond)
+			waitFor(t, "the other replica takes the save at its next check", func() bool { return b.Live.Current().Get().DMR.Retention.Bursts == 7 })
+			waitFor(t, "the first replica takes the save at its next check", func() bool { return l.Live.Current().Get().DMR.Retention.Bursts == 7 })
 		})
 	}
 }

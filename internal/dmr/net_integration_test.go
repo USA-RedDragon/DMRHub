@@ -63,13 +63,8 @@ func TestNetCheckInDuringActiveNet(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// Start a net on TG 100
 		net := stack.SeedNet(t, 100, 1000001, "Integration test net")
-
-		// Give the CallTracker time to pick up the net:events pubsub message
-		time.Sleep(300 * time.Millisecond)
 
 		// C1 sends a group voice call to TG 100 on TS1
 		voicePkt := makeGroupVoicePacket(1000001, 100, 500, false)
@@ -80,8 +75,10 @@ func TestNetCheckInDuringActiveNet(t *testing.T) {
 		termPkt.Repeater = 200001
 		require.NoError(t, c1.SendDMRD(termPkt))
 
-		// Wait for the call to be recorded and check-in to be published
-		time.Sleep(3 * time.Second)
+		waitFor(t, "the call tracker saves the call on TG 100", func() bool {
+			var n int64
+			return stack.DB.Model(&models.Call{}).Where("stream_id = ? AND active = ?", 500, false).Count(&n).Error == nil && n > 0
+		})
 
 		// Verify that calls were saved to the database for this TG
 		calls, err := models.FindTalkgroupCallsInTimeRange(
@@ -175,8 +172,10 @@ func TestNetCheckInPubsubEvent(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, stack.PubSub.Publish("net:events", evtData))
 
-		// Give the CallTracker time to process the event
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the call tracker takes the net", func() bool {
+			_, ok := stack.CallTracker.ActiveNet(300)
+			return ok
+		})
 
 		// Subscribe to check-in events
 		checkInTopic := fmt.Sprintf("net:checkins:%d", net.ID)
@@ -188,7 +187,6 @@ func TestNetCheckInPubsubEvent(t *testing.T) {
 		require.NoError(t, c1.Connect(stack.MMDVMAddr))
 		defer c1.Close()
 		require.NoError(t, c1.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		voicePkt := makeGroupVoicePacket(1000003, 300, 600, false)
 		voicePkt.Repeater = 300001
@@ -198,16 +196,11 @@ func TestNetCheckInPubsubEvent(t *testing.T) {
 		termPkt.Repeater = 300001
 		require.NoError(t, c1.SendDMRD(termPkt))
 
-		// Wait for the check-in event — the call end timer fires after 2s
-		select {
-		case msg := <-sub.Channel():
-			var checkIn apimodels.WSNetCheckInResponse
-			err := json.Unmarshal(msg, &checkIn)
-			require.NoError(t, err)
-			assert.Equal(t, net.ID, checkIn.NetID)
-			assert.Equal(t, uint(1000003), checkIn.User.ID)
-		case <-time.After(5 * time.Second):
-			t.Error("Timed out waiting for check-in pubsub event")
-		}
+		msgs := testutils.Collect(sub.Channel(), deliverWait, gotN[[]byte](1))
+		require.Len(t, msgs, 1, "the call tracker publishes no check-in")
+		var checkIn apimodels.WSNetCheckInResponse
+		require.NoError(t, json.Unmarshal(msgs[0], &checkIn))
+		assert.Equal(t, net.ID, checkIn.NetID)
+		assert.Equal(t, uint(1000003), checkIn.User.ID)
 	})
 }

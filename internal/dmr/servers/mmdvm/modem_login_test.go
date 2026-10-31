@@ -73,7 +73,7 @@ func TestALoginWithTheIDOfAModemIsRefused(t *testing.T) {
 		defer func() { _ = c.Close() }()
 		_, err = c.Write(rptl(id))
 		require.NoError(t, err)
-		require.NoError(t, c.SetReadDeadline(time.Now().Add(3*time.Second)))
+		require.NoError(t, c.SetReadDeadline(time.Now().Add(answerWait)))
 		buf := make([]byte, 64)
 		for {
 			n, err := c.Read(buf)

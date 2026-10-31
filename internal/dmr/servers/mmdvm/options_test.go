@@ -113,7 +113,7 @@ func newOptionsRig(t *testing.T) *optionsRig {
 func (r *optionsRig) read() dmrd.Command {
 	r.t.Helper()
 	buf := make([]byte, 512)
-	require.NoError(r.t, r.peer.SetReadDeadline(time.Now().Add(time.Second)))
+	require.NoError(r.t, r.peer.SetReadDeadline(time.Now().Add(answerWait)))
 	n, _, err := r.peer.ReadFromUDP(buf)
 	require.NoError(r.t, err)
 	return dmrd.Classify(buf[:n], dmrd.DialectMMDVM)

@@ -20,6 +20,7 @@
 package mmdvm
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -140,9 +141,17 @@ func TestAHotspotResumesFromTheReplicasRecordInARedisOutage(t *testing.T) {
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
 	r.s.handlePacket(context.Background(), *other.LocalAddr().(*net.UDPAddr), p) //nolint:forcetypeassert
-	require.NoError(t, other.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	marker := []byte("marker")
+	_, err = other.WriteToUDP(marker, other.LocalAddr().(*net.UDPAddr)) //nolint:forcetypeassert
+	require.NoError(t, err)
+	require.NoError(t, other.SetReadDeadline(time.Now().Add(answerWait)))
 	buf := make([]byte, dmrdsession.MaxPacket)
-	if n, _, err := other.ReadFromUDP(buf); err == nil {
+	for {
+		n, _, err := other.ReadFromUDP(buf)
+		require.NoError(t, err)
+		if bytes.Equal(buf[:n], marker) {
+			break
+		}
 		k, err := dmrd.DecodeControl(buf[:n], dmrd.DialectMMDVM)
 		require.NoError(t, err)
 		assert.NotEqual(t, dmrd.CommandMSTPONG, k.Command, "a ping from another address resumed the session")

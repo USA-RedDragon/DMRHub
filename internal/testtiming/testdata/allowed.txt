@@ -129,12 +129,7 @@ sleep	internal/dmr/servers/manager/manager_test.go	1	paces the background call s
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/modem_login_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/options_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/outage_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/session_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/webtransport_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	an Origin header in the allow-list test, not a port the test binds or sends to
 deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	the UDP port of a peer row in the database; the test starts no server and sends nothing to it

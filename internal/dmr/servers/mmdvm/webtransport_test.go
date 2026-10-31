@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -114,7 +113,7 @@ func dialFrom(t *testing.T, s *Server, cfg *config.Config, origin string) (int, 
 	}
 	d := &webtransport.Transport{TLSClientConfig: tlsConf, QUICConfig: &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true}}
 	t.Cleanup(func() { _ = d.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
 	defer cancel()
 	header := http.Header{}
 	if origin != "" {
@@ -163,7 +162,7 @@ func rptlAck(t *testing.T, sess *webtransport.Session, id uint32) []byte {
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
 	require.NoError(t, sess.SendDatagram(p))
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
 	defer cancel()
 	b, err := sess.ReceiveDatagram(ctx)
 	require.NoError(t, err)

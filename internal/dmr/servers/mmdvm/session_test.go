@@ -144,7 +144,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 			}
 			read := func() dmrd.Command {
 				buf := make([]byte, 512)
-				require.NoError(t, peer.SetReadDeadline(time.Now().Add(time.Second)))
+				require.NoError(t, peer.SetReadDeadline(time.Now().Add(answerWait)))
 				n, _, err := peer.ReadFromUDP(buf)
 				require.NoError(t, err)
 				return dmrd.Classify(buf[:n], dmrd.DialectMMDVM)

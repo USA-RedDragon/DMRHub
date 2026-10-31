@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,49 +38,50 @@ const testTimeout = 1 * time.Minute
 
 func TestPingRoute(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		router, tdb, err := testutils.CreateTestDBRouter()
+		if err != nil {
+			t.Fatalf("Failed to create test DB router: %v", err)
+		}
+		defer tdb.CloseDB()
 
-	router, tdb, err := testutils.CreateTestDBRouter()
-	if err != nil {
-		t.Fatalf("Failed to create test DB router: %v", err)
-	}
-	defer tdb.CloseDB()
+		w := httptest.NewRecorder()
 
-	w := httptest.NewRecorder()
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
+		router.ServeHTTP(w, req)
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
-	router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.NotEmpty(t, w.Body.String())
 
-	assert.Equal(t, 200, w.Code)
-	assert.NotEmpty(t, w.Body.String())
+		// Convert ts (time.Now().Unix()) to int64
+		var tsInt int64
+		_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt)
+		assert.NoError(t, err)
 
-	// Convert ts (time.Now().Unix()) to int64
-	var tsInt int64
-	_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt)
-	assert.NoError(t, err)
+		w = httptest.NewRecorder()
 
-	w = httptest.NewRecorder()
+		time.Sleep(1 * time.Second)
 
-	time.Sleep(1 * time.Second)
+		ctx, cancel2 := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel2()
 
-	ctx, cancel2 := context.WithTimeout(context.Background(), testTimeout)
-	defer cancel2()
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
+		assert.NoError(t, err)
 
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/ping", nil)
-	assert.NoError(t, err)
+		router.ServeHTTP(w, req)
 
-	router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.NotEmpty(t, w.Body.String())
 
-	assert.Equal(t, 200, w.Code)
-	assert.NotEmpty(t, w.Body.String())
+		var tsInt2 int64
+		_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt2)
+		assert.NoError(t, err)
 
-	var tsInt2 int64
-	_, err = fmt.Sscanf(w.Body.String(), "%d", &tsInt2)
-	assert.NoError(t, err)
-
-	assert.Greater(t, tsInt2, tsInt)
+		assert.Greater(t, tsInt2, tsInt)
+	})
 }
 
 func TestVersionRoute(t *testing.T) {

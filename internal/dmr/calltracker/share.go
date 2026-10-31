@@ -677,9 +677,6 @@ func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, 
 }
 
 func (s *shard) adoptMerged(r *row, out *models.Call) {
-	c := r.call
-	c.Codec, c.Codec2Mode, c.MissedMS = out.Codec, out.Codec2Mode, out.MissedMS
-	c.SentAMBE, c.SentCodec2, c.TranscodeBusy = out.SentAMBE, out.SentCodec2, out.TranscodeBusy
-	c.Undeliverable = slices.Clone(out.Undeliverable)
+	*r.call = *out
 	r.markGiven()
 }

@@ -162,6 +162,38 @@ func TestAMovedCallAfterItsRecordExpiredIsOneRow(t *testing.T) {
 	})
 }
 
+// TestANoteAfterAMergedSaveKeepsTheMergedRow marks the codec of a moved
+// call after the merged save of its row. The event that the mark
+// publishes shows the merged row, as the database does.
+func TestANoteAfterAMergedSaveKeepsTheMergedRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, sub := newSharedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9004)
+		s.voiceCall(1, false)
+		s.seq += 4
+		sendSuperframe(s)
+		time.Sleep(calltracker.VoiceHang + time.Second)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		last := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		c := waitDone(t, two, database, 1)[0]
+		two.Missed(last, 60)
+		two.Flush()
+
+		var stored models.Call
+		require.NoError(t, database.First(&stored, c.ID).Error)
+		assert.Equal(t, 60, stored.MissedMS)
+		ev := lastEvent(t, sub, c.ID)
+		assert.Equal(t, stored.MissedMS, ev.MissedMS)
+		assert.Equal(t, stored.Duration, ev.Duration)
+		assert.InDelta(t, stored.Loss, ev.Loss, 1e-6)
+		assert.InDelta(t, stored.Jitter, ev.Jitter, 1e-3)
+	})
+}
+
 // TestAFailedSaveOfAMovedCallKeepsItsParts fails the first save of the
 // merged row of a moved call, as a database that is down for a moment
 // does. The parts of both replicas stay in the shared record, and a later

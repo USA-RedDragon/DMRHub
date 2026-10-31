@@ -275,7 +275,7 @@ func (kv inMemoryKV) RPushTrim(_ context.Context, key string, value []byte, keep
 
 	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
 		var entries [][]byte
-		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(time.Now())) {
+		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(kv.clock.Now())) {
 			entries = decodeListEntries(oldValue.value)
 		}
 		entries = append(entries, value)
@@ -286,7 +286,7 @@ func (kv inMemoryKV) RPushTrim(_ context.Context, key string, value []byte, keep
 		for _, e := range entries {
 			list = append(list, encodeListEntry(e)...)
 		}
-		return kvValue{value: list, ttl: time.Now().Add(ttl)}, xsync.UpdateOp
+		return kvValue{value: list, ttl: kv.clock.Now().Add(ttl)}, xsync.UpdateOp
 	})
 	return nil
 }
@@ -298,7 +298,7 @@ func (kv inMemoryKV) LRange(_ context.Context, key string) ([][]byte, error) {
 	}()
 
 	value, ok := kv.kv.Load(key)
-	if !ok || value.value == nil || (!value.ttl.IsZero() && value.ttl.Before(time.Now())) {
+	if !ok || value.value == nil || (!value.ttl.IsZero() && value.ttl.Before(kv.clock.Now())) {
 		return nil, nil
 	}
 	return decodeListEntries(value.value), nil
@@ -312,7 +312,7 @@ func (kv inMemoryKV) DeleteIfEqual(_ context.Context, key string, value []byte) 
 
 	deleted := false
 	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
-		if !loaded || (!oldValue.ttl.IsZero() && oldValue.ttl.Before(time.Now())) || !bytes.Equal(oldValue.value, value) {
+		if !loaded || (!oldValue.ttl.IsZero() && oldValue.ttl.Before(kv.clock.Now())) || !bytes.Equal(oldValue.value, value) {
 			return oldValue, xsync.CancelOp
 		}
 		deleted = true
@@ -330,7 +330,7 @@ func (kv inMemoryKV) Update(_ context.Context, key string, ttl time.Duration, fn
 	var err error
 	kv.kv.Compute(key, func(v kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
 		var old []byte
-		if loaded && (v.ttl.IsZero() || !v.ttl.Before(time.Now())) {
+		if loaded && (v.ttl.IsZero() || !v.ttl.Before(kv.clock.Now())) {
 			old = v.value
 		}
 		next, ferr := fn(old)
@@ -340,7 +340,7 @@ func (kv inMemoryKV) Update(_ context.Context, key string, ttl time.Duration, fn
 		}
 		nv := kvValue{value: next}
 		if ttl > 0 {
-			nv.ttl = time.Now().Add(ttl)
+			nv.ttl = kv.clock.Now().Add(ttl)
 		}
 		return nv, xsync.UpdateOp
 	})

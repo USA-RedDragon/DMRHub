@@ -66,3 +66,43 @@ func TestTheInMemoryStoreExpiresKeysOnItsClock(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"lease"}, keys)
 }
+
+func TestTheInMemoryStoreTimesListsAndUpdatesOnItsClock(t *testing.T) {
+	t.Parallel()
+	fake := clock.NewFake(time.Now())
+	store, err := kv.MakeKV(context.Background(), &config.Config{}, kv.WithClock(fake))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+
+	require.NoError(t, store.RPushTrim(ctx, "list", []byte("a"), 10, time.Minute))
+	require.NoError(t, store.Update(ctx, "updated", time.Minute, func([]byte) ([]byte, error) { return []byte("u"), nil }))
+	require.NoError(t, store.Set(ctx, "owned", []byte("me")))
+	require.NoError(t, store.Expire(ctx, "owned", time.Minute))
+
+	fake.Advance(time.Minute - time.Nanosecond)
+	list, err := store.LRange(ctx, "list")
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("a")}, list, "the list holds until its TTL")
+	has, err := store.Has(ctx, "updated")
+	require.NoError(t, err)
+	assert.True(t, has, "the updated key holds until its TTL")
+
+	fake.Advance(2 * time.Nanosecond)
+	list, err = store.LRange(ctx, "list")
+	require.NoError(t, err)
+	assert.Empty(t, list, "a list expires at its TTL")
+	has, err = store.Has(ctx, "updated")
+	require.NoError(t, err)
+	assert.False(t, has, "an updated key expires at its TTL")
+	var old []byte
+	require.NoError(t, store.Update(ctx, "updated", time.Minute, func(o []byte) ([]byte, error) { old = o; return []byte("v"), nil }))
+	assert.Nil(t, old, "Update reads no expired value")
+	require.NoError(t, store.RPushTrim(ctx, "list", []byte("b"), 10, time.Minute))
+	list, err = store.LRange(ctx, "list")
+	require.NoError(t, err)
+	assert.Equal(t, [][]byte{[]byte("b")}, list, "a push starts a new list after the old one expired")
+	deleted, err := store.DeleteIfEqual(ctx, "owned", []byte("me"))
+	require.NoError(t, err)
+	assert.False(t, deleted, "DeleteIfEqual deletes no expired value")
+}

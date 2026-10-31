@@ -197,6 +197,26 @@ func TestRenewOwnershipWritesTheClaimAgain(t *testing.T) {
 	})
 }
 
+func TestALatePingAtTheOldReplicaKeepsTheNewOwner(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 2)
+		seedUser(t, database, 1000001, "N0CALL")
+		seedRepeater(t, database, 100001, 1000001)
+		ctx := context.Background()
+		r[0].hub.ActivateRepeater(ctx, 100001)
+		r[0].reg.MarkDraining(ctx)
+		require.True(t, r[1].hub.TakeOver(ctx, 100001))
+		r[1].hub.ActivateRepeater(ctx, 100001)
+
+		r[0].hub.RenewOwnership(ctx, 100001)
+		owner, err := store.Get(ctx, "dmrhub:peer_owner:100001")
+		require.NoError(t, err)
+		assert.Equal(t, "replica-2", string(owner), "a ping that the old replica handled after the takeover took the repeater back")
+		assert.False(t, r[0].hub.OwnsRepeater(ctx, 100001))
+	})
+}
+
 func TestOnClaimedElsewhereEndsTheOldSession(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {

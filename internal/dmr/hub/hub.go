@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -533,9 +534,22 @@ func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint, since tim
 // RenewOwnership keeps the ownership record of a repeater that this hub
 // serves alive. The servers call it when the repeater shows that it is
 // still here, such as at a ping, since the record expires after
-// peerOwnerTTL.
+// peerOwnerTTL. It writes the record again only when it expired, and
+// never over the claim of another replica, which took the repeater over.
 func (h *Hub) RenewOwnership(ctx context.Context, repeaterID uint) {
-	h.writeOwner(ctx, repeaterID)
+	if h.instanceID == "" {
+		return
+	}
+	mine := []byte(h.instanceID)
+	err := h.kv.Update(ctx, ownerKey(repeaterID), peerOwnerTTL, func(old []byte) ([]byte, error) {
+		if old != nil && !bytes.Equal(old, mine) {
+			return nil, errOwnedElsewhere
+		}
+		return mine, nil
+	})
+	if err != nil && !errors.Is(err, errOwnedElsewhere) {
+		slog.Warn("failed to renew peer ownership", "repeaterID", repeaterID, "error", err)
+	}
 }
 
 func (h *Hub) writeOwner(ctx context.Context, repeaterID uint) bool {

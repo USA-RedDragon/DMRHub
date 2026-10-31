@@ -169,9 +169,10 @@ type streamClaim struct {
 }
 
 var (
-	errNoClaimStore = errors.New("no KV store for stream claims")
-	errNoDatabase   = errors.New("the hub has no database")
-	errClaimSlow    = errors.New("the KV store took too long")
+	errNoClaimStore   = errors.New("no KV store for stream claims")
+	errNoDatabase     = errors.New("the hub has no database")
+	errOwnedElsewhere = errors.New("another replica owns the repeater")
+	errClaimSlow      = errors.New("the KV store took too long")
 )
 
 // sourceSlot is a timeslot of a source of streams: a slot of a repeater

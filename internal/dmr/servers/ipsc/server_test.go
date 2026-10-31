@@ -24,10 +24,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,10 +38,30 @@ import (
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
 
 const testHexKey = "0000000000000000000000000000000000001234"
+
+// eventWait bounds the wait for an event of the server, such as a reply or
+// a burst. The server drops a peer that it does not hear from in the peer
+// timeout of the session, so an event that takes longer has failed.
+const eventWait = ipscsession.TimeoutDefault
+
+func await[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	timer := time.NewTimer(eventWait)
+	defer timer.Stop()
+	select {
+	case v := <-ch:
+		return v
+	case <-timer.C:
+		t.Fatalf("%s did not come within the peer timeout of %v", what, eventWait)
+		var zero T
+		return zero
+	}
+}
 
 func testConfig() *config.Config {
 	return &config.Config{DMR: config.DMR{IPSC: config.IPSC{NetworkID: 311860}}}
@@ -117,7 +138,7 @@ func dialServer(t *testing.T, srv *net.UDPAddr) (*net.UDPConn, *net.UDPAddr) {
 
 func readUDP(t *testing.T, conn *net.UDPConn) []byte {
 	t.Helper()
-	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(eventWait)); err != nil {
 		t.Fatalf("SetReadDeadline: %v", err)
 	}
 	buf := make([]byte, 1500)
@@ -187,7 +208,7 @@ func TestUnknownPeerDropped(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	s := NewIPSCServer(testConfig(), nil, dbConn)
-	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
 	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 42), addr); err == nil {
 		t.Fatal("expected an error for a peer that is not in the DB")
 	}
@@ -295,8 +316,8 @@ func TestAutoRegisterOnDataFromUnregisteredPeer(t *testing.T) {
 		if len(d) != 54 {
 			t.Fatalf("burst handler got %d octets, want 54 without the trailer", len(d))
 		}
-	case <-time.After(time.Second):
-		t.Fatal("expected the burst handler to run")
+	default:
+		t.Fatal("the burst handler did not run in handlePacket")
 	}
 	expectNoUDP(t, client)
 }
@@ -333,8 +354,8 @@ func TestAutoRegisterKeylessPeerOnData(t *testing.T) {
 		if len(d) != 54 {
 			t.Fatalf("burst handler got %d octets, want 54", len(d))
 		}
-	case <-time.After(time.Second):
-		t.Fatal("expected the burst handler to run")
+	default:
+		t.Fatal("the burst handler did not run in handlePacket")
 	}
 	expectNoUDP(t, client)
 }
@@ -403,7 +424,7 @@ func TestStoppedIgnoresPackets(t *testing.T) {
 func TestShortPacket(t *testing.T) {
 	t.Parallel()
 	s, _ := newTestServerWithUDP(t)
-	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
 	for _, p := range [][]byte{nil, {0x90}, {0x90, 0, 0, 0}} {
 		if err := s.handlePacket(context.Background(), p, addr); err == nil {
 			t.Fatalf("expected an error for %x", p)
@@ -447,13 +468,13 @@ func TestSendsAreNotHeld(t *testing.T) {
 
 	const n = 40
 	data := voicePacket(311860)
-	start := time.Now()
-	for range n {
-		s.sendPacketInternal(data)
-	}
-	if d := time.Since(start); d > 500*time.Millisecond {
-		t.Fatalf("%d sends to one peer took %v", n, d)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		for range n {
+			s.sendPacketInternal(data)
+		}
+		assert.Zero(t, time.Since(start), "%d sends to one peer waited", n)
+	})
 	for range n {
 		readUDP(t, c)
 	}
@@ -462,8 +483,8 @@ func TestSendsAreNotHeld(t *testing.T) {
 func TestHandlerLoop(t *testing.T) {
 	t.Parallel()
 	s, srv := newTestServerWithUDP(t)
-	var calls atomic.Int32
-	s.SetBurstHandler(func(byte, []byte, *net.UDPAddr, time.Time) { calls.Add(1) })
+	calls := make(chan struct{}, 2)
+	s.SetBurstHandler(func(byte, []byte, *net.UDPAddr, time.Time) { calls <- struct{}{} })
 	s.wg.Add(1)
 	go s.handler(context.Background())
 	client, _ := dialServer(t, srv)
@@ -476,15 +497,12 @@ func TestHandlerLoop(t *testing.T) {
 	if _, err := client.Write(signTestPacket(t, voicePacket(77))); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	deadline := time.Now().Add(time.Second)
-	for calls.Load() == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("burst handler ran %d times, want 1", calls.Load())
-	}
+	await(t, calls, "the burst")
 	if err := s.Stop(context.Background()); err != nil {
 		t.Fatalf("Stop: %v", err)
+	}
+	if n := len(calls); n != 0 {
+		t.Fatalf("burst handler ran %d times, want 1", n+1)
 	}
 	if err := s.Stop(context.Background()); err != nil {
 		t.Fatalf("second Stop: %v", err)
@@ -515,13 +533,8 @@ func TestHandlerLoopKeepsBurstOrder(t *testing.T) {
 		}
 	}
 	for i := range count {
-		select {
-		case b := <-got:
-			if b != byte(i) {
-				t.Fatalf("burst %d carried index %d", i, b)
-			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("got %d of %d bursts", i, count)
+		if b := await(t, got, fmt.Sprintf("burst %d of %d", i, count)); b != byte(i) {
+			t.Fatalf("burst %d carried index %d", i, b)
 		}
 	}
 }
@@ -595,7 +608,16 @@ func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	if err := dbConn.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 9}, Type: models.RepeaterTypeIPSC}).Error; err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	slow := func(*gorm.DB) { time.Sleep(time.Second) }
+	handled := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), eventWait)
+	t.Cleanup(cancel)
+	slow := func(*gorm.DB) {
+		select {
+		case <-handled:
+		case <-ctx.Done():
+			t.Error("the registration waited on the database")
+		}
+	}
 	if err := dbConn.Callback().Query().Before("gorm:query").Register("test:slow_query", slow); err != nil {
 		t.Fatalf("callback: %v", err)
 	}
@@ -617,24 +639,19 @@ func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	client, addr := dialServer(t, srv)
 
 	before := time.Now()
-	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 9), addr); err != nil {
+	err = s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 9), addr)
+	close(handled)
+	if err != nil {
 		t.Fatalf("register: %v", err)
-	}
-	if took := time.Since(before); took > 200*time.Millisecond {
-		t.Errorf("the server took %s on a registration", took)
 	}
 	readUDP(t, client)
 
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		var row models.Repeater
-		err := dbConn.First(&row, 9).Error
-		if err == nil && !row.Connected.Before(before.Truncate(time.Second)) && !row.LastPing.Before(before.Truncate(time.Second)) {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the repeater times are not written: %v %+v", err, row)
-		}
-		time.Sleep(50 * time.Millisecond)
+	s.closeTimes()
+	var row models.Repeater
+	if err := dbConn.First(&row, 9).Error; err != nil {
+		t.Fatalf("read the repeater: %v", err)
+	}
+	if row.Connected.Before(before.Truncate(time.Second)) || row.LastPing.Before(before.Truncate(time.Second)) {
+		t.Fatalf("the repeater times are not written: %+v", row)
 	}
 }

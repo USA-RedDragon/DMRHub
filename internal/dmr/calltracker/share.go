@@ -63,6 +63,7 @@ type voicePart struct {
 }
 
 type voiceDelta struct {
+	ID            string    `json:"id"`
 	First         time.Time `json:"first"`
 	Last          time.Time `json:"last"`
 	Packets       uint      `json:"packets,omitempty"`
@@ -149,13 +150,22 @@ func (rec *voiceRecord) latest() *voicePart {
 	return last
 }
 
-func (rec *voiceRecord) takeHeld() []voiceDelta {
+func (rec *voiceRecord) allHeld() []voiceDelta {
 	var held []voiceDelta
 	for _, p := range rec.Parts {
 		held = append(held, p.Held...)
-		p.Held = nil
 	}
 	return held
+}
+
+func (rec *voiceRecord) dropHeld(saved []voiceDelta) {
+	ids := make(map[string]bool, len(saved))
+	for _, d := range saved {
+		ids[d.ID] = true
+	}
+	for _, p := range rec.Parts {
+		p.Held = slices.DeleteFunc(p.Held, func(d voiceDelta) bool { return ids[d.ID] })
+	}
 }
 
 func (rec *voiceRecord) saving(now time.Time) bool {
@@ -220,8 +230,6 @@ type finishResult struct {
 	verdict finishVerdict
 	gen     uint64
 	held    []voiceDelta
-	saved   bool
-	start   time.Time
 }
 
 func finishRecord(rec *voiceRecord, me, ch string, id uint, seq uint, last time.Time, term, keyUp bool, mine voiceDelta, now time.Time) (*voiceRecord, finishResult) {
@@ -240,13 +248,13 @@ func finishRecord(rec *voiceRecord, me, ch string, id uint, seq uint, last time.
 	if keyUp && len(rec.Parts) == 1 && !rec.Saved && len(p.Held) == 0 {
 		return rec, finishResult{verdict: finishDelete}
 	}
+	p.Held = append(p.Held, mine)
 	if rec.anyActive(me, now) || rec.saving(now) {
-		p.Held = append(p.Held, mine)
 		return rec, finishResult{verdict: finishDefer}
 	}
 	rec.Gen++
 	rec.Saving, rec.SavingAt = rec.Gen, now
-	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.takeHeld(), saved: rec.Saved, start: rec.Start}
+	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.allHeld()}
 }
 
 type savedResult struct {
@@ -256,19 +264,20 @@ type savedResult struct {
 	active bool
 }
 
-func savedRecord(rec *voiceRecord, gen uint64, ok bool, tries int, now time.Time) (*voiceRecord, savedResult) {
+func savedRecord(rec *voiceRecord, gen uint64, ok bool, saved []voiceDelta, tries int, now time.Time) (*voiceRecord, savedResult) {
 	if rec == nil || rec.Saving != gen {
-		return rec, savedResult{}
+		return nil, savedResult{}
 	}
 	if ok {
 		rec.Saved = true
+		rec.dropHeld(saved)
 	}
 	res := savedResult{active: rec.anyActive("", now)}
 	rec.Saving, rec.SavingAt = 0, time.Time{}
 	if !ok || tries >= saveTries || res.active {
 		return rec, res
 	}
-	held := rec.takeHeld()
+	held := rec.allHeld()
 	if len(held) == 0 {
 		return rec, res
 	}
@@ -492,6 +501,7 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 	}
 	mine := r.delta()
 	mine.Last = last
+	mine.ID = fmt.Sprintf("%s/%d", s.t.replica, s.t.deltas.Add(1))
 	key, _ := r.key.(voiceKey)
 	me, name := s.t.replica, chanName(r.ch.key)
 	now := s.t.clock.Now()
@@ -515,14 +525,14 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
 		return true
 	case finishDirect:
-		if s.saveParts(r, true, []voiceDelta{mine}) {
+		if s.saveParts(r, []voiceDelta{mine}) {
 			r.markGiven()
 		}
 		return true
 	case finishSave:
 	}
 	r.markGiven()
-	s.saveLoop(r, key, res, append(slices.Clip(res.held), mine))
+	s.saveLoop(r, key, res)
 	return true
 }
 
@@ -542,7 +552,7 @@ func retryRecord(rec *voiceRecord, me string, id uint, now time.Time) (*voiceRec
 	}
 	rec.Gen++
 	rec.Saving, rec.SavingAt = rec.Gen, now
-	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.takeHeld(), saved: rec.Saved}, true
+	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.allHeld()}, true
 }
 
 func (s *shard) retryWaiting(now time.Time) {
@@ -571,22 +581,26 @@ func (s *shard) retryWaiting(now time.Time) {
 		}
 		delete(s.waiting, r)
 		if res.verdict == finishSave {
-			s.saveLoop(r, key, res, res.held)
+			s.saveLoop(r, key, res)
 		}
 	}
 }
 
-func (s *shard) saveLoop(r *row, key voiceKey, res finishResult, parts []voiceDelta) {
+func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 	call := r.call
-	gen, saved := res.gen, res.saved
+	gen, parts := res.gen, res.held
 	for try := 1; ; try++ {
-		ok := s.saveParts(r, saved, parts)
+		ok := s.saveParts(r, parts)
 		var after savedResult
 		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
-			rec, after = savedRecord(rec, gen, ok, try, s.t.clock.Now())
+			rec, after = savedRecord(rec, gen, ok, parts, try, s.t.clock.Now())
 			return rec
 		}); err != nil {
 			slog.Warn("CallTracker: the end of a save of a voice call did not reach the other replicas", "error", err)
+		}
+		if !ok {
+			r.deferred = true
+			s.waiting[r] = s.t.clock.Now().Add(touchEvery)
 		}
 		if after.active {
 			s.markActive(call.ID)
@@ -594,12 +608,12 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult, parts []voiceDe
 		if !after.again {
 			return
 		}
-		gen, saved, parts = after.gen, true, after.held
+		gen, parts = after.gen, after.held
 	}
 }
 
-func (s *shard) saveParts(r *row, saved bool, parts []voiceDelta) bool {
-	out, ok := s.saveMerged(r.call, saved, parts)
+func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
+	out, ok := s.saveMerged(r.call, parts)
 	if !ok {
 		return false
 	}
@@ -642,21 +656,13 @@ func (s *shard) touchShared(now time.Time) {
 	}
 }
 
-func (s *shard) saveMerged(call *models.Call, saved bool, parts []voiceDelta) (models.Call, bool) {
-	var base *models.Call
-	if saved {
-		var b models.Call
-		if err := s.t.db.Unscoped().Omit(clause.Associations).First(&b, call.ID).Error; err != nil {
-			slog.Error("CallTracker: error reading a saved call to merge into", "error", err)
-			return models.Call{}, false
-		}
-		base = &b
+func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool) {
+	var base models.Call
+	if err := s.t.db.Unscoped().Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
+		slog.Error("CallTracker: error reading a call to merge into", "error", err)
+		return models.Call{}, false
 	}
-	start := call.StartTime
-	if base != nil {
-		start = base.StartTime
-	}
-	out := mergeVoice(call, base, start, parts)
+	out := mergeVoice(call, &base, base.StartTime, parts)
 	res := s.t.db.Model(&models.Call{}).Where("id = ? AND duration <= ?", out.ID, out.Duration).
 		Select("*").Omit("id", "created_at", "deleted_at", clause.Associations).Updates(&out)
 	if res.Error != nil {

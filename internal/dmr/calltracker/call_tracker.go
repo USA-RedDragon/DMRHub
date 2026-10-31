@@ -150,6 +150,7 @@ type CallTracker struct {
 	metrics *metrics.Metrics
 	bursts  atomic.Uint64
 	replica string
+	deltas  atomic.Uint64
 }
 
 type observerBox struct{ o DataObserver }

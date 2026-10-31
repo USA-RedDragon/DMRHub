@@ -20,6 +20,8 @@
 package calltracker_test
 
 import (
+	"errors"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -30,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const superframeTime = 360 * time.Millisecond
@@ -155,6 +158,38 @@ func TestAMovedCallAfterItsRecordExpiredIsOneRow(t *testing.T) {
 
 		c := oneRow(t, one, waitDone(t, two, database, 1))
 		assert.Equal(t, 1+480*6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		requireEventMatches(t, sub, c)
+	})
+}
+
+// TestAFailedSaveOfAMovedCallKeepsItsParts fails the first save of the
+// merged row of a moved call, as a database that is down for a moment
+// does. The parts of both replicas stay in the shared record, and a later
+// try saves the row with every burst.
+func TestAFailedSaveOfAMovedCallKeepsItsParts(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, sub := newSharedReplicas(t)
+		var fail atomic.Bool
+		require.NoError(t, database.Callback().Update().Before("gorm:update").Register("test:fail", func(db *gorm.DB) {
+			if db.Statement.Table == "calls" && fail.CompareAndSwap(true, false) {
+				_ = db.AddError(errors.New("the database is down"))
+			}
+		}))
+
+		s := newSender(t, one, userA, tgID, true, 9006)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		fail.Store(true)
+
+		c := oneRow(t, one, waitDone(t, one, database, 1))
+		assert.False(t, fail.Load(), "no save failed")
+		assert.Equal(t, 14, len(c.CallData)/layer2.RawBurstSize, "bursts")
 		requireEventMatches(t, sub, c)
 	})
 }

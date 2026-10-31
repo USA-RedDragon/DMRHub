@@ -135,6 +135,9 @@ type kvRecord struct {
 	// rekeys is the count of password changes of the repeater before the
 	// record was read.
 	rekeys uint64
+	// elsewhere is set when another replica that runs owns the repeater,
+	// so that a late packet from its old address does not take it back.
+	elsewhere bool
 }
 
 // recordFunc returns the KV record of the repeater id, as looked up before
@@ -213,6 +216,7 @@ func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id ui
 	if err == nil && repeater.Connection == models.RepeaterStateConnected {
 		rec.current = s.loggedInWithCurrentSecret(uint(id), repeater)
 		rec.moved = rec.current && s.moved(ctx, remote, data, repeater, id)
+		rec.elsewhere = !rec.moved && s.hub != nil && s.hub.OwnedElsewhere(ctx, uint(id))
 	}
 	if rec.moved {
 		s.awaitHandover(ctx, uint(id))
@@ -928,7 +932,7 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 	}
 	rec, found := record(id)
 	repeater := rec.repeater
-	if !found || !rec.current || rec.rekeys != s.rekeys[id] ||
+	if !found || !rec.current || rec.elsewhere || rec.rekeys != s.rekeys[id] ||
 		repeater.Connection != models.RepeaterStateConnected || storedDialect(repeater) != l.dialect {
 		return
 	}

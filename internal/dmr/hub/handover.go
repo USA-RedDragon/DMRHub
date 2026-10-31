@@ -119,6 +119,19 @@ func (h *Hub) owner(ctx context.Context, repeaterID uint) (string, bool) {
 // owner lasts.
 const moveTTL = 2 * time.Minute
 
+// OwnedElsewhere reports whether the KV store names another replica as
+// the owner of the repeater, and that replica is registered, serving or
+// draining. A session of the repeater here must not resume then: the
+// other replica serves it. It is false without replica IDs, and when the
+// owner stopped or died.
+func (h *Hub) OwnedElsewhere(ctx context.Context, repeaterID uint) bool {
+	if h.instanceID == "" {
+		return false
+	}
+	owner, ok := h.owner(ctx, repeaterID)
+	return ok && owner != h.instanceID && servers.InstanceRegistered(ctx, h.kv, owner)
+}
+
 // OwnerLeaving reports whether the repeater was last claimed by another
 // replica that drains, so that this replica may take its session over. It
 // is false without replica IDs, as for a lone instance, when the owner

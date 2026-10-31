@@ -559,3 +559,83 @@ func TestAMovedCallIsOneRow(t *testing.T) {
 		assert.Equal(t, uint(1000001), rows[0].SourceID)
 	})
 }
+
+// TestALatePacketDoesNotTakeAMovedSessionBack moves a repeater from a
+// draining replica to the other one, and then has a late ping from its old
+// address reach the old replica while the KV record of the repeater still
+// names that address, as before the new replica rewrites it. The old
+// replica must refuse the ping and leave the session with the replica that
+// took it over.
+func TestALatePacketDoesNotTakeAMovedSessionBack(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		first := testutils.Register(t, stack.Hub, stack.KV)
+		second, regB := stack.SpawnRegisteredReplica(t)
+		stack.StartServers(t)
+
+		old, err := testutils.NewSessionPeer(100001, testPassword, "")
+		require.NoError(t, err)
+		require.NoError(t, old.Connect(stack.MMDVMAddr))
+		t.Cleanup(old.Close)
+		require.NoError(t, old.WaitReady(handshakeWait))
+		waitRecorded(t, stack, 100001)
+		old.PausePings()
+
+		first.MarkDraining(t.Context())
+		ping, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: 100001}).AppendBinary(nil, dmrd.DialectMMDVM)
+		require.NoError(t, err)
+		require.Equal(t, dmrd.CommandMSTPONG, dmrd.Classify(exchange(t, second.MMDVMAddr, ping), dmrd.DialectMMDVM), "the other replica takes the session over")
+		waitFor(t, "the other replica owns the repeater", func() bool {
+			v, err := stack.KV.Get(t.Context(), "dmrhub:peer_owner:100001")
+			return err == nil && string(v) == regB.ID()
+		})
+		waitSubscribed(t, stack.Hub, 100001, 100001, false)
+
+		records := servers.MakeKVClient(stack.KV)
+		rec, err := records.GetRepeater(t.Context(), 100001)
+		require.NoError(t, err)
+		addr, err := net.ResolveUDPAddr("udp", old.LocalAddr())
+		require.NoError(t, err)
+		rec.IP, rec.Port = addr.IP.String(), addr.Port
+		records.StoreRepeater(t.Context(), 100001, rec)
+
+		require.NoError(t, old.SendRaw(ping))
+		waitFor(t, "the old replica refuses the late ping", func() bool { return old.Downs() > 0 })
+		v, err := stack.KV.Get(t.Context(), "dmrhub:peer_owner:100001")
+		require.NoError(t, err)
+		assert.Equal(t, regB.ID(), string(v), "the old replica took the session back")
+	})
+}
+
+// TestARepeaterResumesOnASurvivorOfItsDeadReplica logs a repeater in to a
+// replica that then dies, while the KV store still names it as the owner,
+// and has the repeater send to the other replica from the same address.
+// The other replica must resume the session at once.
+func TestARepeaterResumesOnASurvivorOfItsDeadReplica(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+		first := testutils.Register(t, stack.Hub, stack.KV)
+		second, regB := stack.SpawnRegisteredReplica(t)
+		stack.StartServers(t)
+
+		peer, err := testutils.NewSessionPeer(100001, testPassword, "")
+		require.NoError(t, err)
+		require.NoError(t, peer.Connect(stack.MMDVMAddr))
+		t.Cleanup(peer.Close)
+		require.NoError(t, peer.WaitReady(handshakeWait))
+		waitRecorded(t, stack, 100001)
+		waitClaimed(t, stack, 100001)
+
+		first.Deregister(t.Context())
+		require.NoError(t, peer.Retarget(second.MMDVMAddr))
+		waitFor(t, "the surviving replica takes the session", func() bool {
+			v, err := stack.KV.Get(t.Context(), "dmrhub:peer_owner:100001")
+			return err == nil && string(v) == regB.ID()
+		})
+		assert.Zero(t, peer.Downs(), "the repeater lost its session")
+	})
+}

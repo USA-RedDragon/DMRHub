@@ -130,6 +130,14 @@ func DrainLimit(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.DMR.DrainTimeout) * time.Second
 }
 
+// InstanceRegistered reports whether the instance id is registered,
+// serving or draining. It is false for an instance that stopped or died,
+// and when the KV store cannot be read.
+func InstanceRegistered(ctx context.Context, store kv.KV, id string) bool {
+	_, err := store.Get(ctx, instanceKeyPrefix+id)
+	return err == nil
+}
+
 // InstanceDraining reports whether the instance id is registered and
 // drains. It is false for an instance that serves, one that stopped or
 // died, and when the KV store cannot be read, so that only a replica that

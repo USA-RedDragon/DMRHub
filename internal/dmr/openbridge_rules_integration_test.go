@@ -55,16 +55,21 @@ func startEgressRuleStack(t *testing.T, stack *testutils.IntegrationStack, seedR
 	t.Cleanup(mc.Close)
 	require.NoError(t, mc.Connect(stack.MMDVMAddr))
 	require.NoError(t, mc.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return egressRuleStack{mc: mc, peer: peer}
 }
 
-func (s egressRuleStack) groupCallReaches(t *testing.T, src, tg, stream uint) bool {
+func reachWait(want bool) time.Duration {
+	if want {
+		return deliverWait
+	}
+	return drainWait
+}
+
+func (s egressRuleStack) groupCallReaches(t *testing.T, src, tg, stream uint, want bool) bool {
 	t.Helper()
 	require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(src, tg, stream, false)))
-	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, s.mc.SendDMRD(makeGroupVoiceTermPacket(src, tg, stream, false)))
-	got := s.peer.Drain(drainWait)
+	got := testutils.Collect(s.peer.ReceivedPackets(), reachWait(want), callEnds(tg))
 	for _, p := range got {
 		assert.Equal(t, tg, p.Dst)
 		assert.True(t, p.GroupCall)
@@ -72,10 +77,10 @@ func (s egressRuleStack) groupCallReaches(t *testing.T, src, tg, stream uint) bo
 	return len(got) > 0
 }
 
-func (s egressRuleStack) privateCallReaches(t *testing.T, dst, stream uint) bool {
+func (s egressRuleStack) privateCallReaches(t *testing.T, dst, stream uint, want bool) bool {
 	t.Helper()
 	require.NoError(t, s.mc.SendDMRD(makeBurst(1000001, dst, stream, false, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader), 0)))
-	got := s.peer.Drain(drainWait)
+	got := testutils.Collect(s.peer.ReceivedPackets(), reachWait(want), func(got []models.Packet) bool { return got[len(got)-1].StreamID == stream })
 	for _, p := range got {
 		assert.Equal(t, dst, p.Dst)
 		assert.False(t, p.GroupCall)
@@ -92,10 +97,10 @@ func TestOpenBridgeEgressTalkgroupRule(t *testing.T) {
 		s := startEgressRuleStack(t, stack, func(peerID uint) {
 			stack.SeedPeerRuleMatch(t, peerID, false, models.PeerRuleMatchDestination, 3100, 3100)
 		})
-		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9601), "TG 3100 must reach the peer")
-		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9602), "TG 91 must not reach the peer")
-		assert.True(t, s.groupCallReaches(t, 1000002, 3100, 9603), "TG 3100 from another radio must reach the peer")
-		assert.False(t, s.privateCallReaches(t, 3999999, 9604), "a private call must not reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9601, true), "TG 3100 must reach the peer")
+		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9602, false), "TG 91 must not reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000002, 3100, 9603, true), "TG 3100 from another radio must reach the peer")
+		assert.False(t, s.privateCallReaches(t, 3999999, 9604, false), "a private call must not reach the peer")
 	})
 }
 
@@ -110,11 +115,11 @@ func TestOpenBridgeEgressSourceAndTalkgroupRules(t *testing.T) {
 			stack.SeedPeerRuleMatch(t, peerID, false, models.PeerRuleMatchDestination, 3000000, 3999999)
 			stack.SeedPeerRuleMatch(t, peerID, false, models.PeerRuleMatchSource, 1000001, 1000001)
 		})
-		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9701), "TG 3100 from 1000001 must reach the peer")
-		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9702), "TG 91 must not reach the peer")
-		assert.False(t, s.groupCallReaches(t, 1000002, 3100, 9703), "a call from 1000002 must not reach the peer")
-		assert.True(t, s.privateCallReaches(t, 3999999, 9704), "a private call to 3999999 must reach the peer")
-		assert.False(t, s.privateCallReaches(t, 4000001, 9705), "a private call to 4000001 must not reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9701, true), "TG 3100 from 1000001 must reach the peer")
+		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9702, false), "TG 91 must not reach the peer")
+		assert.False(t, s.groupCallReaches(t, 1000002, 3100, 9703, false), "a call from 1000002 must not reach the peer")
+		assert.True(t, s.privateCallReaches(t, 3999999, 9704, true), "a private call to 3999999 must reach the peer")
+		assert.False(t, s.privateCallReaches(t, 4000001, 9705, false), "a private call to 4000001 must not reach the peer")
 	})
 }
 
@@ -126,9 +131,9 @@ func TestOpenBridgeEgressSourceRule(t *testing.T) {
 		s := startEgressRuleStack(t, stack, func(peerID uint) {
 			stack.SeedPeerRule(t, peerID, false, 1000001, 1000001)
 		})
-		assert.True(t, s.groupCallReaches(t, 1000001, 91, 9801), "TG 91 from 1000001 must reach the peer")
-		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9802), "TG 3100 from 1000001 must reach the peer")
-		assert.False(t, s.groupCallReaches(t, 1000002, 3100, 9803), "a call from 1000002 must not reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000001, 91, 9801, true), "TG 91 from 1000001 must reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9802, true), "TG 3100 from 1000001 must reach the peer")
+		assert.False(t, s.groupCallReaches(t, 1000002, 3100, 9803, false), "a call from 1000002 must not reach the peer")
 	})
 }
 
@@ -142,13 +147,12 @@ func TestOpenBridgeEgressPrivateCalls(t *testing.T) {
 			stack.SeedPeerRuleMatch(t, peerID, false, models.PeerRuleMatchDestination, 3100, 3100)
 			stack.SetPeerPrivateCalls(t, peerID, false, true)
 		})
-		assert.True(t, s.privateCallReaches(t, 3999999, 9901), "with the switch on, a private call must reach the peer")
-		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9902), "with the switch on, TG 91 must not reach the peer")
-		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9903), "TG 3100 must reach the peer")
+		assert.True(t, s.privateCallReaches(t, 3999999, 9901, true), "with the switch on, a private call must reach the peer")
+		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9902, false), "with the switch on, TG 91 must not reach the peer")
+		assert.True(t, s.groupCallReaches(t, 1000001, 3100, 9903, true), "TG 3100 must reach the peer")
 
 		stack.SetPeerPrivateCalls(t, 500001, false, false)
-		time.Sleep(settleDuration)
-		assert.False(t, s.privateCallReaches(t, 3999998, 9904), "with the switch off, a private call must not reach the peer")
+		assert.False(t, s.privateCallReaches(t, 3999998, 9904, false), "with the switch off, a private call must not reach the peer")
 	})
 }
 
@@ -173,23 +177,21 @@ func TestOpenBridgeIngressPrivateCalls(t *testing.T) {
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
-		time.Sleep(settleDuration)
 
-		send := func(stream uint) []models.Packet {
+		send := func(stream uint, want bool) []models.Packet {
 			p := makePrivateVoicePacket(100001, stream)
 			p.Src = 3999999
 			p.Repeater = 500001
 			require.NoError(t, obc.SendRawPacket(p))
-			return mc.Drain(drainWait)
+			return testutils.Collect(mc.ReceivedPackets(), reachWait(want), func(got []models.Packet) bool { return got[len(got)-1].StreamID == stream })
 		}
-		got := send(9911)
+		got := send(9911, true)
 		if assert.Len(t, got, 1, "with the switch on, the private call must reach the repeater") {
 			assert.Equal(t, uint(100001), got[0].Dst)
 			assert.False(t, got[0].GroupCall)
 		}
 
 		stack.SetPeerPrivateCalls(t, 500001, false, false)
-		time.Sleep(settleDuration)
-		assert.Empty(t, send(9912), "with the switch off, the private call must not reach the repeater")
+		assert.Empty(t, send(9912, false), "with the switch off, the private call must not reach the repeater")
 	})
 }

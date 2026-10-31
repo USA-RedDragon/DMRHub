@@ -136,6 +136,10 @@ type CallTracker struct {
 	// have them, by ID.
 	held  *xsync.Map[uint, heldRow]
 	owned *xsync.Map[uint, heldRow]
+	// homes holds, for the match window and lag after their finish, the
+	// workers that saved the rows that answers can be set on here, so that
+	// each later event of a row goes out through the outbox of its finish.
+	homes *xsync.Map[uint, homeRow]
 
 	observer atomic.Pointer[observerBox]
 	plugins  atomic.Pointer[pluginsBox]
@@ -168,6 +172,11 @@ type heldRow struct {
 	row   *row
 }
 
+type homeRow struct {
+	shard int
+	until time.Time
+}
+
 // Option sets up a CallTracker in NewCallTracker.
 type Option func(*CallTracker)
 
@@ -192,6 +201,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option)
 		joined:     xsync.NewMap[chanKey, lead](),
 		held:       xsync.NewMap[uint, heldRow](),
 		owned:      xsync.NewMap[uint, heldRow](),
+		homes:      xsync.NewMap[uint, homeRow](),
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
 	}
@@ -905,12 +915,11 @@ type settleRequest struct {
 }
 
 // settle sets the response of the row id of k from the match of kind
-// what: on its worker when a worker here holds it, and otherwise in the
-// database, while it asks the replica whose worker holds it to do the
-// same. The worker idx calls it.
+// what: on its worker when a worker here holds it or saved it, and
+// otherwise in the database, while it asks the replica whose worker holds
+// or saved it to do the same. The worker idx calls it.
 func (c *CallTracker) settle(idx int, k pair, what string, id uint) {
-	if h, ok := c.held.Load(id); ok {
-		c.enqueue(h.shard, task{fn: func(s *shard) { s.settleHeld(h.row) }})
+	if c.settleHere(k, what, id) {
 		return
 	}
 	if msg, err := json.Marshal(settleRequest{ID: id, Src: k.src, Dst: k.dst, What: what}); err == nil {
@@ -964,9 +973,21 @@ func (c *CallTracker) remoteSettle(msg []byte) {
 		slog.Error("CallTracker: failed to unmarshal a settle", "error", err)
 		return
 	}
-	if h, ok := c.held.Load(q.ID); ok {
+	c.settleHere(pair{src: q.Src, dst: q.Dst}, q.What, q.ID)
+}
+
+// settleHere queues the settle of the row id on the worker here that
+// holds it or saved it, and reports whether there is one.
+func (c *CallTracker) settleHere(k pair, what string, id uint) bool {
+	if h, ok := c.held.Load(id); ok {
 		c.enqueue(h.shard, task{fn: func(s *shard) { s.settleHeld(h.row) }})
+		return true
 	}
+	if h, ok := c.homes.Load(id); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.t.settleSaved(s.idx, k, what, id) }})
+		return true
+	}
+	return false
 }
 
 // dropRequest asks the replica whose worker holds the row ID, of Src to
@@ -1354,6 +1375,7 @@ func (s *shard) finish(r *row, at time.Time) {
 	err := s.t.db.Omit(clause.Associations).Save(call).Error
 	s.t.owned.Delete(call.ID)
 	if r.what != "" {
+		s.t.homes.Store(call.ID, homeRow{shard: s.idx, until: s.t.clock.Now().Add(responseWindow + matchLag)})
 		s.t.held.Delete(call.ID)
 	}
 	if err != nil {
@@ -1436,6 +1458,12 @@ func (s *shard) sweep(now time.Time) {
 	}
 	s.pruneSources(now)
 	if s.idx == 0 {
+		s.t.homes.Range(func(id uint, h homeRow) bool {
+			if h.until.Before(now) {
+				s.t.homes.Delete(id)
+			}
+			return true
+		})
 		s.t.sources.Range(func(k sourceKey, ref streamRef) bool {
 			if now.Sub(ref.at) >= streamIdle {
 				s.t.sources.Delete(k)

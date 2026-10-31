@@ -25,15 +25,19 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -222,4 +226,39 @@ func TestARowNearDroppedAnswersTakesANewAnswer(t *testing.T) {
 	mustStep(t, c, k, matchOp{answer: &matchAnswer{Stream: 5000, At: b.Add(time.Second), Response: models.CallResponseNACK}, keep: true})
 	m2, _ := c.matched(k, answerData, 2)
 	assert.Equal(t, models.CallResponseNACK, m2, "the row did not take the newest answer")
+}
+
+// TestTheHomesOfRowsEmptyAfterTheMatchExpires finishes a radio check and
+// waits past the life of its match. The worker that saved the check must
+// be in homes until then, and homes must be empty after.
+func TestTheHomesOfRowsEmptyAfterTheMatchExpires(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(&cfg)
+		database, err := db.MakeDB(&cfg)
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
+		require.NoError(t, err)
+		ct := NewCallTracker(database, ps, memoryStore(t))
+		t.Cleanup(func() {
+			ct.Stop()
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+			_ = ps.Close()
+		})
+		var req pdu.CSBK
+		req.LastBlock = true
+		require.NoError(t, req.SetMotorolaRadioCheck(pdu.MotorolaRadioCheckPDU{RequesterAddress: 1, CheckedAddress: 2}))
+		raw, err := layer2.BuildBurst(&req, 1, layer2.SyncSourceMS)
+		require.NoError(t, err)
+		ct.Track(context.Background(), models.Packet{Src: 1, Dst: 2, Repeater: 100001, Slot: true, StreamID: 1, FrameType: dmrconst.FrameDataSync, DTypeOrVSeq: uint(raw.SlotType().DataType), DMRData: raw}, models.RepeaterTypeMMDVM, false)
+		time.Sleep(2 * controlHang)
+		ct.Flush()
+		assert.Equal(t, 1, ct.homes.Size(), "the worker that saved the check is not its home")
+		time.Sleep(responseWindow + matchLag + sweepInterval)
+		ct.Flush()
+		assert.Zero(t, ct.homes.Size(), "homes keeps a row past its match")
+	})
 }

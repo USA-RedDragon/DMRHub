@@ -32,8 +32,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -578,5 +580,96 @@ func TestADropDuringTheFinishOfAnOwnRowDeletesIt(t *testing.T) {
 		got := byStream(rows(t, database))
 		assert.Equal(t, models.CallResponseACK, got[9901].Response, "the request has no ACK")
 		assert.NotContains(t, got, uint(9902), "the answer kept a row of its own")
+	})
+}
+
+// holdPS holds the first "calls" event of the row with ID id and the
+// response held until release, so that later events of the row can pass
+// it if they go through another outbox.
+type holdPS struct {
+	pubsub.PubSub
+	mu      sync.Mutex
+	id      uint
+	held    models.CallResponse
+	release chan struct{}
+}
+
+func (p *holdPS) arm(id uint, held models.CallResponse) {
+	p.mu.Lock()
+	p.id, p.held = id, held
+	p.mu.Unlock()
+}
+
+func (p *holdPS) Publish(topic string, message []byte) error {
+	p.mu.Lock()
+	hold := false
+	if topic == "calls" && p.id != 0 {
+		var c models.Call
+		if json.Unmarshal(message, &c) == nil && c.ID == p.id && c.Response == p.held && !c.Active {
+			hold, p.id = true, 0
+		}
+	}
+	p.mu.Unlock()
+	if hold {
+		<-p.release
+	}
+	return gated(p.PubSub.Publish(topic, message))
+}
+
+// TestTheLastEventOfARowShowsItsResponse holds the event that the finish
+// of a message publishes with its ACK, while a late message takes the ACK
+// over, and then lets it go. The last "calls" event of the first message
+// must show what its row in the database has. (Fourth review, R4-1.)
+func TestTheLastEventOfARowShowsItsResponse(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, store := trackerDeps(t)
+		hold := &holdPS{PubSub: ps, release: make(chan struct{})}
+		ct := calltracker.NewCallTracker(database, hold, store)
+		t.Cleanup(ct.Stop)
+		sub := ps.Subscribe("calls")
+		t.Cleanup(func() { _ = sub.Close() })
+		other := workerApart(repeaterA)
+		third := workerApart(repeaterA, other)
+
+		newSender(t, ct, userB, userA, false, 9951).data(confirmedText(t, "one")...)
+		ct.Flush()
+		time.Sleep(500 * time.Millisecond)
+		second := confirmedText(t, "two")
+		sentAt := time.Now()
+		time.Sleep(100 * time.Millisecond)
+		ack := newSender(t, ct, userA, userB, false, 9953)
+		ack.repeater = other
+		ack.data(confirmedACK(t, second)...)
+		ct.Flush()
+		firstID := byStream(rows(t, database))[9951].ID
+		hold.arm(firstID, models.CallResponseACK)
+		time.Sleep(4 * time.Second)
+		synctest.Wait()
+
+		late := newSender(t, ct, userB, userA, false, 9952)
+		late.repeater, late.at = third, sentAt
+		late.data(second...)
+		synctest.Wait()
+		close(hold.release)
+		got := byStream(waitDone(t, ct, database, 3))
+		require.Equal(t, models.CallResponseNone, got[9951].Response, "the first message kept the ACK in the database")
+
+		var last models.CallResponse
+	drain:
+		for {
+			synctest.Wait()
+			select {
+			case msg := <-sub.Channel():
+				var c models.Call
+				require.NoError(t, json.Unmarshal(msg, &c))
+				if c.ID == firstID {
+					last = c.Response
+				}
+			default:
+				break drain
+			}
+		}
+		assert.Equal(t, models.CallResponseNone, last, "the last event of the first message shows the ACK it lost")
 	})
 }

@@ -136,6 +136,9 @@ func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 }
 
 func (h *Hub) loadRepeater(id uint, gen uint64) (*models.Repeater, error) {
+	if h.db == nil {
+		return nil, errNoDatabase
+	}
 	rpt, err := models.FindRepeaterByID(h.db, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		h.repeaters.store(id, nil, gen, h.clock.Now())
@@ -251,6 +254,9 @@ func (h *Hub) resyncRepeaters() {
 // resyncRepeater reloads the subscriptions of the repeater id when they
 // differ from the database, and reports whether it did.
 func (h *Hub) resyncRepeater(id uint) bool {
+	if h.db == nil {
+		return false
+	}
 	rpt, err := models.FindRepeaterByID(h.db, id)
 	if err != nil {
 		slog.Error("Failed to find repeater to resync", "repeaterID", id, "error", err)

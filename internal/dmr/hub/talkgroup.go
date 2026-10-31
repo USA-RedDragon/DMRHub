@@ -167,6 +167,9 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 // loadTalkgroups reads the IDs of all talkgroups from the database. When
 // the database fails, the hub keeps the IDs that it had.
 func (h *Hub) loadTalkgroups() {
+	if h.db == nil {
+		return
+	}
 	var ids []uint
 	if err := h.db.Model(&models.Talkgroup{}).Pluck("id", &ids).Error; err != nil {
 		slog.Error("Cannot load the talkgroups, keeping the ones known", "error", err)
@@ -191,6 +194,9 @@ func (h *Hub) loadTalkgroups() {
 
 // noteTalkgroup reads the talkgroup id again after a change of it.
 func (h *Hub) noteTalkgroup(id uint) {
+	if h.db == nil {
+		return
+	}
 	exists, err := models.TalkgroupIDExists(h.db, id)
 	if err != nil {
 		slog.Error("Cannot read a changed talkgroup, forgetting it", "talkgroupID", id, "error", err)

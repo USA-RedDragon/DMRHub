@@ -335,6 +335,9 @@ func (h *Hub) codec2Repeaters() []uint {
 }
 
 func (h *Hub) loadCodec2Repeaters() []uint {
+	if h.db == nil {
+		return nil
+	}
 	ids, err := models.Codec2RepeaterIDs(h.db)
 	if err != nil {
 		slog.Error("Cannot list the repeaters with a Codec2 timeslot", "error", err)

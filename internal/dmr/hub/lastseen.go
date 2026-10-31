@@ -251,6 +251,9 @@ func (h *Hub) storeSighting(s sighting, key string, vetted bool) error {
 // radioOwner returns the user who owns the radio ID id, as the account ID
 // or as a radio ID the user added, and 0 when no user does.
 func (h *Hub) radioOwner(id uint) (uint, error) {
+	if h.db == nil {
+		return 0, errNoDatabase
+	}
 	owner, ok, err := models.RadioIDOwner(h.db, id)
 	if err != nil || !ok {
 		return 0, err //nolint:wrapcheck // RadioIDOwner wraps its errors
@@ -327,6 +330,9 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 // lastCallRepeater returns the repeater and time of the last call of the
 // user userID on a repeater that the user owns or an admin trusts.
 func (h *Hub) lastCallRepeater(userID uint) (heardAt, error) {
+	if h.db == nil {
+		return heardAt{}, errNoDatabase
+	}
 	var row struct {
 		RepeaterID uint
 		CreatedAt  time.Time

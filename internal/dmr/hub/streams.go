@@ -170,6 +170,7 @@ type streamClaim struct {
 
 var (
 	errNoClaimStore = errors.New("no KV store for stream claims")
+	errNoDatabase   = errors.New("the hub has no database")
 	errClaimSlow    = errors.New("the KV store took too long")
 )
 

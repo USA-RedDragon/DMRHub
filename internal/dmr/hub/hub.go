@@ -286,7 +286,12 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	})
 	h.autoTalkgroups = xsync.NewMap[uint, struct{}]()
 	h.talkgroupCalls = xsync.NewMap[uint, time.Time]()
-	h.talkgroupIDs = lookup.New(h.clock, "talkgroups", lookup.TTL, func(id uint) (bool, error) { return models.TalkgroupIDExists(h.db, id) })
+	h.talkgroupIDs = lookup.New(h.clock, "talkgroups", lookup.TTL, func(id uint) (bool, error) {
+		if h.db == nil {
+			return false, errNoDatabase
+		}
+		return models.TalkgroupIDExists(h.db, id)
+	})
 	h.radioOwners = lookup.New(h.clock, "radio owners", lookup.TTL, h.radioOwner)
 	h.radioCalls = lookup.New(h.clock, "radio calls", lookup.TTL, h.lastCallRepeater)
 	h.egressTable = lookup.New(h.clock, "peers", lookup.TTL, h.loadEgressPeers)
@@ -314,7 +319,12 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
 	h.copyOrders = map[sourceSlot]*copyOrder{}
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
-	h.tgRepeaters = lookup.New(h.clock, "talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) { return models.TalkgroupRepeaterIDs(h.db, tg) })
+	h.tgRepeaters = lookup.New(h.clock, "talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) {
+		if h.db == nil {
+			return nil, errNoDatabase
+		}
+		return models.TalkgroupRepeaterIDs(h.db, tg)
+	})
 	h.heard = make(chan heardNote, heardQueue)
 	if db != nil {
 		h.loadRules()

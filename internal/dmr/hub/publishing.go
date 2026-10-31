@@ -141,6 +141,9 @@ func (h *Hub) refreshPeers() {
 }
 
 func (h *Hub) loadEgressPeers(struct{}) ([]egressPeer, error) {
+	if h.db == nil {
+		return nil, nil
+	}
 	peers, err := models.ListPeers(h.db)
 	if err != nil {
 		return nil, fmt.Errorf("listing peers: %w", err)

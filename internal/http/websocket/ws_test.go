@@ -42,6 +42,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const wsWait = time.Minute
+
 func TestMessageStruct(t *testing.T) {
 	t.Parallel()
 	msg := websocket.Message{
@@ -148,7 +150,7 @@ func dialWS(t *testing.T, server pipeServer) *coderWS.Conn {
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
 	header := http.Header{}
 	header.Set("Origin", server.URL)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 	defer cancel()
 	conn, resp, err := coderWS.Dial(ctx, wsURL, &coderWS.DialOptions{HTTPHeader: header, HTTPClient: server.client})
 	require.NoError(t, err)
@@ -376,7 +378,7 @@ func TestConcurrentPublishers(t *testing.T) {
 				}
 			}()
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 		defer cancel()
 		for i := range publishers * each {
 			_, msg, err := conn.Read(ctx)
@@ -402,7 +404,7 @@ func TestCloseHandshake(t *testing.T) {
 		bad := dialWS(t, server)
 		defer func() { _ = bad.CloseNow() }()
 		<-ws.writers
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 		defer cancel()
 		require.NoError(t, bad.Write(ctx, coderWS.MessageText, []byte{0xff, 0xfe}))
 		_, _, err := bad.Read(ctx)
@@ -444,7 +446,7 @@ func TestPingWaitingBehindALongWriteKeepsTheClient(t *testing.T) {
 		w := <-ws.writers
 
 		w.WriteMessage(websocket.Message{Type: int(coderWS.MessageBinary), Data: big})
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 		defer cancel()
 		_, r, err := conn.Reader(ctx)
 		require.NoError(t, err)

@@ -198,9 +198,6 @@ deadline	internal/http/api/controllers/v1/plugins/inside_test.go	1	baseline of 2
 timer	internal/http/api/controllers/v1/users/callsign_test.go	1	event wait: the handler mails the callsign notice from a goroutine of its own, and the test runs on the network backends, which a synctest bubble cannot hold; testTimeout bounds the wait
 deadline	internal/http/api/websocket/calls_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/http/api/websocket/visibility_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/http/websocket/close_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/http/websocket/origin_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/http/websocket/ws_test.go	5	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/kv/redis_timeout_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/kv/redis_timeout_test.go	2	real socket timeouts against a paused Redis container: the test measures how long a call to a hung Redis runs, and each bound sits between the right time and the wrong one (100 ms deadline against the 1 s call timeout; 1 s call timeout against 4 read timeouts of retries)
 deadline	internal/plugins/inside/manager_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

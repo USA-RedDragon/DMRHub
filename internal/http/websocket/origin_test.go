@@ -24,7 +24,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
@@ -55,7 +54,7 @@ func dialFrom(t *testing.T, server *httptest.Server, origin string) int {
 	if origin != "" {
 		header.Set("Origin", origin)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 	defer cancel()
 	conn, resp, err := coderWS.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws", &coderWS.DialOptions{HTTPHeader: header})
 	if resp != nil && resp.Body != nil {

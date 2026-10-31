@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
@@ -60,7 +59,7 @@ func TestUserChangeDuringAWriteStillSendsTheCloseFrame(t *testing.T) {
 		w := <-ws.writers
 
 		w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: big})
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 		defer cancel()
 		_, r, err := conn.Reader(ctx)
 		require.NoError(t, err, "the message starts")

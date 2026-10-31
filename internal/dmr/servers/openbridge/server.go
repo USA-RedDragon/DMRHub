@@ -810,3 +810,14 @@ func (s *Server) isQuenched(peer, stream uint) bool {
 	}
 	return true
 }
+
+// HoldLookupWaits makes the reads of the server of its peers wait for
+// their loads until end is called, instead of for at most lookup.Wait. A
+// test that runs on a slow machine calls it, so that a slow database drops
+// no packet.
+func (s *Server) HoldLookupWaits() (end func()) {
+	ch := make(chan struct{})
+	s.peers.HoldWaits(ch)
+	var once sync.Once
+	return func() { once.Do(func() { close(ch) }) }
+}

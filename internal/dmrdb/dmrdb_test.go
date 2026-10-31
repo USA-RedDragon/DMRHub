@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
@@ -283,16 +284,19 @@ func TestUnpackDBFailureDoesNotHangLaterCalls(t *testing.T) {
 	if err := db.UnpackDB(); !errors.Is(err, ErrNoEntries) {
 		t.Fatalf("first UnpackDB: %v, want ErrNoEntries", err)
 	}
-	done := make(chan error, 1)
-	go func() { done <- db.UnpackDB() }()
-	select {
-	case err := <-done:
-		if !errors.Is(err, ErrNoEntries) {
-			t.Errorf("second UnpackDB: %v, want ErrNoEntries", err)
+	synctest.Test(t, func(t *testing.T) {
+		done := make(chan error, 1)
+		go func() { done <- db.UnpackDB() }()
+		synctest.Wait()
+		select {
+		case err := <-done:
+			if !errors.Is(err, ErrNoEntries) {
+				t.Errorf("second UnpackDB: %v, want ErrNoEntries", err)
+			}
+		default:
+			t.Fatal("second UnpackDB still waits for an unpack that failed")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("second UnpackDB still waits for an unpack that failed")
-	}
+	})
 	if _, ok := db.Get(1); ok {
 		t.Error("Get found an entry in a database that failed to load")
 	}

@@ -180,7 +180,6 @@ elapsed	internal/dmr/wt_forward_integration_test.go	1	baseline of 2026-10-28, no
 sleep	internal/dmr/wt_forward_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/wt_move_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/wt_move_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmrdb/dmrdb_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	real UDP: the test reads the status that the transcoder sets when a real AMBE server on a UDP socket answers its probe; a synctest bubble cannot hold the socket and the transcoder has no event for the answer
 timer	internal/http/api/controllers/v1/users/callsign_test.go	1	event wait: the handler mails the callsign notice from a goroutine of its own, and the test runs on the network backends, which a synctest bubble cannot hold; testTimeout bounds the wait
 sleep	internal/kv/kv_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

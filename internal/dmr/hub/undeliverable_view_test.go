@@ -24,9 +24,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,70 +74,63 @@ func TestWebsocketShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 	for _, v := range viewers {
 		t.Run(v.name, func(t *testing.T) {
 			t.Parallel()
-			h, database, ps, listening := makeTestHubWatching(t)
-			seedTalkgroup(t, database, tg, "TG91")
-			for id, call := range map[uint]string{callerID: "KI5VMF", ownerID: "W1OWN", otherID: "N0OTH", otherID + 1: "K5OWN", adminID: "N0ADM"} {
-				seedUser(t, database, id, call)
-			}
-			require.NoError(t, database.Model(&models.User{}).Where("id = ?", adminID).Update("admin", true).Error)
-			tgID := uint(tg)
-			for _, r := range []models.Repeater{
-				{RepeaterConfiguration: models.RepeaterConfiguration{ID: 314926, Callsign: "W1XPR"}, OwnerID: ownerID},
-				{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304200, Callsign: "K5ABC"}, OwnerID: otherID + 1},
-				{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304201, Callsign: "N0OTH"}, OwnerID: otherID},
-				{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304202, Callsign: "N0ADM"}, OwnerID: adminID},
-			} {
-				r.Type = models.RepeaterTypeIPSC
-				r.TS1DynamicTalkgroupID = &tgID
-				require.NoError(t, database.Create(&r).Error)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				h, database, ps, listening := makeTestHubWatching(t)
+				seedTalkgroup(t, database, tg, "TG91")
+				for id, call := range map[uint]string{callerID: "KI5VMF", ownerID: "W1OWN", otherID: "N0OTH", otherID + 1: "K5OWN", adminID: "N0ADM"} {
+					seedUser(t, database, id, call)
+				}
+				require.NoError(t, database.Model(&models.User{}).Where("id = ?", adminID).Update("admin", true).Error)
+				tgID := uint(tg)
+				for _, r := range []models.Repeater{
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 314926, Callsign: "W1XPR"}, OwnerID: ownerID},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304200, Callsign: "K5ABC"}, OwnerID: otherID + 1},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304201, Callsign: "N0OTH"}, OwnerID: otherID},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304202, Callsign: "N0ADM"}, OwnerID: adminID},
+				} {
+					r.Type = models.RepeaterTypeIPSC
+					r.TS1DynamicTalkgroupID = &tgID
+					require.NoError(t, database.Create(&r).Error)
+				}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			sub := ps.Subscribe(fmt.Sprintf("calls:%d", v.id))
-			defer func() { _ = sub.Close() }()
-			go h.ListenForWebsocket(ctx, v.id)
-			select {
-			case <-listening:
-			case <-time.After(10 * time.Second):
-				t.Fatal("ListenForWebsocket never subscribed to calls")
-			}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				sub := ps.Subscribe(fmt.Sprintf("calls:%d", v.id))
+				defer func() { _ = sub.Close() }()
+				go h.ListenForWebsocket(ctx, v.id)
+				bubble.Receive(t, listening, 10*time.Second, "ListenForWebsocket never subscribed to calls")
 
-			sentences := make([]string, 0, len(all))
-			for _, e := range all {
-				sentences = append(sentences, e.Sentence)
-			}
-			callJSON, err := json.Marshal(models.Call{
-				ID: 1, SourceID: callerID, User: models.User{ID: callerID, Callsign: "KI5VMF"},
-				GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg,
-				Undeliverable: sentences,
+				sentences := make([]string, 0, len(all))
+				for _, e := range all {
+					sentences = append(sentences, e.Sentence)
+				}
+				callJSON, err := json.Marshal(models.Call{
+					ID: 1, SourceID: callerID, User: models.User{ID: callerID, Callsign: "KI5VMF"},
+					GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg,
+					Undeliverable: sentences,
+				})
+				require.NoError(t, err)
+				require.NoError(t, ps.Publish("calls", callJSON))
+
+				raw := bubble.Receive(t, sub.Channel(), 5*time.Second, "the call did not reach the websocket")
+				var row struct {
+					Undeliverable []json.RawMessage `json:"undeliverable"`
+					Scope         string            `json:"undeliverable_scope"`
+				}
+				require.NoError(t, json.Unmarshal(raw, &row))
+				require.Len(t, row.Undeliverable, len(v.want), "%s sees %d undeliverable entries", v.name, len(row.Undeliverable))
+				assert.Equal(t, v.scope, row.Scope)
+				if len(v.want) == 0 {
+					return
+				}
+				got := make([]wsUndeliverableEntry, 0, len(row.Undeliverable))
+				for _, r := range row.Undeliverable {
+					var e wsUndeliverableEntry
+					require.NoError(t, json.Unmarshal(r, &e), "entry %s", r)
+					got = append(got, e)
+				}
+				assert.Equal(t, v.want, got)
 			})
-			require.NoError(t, err)
-			require.NoError(t, ps.Publish("calls", callJSON))
-
-			var raw []byte
-			select {
-			case raw = <-sub.Channel():
-			case <-time.After(5 * time.Second):
-				t.Fatal("the call did not reach the websocket")
-			}
-			var row struct {
-				Undeliverable []json.RawMessage `json:"undeliverable"`
-				Scope         string            `json:"undeliverable_scope"`
-			}
-			require.NoError(t, json.Unmarshal(raw, &row))
-			require.Len(t, row.Undeliverable, len(v.want), "%s sees %d undeliverable entries", v.name, len(row.Undeliverable))
-			assert.Equal(t, v.scope, row.Scope)
-			if len(v.want) == 0 {
-				return
-			}
-			got := make([]wsUndeliverableEntry, 0, len(row.Undeliverable))
-			for _, r := range row.Undeliverable {
-				var e wsUndeliverableEntry
-				require.NoError(t, json.Unmarshal(r, &e), "entry %s", r)
-				got = append(got, e)
-			}
-			assert.Equal(t, v.want, got)
 		})
 	}
 }

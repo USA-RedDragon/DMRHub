@@ -96,15 +96,32 @@ go test -tags codec2wasm -timeout 30m -race ./...
 
 ## Build the docs site
 
-The docs site is one HTML page with every page of `doc/` and its images in it. `hack/docs-site/build.py` makes it from the Markdown files, with `hack/docs-site/template.html` as the page around them. The `GROUPS` list at the top of `build.py` is the navigation. The build stops when the navigation names a page that `doc/` does not have.
+The docs site at dmrhub.net has one page for each Markdown file of `doc/`. The DMRHub docs home is the site home at `/`, and the other pages are at `/docs/<page>/`, such as `/docs/getting-started/` for `doc/getting-started.md`. The docs of [dmrgo](https://github.com/USA-RedDragon/dmrgo), a DMRHub project, are at `/docs/dmrgo/`.
 
-It needs Python 3 with the `markdown` package (`pip install markdown`). Run:
+`hack/docs-site/build.py` makes the site with pandoc. These files control it:
+
+- `doc/nav.md` is the navigation, in reading order. The build stops when it names a page that `doc/` does not have. A Markdown file that `doc/nav.md` does not name still gets a page, but no navigation item.
+- `hack/docs-site/home.html` is the content of the home page.
+- `hack/docs-site/shell/` holds the page frame (`page.html`), its CSS and script, and the fonts. The frame has the header, the theme setting and the colors of the DMRHub web interface.
+
+The build stops when a page links to a page or an anchor that does not exist. It also writes `/docs/sitemap.xml`, with the date of the last commit of each page when the source tree is a git repository.
+
+It needs Python 3 and pandoc. Run:
 
 ```bash
 make docs-site
 ```
 
-The page is `artifacts/docs-site/index.html`. Open it in a browser, or publish that one file. To build from another docs tree, run `python3 hack/docs-site/build.py <doc directory> <output file>`.
+The site is in `artifacts/docs-site`. To add the dmrgo docs, give a dmrgo source tree: `python3 hack/docs-site/build.py --dmrgo <dmrgo directory>`. The site uses absolute paths, so serve the directory from the root of a web server to view it.
+
+`hack/docs-site/Dockerfile` builds the image that serves the site at dmrhub.net. It clones dmrgo at the ref in the `DMRGO_REF` build argument (default `main`). To use a local dmrgo tree instead, give it as the `dmrgo` build context:
+
+```bash
+docker build -f hack/docs-site/Dockerfile --build-arg DMRGO_REF=main -t dmrhub-docs .
+docker build -f hack/docs-site/Dockerfile --build-context dmrgo=../dmrgo -t dmrhub-docs .
+```
+
+The image runs `hack/docs-site/server` on port 8080 as an unprivileged user. It redirects `/docs/` to `/` and a page address without its trailing slash to the address with it, and sends the zstd copy of a file to a browser that accepts zstd.
 
 ## Make the screenshots of the docs
 

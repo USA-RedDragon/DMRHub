@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$title</title>
+<meta name="description" content="$description">
+<link rel="canonical" href="$canonical">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DMRHub">
+<meta property="og:title" content="$title">
+<meta property="og:description" content="$description">
+<meta property="og:url" content="$canonical">
+<link rel="icon" href="/favicon.ico">
+<script type="application/ld+json">$jsonld</script>
+<script>try{var m=localStorage.getItem("color-mode")||"system";if(m==="dark"||(m==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}</script>
+<link rel="preload" href="$font" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="$css">
+</head>
+<body>
+<header class="site-header">
+  <div class="bar">
+    <button class="icon-btn hamburger only-mobile" type="button" data-open-sheet>$i_menu<span class="sr-only">Toggle menu</span></button>
+    <a class="brand" href="/">Official DMRHub</a>
+    <nav class="topnav only-desk" aria-label="DMRHub">$app_links</nav>
+    <div class="header-right">
+      <div class="only-desk">$search</div>
+      <a class="nav-link active only-desk" href="/" aria-current="true">Docs</a>
+      <button class="icon-btn only-mobile" type="button" data-open-search>$i_search<span class="sr-only">Search docs</span></button>
+    </div>
+  </div>
+  <div class="searchbar">$search</div>
+</header>
+<div class="overlay" hidden data-close-sheet></div>
+<aside class="sheet" hidden aria-label="Menu">
+  <div class="sheet-head"><a href="/">Official DMRHub</a><button class="icon-btn" type="button" data-close-sheet>$i_x<span class="sr-only">Close</span></button></div>
+  <nav>$app_menu<a class="m-link active" href="/">${i_book}Docs</a><hr><div class="tree">$nav</div></nav>
+</aside>
+<div class="docs$wide">
+  <nav class="side" aria-label="Docs pages">$nav</nav>
+  <main id="content">$main</main>
+  $onpage
+</div>
+<footer class="site-footer">
+  <p>DMRHub is proudly open <a href="https://github.com/USA-RedDragon/DMRHub">source</a></p>
+  <p>Copyright &copy; 2023-$year Jacob McSwain</p>
+  <div class="mode-toggle">
+    <button class="mode-trigger" type="button" aria-label="Toggle theme" aria-haspopup="menu" aria-expanded="false">$i_mode_light$i_mode_dark$i_mode_system<span class="mode-label">Theme: <span data-mode-label>System</span></span></button>
+    <div class="mode-menu" role="menu" hidden><button type="button" role="menuitem" data-set="light">$i_sun<span>Light</span></button><button type="button" role="menuitem" data-set="dark">$i_moon<span>Dark</span></button><button type="button" role="menuitem" data-set="system">$i_monitor<span>System</span></button></div>
+  </div>
+</footer>
+<script src="$index"></script>
+<script src="$js"></script>
+</body>
+</html>

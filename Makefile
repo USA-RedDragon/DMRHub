@@ -87,9 +87,8 @@ screenshots:
 	@echo "--> Done"
 
 docs-site:
-	@echo "--> Building the docs site into artifacts/docs-site/index.html"
-	@mkdir -p artifacts/docs-site
-	@python3 hack/docs-site/build.py doc artifacts/docs-site/index.html
+	@echo "--> Building the docs site into artifacts/docs-site"
+	@python3 hack/docs-site/build.py --out artifacts/docs-site
 	@echo "--> Done"
 
 benchmark:

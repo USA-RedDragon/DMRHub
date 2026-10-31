@@ -101,6 +101,35 @@ func TestAMovedCallWithALongSecondPartIsOneRow(t *testing.T) {
 	})
 }
 
+// TestADeadReplicaDoesNotHoldAMovedRowOpen moves a call to another replica
+// while the worker of the first one stops for good, as a replica that dies
+// does. The part of the dead replica stops counting as active once it
+// stops sending bursts, so the row ends with the part of the new replica.
+func TestADeadReplicaDoesNotHoldAMovedRowOpen(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, _ := newSharedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9001)
+		s.voiceCall(2, false)
+		one.Flush()
+		release := calltracker.HoldWorker(one, s.server, s.repeater, s.slot)
+		t.Cleanup(release)
+		s.ct = two
+		for range 3 {
+			sendSuperframe(s)
+			time.Sleep(superframeTime)
+		}
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		time.Sleep(30 * time.Second)
+		two.Flush()
+
+		c := oneRow(t, two, rows(t, database))
+		assert.False(t, c.Active, "a dead replica holds the row open")
+		assert.GreaterOrEqual(t, len(c.CallData), (3*6+1)*layer2.RawBurstSize)
+	})
+}
+
 // TestAMovedCallAfterItsRecordExpiredIsOneRow ends a call on the hang
 // after it ran for longer than a minute, and moves the rest of it to
 // another replica, which runs it for longer than a minute. The row ends

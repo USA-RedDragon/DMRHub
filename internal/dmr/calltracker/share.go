@@ -38,6 +38,7 @@ const (
 	saveTries         = 3
 	saveHold          = 5 * time.Second
 	touchEvery        = voiceHang / 2
+	partLive          = voiceHang + touchEvery + kvTimeout
 )
 
 var errUnchanged = errors.New("the record stays as it is")
@@ -129,9 +130,9 @@ func loadRecord(old []byte) *voiceRecord {
 	return &rec
 }
 
-func (rec *voiceRecord) anyActive(except string) bool {
+func (rec *voiceRecord) anyActive(except string, now time.Time) bool {
 	for id, p := range rec.Parts {
-		if id != except && p.Active {
+		if id != except && p.Active && now.Sub(p.Last) < partLive {
 			return true
 		}
 	}
@@ -176,7 +177,7 @@ func claimRecord(rec *voiceRecord, me, ch string, seq uint, header bool, at time
 	if rec.ID == 0 {
 		return join(claimNew)
 	}
-	if rec.anyActive("") {
+	if rec.anyActive("", at) {
 		return join(claimAdopt)
 	}
 	last := rec.latest()
@@ -239,7 +240,7 @@ func finishRecord(rec *voiceRecord, me, ch string, id uint, seq uint, last time.
 	if keyUp && len(rec.Parts) == 1 && !rec.Saved && len(p.Held) == 0 {
 		return rec, finishResult{verdict: finishDelete}
 	}
-	if rec.anyActive(me) || rec.saving(now) {
+	if rec.anyActive(me, now) || rec.saving(now) {
 		p.Held = append(p.Held, mine)
 		return rec, finishResult{verdict: finishDefer}
 	}
@@ -262,7 +263,7 @@ func savedRecord(rec *voiceRecord, gen uint64, ok bool, tries int, now time.Time
 	if ok {
 		rec.Saved = true
 	}
-	res := savedResult{active: rec.anyActive("")}
+	res := savedResult{active: rec.anyActive("", now)}
 	rec.Saving, rec.SavingAt = 0, time.Time{}
 	if !ok || tries >= saveTries || res.active {
 		return rec, res
@@ -510,6 +511,7 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 	case finishDefer:
 		r.markGiven()
 		r.deferred = true
+		s.waiting[r] = now.Add(partLive)
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
 		return true
 	case finishDirect:
@@ -519,8 +521,63 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 		return true
 	case finishSave:
 	}
-	parts := append(slices.Clip(res.held), mine)
 	r.markGiven()
+	s.saveLoop(r, key, res, append(slices.Clip(res.held), mine))
+	return true
+}
+
+func retryRecord(rec *voiceRecord, me string, id uint, now time.Time) (*voiceRecord, finishResult, bool) {
+	if rec == nil || rec.ID != id {
+		return nil, finishResult{}, true
+	}
+	held := false
+	for _, p := range rec.Parts {
+		held = held || len(p.Held) > 0
+	}
+	if !held {
+		return nil, finishResult{}, true
+	}
+	if rec.anyActive(me, now) || rec.saving(now) {
+		return nil, finishResult{verdict: finishDefer}, false
+	}
+	rec.Gen++
+	rec.Saving, rec.SavingAt = rec.Gen, now
+	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.takeHeld(), saved: rec.Saved}, true
+}
+
+func (s *shard) retryWaiting(now time.Time) {
+	for r, next := range s.waiting {
+		if now.Before(next) {
+			continue
+		}
+		key, _ := r.key.(voiceKey)
+		if !r.deferred || r.deleted || now.Sub(r.last) >= streamIdle {
+			delete(s.waiting, r)
+			continue
+		}
+		var res finishResult
+		var done bool
+		me, id := s.t.replica, r.call.ID
+		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+			rec, res, done = retryRecord(rec, me, id, now)
+			return rec
+		}); err != nil {
+			s.waiting[r] = now.Add(touchEvery)
+			continue
+		}
+		if !done {
+			s.waiting[r] = now.Add(touchEvery)
+			continue
+		}
+		delete(s.waiting, r)
+		if res.verdict == finishSave {
+			s.saveLoop(r, key, res, res.held)
+		}
+	}
+}
+
+func (s *shard) saveLoop(r *row, key voiceKey, res finishResult, parts []voiceDelta) {
+	call := r.call
 	gen, saved := res.gen, res.saved
 	for try := 1; ; try++ {
 		ok := s.saveParts(r, saved, parts)
@@ -535,7 +592,7 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 			s.markActive(call.ID)
 		}
 		if !after.again {
-			return true
+			return
 		}
 		gen, saved, parts = after.gen, true, after.held
 	}

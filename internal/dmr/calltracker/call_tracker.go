@@ -1211,6 +1211,7 @@ type shard struct {
 	channels map[chanKey]*channel
 	rows     map[any]*row
 	ended    map[voiceKey]*row
+	waiting  map[*row]time.Time
 	streams  map[uint]*streamRows
 	aliases  map[sourceKey]*sourceState
 	burst    *layer2.Burst
@@ -1226,6 +1227,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		channels: map[chanKey]*channel{},
 		rows:     map[any]*row{},
 		ended:    map[voiceKey]*row{},
+		waiting:  map[*row]time.Time{},
 		streams:  map[uint]*streamRows{},
 		aliases:  map[sourceKey]*sourceState{},
 		burst:    layer2.NewBurst(),
@@ -1482,6 +1484,7 @@ func (s *shard) sweep(now time.Time) {
 		}
 	}
 	s.touchShared(now)
+	s.retryWaiting(now)
 	s.pruneSources(now)
 	if s.idx == 0 {
 		s.t.homes.Range(func(id uint, h homeRow) bool {

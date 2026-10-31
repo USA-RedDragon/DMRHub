@@ -1344,13 +1344,13 @@ func (s *shard) finish(r *row, at time.Time) {
 		s.t.db.Unscoped().Delete(call)
 		return
 	}
-	s.t.owned.Delete(call.ID)
 	if r.what != "" {
 		if resp, ok := s.t.matched(r.pair, r.what, call.ID); ok {
 			call.Response = resp
 		}
 	}
 	err := s.t.db.Omit(clause.Associations).Save(call).Error
+	s.t.owned.Delete(call.ID)
 	if r.what != "" {
 		s.t.held.Delete(call.ID)
 	}

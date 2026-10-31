@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
 // gateKV holds the first KV call of an armed race until the call of the
@@ -533,4 +534,49 @@ func TestARequestHeardAfterItsAnswerTakesIt(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestADropDuringTheFinishOfAnOwnRowDeletesIt holds the save of the row
+// that an answer made of its own, while its request comes and the row is
+// dropped. The row must not come back. (Fourth review, R4-4.)
+func TestADropDuringTheFinishOfAnOwnRowDeletesIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, store := trackerDeps(t)
+		var mu sync.Mutex
+		armed := true
+		first, rel := make(chan struct{}), make(chan struct{})
+		_ = database.Callback().Update().Before("gorm:begin_transaction").Register("test:hold-own-row-save", func(tx *gorm.DB) {
+			c, ok := tx.Statement.Dest.(*models.Call)
+			if !ok || c.Active || c.StreamID != 9902 {
+				return
+			}
+			mu.Lock()
+			if !armed {
+				mu.Unlock()
+				return
+			}
+			armed = false
+			mu.Unlock()
+			close(first)
+			<-rel
+		})
+		ct := calltracker.NewCallTracker(database, ps, store)
+		t.Cleanup(ct.Stop)
+		req, ans := radioCheckBursts(t)
+		back := newSender(t, ct, userB, userA, false, 9902)
+		back.repeater = workerApart(repeaterA)
+		back.data(ans)
+		ct.Flush()
+		<-first
+		newSender(t, ct, userA, userB, false, 9901).data(req)
+		synctest.Wait()
+		close(rel)
+		time.Sleep(3 * time.Second)
+		ct.Flush()
+		synctest.Wait()
+		got := byStream(rows(t, database))
+		assert.Equal(t, models.CallResponseACK, got[9901].Response, "the request has no ACK")
+		assert.NotContains(t, got, uint(9902), "the answer kept a row of its own")
+	})
 }

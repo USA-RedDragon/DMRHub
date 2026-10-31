@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -32,12 +33,13 @@ import (
 
 const kvStatusSuccess = "success"
 
-func makeInMemoryKV(ctx context.Context, _ *config.Config) (KV, error) {
+func makeInMemoryKV(ctx context.Context, _ *config.Config, c clock.Clock) (KV, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	kv := inMemoryKV{
 		kv:      xsync.NewMap[string, kvValue](),
 		cancel:  cancel,
 		metrics: metrics.NewMetrics(),
+		clock:   clock.Or(c),
 	}
 
 	// Start background cleanup goroutine
@@ -55,6 +57,7 @@ type inMemoryKV struct {
 	kv      *xsync.Map[string, kvValue]
 	cancel  context.CancelFunc
 	metrics *metrics.Metrics
+	clock   clock.Clock
 }
 
 func (kv inMemoryKV) Has(_ context.Context, key string) (bool, error) {
@@ -68,7 +71,7 @@ func (kv inMemoryKV) Has(_ context.Context, key string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if !obj.ttl.IsZero() && obj.ttl.Before(time.Now()) {
+	if !obj.ttl.IsZero() && obj.ttl.Before(kv.clock.Now()) {
 		kv.kv.Delete(key) // Remove expired key
 		return false, nil
 	}
@@ -88,7 +91,7 @@ func (kv inMemoryKV) Get(_ context.Context, key string) ([]byte, error) {
 		status = "not_found"
 		return nil, fmt.Errorf("key %s %w", key, ErrNotFound)
 	}
-	if !value.ttl.IsZero() && value.ttl.Before(time.Now()) {
+	if !value.ttl.IsZero() && value.ttl.Before(kv.clock.Now()) {
 		kv.kv.Delete(key) // Remove expired key
 		status = "expired"
 		return nil, fmt.Errorf("key %s has expired: %w", key, ErrNotFound)
@@ -139,7 +142,7 @@ func (kv inMemoryKV) Expire(_ context.Context, key string, ttl time.Duration) er
 		if ttl <= 0 {
 			return kvValue{}, xsync.DeleteOp
 		}
-		oldValue.ttl = time.Now().Add(ttl)
+		oldValue.ttl = kv.clock.Now().Add(ttl)
 		return oldValue, xsync.UpdateOp
 	})
 	if !found {
@@ -179,7 +182,7 @@ func (kv inMemoryKV) Scan(_ context.Context, cursor uint64, match string, count 
 		}
 
 		if matched {
-			if !value.ttl.IsZero() && value.ttl.Before(time.Now()) {
+			if !value.ttl.IsZero() && value.ttl.Before(kv.clock.Now()) {
 				kv.kv.Delete(key) // Remove expired keys
 				return true       // continue iteration
 			}
@@ -204,7 +207,7 @@ func (kv inMemoryKV) SetNX(_ context.Context, key string, value string, ttl time
 
 	var set bool
 	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
-		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(time.Now())) {
+		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(kv.clock.Now())) {
 			// Key exists and is not expired.
 			set = false
 			return oldValue, xsync.CancelOp
@@ -212,7 +215,7 @@ func (kv inMemoryKV) SetNX(_ context.Context, key string, value string, ttl time
 		set = true
 		nv := kvValue{value: []byte(value)}
 		if ttl > 0 {
-			nv.ttl = time.Now().Add(ttl)
+			nv.ttl = kv.clock.Now().Add(ttl)
 		}
 		return nv, xsync.UpdateOp
 	})
@@ -322,7 +325,7 @@ func (kv inMemoryKV) cleanupExpiredKeys(ctx context.Context) {
 		case <-ticker.C:
 			// Perform cleanup with metrics
 			start := time.Now()
-			now := time.Now()
+			now := kv.clock.Now()
 			keysToDelete := make([]string, 0)
 
 			// Collect expired keys

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 )
 
@@ -49,8 +50,25 @@ type KV interface {
 	Close() error
 }
 
+// Option changes how MakeKV makes a store.
+type Option func(*options)
+
+type options struct {
+	clock clock.Clock
+}
+
+// WithClock makes the in-memory store expire its keys on c. Redis keeps
+// the TTLs of its keys itself.
+func WithClock(c clock.Clock) Option {
+	return func(o *options) { o.clock = c }
+}
+
 // MakeKV creates a new key-value store client.
-func MakeKV(ctx context.Context, config *config.Config) (KV, error) {
+func MakeKV(ctx context.Context, config *config.Config, opts ...Option) (KV, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if config.Redis.Enabled {
 		redisKV, err := makeRedisKV(ctx, config)
 		if err != nil {
@@ -59,5 +77,5 @@ func MakeKV(ctx context.Context, config *config.Config) (KV, error) {
 		return redisKV, nil
 	}
 
-	return makeInMemoryKV(ctx, config)
+	return makeInMemoryKV(ctx, config, o.clock)
 }

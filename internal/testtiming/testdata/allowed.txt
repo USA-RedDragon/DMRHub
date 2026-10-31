@@ -167,9 +167,7 @@ sleep	internal/dmr/servers/modem/replicas_linux_test.go	1	baseline of 2026-10-28
 elapsed	internal/dmr/servers/modem/server_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/modem/server_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/modem/status_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-fixedport	internal/dmr/servers/openbridge/server_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/servers/openbridge/server_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	the UDP port of a peer row in the database; the test starts no server and sends nothing to it
 sleep	internal/dmr/session_peer_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/stream_loop_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/stream_loop_integration_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

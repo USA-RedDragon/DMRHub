@@ -37,7 +37,8 @@ Use DIR with the external client tests:
   hack/droidstar-test.sh DIR/droidstar/build/DroidStar
 
 Environment: JOBS (make jobs, default 4).
-Needs git, make, a C++ compiler, cmake, Go, python3 with venv, and Qt 6
+Needs git, make, a C++ compiler, cmake, nlohmann-json and libmosquitto (headers),
+Go, python3 with venv, and Qt 6
 (Base, Declarative, Multimedia) for DroidStar.
 EOF
 }

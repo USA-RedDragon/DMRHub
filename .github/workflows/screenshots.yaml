@@ -60,7 +60,7 @@ jobs:
           OXIPNG_SHA256: 1813750ef592c5350ca79c88f98b2c0876d05c826dc7156245256d4255c1ad17
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends passt
+          sudo apt-get install -y --no-install-recommends passt nlohmann-json3-dev libmosquitto-dev
           curl -fsSL -o "$RUNNER_TEMP/oxipng.tar.gz" "https://github.com/oxipng/oxipng/releases/download/v${OXIPNG_VERSION}/oxipng-${OXIPNG_VERSION}-x86_64-unknown-linux-musl.tar.gz"
           echo "${OXIPNG_SHA256}  $RUNNER_TEMP/oxipng.tar.gz" | sha256sum -c -
           sudo tar -xzf "$RUNNER_TEMP/oxipng.tar.gz" -C /usr/local/bin --strip-components=1 "oxipng-${OXIPNG_VERSION}-x86_64-unknown-linux-musl/oxipng"

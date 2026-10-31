@@ -22,6 +22,7 @@ package ipsc
 import (
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -141,18 +142,20 @@ func TestADataCallWithoutItsLastBlockEnds(t *testing.T) {
 // Neither is the data that the preamble announced.
 func TestALateDataHeaderStartsAnotherCall(t *testing.T) {
 	t.Parallel()
-	tr := newTestTranslator(t)
-	pre := smsPacketOf(40, preambleBursts(t, 1, 1)[0])
-	header := smsPacketOf(41, smsBursts(t, "x")[0])
-	other := header
-	other.StreamID, other.Src = 42, smsSource+1
+	synctest.Test(t, func(t *testing.T) {
+		tr := newTestTranslator(t)
+		pre := smsPacketOf(40, preambleBursts(t, 1, 1)[0])
+		header := smsPacketOf(41, smsBursts(t, "x")[0])
+		other := header
+		other.StreamID, other.Src = 42, smsSource+1
 
-	first := decodeUserT(t, tr.TranslateToIPSC(pre)[0])
-	got := decodeUserT(t, tr.TranslateToIPSC(other)[0])
-	assert.NotEqual(t, first.CallControl, got.CallControl, "a header from another source joined the preamble")
-	time.Sleep(preambleGap + 50*time.Millisecond)
-	got = decodeUserT(t, tr.TranslateToIPSC(header)[0])
-	assert.NotEqual(t, first.CallControl, got.CallControl, "a late header joined the preamble")
+		first := decodeUserT(t, tr.TranslateToIPSC(pre)[0])
+		got := decodeUserT(t, tr.TranslateToIPSC(other)[0])
+		assert.NotEqual(t, first.CallControl, got.CallControl, "a header from another source joined the preamble")
+		time.Sleep(preambleGap)
+		got = decodeUserT(t, tr.TranslateToIPSC(header)[0])
+		assert.NotEqual(t, first.CallControl, got.CallControl, "a late header joined the preamble")
+	})
 }
 
 // TestEachCallHasItsOwnCallSeq sends a voice call and two data calls to a

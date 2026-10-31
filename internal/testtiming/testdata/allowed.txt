@@ -134,7 +134,6 @@ elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	baseline of 2026-10-28, not 
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
 timer	internal/dmr/servers/ipsc/hang_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/pacer_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/servers/ipsc/preamble_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
 elapsed	internal/dmr/servers/manager/drain_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/manager/drain_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

@@ -55,8 +55,10 @@ type UDPFront struct {
 	moving   map[*frontSession]struct{}
 	moves    int
 	ended    map[string][]time.Time
-	// holdUntil drops the packets of clients with no session until then.
+	// holdUntil drops the packets of clients with no session until then,
+	// and held until it closes.
 	holdUntil time.Time
+	held      <-chan struct{}
 	wg        sync.WaitGroup
 }
 
@@ -138,6 +140,15 @@ func (f *UDPFront) Cut(addr string, hold time.Duration) {
 		}
 	}
 	f.holdUntil = time.Now().Add(hold)
+}
+
+// CutUntil is Cut, but holds the clients off until release closes rather
+// than for a time.
+func (f *UDPFront) CutUntil(addr string, release <-chan struct{}) {
+	f.Cut(addr, 0)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.held = release
 }
 
 // Remove removes the backend at addr and ends its sessions.
@@ -268,7 +279,7 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) (*frontSession, *frontSession
 	if ok && !s.backend.draining {
 		return s, nil
 	}
-	if !ok && time.Now().Before(f.holdUntil) {
+	if !ok && (time.Now().Before(f.holdUntil) || isOpen(f.held)) {
 		return nil, nil
 	}
 	b := f.pick()
@@ -323,6 +334,18 @@ func (f *UDPFront) back(s *frontSession) {
 			}
 		}
 		f.mu.Unlock()
+	}
+}
+
+func isOpen(c <-chan struct{}) bool {
+	if c == nil {
+		return false
+	}
+	select {
+	case <-c:
+		return false
+	default:
+		return true
 	}
 }
 

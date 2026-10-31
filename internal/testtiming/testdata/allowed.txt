@@ -120,7 +120,7 @@ sleep	internal/dmr/rpto_integration_test.go	9	baseline of 2026-10-28, not review
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
 deadline	internal/dmr/servers/ipsc/register_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/ipsc/server_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/ipsc/server_test.go	2	expectNoUDP: a negative check, where a slow machine can only delay a packet past the 100 ms and hide it, never fail the test; readUDP moves to eventWait in the t5 commits
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
 elapsed	internal/dmr/servers/manager/drain_test.go	1	a lower bound on a real context timeout in Drain; a slow machine only makes it longer
 eventually	internal/dmr/servers/manager/manager_test.go	1	waits for the goroutines of stopped servers to exit; the runtime gives no event for that

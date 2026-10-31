@@ -544,6 +544,13 @@ func (c *CallTracker) netEvent(msg []byte) {
 	}
 }
 
+// ActiveNet returns the ID of the net that is active on the talkgroup tg,
+// as loaded from the database at start and updated from net:events since,
+// and reports whether one is active.
+func (c *CallTracker) ActiveNet(tg uint) (uint, bool) {
+	return c.activeNets.Load(tg)
+}
+
 func (c *CallTracker) remember(s *shard, r *row) {
 	if r.call.GroupCall {
 		return

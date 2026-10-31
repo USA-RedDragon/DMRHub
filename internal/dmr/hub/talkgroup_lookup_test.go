@@ -21,16 +21,15 @@ package hub_test
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -39,17 +38,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// slowTalkgroupQueries makes each query of the talkgroups table, once
-// armed, take longer than a burst waits for a lookup.
-func slowTalkgroupQueries(t *testing.T, database *gorm.DB) *atomic.Bool {
+type queryHold struct {
+	armed atomic.Bool
+	open  chan struct{}
+	once  sync.Once
+}
+
+func (q *queryHold) release() { q.once.Do(func() { close(q.open) }) }
+
+func holdQueries(t *testing.T, database *gorm.DB, table string) *queryHold {
 	t.Helper()
-	var armed atomic.Bool
-	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:slow_talkgroups", func(tx *gorm.DB) {
-		if armed.Load() && tx.Statement.Table == "talkgroups" {
-			time.Sleep(lookup.Wait + 100*time.Millisecond)
+	q := &queryHold{open: make(chan struct{})}
+	t.Cleanup(q.release)
+	require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:hold_"+table, func(tx *gorm.DB) {
+		if q.armed.Load() && tx.Statement.Table == table {
+			<-q.open
 		}
 	}))
-	return &armed
+	return q
 }
 
 func seedListener(t *testing.T, database *gorm.DB, tg uint) {
@@ -83,7 +89,7 @@ func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *test
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		_, database, ps := makeTestHubWithPubSub(t)
-		slow := slowTalkgroupQueries(t, database)
+		slow := holdQueries(t, database, "talkgroups")
 		seedListener(t, database, 7)
 
 		h := startHub(t, database, ps)
@@ -91,11 +97,12 @@ func TestATalkgroupThatWasThereAtStartTakesItsFirstCallFromASlowDatabase(t *test
 		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 		h.ActivateRepeater(context.Background(), 100002)
 
-		slow.Store(true)
+		slow.armed.Store(true)
 		h.RoutePacket(context.Background(), makeVoicePacket(7, 62001, true, false), models.RepeaterTypeMMDVM)
 		rp := receive(t, srv)
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(62001), rp.Packet.StreamID)
+		slow.release()
 	})
 }
 
@@ -103,7 +110,7 @@ func TestANewTalkgroupTakesItsFirstCallFromASlowDatabase(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		h, database := makeTestHub(t)
-		slow := slowTalkgroupQueries(t, database)
+		slow := holdQueries(t, database, "talkgroups")
 		seedListener(t, database, 8)
 		h.TalkgroupChanged(8)
 
@@ -111,10 +118,11 @@ func TestANewTalkgroupTakesItsFirstCallFromASlowDatabase(t *testing.T) {
 		defer h.UnregisterServer(models.RepeaterTypeMMDVM)
 		h.ActivateRepeater(context.Background(), 100002)
 
-		slow.Store(true)
+		slow.armed.Store(true)
 		h.RoutePacket(context.Background(), makeVoicePacket(8, 62002, true, false), models.RepeaterTypeMMDVM)
 		rp := receive(t, srv)
 		assert.Equal(t, uint(100002), rp.RepeaterID)
 		assert.Equal(t, uint(62002), rp.Packet.StreamID)
+		slow.release()
 	})
 }

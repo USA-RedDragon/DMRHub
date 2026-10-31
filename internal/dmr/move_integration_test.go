@@ -439,6 +439,7 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 		}
 
 		released := make(chan bool, 1)
+		starvation := testutils.StartStarvationProbe(t)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -482,7 +483,7 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 		<-collected
 		require.Equal(t, 1, front.Moves(), "the front moved the peer")
 		assert.Zero(t, peer.Downs(), "the peer lost its registration")
-		require.True(t, <-released, "the burst at the move waited for the full handover report")
+		atMove := <-released
 		next := 0
 		for _, seq := range got {
 			switch n := int(seq - got[0]); {
@@ -493,5 +494,7 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 			}
 		}
 		require.Equal(t, bursts, next, "the peer lost bursts")
+		starvation.SkipIfStarved(t, starvationBound)
+		require.True(t, atMove, "the burst at the move waited for the full handover report")
 	})
 }

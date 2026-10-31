@@ -84,7 +84,9 @@ func TestHBRPLoginWithCallsignStartingWithL(t *testing.T) {
 		require.NoError(t, hb.WaitReady(handshakeWait))
 
 		var row models.Repeater
-		require.NoError(t, stack.DB.First(&row, 100001).Error)
+		waitFor(t, "the server records the callsign of the login", func() bool {
+			return stack.DB.First(&row, 100001).Error == nil && row.Callsign == "LU1ABC"
+		})
 		assert.Equal(t, "LU1ABC", row.Callsign)
 		assert.Equal(t, "HBRP", row.Dialect)
 	})

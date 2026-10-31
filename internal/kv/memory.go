@@ -265,6 +265,9 @@ func (kv inMemoryKV) LDrain(_ context.Context, key string) ([][]byte, error) {
 }
 
 func (kv inMemoryKV) RPushTrim(_ context.Context, key string, value []byte, keep int64, ttl time.Duration) error {
+	if keep < 1 {
+		return fmt.Errorf("rpushtrim %s: %w", key, ErrKeep)
+	}
 	start := time.Now()
 	defer func() {
 		kv.metrics.RecordKVOperation("rpushtrim", kvStatusSuccess, time.Since(start).Seconds())

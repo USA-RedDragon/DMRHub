@@ -33,6 +33,9 @@ import (
 // expired.
 var ErrNotFound = errors.New("not found")
 
+// ErrKeep is the error of an RPushTrim that would keep no element.
+var ErrKeep = errors.New("keep must be at least 1")
+
 type KV interface {
 	Has(ctx context.Context, key string) (bool, error)
 	Get(ctx context.Context, key string) ([]byte, error)
@@ -49,6 +52,7 @@ type KV interface {
 	LDrain(ctx context.Context, key string) ([][]byte, error)
 	// RPushTrim appends value to the list stored under key, keeps only its
 	// newest keep elements and sets the TTL of the list to ttl, in one step.
+	// A keep below 1 is ErrKeep.
 	RPushTrim(ctx context.Context, key string, value []byte, keep int64, ttl time.Duration) error
 	// LRange returns all elements of the list stored under key, oldest
 	// first, without changing it. A list that does not exist is empty.

@@ -236,3 +236,16 @@ func TestKVAnExpiredKeyRemovalKeepsANewValue(t *testing.T) {
 	wg.Wait()
 	assert.Zero(t, lost, "a removal of an expired value removed a value set after it")
 }
+
+func TestKVRPushTrimRefusesAKeepBelowOne(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		for _, keep := range []int64{0, -1} {
+			assert.Error(t, store.RPushTrim(ctx, "bad", []byte("a"), keep, time.Minute), "keep %d", keep)
+		}
+		got, err := store.LRange(ctx, "bad")
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+}

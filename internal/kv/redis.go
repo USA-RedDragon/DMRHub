@@ -186,6 +186,9 @@ func (kv *redisKV) LDrain(ctx context.Context, key string) ([][]byte, error) {
 }
 
 func (kv *redisKV) RPushTrim(ctx context.Context, key string, value []byte, keep int64, ttl time.Duration) error {
+	if keep < 1 {
+		return fmt.Errorf("redis rpushtrim %s: %w", key, ErrKeep)
+	}
 	pipe := kv.client.TxPipeline()
 	pipe.RPush(ctx, key, value)
 	pipe.LTrim(ctx, key, -keep, -1)

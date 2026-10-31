@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/experimental"
@@ -91,7 +92,7 @@ type compiled struct {
 	sum    [sha256.Size]byte
 	module wazero.CompiledModule
 	users  int
-	free   *time.Timer
+	free   clock.Timer
 }
 
 // NewEngine returns an Engine whose plugins run within limits.
@@ -231,7 +232,7 @@ func (e *Engine) release(ctx context.Context, c *compiled) {
 		return
 	}
 	ctx = context.WithoutCancel(ctx)
-	c.free = time.AfterFunc(e.keep, func() {
+	c.free = clock.Or(e.limits.Clock).AfterFunc(e.keep, func() {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		if c.users == 0 && e.modules[c.sum] == c {

@@ -32,6 +32,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/tetratelabs/wazero"
@@ -215,12 +216,12 @@ func (i *Instance) kill(cause error) {
 }
 
 func (i *Instance) awaitHello() error {
-	t := time.NewTimer(i.limits.HelloWithin)
+	t := clock.Or(i.limits.Clock).NewTimer(i.limits.HelloWithin)
 	defer t.Stop()
 	select {
 	case <-i.helloed:
 		return nil
-	case <-t.C:
+	case <-t.C():
 		i.kill(ErrNoHello)
 		return ErrNoHello
 	case <-i.done:
@@ -283,7 +284,7 @@ func (i *Instance) write(m *pluginv1.ConnectResponse) error {
 	i.wmu.Lock()
 	defer i.wmu.Unlock()
 	if i.limits.AnswerWithin > 0 {
-		t := time.AfterFunc(i.limits.AnswerWithin, func() { i.kill(ErrNoAnswer) })
+		t := clock.Or(i.limits.Clock).AfterFunc(i.limits.AnswerWithin, func() { i.kill(ErrNoAnswer) })
 		defer t.Stop()
 	}
 	if err := plugin.WriteFrame(i.stdin, m); err != nil {

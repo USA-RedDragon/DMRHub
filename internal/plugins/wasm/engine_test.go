@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -150,13 +151,39 @@ func TestInspectRefusesWhatIsNotWasm(t *testing.T) {
 func TestInspectRefusesAProgramThatSaysNoHello(t *testing.T) {
 	t.Parallel()
 	eachCompiler(t, func(t *testing.T, compiler string) {
+		fake := clock.NewFake(time.Now())
 		l := wasm.DefaultLimits()
-		l.HelloWithin = 500 * time.Millisecond
-		started := time.Now()
-		_, err := engine.Limited(l).Inspect(context.Background(), guestOf(t, compiler, "silent"))
-		require.ErrorIs(t, err, wasm.ErrNoHello)
-		assert.Less(t, time.Since(started), time.Minute, "a program asleep for an hour is stopped")
+		l.Clock = fake
+		module := guestOf(t, compiler, "silent")
+		var err error
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_, err = engine.Limited(l).Inspect(context.Background(), module)
+		}()
+		advanceUntil(t, fake, done, l.HelloWithin)
+		require.ErrorIs(t, err, wasm.ErrNoHello, "a program asleep for an hour is stopped")
 	})
+}
+
+func advanceUntil(t *testing.T, fake *clock.Fake, done <-chan struct{}, d time.Duration) {
+	t.Helper()
+	for {
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() {
+			select {
+			case <-done:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		err := fake.BlockUntil(ctx, 1)
+		cancel()
+		if err != nil {
+			return
+		}
+		fake.Advance(d)
+	}
 }
 
 func TestAPluginInsideReachesNoFilesAndNoEnvironment(t *testing.T) {
@@ -189,14 +216,12 @@ func TestStopEndsAPluginThatWaitsForTheHub(t *testing.T) {
 		inst, err := engine.Start(context.Background(), "Echo", guestOf(t, compiler, "echo"), nil)
 		require.NoError(t, err)
 		assert.Equal(t, "Echo", inst.Hello().GetName())
-		started := time.Now()
 		inst.Stop()
 		select {
 		case <-inst.Done():
-		case <-time.After(5 * time.Second):
-			t.Fatal("the plugin still runs")
+		default:
+			t.Fatalf("the plugin still runs after the %v that Stop waits", wasm.StopWait)
 		}
-		assert.Less(t, time.Since(started), 5*time.Second)
 	})
 }
 
@@ -217,8 +242,9 @@ func TestAPluginThatSpinsIsStopped(t *testing.T) {
 
 func TestAPluginThatDoesNotReadIsStopped(t *testing.T) {
 	t.Parallel()
+	fake := clock.NewFake(time.Now())
 	l := wasm.DefaultLimits()
-	l.AnswerWithin = 500 * time.Millisecond
+	l.Clock = fake
 	inst, err := engine.Limited(l).Start(context.Background(), "Deaf", guest(t, "deaf"), nil)
 	require.NoError(t, err)
 	t.Cleanup(inst.Stop)
@@ -228,11 +254,7 @@ func TestAPluginThatDoesNotReadIsStopped(t *testing.T) {
 		for stream.Send(burst) == nil {
 		}
 	}()
-	select {
-	case <-inst.Done():
-	case <-time.After(15 * time.Second):
-		t.Fatal("the plugin still runs")
-	}
+	advanceUntil(t, fake, inst.Done(), l.AnswerWithin)
 	require.ErrorIs(t, inst.Err(), wasm.ErrNoAnswer)
 }
 

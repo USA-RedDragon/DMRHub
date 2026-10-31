@@ -27,6 +27,8 @@ package wasm
 import (
 	"net"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 )
 
 // Limits are the sandbox of the plugins inside DMRHub.
@@ -55,6 +57,9 @@ type Limits struct {
 	// LogLines is the most lines of a plugin's stderr that are logged each
 	// second.
 	LogLines int
+	// Clock times HelloWithin, AnswerWithin and how long an Engine keeps a
+	// module that no plugin runs. Nil is the real clock.
+	Clock clock.Clock
 }
 
 const (

@@ -220,11 +220,9 @@ timer	internal/plugins/inside/manager_test.go	1	baseline of 2026-10-28, not revi
 eventually	internal/plugins/inside/parrot_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/plugins/inside/parrot_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/plugins/inside/parrot_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/plugins/wasm/engine_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/plugins/wasm/engine_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/plugins/wasm/engine_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/plugins/wasm/share_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/plugins/wasm/share_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/plugins/wasm/engine_test.go	2	real guest: the waits are for a WebAssembly guest in wazero to connect and to log its panic; the guest runs real CPU and blocks in real ppoll syscalls, which neither a synctest bubble nor a test clock can stand in for
+timer	internal/plugins/wasm/engine_test.go	3	real guest: next waits for a guest to echo, and the spin and panic tests wait for a guest to be stopped for its real CPU time or to end on its own; the guest runs real CPU and blocks in real ppoll syscalls, which no test clock can stand in for
+eventually	internal/plugins/wasm/share_test.go	1	real guest: the meter must see both guests block in their real poll_oneoff, which no test clock can stand in for
 eventually	internal/positions/aprs_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/positions/aprs_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/positions/push_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

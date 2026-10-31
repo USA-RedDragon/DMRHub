@@ -21,6 +21,9 @@ package wasm
 
 import "time"
 
+// StopWait is stopWait for the tests.
+const StopWait = stopWait
+
 // PackData is packData for the tests.
 var PackData = packData //nolint:gochecknoglobals // for the tests
 

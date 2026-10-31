@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,13 +70,22 @@ func TestAPluginThatStartsAgainUsesTheCodeItHad(t *testing.T) {
 
 func TestTheCodeOfAModuleThatNoPluginRunsIsFreed(t *testing.T) {
 	t.Parallel()
-	e := newEngine(t, 50*time.Millisecond)
+	fake := clock.NewFake(time.Now())
+	l := wasm.DefaultLimits()
+	l.Clock = fake
+	e := wasm.NewEngine(l)
+	wasm.KeepFor(e, time.Minute)
+	t.Cleanup(func() { _ = e.Close(context.Background()) })
 	inst, err := e.Start(context.Background(), "echo", guest(t, "echo"), nil)
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	fake.Advance(time.Hour)
 	assert.Equal(t, 1, wasm.Compiled(e), "kept while the plugin runs")
 	inst.Stop()
-	require.Eventually(t, func() bool { return wasm.Compiled(e) == 0 }, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, fake.BlockUntil(t.Context(), 1), "the stopped plugin starts the keep timer")
+	fake.Advance(time.Minute - time.Nanosecond)
+	assert.Equal(t, 1, wasm.Compiled(e), "kept for the keep time")
+	fake.Advance(time.Nanosecond)
+	assert.Equal(t, 0, wasm.Compiled(e), "freed after the keep time")
 }
 
 func TestTheMeterOfEachPluginSeesItWait(t *testing.T) {

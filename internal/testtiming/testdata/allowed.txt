@@ -256,7 +256,6 @@ sleep	internal/monotime/monotime_test.go	1	baseline of 2026-10-28, not reviewed:
 fixedport	internal/oauth/oauth_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/plugins/drain_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/plugins/drain_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/plugins/inside/manager_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/plugins/inside/manager_test.go	21	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/plugins/inside/manager_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/plugins/inside/manager_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

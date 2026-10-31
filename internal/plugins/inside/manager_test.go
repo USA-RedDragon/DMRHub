@@ -277,12 +277,13 @@ func TestADrainHandsThePluginsInsideToAnotherReplica(t *testing.T) {
 		return ok && online(t, c, p.ID)
 	}, 60*time.Second, 50*time.Millisecond)
 	b := c.replica(t, "b", engine, true)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.DMR.DrainTimeout)*time.Second)
 	defer cancel()
-	start := time.Now()
 	left := inside.Drain(ctx, a.m, a.svc)
+	require.NoError(t, ctx.Err(), "the drain waited for its deadline of %d s rather than for the streams to end", cfg.DMR.DrainTimeout)
 	assert.Equal(t, 0, left, "no stream is left on the draining replica")
-	assert.Less(t, time.Since(start), 3*time.Second, "the drain does not wait for its deadline")
 	require.Eventually(t, func() bool {
 		_, ok := b.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)

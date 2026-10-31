@@ -290,9 +290,9 @@ func (c *offsetClock) Now() time.Time {
 }
 
 func (c *offsetClock) Since(t time.Time) time.Duration {
-	return c.Now().Sub(t)
+	return c.Clock.Since(t) + time.Duration(c.by.Load())
 }
 
 func (c *offsetClock) Until(t time.Time) time.Duration {
-	return t.Sub(c.Now())
+	return c.Clock.Until(t) - time.Duration(c.by.Load())
 }

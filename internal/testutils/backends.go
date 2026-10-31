@@ -66,10 +66,11 @@ func SQLiteMemoryBackend() Backend {
 }
 
 // Main runs the tests of a package, as m.Run does, with containers that the
-// tests share: one Postgres server, where each test gets a database of its
-// own, and MySQL, MariaDB and Redis containers that a test takes over when
-// an earlier test lets them go, cleared of its data. It removes the containers when
-// the tests end. Without Main, each test starts containers of its own.
+// tests share: one Postgres, one MySQL and one MariaDB server, where each
+// test gets a database of its own, and Redis servers that a test takes over
+// when an earlier test lets them go, cleared of its data. It removes the
+// containers when the tests end. Without Main, each test starts containers
+// of its own.
 func Main(m *testing.M) {
 	MainParallel(m, 0)
 }
@@ -288,21 +289,25 @@ func startRedis(ctx context.Context, pool dockertest.Pool) (dockertest.ClosableR
 type mysqlFamily struct {
 	name, image, tag, envPrefix string
 	fast                        []string
-	spares                      spares
+
+	once  sync.Once
+	port  int
+	admin *sql.DB
+	err   error
 }
 
 var (
-	mysqlServer = &mysqlFamily{ //nolint:gochecknoglobals // the MySQL containers that the tests of the process lend each other
+	mysqlServer = &mysqlFamily{ //nolint:gochecknoglobals // the MySQL server that the tests of the process share
 		name: "mysql", image: "mysql", tag: "8.4", envPrefix: "MYSQL",
-		fast: []string{"--skip-log-bin", "--innodb-flush-log-at-trx-commit=0", "--innodb-doublewrite=OFF", "--max-connections=4000"},
+		fast: []string{"--skip-log-bin", "--innodb-flush-log-at-trx-commit=0", "--innodb-doublewrite=OFF", "--max-connections=4000", "--performance-schema=OFF"},
 	}
-	mariadbServer = &mysqlFamily{ //nolint:gochecknoglobals // the MariaDB containers that the tests of the process lend each other
+	mariadbServer = &mysqlFamily{ //nolint:gochecknoglobals // the MariaDB server that the tests of the process share
 		name: "mariadb", image: "mariadb", tag: "12.3", envPrefix: "MARIADB",
 		fast: []string{"--innodb-flush-log-at-trx-commit=0", "--max-connections=4000"},
 	}
 )
 
-func (f *mysqlFamily) start(ctx context.Context, pool dockertest.Pool, fast bool) (dockertest.ClosableResource, int, error) {
+func (f *mysqlFamily) start(ctx context.Context, pool dockertest.Pool, fast bool) (int, error) {
 	env := []string{
 		f.envPrefix + "_ROOT_PASSWORD=test",
 		f.envPrefix + "_DATABASE=testdb",
@@ -314,7 +319,7 @@ func (f *mysqlFamily) start(ctx context.Context, pool dockertest.Pool, fast bool
 	}
 	res, err := runContainer(ctx, pool, f.image, f.tag, env, cmd)
 	if err != nil {
-		return nil, 0, err
+		return 0, err
 	}
 	port, _ := strconv.Atoi(res.GetPort("3306/tcp"))
 	if err := pool.Retry(ctx, 0, func() error {
@@ -337,9 +342,9 @@ func (f *mysqlFamily) start(ctx context.Context, pool dockertest.Pool, fast bool
 		}
 		return nil
 	}); err != nil {
-		return nil, 0, fmt.Errorf("%s not ready: %w", f.name, err)
+		return 0, fmt.Errorf("%s not ready: %w", f.name, err)
 	}
-	return res, port, nil
+	return port, nil
 }
 
 func newDatabaseName() string {
@@ -540,43 +545,40 @@ func clearRedis(port int) error {
 	return nil
 }
 
+func (f *mysqlFamily) ensure(pool dockertest.Pool) error {
+	f.once.Do(func() {
+		if f.port, f.err = f.start(context.Background(), pool, true); f.err != nil {
+			return
+		}
+		f.admin, f.err = sql.Open("mysql", mysqlDSN(f.port, ""))
+	})
+	return f.err
+}
+
+// shared gives t a database of its own on the one server of the family
+// that the tests of the process share, so that the number of containers
+// does not grow with the number of tests that run at once.
 func (f *mysqlFamily) shared(t *testing.T) (int, string) {
 	t.Helper()
-	pool := sharedPool(t)
-	c, ok := f.spares.take()
-	if !ok {
-		res, port, err := f.start(context.Background(), pool, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c = spare{res: res, port: port}
+	if err := f.ensure(sharedPool(t)); err != nil {
+		t.Fatalf("shared %s: %v", f.name, err)
 	}
-	admin, err := sql.Open("mysql", mysqlDSN(c.port, ""))
-	if err != nil {
-		t.Fatalf("open %s admin: %v", f.name, err)
-	}
-	admin.SetMaxOpenConns(1)
 	name := newDatabaseName()
-	if _, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
-		_ = admin.Close()
+	if _, err := f.admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create %s database %s: %v", f.name, name, err)
 	}
 	t.Cleanup(func() {
-		err := clearMySQL(admin, name)
-		_ = admin.Close()
-		if err != nil {
-			_ = c.res.Close(context.Background())
-			return
+		if err := clearMySQL(f.admin, name); err != nil {
+			t.Logf("drop %s database %s: %v", f.name, name, err)
 		}
-		f.spares.give(c)
 	})
-	return c.port, name
+	return f.port, name
 }
 
 func clearMySQL(admin *sql.DB, name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	rows, err := admin.QueryContext(ctx, "SELECT id FROM information_schema.processlist WHERE user = 'root' AND id <> CONNECTION_ID()")
+	rows, err := admin.QueryContext(ctx, "SELECT id FROM information_schema.processlist WHERE db = ? AND id <> CONNECTION_ID()", name)
 	if err != nil {
 		return fmt.Errorf("listing mysql sessions: %w", err)
 	}
@@ -640,7 +642,7 @@ func mysqlFamilyBackend(f *mysqlFamily) Backend {
 				port, database = f.shared(t)
 			} else {
 				var err error
-				_, port, err = f.start(t.Context(), ownPool(t, 3*time.Minute), false)
+				port, err = f.start(t.Context(), ownPool(t, 3*time.Minute), false)
 				if err != nil {
 					t.Fatal(err)
 				}

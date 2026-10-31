@@ -114,6 +114,14 @@ func waitClaimed(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
 	}
 }
 
+func waitHeardRecord(t *testing.T, stack *testutils.IntegrationStack, radio uint) {
+	t.Helper()
+	waitFor(t, fmt.Sprintf("the record of where radio %d was heard", radio), func() bool {
+		_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:lastheard:%d", radio))
+		return err == nil
+	})
+}
+
 func noticesApplied(t *testing.T, ps pubsub.PubSub, topic string, on func(func(uint)) func()) func() {
 	t.Helper()
 	seen := make(chan struct{}, 4)
@@ -478,6 +486,7 @@ func TestPrivateCallToUserLastHeard(t *testing.T) {
 		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000002, 1, 50, false)))
 		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000002, 1, 50, false)))
 		require.NotEmpty(t, receiveCall(c1, 1), "C1 should receive the TG1 call of user 1000002")
+		waitHeardRecord(t, stack, 1000002)
 
 		// Now C1 sends a private call to user 1000002
 		privPkt := makePrivateVoicePacket(1000002, 404)
@@ -732,6 +741,7 @@ func TestPrivateCallToRepeaterOwner(t *testing.T) {
 		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000002, 1, 55, false)))
 		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000002, 1, 55, false)))
 		require.NotEmpty(t, receiveCall(c1, 1), "C1 should receive the TG1 call of user 1000002")
+		waitHeardRecord(t, stack, 1000002)
 
 		// Now send private call to user 1000002
 		privPkt := makePrivateVoicePacket(1000002, 901)

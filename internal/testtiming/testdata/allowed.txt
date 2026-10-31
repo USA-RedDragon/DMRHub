@@ -21,7 +21,6 @@ sleep	internal/dmr/hub/locator_test.go	1	baseline of 2026-10-28, not reviewed: r
 timer	internal/dmr/hub/locator_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/peer_lookup_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/rules_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hub/settle_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/slow_claim_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/hub/slow_db_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/slow_db_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

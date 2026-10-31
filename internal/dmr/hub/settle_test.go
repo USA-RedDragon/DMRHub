@@ -26,6 +26,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,23 +48,13 @@ func knowTalkgroups(t testing.TB, h *hub.Hub) {
 // that they asked for, and published them.
 func settle(t testing.TB, h *hub.Hub, like models.Packet, sourceName string) {
 	t.Helper()
-	select {
-	case <-h.Settled(like, sourceName):
-	case <-time.After(failAfter):
-		t.Fatalf("the hub did not settle the source slot in %s", failAfter)
-	}
+	bubble.Receive(t, h.Settled(like, sourceName), failAfter, "the hub did not settle the source slot")
 }
 
 // receive returns the next packet that srv gets.
 func receive(t testing.TB, srv *hub.ServerHandle) hub.RoutedPacket {
 	t.Helper()
-	select {
-	case rp := <-srv.Packets:
-		return rp
-	case <-time.After(failAfter):
-		t.Fatalf("no packet in %s", failAfter)
-		return hub.RoutedPacket{}
-	}
+	return bubble.Receive(t, srv.Packets, failAfter, "no packet came")
 }
 
 // flush routes a private burst from the source slot of like on the MMDVM

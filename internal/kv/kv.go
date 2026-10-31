@@ -47,6 +47,12 @@ type KV interface {
 	RPush(ctx context.Context, key string, value []byte) (int64, error)
 	// LDrain atomically returns all elements of the list and deletes the key.
 	LDrain(ctx context.Context, key string) ([][]byte, error)
+	// RPushTrim appends value to the list stored under key, keeps only its
+	// newest keep elements and sets the TTL of the list to ttl, in one step.
+	RPushTrim(ctx context.Context, key string, value []byte, keep int64, ttl time.Duration) error
+	// LRange returns all elements of the list stored under key, oldest
+	// first, without changing it. A list that does not exist is empty.
+	LRange(ctx context.Context, key string) ([][]byte, error)
 	Close() error
 }
 

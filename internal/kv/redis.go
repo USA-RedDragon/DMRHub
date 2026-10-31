@@ -185,6 +185,29 @@ func (kv *redisKV) LDrain(ctx context.Context, key string) ([][]byte, error) {
 	return result, nil
 }
 
+func (kv *redisKV) RPushTrim(ctx context.Context, key string, value []byte, keep int64, ttl time.Duration) error {
+	pipe := kv.client.TxPipeline()
+	pipe.RPush(ctx, key, value)
+	pipe.LTrim(ctx, key, -keep, -1)
+	pipe.PExpire(ctx, key, ttl)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("redis rpushtrim %s: %w", key, err)
+	}
+	return nil
+}
+
+func (kv *redisKV) LRange(ctx context.Context, key string) ([][]byte, error) {
+	vals, err := kv.client.LRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis lrange %s: %w", key, err)
+	}
+	result := make([][]byte, len(vals))
+	for i, v := range vals {
+		result[i] = []byte(v)
+	}
+	return result, nil
+}
+
 func (kv *redisKV) Close() error {
 	if err := kv.client.Close(); err != nil {
 		return fmt.Errorf("redis close: %w", err)

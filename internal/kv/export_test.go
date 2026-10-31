@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -48,4 +49,23 @@ func FillRedisPool(ctx context.Context, store KV) error {
 		}
 	}
 	return nil
+}
+
+// ExpiryOf returns when the key of store expires.
+func ExpiryOf(ctx context.Context, store KV, key string) (time.Time, error) {
+	switch s := store.(type) {
+	case *redisKV:
+		d, err := s.client.PTTL(ctx, key).Result()
+		if err != nil {
+			return time.Time{}, fmt.Errorf("redis pttl %s: %w", key, err)
+		}
+		return time.Now().Add(d), nil
+	case inMemoryKV:
+		v, ok := s.kv.Load(key)
+		if !ok {
+			return time.Time{}, ErrNotFound
+		}
+		return v.ttl, nil
+	}
+	return time.Time{}, errors.New("unknown store")
 }

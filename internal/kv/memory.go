@@ -263,6 +263,43 @@ func (kv inMemoryKV) LDrain(_ context.Context, key string) ([][]byte, error) {
 	return decodeListEntries(existing.value), nil
 }
 
+func (kv inMemoryKV) RPushTrim(_ context.Context, key string, value []byte, keep int64, ttl time.Duration) error {
+	start := time.Now()
+	defer func() {
+		kv.metrics.RecordKVOperation("rpushtrim", kvStatusSuccess, time.Since(start).Seconds())
+	}()
+
+	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		var entries [][]byte
+		if loaded && (oldValue.ttl.IsZero() || !oldValue.ttl.Before(time.Now())) {
+			entries = decodeListEntries(oldValue.value)
+		}
+		entries = append(entries, value)
+		if n := int64(len(entries)); n > keep {
+			entries = entries[n-keep:]
+		}
+		list := make([]byte, 0, len(oldValue.value)+4+len(value))
+		for _, e := range entries {
+			list = append(list, encodeListEntry(e)...)
+		}
+		return kvValue{value: list, ttl: time.Now().Add(ttl)}, xsync.UpdateOp
+	})
+	return nil
+}
+
+func (kv inMemoryKV) LRange(_ context.Context, key string) ([][]byte, error) {
+	start := time.Now()
+	defer func() {
+		kv.metrics.RecordKVOperation("lrange", kvStatusSuccess, time.Since(start).Seconds())
+	}()
+
+	value, ok := kv.kv.Load(key)
+	if !ok || value.value == nil || (!value.ttl.IsZero() && value.ttl.Before(time.Now())) {
+		return nil, nil
+	}
+	return decodeListEntries(value.value), nil
+}
+
 // encodeListEntry encodes a single entry as [4-byte big-endian length][data].
 func encodeListEntry(data []byte) []byte {
 	l := len(data)

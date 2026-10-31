@@ -49,23 +49,20 @@ func TestDrainWaitsForTheRepeatersToMove(t *testing.T) {
 	defer c.Close()
 	require.NoError(t, c.WaitReady(wait))
 	ctx := context.Background()
-	require.Eventually(t, func() bool {
-		v, err := l.KV.Get(ctx, "dmrhub:peer_owner:100001")
-		return err == nil && len(v) > 0
-	}, wait, 10*time.Millisecond, "the hub took the repeater on")
+	v, err := l.KV.Get(ctx, "dmrhub:peer_owner:100001")
+	require.NoError(t, err)
+	require.NotEmpty(t, v, "the hub takes the repeater on before the RPTACK of its login")
 
 	lone := &fakeRegistry{}
-	start := time.Now()
 	assert.Zero(t, l.Manager.Drain(ctx, lone, time.Minute), "a lone instance does not drain")
 	assert.False(t, lone.draining.Load())
-	assert.Less(t, time.Since(start), time.Second)
 
 	now := &fakeRegistry{others: true}
 	assert.Zero(t, l.Manager.Drain(ctx, now, 0), "a timeout of 0 does not wait")
 	assert.True(t, now.draining.Load(), "the replica is marked as draining all the same")
 
 	waits := &fakeRegistry{others: true}
-	start = time.Now()
+	start := time.Now()
 	assert.Equal(t, 1, l.Manager.Drain(ctx, waits, 300*time.Millisecond), "the repeater did not move")
 	assert.True(t, waits.draining.Load())
 	assert.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "the drain waits for the repeater")

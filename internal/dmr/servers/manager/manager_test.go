@@ -68,7 +68,6 @@ func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest /
 	mc := testutils.NewMMDVMClient(100001, "", password)
 	require.NoError(t, mc.Connect(l.Addr(t, manager.MMDVM)))
 	require.NoError(t, mc.WaitReady(wait))
-	time.Sleep(500 * time.Millisecond)
 
 	before := goroutinesByCreator()
 
@@ -145,7 +144,7 @@ func TestStopEndsEveryServerAndApplyAfterStopDoesNothing(t *testing.T) {
 		assert.Nil(t, l.Manager.Server(k), "%s", k)
 	}
 	next := *l.Config
-	next.DMR.MMDVM.Port = testutils.FreeUDPPort(t)
+	next.DMR.MMDVM.WebTransport.Enabled = true
 	assert.Empty(t, l.Manager.Apply(&next))
 	assert.Nil(t, l.Manager.Server(manager.MMDVM))
 }
@@ -198,7 +197,7 @@ func TestApplyRestartsMMDVMForNewAllowedOrigins(t *testing.T) {
 	t.Parallel()
 	l := testutils.SetupLiveStack(t)
 	next := *l.Config
-	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: testutils.FreeUDPPort(t)}
+	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true}
 	require.Empty(t, l.Manager.Apply(&next))
 	before := l.Manager.Server(manager.MMDVM)
 

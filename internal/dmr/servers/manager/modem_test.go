@@ -66,12 +66,14 @@ func TestApplyTurnsTheModemOnRestartsItAndTurnsItOff(t *testing.T) {
 	next.DMR.Modem.RXFrequency, next.DMR.Modem.TXFrequency = 438800000, 438800000
 	require.Empty(t, m.Apply(&next))
 	linked := func() *modemtest.Fake {
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		defer cancel()
 		select {
 		case f := <-opened:
 			require.True(t, f.WaitFor(wait, func(f *modemtest.Fake) bool { return f.Count(mmdvm.CommandGetStatus) >= 2 }))
 			return f
-		case <-time.After(wait):
-			t.Fatal("the modem was not opened")
+		case <-ctx.Done():
+			t.Fatalf("the modem was not opened in %v", wait)
 			return nil
 		}
 	}

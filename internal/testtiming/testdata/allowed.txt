@@ -122,12 +122,10 @@ sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance
 deadline	internal/dmr/servers/ipsc/register_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/ipsc/server_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
-elapsed	internal/dmr/servers/manager/drain_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/servers/manager/drain_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/servers/manager/manager_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/dmr/servers/manager/manager_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/servers/manager/manager_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/servers/manager/modem_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/servers/manager/drain_test.go	1	a lower bound on a real context timeout in Drain; a slow machine only makes it longer
+eventually	internal/dmr/servers/manager/manager_test.go	1	waits for the goroutines of stopped servers to exit; the runtime gives no event for that
+pickport	internal/dmr/servers/manager/manager_test.go	4	the tests move a listener to a new configured port, or force a restart by a new port, so they need a known free port
+sleep	internal/dmr/servers/manager/manager_test.go	1	paces the background call stream of the restart leak test; no assertion depends on its timing
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

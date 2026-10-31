@@ -22,7 +22,6 @@ package hub
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -57,40 +56,6 @@ func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName 
 // SetStreamClaimTiming replaces streamClaimHold and streamClaimRecheck.
 func (h *Hub) SetStreamClaimTiming(hold, recheck time.Duration) {
 	h.claimTiming.Store(&[2]time.Duration{hold, recheck})
-}
-
-// HoldStreamClaimWaits makes the waits of the hub for the answers of the
-// KV store for the claims of streams end only when end is called, instead
-// of after streamClaimWait.
-func (h *Hub) HoldStreamClaimWaits() (end func()) {
-	ch := make(chan time.Time)
-	h.claimWaitEnd.Store(&ch)
-	var once sync.Once
-	return func() { once.Do(func() { close(ch) }) }
-}
-
-// HoldLastSeenWaits makes the waits of the hub for the records in the KV
-// store of where radios were heard end only when end is called, instead
-// of after lookup.Wait.
-func (h *Hub) HoldLastSeenWaits() (end func()) {
-	ch := make(chan struct{})
-	h.lastSeen.HoldWaits(ch)
-	var once sync.Once
-	return func() { once.Do(func() { close(ch) }) }
-}
-
-// HoldLookupWaits makes the reads of the hub of the database wait for
-// their loads until end is called, instead of for at most lookup.Wait.
-func (h *Hub) HoldLookupWaits() (end func()) {
-	ch := make(chan struct{})
-	h.talkgroupIDs.HoldWaits(ch)
-	h.radioOwners.HoldWaits(ch)
-	h.radioCalls.HoldWaits(ch)
-	h.egressTable.HoldWaits(ch)
-	h.tgRepeaters.HoldWaits(ch)
-	h.repeaters.flights.HoldWaits(ch)
-	var once sync.Once
-	return func() { once.Do(func() { close(ch) }) }
 }
 
 // StreamClaimHold is streamClaimHold.

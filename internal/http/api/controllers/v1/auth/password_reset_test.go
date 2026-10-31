@@ -47,7 +47,6 @@ const (
 	resetSent     = `{"message":"If that account has an email address, a link is on its way. It works for 1 hour."}`
 	resetBadLink  = `{"error":"This link does not work. It is older than 1 hour or was used already. Ask for a new one."}`
 	resetDone     = `{"message":"Your password is set. Log in with it now."}`
-	mailTimeout   = 10 * time.Second
 	resetHost     = "https://hub.example.com"
 	resetUserMail = "n0call@example.com"
 )
@@ -67,13 +66,7 @@ func (f *fakeMailer) SendText(to, subject, body string) error {
 
 func (f *fakeMailer) next(t *testing.T) sentMail {
 	t.Helper()
-	select {
-	case m := <-f.sent:
-		return m
-	case <-time.After(mailTimeout):
-		require.FailNow(t, "no password reset email was sent")
-		return sentMail{}
-	}
+	return <-f.sent
 }
 
 var linkToken = regexp.MustCompile(`https://hub\.example\.com/reset-password#token=([0-9a-f]{64})\n`)

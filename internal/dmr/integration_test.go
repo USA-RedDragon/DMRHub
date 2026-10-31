@@ -34,6 +34,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -48,6 +50,62 @@ const (
 	// EndCall, since packet handling delays shorten the measured duration.
 	callHoldTime = 500 * time.Millisecond
 )
+
+const deliverWait = 30 * time.Second
+
+func receiveCall(c *testutils.MMDVMClient, dst uint) []models.Packet {
+	return testutils.Collect(c.ReceivedPackets(), deliverWait, func(got []models.Packet) bool {
+		p := got[len(got)-1]
+		return p.Dst == dst && isTerminator(p)
+	})
+}
+
+func receiveIPSCCall(c *testutils.IPSCClient, dst uint) []testutils.IPSCBurst {
+	return c.Receive(deliverWait, func(got []testutils.IPSCBurst) bool {
+		b := got[len(got)-1]
+		if b.Dst != dst {
+			return false
+		}
+		return ipscEnds(b)
+	})
+}
+
+func ipscEnds(b testutils.IPSCBurst) bool {
+	u, err := ipscwire.DecodeUser(b.Data)
+	if err != nil {
+		return false
+	}
+	return u.Info.End() || u.Burst.Type() == ipscwire.BurstType(enums.DataTypeTerminatorWithLC)
+}
+
+func callUntilHeard(t *testing.T, c, to *testutils.MMDVMClient, src, tg, stream uint) []models.Packet {
+	t.Helper()
+	for range deliverWait / drainWait {
+		require.NoError(t, c.SendDMRD(makeGroupVoicePacket(src, tg, stream, false)))
+		require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(src, tg, stream, false)))
+		got := testutils.Collect(to.ReceivedPackets(), drainWait, func(got []models.Packet) bool {
+			p := got[len(got)-1]
+			return p.Dst == tg && isTerminator(p)
+		})
+		if len(got) > 0 && isTerminator(got[len(got)-1]) {
+			return got
+		}
+		stream++
+	}
+	t.Fatalf("repeater %d got no call to %d within %s", to.RepeaterID, tg, deliverWait)
+	return nil
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(deliverWait)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s did not happen within %s", what, deliverWait)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
 
 // allBackends returns the list of backends to test against. MySQL and
 // MariaDB are there only when DMRHUB_TEST_MYSQL is set, since they would
@@ -190,18 +248,14 @@ func TestGroupCallMMDVMToMMDVM(t *testing.T) {
 		require.NoError(t, c2.WaitReady(handshakeWait))
 		require.NoError(t, c3.WaitReady(handshakeWait))
 
-		// Allow subscriptions to settle
-		time.Sleep(settleDuration)
-
 		// C1 sends a group voice call to TG1 on TS1
 		voicePkt := makeGroupVoicePacket(1000001, 1, 42, false)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 1, 42, false)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
 		// C2 should receive the packet (subscribed to TG1 on TS1)
-		pkts2 := c2.Drain(drainWait)
+		pkts2 := receiveCall(c2, 1)
 		assert.NotEmpty(t, pkts2, "C2 should receive packets on TG1")
 		for _, p := range pkts2 {
 			assert.Equal(t, uint(1), p.Dst, "packet destination should be TG1")
@@ -251,17 +305,14 @@ func TestGroupCallMMDVMToIPSC(t *testing.T) {
 		defer ic1.Close()
 		require.NoError(t, ic1.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// MMDVM client sends group voice to TG1
 		voicePkt := makeGroupVoicePacket(1000001, 1, 101, false)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 1, 101, false)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
 		// IPSC client should receive translated burst(s)
-		bursts := ic1.Drain(drainWait)
+		bursts := receiveIPSCCall(ic1, 1)
 		assert.NotEmpty(t, bursts, "IPSC client should receive the TG1 call from MMDVM")
 	})
 }
@@ -293,14 +344,12 @@ func TestGroupCallIPSCToMMDVM(t *testing.T) {
 		defer ic.Close()
 		require.NoError(t, ic.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// IPSC client sends group voice to TG1
 		err := ic.SendGroupVoice(1000001, 1, false, 202)
 		require.NoError(t, err)
 
 		// MMDVM client should receive the translated DMRD packet
-		pkts := mc.Drain(drainWait)
+		pkts := receiveCall(mc, 1)
 		assert.NotEmpty(t, pkts, "MMDVM client should receive TG1 voice from IPSC source")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst, "packet should target TG1")
@@ -333,17 +382,14 @@ func TestPrivateCallToRepeater(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// C1 sends private call to Repeater 100002
 		voicePkt := makePrivateVoicePacket(100002, 303)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makePrivateVoiceTermPacket(100002, 303)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
 		// C2 (repeater 100002) should receive the private call
-		pkts2 := c2.Drain(drainWait)
+		pkts2 := receiveCall(c2, 100002)
 		assert.NotEmpty(t, pkts2, "C2 should receive private call to its repeater ID")
 		for _, p := range pkts2 {
 			assert.Equal(t, uint(100002), p.Dst, "packet should be addressed to repeater 100002")
@@ -385,32 +431,18 @@ func TestPrivateCallToUserLastHeard(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
-		// First, simulate user 1000002 making a call on repeater 100002 so that
-		// call tracking records their last-heard repeater.
-		// The call must last >100ms or EndCall treats it as a key-up and deletes it.
-		grpPkt := makeGroupVoicePacket(1000002, 1, 50, false)
-		require.NoError(t, c2.SendDMRD(grpPkt))
-		time.Sleep(callHoldTime)
-		grpTerm := makeGroupVoiceTermPacket(1000002, 1, 50, false)
-		require.NoError(t, c2.SendDMRD(grpTerm))
-
-		// Wait for call tracking to persist
-		time.Sleep(drainWait)
-		// Drain any group call packets from both clients
-		c1.Drain(500 * time.Millisecond)
-		c2.Drain(500 * time.Millisecond)
+		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000002, 1, 50, false)))
+		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000002, 1, 50, false)))
+		require.NotEmpty(t, receiveCall(c1, 1), "C1 should receive the TG1 call of user 1000002")
 
 		// Now C1 sends a private call to user 1000002
 		privPkt := makePrivateVoicePacket(1000002, 404)
 		require.NoError(t, c1.SendDMRD(privPkt))
-		time.Sleep(50 * time.Millisecond)
 		privTerm := makePrivateVoiceTermPacket(1000002, 404)
 		require.NoError(t, c1.SendDMRD(privTerm))
 
 		// C2 should receive the private call (user 1000002 was last heard on 100002)
-		pkts2 := c2.Drain(drainWait)
+		pkts2 := receiveCall(c2, 1000002)
 		assert.NotEmpty(t, pkts2, "C2 should receive private call to user 1000002")
 		for _, p := range pkts2 {
 			assert.Equal(t, uint(1000002), p.Dst, "packet Dst should be user 1000002")
@@ -455,19 +487,17 @@ func TestGroupCallMultipleTGSubscribers(t *testing.T) {
 		for _, c := range clients {
 			require.NoError(t, c.WaitReady(handshakeWait))
 		}
-		time.Sleep(settleDuration)
 
 		// Client 0 (repeater 100001) sends group call to TG5
 		voicePkt := makeGroupVoicePacket(1000001, 5, 505, false)
 		require.NoError(t, clients[0].SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 5, 505, false)
 		require.NoError(t, clients[0].SendDMRD(termPkt))
 
 		// Clients 1, 2, 3 should all receive the packet
 		for i := uint(1); i < 4; i++ {
 			expectedRepeater := 100001 + i
-			pkts := clients[i].Drain(drainWait)
+			pkts := receiveCall(clients[i], 5)
 			assert.NotEmpty(t, pkts, "Client %d should receive TG5 packets", i)
 			for _, p := range pkts {
 				assert.Equal(t, uint(5), p.Dst, "Client %d: packet dst should be TG5", i)
@@ -508,12 +538,9 @@ func TestNoDeliveryToNonexistentTG(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// Send group call to TG 9999 which does not exist
 		voicePkt := makeGroupVoicePacket(1000001, 9999, 606, false)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 9999, 606, false)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
@@ -562,22 +589,17 @@ func TestIPSCReceivesOnlyItsTalkgroups(t *testing.T) {
 		defer ic.Close()
 		require.NoError(t, ic.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// C1 sends a call to TG1
 		require.NoError(t, c1.SendDMRD(makeGroupVoicePacket(1000001, 1, 701, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, c1.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 701, false)))
-
-		time.Sleep(500 * time.Millisecond)
+		bursts := receiveIPSCCall(ic, 1)
+		assert.NotEmpty(t, bursts, "IPSC client should receive the TG1 call")
 
 		// C2 sends a call to TG2
 		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000001, 2, 702, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000001, 2, 702, false)))
 
-		bursts := ic.Drain(drainWait)
-		assert.NotEmpty(t, bursts, "IPSC client should receive the TG1 call")
+		bursts = append(bursts, ic.Drain(drainWait)...)
 		for _, b := range bursts {
 			assert.Equal(t, uint(1), b.Dst, "IPSC client should not receive TG2 packets")
 		}
@@ -619,17 +641,14 @@ func TestTS2StaticTGRouting(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// C1 sends group voice to TG10 on TS2 (slot=true)
 		voicePkt := makeGroupVoicePacket(1000001, 10, 801, true)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 10, 801, true)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
 		// C2 should receive on TS2
-		pkts := c2.Drain(drainWait)
+		pkts := receiveCall(c2, 10)
 		assert.NotEmpty(t, pkts, "C2 should receive TG10 packets on TS2")
 		for _, p := range pkts {
 			assert.Equal(t, uint(10), p.Dst, "packet should target TG10")
@@ -666,30 +685,18 @@ func TestPrivateCallToRepeaterOwner(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
-		// First make user 1000002 active by having them transmit on repeater 100002.
-		// The call must last >100ms or EndCall treats it as a key-up and deletes it.
-		grpPkt := makeGroupVoicePacket(1000002, 1, 55, false)
-		require.NoError(t, c2.SendDMRD(grpPkt))
-		time.Sleep(callHoldTime)
-		grpTerm := makeGroupVoiceTermPacket(1000002, 1, 55, false)
-		require.NoError(t, c2.SendDMRD(grpTerm))
-
-		// Wait for call tracking
-		time.Sleep(drainWait)
-		c1.Drain(500 * time.Millisecond)
-		c2.Drain(500 * time.Millisecond)
+		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000002, 1, 55, false)))
+		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000002, 1, 55, false)))
+		require.NotEmpty(t, receiveCall(c1, 1), "C1 should receive the TG1 call of user 1000002")
 
 		// Now send private call to user 1000002
 		privPkt := makePrivateVoicePacket(1000002, 901)
 		require.NoError(t, c1.SendDMRD(privPkt))
-		time.Sleep(50 * time.Millisecond)
 		privTerm := makePrivateVoiceTermPacket(1000002, 901)
 		require.NoError(t, c1.SendDMRD(privTerm))
 
 		// C2 should receive the private call
-		pkts2 := c2.Drain(drainWait)
+		pkts2 := receiveCall(c2, 1000002)
 		assert.NotEmpty(t, pkts2, "C2 should receive private call to its owner (user 1000002)")
 		for _, p := range pkts2 {
 			assert.Equal(t, uint(1000002), p.Dst, "packet Dst should be user 1000002")
@@ -718,12 +725,9 @@ func TestCrossProtocolPrivateCall(t *testing.T) {
 		defer c1.Close()
 		require.NoError(t, c1.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// C1 sends private call to a non-existent repeater ID
 		privPkt := makePrivateVoicePacket(999999, 1001)
 		require.NoError(t, c1.SendDMRD(privPkt))
-		time.Sleep(50 * time.Millisecond)
 		privTerm := makePrivateVoiceTermPacket(999999, 1001)
 		require.NoError(t, c1.SendDMRD(privTerm))
 
@@ -753,15 +757,12 @@ func TestRepeaterDoesNotEchoOwnGroupCall(t *testing.T) {
 		defer c1.Close()
 		require.NoError(t, c1.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// Send 5 voice packets and a terminator
 		for i := uint(0); i < 5; i++ {
 			pkt := makeGroupVoicePacket(1000001, 1, 1100, false)
 			pkt.Seq = i
 			pkt.DTypeOrVSeq = i % 6
 			require.NoError(t, c1.SendDMRD(pkt))
-			time.Sleep(20 * time.Millisecond)
 		}
 		term := makeGroupVoiceTermPacket(1000001, 1, 1100, false)
 		require.NoError(t, c1.SendDMRD(term))
@@ -835,15 +836,12 @@ func TestParrotReturnsToSource(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		const parrotUser = parrotID
 		streamID := uint(8888)
 
 		// Send voice header to parrot
 		header := makePrivateVoiceHeaderPacket(1000001, parrotUser, streamID, false)
 		require.NoError(t, c1.SendDMRD(header))
-		time.Sleep(60 * time.Millisecond)
 
 		// Send several voice frames
 		for i := uint(0); i < 4; i++ {
@@ -851,15 +849,13 @@ func TestParrotReturnsToSource(t *testing.T) {
 			vPkt.Seq = i + 1
 			vPkt.DTypeOrVSeq = i % 6
 			require.NoError(t, c1.SendDMRD(vPkt))
-			time.Sleep(60 * time.Millisecond)
 		}
 
 		// Send voice terminator to trigger playback
 		term := makePrivateVoiceTermPacket(parrotUser, streamID)
 		require.NoError(t, c1.SendDMRD(term))
 
-		// Parrot has a 3-second delay; wait up to 7 seconds for playback.
-		pkts1 := c1.Drain(7 * time.Second)
+		pkts1 := receiveCall(c1, 1000001)
 		assert.NotEmpty(t, pkts1, "C1 should receive parrot playback packets")
 		for _, p := range pkts1 {
 			// Parrot swaps Src/Dst: original Src=1000001,Dst=9990 becomes Src=9990,Dst=1000001
@@ -904,35 +900,17 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// Step 1: C1 sends group voice to TG5 on TS1. This dynamically links R1 to TG5.
 		header1 := makeGroupVoiceHeaderPacket(1000001, 5, 2001, false)
 		require.NoError(t, c1.SendDMRD(header1))
-		time.Sleep(60 * time.Millisecond)
 		voice1 := makeGroupVoicePacket(1000001, 5, 2001, false)
 		require.NoError(t, c1.SendDMRD(voice1))
-		time.Sleep(60 * time.Millisecond)
 		term1 := makeGroupVoiceTermPacket(1000001, 5, 2001, false)
 		require.NoError(t, c1.SendDMRD(term1))
 
-		// Wait for dynamic linking to complete
-		time.Sleep(settleDuration)
-		c1.Drain(500 * time.Millisecond)
-		c2.Drain(500 * time.Millisecond)
+		require.NotEmpty(t, receiveCall(c2, 5), "C2 should receive the TG5 call of C1")
 
-		// Step 2: C2 sends group voice to TG5 — C1 should receive (dynamically linked).
-		header2 := makeGroupVoiceHeaderPacket(1000001, 5, 2002, false)
-		require.NoError(t, c2.SendDMRD(header2))
-		time.Sleep(60 * time.Millisecond)
-		voice2 := makeGroupVoicePacket(1000001, 5, 2002, false)
-		require.NoError(t, c2.SendDMRD(voice2))
-		time.Sleep(60 * time.Millisecond)
-		term2 := makeGroupVoiceTermPacket(1000001, 5, 2002, false)
-		require.NoError(t, c2.SendDMRD(term2))
-
-		pkts := c1.Drain(drainWait)
-		require.NotEmpty(t, pkts, "C1 should receive TG5 call (dynamically linked)")
+		pkts := callUntilHeard(t, c2, c1, 1000001, 5, 2002)
 		for _, p := range pkts {
 			assert.Equal(t, uint(5), p.Dst, "C1: packet should be TG5")
 		}
@@ -940,23 +918,21 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		// Step 3: C1 sends unlink (private call to 4000) on TS1.
 		unlinkHeader := makePrivateVoiceHeaderPacket(1000001, 4000, 3001, false)
 		require.NoError(t, c1.SendDMRD(unlinkHeader))
-		time.Sleep(60 * time.Millisecond)
 		unlinkTerm := makePrivateVoiceTermPacket(4000, 3001)
 		require.NoError(t, c1.SendDMRD(unlinkTerm))
 
-		// Wait for unlink to process
-		time.Sleep(settleDuration)
+		waitFor(t, "the unlink of TS1 of repeater 100001", func() bool {
+			var r models.Repeater
+			return stack.DB.First(&r, 100001).Error == nil && r.TS1DynamicTalkgroupID == nil
+		})
 		c1.Drain(500 * time.Millisecond)
-		c2.Drain(500 * time.Millisecond)
 
 		// Step 4: C2 sends another group voice to TG5 — C1 should NOT receive it.
-		header3 := makeGroupVoiceHeaderPacket(1000001, 5, 2003, false)
+		header3 := makeGroupVoiceHeaderPacket(1000001, 5, 2050, false)
 		require.NoError(t, c2.SendDMRD(header3))
-		time.Sleep(60 * time.Millisecond)
-		voice3 := makeGroupVoicePacket(1000001, 5, 2003, false)
+		voice3 := makeGroupVoicePacket(1000001, 5, 2050, false)
 		require.NoError(t, c2.SendDMRD(voice3))
-		time.Sleep(60 * time.Millisecond)
-		term3 := makeGroupVoiceTermPacket(1000001, 5, 2003, false)
+		term3 := makeGroupVoiceTermPacket(1000001, 5, 2050, false)
 		require.NoError(t, c2.SendDMRD(term3))
 
 		pktsAfterUnlink := c1.Drain(drainWait)
@@ -989,8 +965,6 @@ func TestParrotIPSC(t *testing.T) {
 		defer ic.Close()
 		require.NoError(t, ic.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		const parrotUser = parrotID
 		const callerUser = uint(1000001)
 
@@ -998,8 +972,7 @@ func TestParrotIPSC(t *testing.T) {
 		err := ic.SendPrivateVoice(callerUser, parrotUser, false, 9001)
 		require.NoError(t, err)
 
-		// Parrot has a ~3-second delay before playback; wait up to 7 seconds.
-		bursts := ic.Drain(7 * time.Second)
+		bursts := receiveIPSCCall(ic, callerUser)
 		assert.NotEmpty(t, bursts, "IPSC peer should receive parrot playback packets")
 		for _, b := range bursts {
 			assert.Equal(t, callerUser, b.Dst,
@@ -1047,19 +1020,16 @@ func TestMultiReplicaDelivery(t *testing.T) {
 		require.NoError(t, c1.WaitReady(handshakeWait))
 		require.NoError(t, c2.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// C1 sends group voice to TG1
 		voicePkt := makeGroupVoicePacket(1000001, 1, 5001, false)
 		require.NoError(t, c1.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 1, 5001, false)
 		require.NoError(t, c1.SendDMRD(termPkt))
 
 		// C2 should still receive the call despite a second replica also consuming
 		// pubsub messages. Before the fix, the second replica could win a lease and
 		// send from the wrong socket, leaving C2 with no data.
-		pkts := c2.Drain(drainWait)
+		pkts := receiveCall(c2, 1)
 		assert.NotEmpty(t, pkts, "C2 should receive TG1 call even with a second replica running")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst, "packet should target TG1")
@@ -1095,8 +1065,6 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
-		time.Sleep(settleDuration)
-
 		// Connect IPSC client WITHOUT registration — skips MasterRegisterRequest.
 		// The peer is in the DB (so HMAC auth passes). With auto-registration,
 		// the server will register the peer on the first authenticated packet,
@@ -1105,8 +1073,6 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		require.NoError(t, ic.ConnectWithoutRegistration(stack.IPSCAddr))
 		defer ic.Close()
 
-		time.Sleep(settleDuration)
-
 		// Send group voice from the IPSC peer that was auto-registered.
 		err := ic.SendGroupVoice(1000001, 1, false, 9001)
 		require.NoError(t, err)
@@ -1114,23 +1080,19 @@ func TestIPSCUnregisteredPeerTrafficAccepted(t *testing.T) {
 		// Because the server auto-registers authenticated peers, the MMDVM
 		// client SHOULD receive the traffic after auto-registration triggers
 		// hub subscription activation.
-		pkts := mc.Drain(drainWait)
+		pkts := receiveCall(mc, 1)
 		assert.NotEmpty(t, pkts,
 			"MMDVM should receive traffic from auto-registered IPSC peer")
 
 		// Also verify that the auto-registered IPSC peer can RECEIVE traffic.
 		// Have the MMDVM client send a group call — the IPSC peer should
 		// receive it because hub subscriptions were activated on auto-registration.
-		// The test peer registers on its first Drain and drops user packets
-		// until then.
-		_ = ic.Drain(settleDuration)
-		voicePkt := makeGroupVoicePacket(1000001, 1, 9002, false)
-		require.NoError(t, mc.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
-		termPkt := makeGroupVoiceTermPacket(1000001, 1, 9002, false)
-		require.NoError(t, mc.SendDMRD(termPkt))
-
-		bursts := ic.Drain(drainWait)
+		var bursts []testutils.IPSCBurst
+		for stream := uint(9002); len(bursts) == 0 && stream < 9002+uint(deliverWait/drainWait); stream++ {
+			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, stream, false)))
+			require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, stream, false)))
+			bursts = ic.Receive(drainWait, func(got []testutils.IPSCBurst) bool { return true })
+		}
 		assert.NotEmpty(t, bursts,
 			"Auto-registered IPSC peer should receive traffic (hub subscriptions activated)")
 	})

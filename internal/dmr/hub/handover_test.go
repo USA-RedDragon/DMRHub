@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -630,5 +631,87 @@ func TestAMissedClaimOfAnOlderReplicaHandsOver(t *testing.T) {
 		case <-time.After(failAfter):
 			t.Fatal("the first replica did not hand the repeater over")
 		}
+	})
+}
+
+// heldFeeds is a PubSub whose feeds pass their messages on only once open
+// closes, as the feeds of a starved replica do.
+type heldFeeds struct {
+	pubsub.PubSub
+	open chan struct{}
+}
+
+type heldFeed struct {
+	pubsub.Feed
+	ch chan pubsub.Message
+}
+
+func (s heldFeeds) Feed() pubsub.Feed {
+	inner := s.PubSub.Feed()
+	f := &heldFeed{Feed: inner, ch: make(chan pubsub.Message, 64)}
+	go func() {
+		defer close(f.ch)
+		for m := range inner.Channel() {
+			<-s.open
+			f.ch <- m
+		}
+	}()
+	return f
+}
+
+func (f *heldFeed) Channel() <-chan pubsub.Message { return f.ch }
+
+// TestAHandOverTakesWhatASlowFeedStillHolds has a burst of a talkgroup
+// published before another replica claims a repeater that listens to it,
+// while the feed of the replica that served the repeater is 1 s behind.
+// The old replica must give the burst to its server before it stops the
+// subscriptions of the repeater, so that its handover holds it.
+func TestAHandOverTakesWhatASlowFeedStillHolds(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, database, store := replicas(t, 1)
+		fresh := r[0].hub
+		open := make(chan struct{})
+		old := hub.NewHub(database, store, heldFeeds{PubSub: r[0].ps, open: open}, nil)
+		require.NoError(t, old.SetInstanceID("replica-old"))
+		t.Cleanup(func() { old.Stop(context.Background()) })
+		srv := old.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		seedUser(t, database, 1000001, "N0CALL")
+		seedTalkgroup(t, database, 1, "TG1")
+		seedRepeater(t, database, 100001, 1000001)
+		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100001}}
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		ctx := context.Background()
+		old.ActivateRepeater(ctx, 100001)
+
+		pkt := makeVoicePacket(1, 8401, true, false)
+		pkt.Repeater = 999998
+		raw, err := (&models.RawDMRPacket{Data: pkt.Encode()}).MarshalMsg(nil)
+		require.NoError(t, err)
+		require.NoError(t, r[0].ps.Publish("hub:packets:talkgroup:1", raw))
+		fresh.ActivateRepeater(ctx, 100001)
+
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			old.StopFor(models.RepeaterTypeMMDVM, 100001)
+		}()
+		opened := make(chan struct{})
+		go func() {
+			defer close(opened)
+			time.Sleep(time.Second)
+			close(open)
+		}()
+		var got []uint
+		for rp := range srv.Packets {
+			if rp.Barrier != nil {
+				close(rp.Barrier)
+				break
+			}
+			got = append(got, rp.Packet.StreamID)
+		}
+		assert.Contains(t, got, uint(8401), "the burst that the slow feed held was lost at the handover")
+		<-stopped
+		<-opened
 	})
 }

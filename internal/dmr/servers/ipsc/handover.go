@@ -47,15 +47,14 @@ import (
 // and each once, going on from that state.
 //
 // The draining replica sends an early report at the claim and the full one
-// once its hub stopped the subscriptions of the peer, handoverSettle
-// later, as it may still get packets that were published before this
-// replica subscribed. A packet that this replica holds goes out at the
+// once its hub stopped the subscriptions of the peer, after they got the
+// packets that were published before this replica subscribed. A packet that this replica holds goes out at the
 // early report when it follows the last packet of its call that the
 // report knows, by sequence, as no packet that only the full report can
 // hold is then before it. The other packets of its slot wait for the full
 // report, so that the calls of a slot keep their order. A packet that
-// lands here in a call then does not wait handoverSettle and miss its slot
-// at the peer.
+// lands here in a call then does not wait for the full report and miss
+// its slot at the peer.
 const (
 	// handoverWait is how long this replica holds the packets to a peer
 	// that moved for the report after the replica that served it no longer

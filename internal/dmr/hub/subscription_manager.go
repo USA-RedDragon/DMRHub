@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -27,6 +28,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -47,6 +49,9 @@ type subscriptionManager struct {
 	feeds         *xsync.Map[uint, *repeaterFeed]
 	hub           *Hub
 	mu            sync.Mutex
+	// settles are the settle markers on their way, by token.
+	settles   *xsync.Map[string, *settleMarker]
+	settleSeq atomic.Uint64
 }
 
 func newSubscriptionManager(h *Hub) *subscriptionManager {
@@ -54,7 +59,47 @@ func newSubscriptionManager(h *Hub) *subscriptionManager {
 		subscriptions: xsync.NewMap[uint, *xsync.Map[uint, *subscription]](),
 		feeds:         xsync.NewMap[uint, *repeaterFeed](),
 		hub:           h,
+		settles:       xsync.NewMap[string, *settleMarker](),
 	}
+}
+
+// settleMarkerPrefix starts the payload of a settle marker, which no
+// packet starts with. The rest is the token of the marker.
+const settleMarkerPrefix = "hub:settle:"
+
+// settleMarker is a marker that a replica published on the private topic
+// of a repeater, and closes came once its feed got it or the feed ended.
+type settleMarker struct {
+	repeaterID uint
+	came       chan struct{}
+	once       sync.Once
+}
+
+func (m *settleMarker) done() {
+	m.once.Do(func() { close(m.came) })
+}
+
+// settledOn reports the settle marker of payload as come, and reports
+// whether payload is a settle marker.
+func (m *subscriptionManager) settledOn(payload []byte) bool {
+	if !bytes.HasPrefix(payload, []byte(settleMarkerPrefix)) {
+		return false
+	}
+	if mk, ok := m.settles.Load(string(payload[len(settleMarkerPrefix):])); ok {
+		mk.done()
+	}
+	return true
+}
+
+// endSettles reports the settle markers of the repeater as come, since its
+// feed ended.
+func (m *subscriptionManager) endSettles(repeaterID uint) {
+	m.settles.Range(func(_ string, mk *settleMarker) bool {
+		if mk.repeaterID == repeaterID {
+			mk.done()
+		}
+		return true
+	})
 }
 
 // repeaterFeed is the one feed that brings a repeater its private calls
@@ -358,6 +403,7 @@ func (h *Hub) deactivateRepeaterLocked(repeaterID uint) {
 			slog.Error("Error closing the feed of a repeater", "repeaterID", repeaterID, "error", err)
 		}
 	}
+	h.subscriptionMgr.endSettles(repeaterID)
 	select {
 	case h.left <- struct{}{}:
 	default:
@@ -622,6 +668,9 @@ func (m *subscriptionManager) feedOf(repeaterID uint) *repeaterFeed {
 func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
 	for msg := range f.feed.Channel() {
+		if m.settledOn(msg.Payload) {
+			continue
+		}
 		sub := f.of(msg.Topic)
 		if sub == nil {
 			continue

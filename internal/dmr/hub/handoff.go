@@ -23,31 +23,56 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
-// handoverSettle is how long a replica that hands a repeater over keeps
-// its subscriptions of the repeater after the claim, so that it gets each
-// packet that was published before the subscriptions of the replica that
-// claimed it, which are on other connections to Redis, took effect.
-const handoverSettle = 50 * time.Millisecond
-
 // StopFor stops the subscriptions of the repeater id on this hub, which
-// another replica claimed, once they had handoverSettle to take the
-// packets published before that replica subscribed, and returns once the
-// server named server has taken every packet that they handed it. A server
-// that hands the repeater over then knows each packet that it got for it.
+// another replica claimed, once the feed of the repeater here got every
+// packet that was published before that replica subscribed, and returns
+// once the server named server has taken every packet that the feed
+// handed it. A server that hands the repeater over then knows each packet
+// that it got for it.
 func (h *Hub) StopFor(server string, id uint) {
-	t := h.clock.NewTimer(handoverSettle)
-	select {
-	case <-t.C():
-	case <-h.done:
-		t.Stop()
-	}
+	h.settle(id)
 	h.deactivateRepeater(context.Background(), id)
 	h.Barrier(server)
+}
+
+// settle returns once the feed of the repeater id has every message that
+// was published before the call, or once the feed or the hub stops. It
+// publishes a marker on the private topic of the repeater, which the feed
+// takes, and waits for the feed to get it: the feed is one Redis
+// connection, and Redis passes the messages of all its channels to one
+// connection in the order that it ran their PUBLISH commands, so every
+// message that Redis took before the marker comes before it. The
+// replica that claimed the repeater subscribed before it claimed, and
+// this replica publishes the marker after it got the claim, so the
+// messages that only this replica gets come first. The in-memory pubsub
+// hands a message to each feed when it is published, in the same order.
+func (h *Hub) settle(id uint) {
+	m := h.subscriptionMgr
+	if h.pubsub == nil {
+		return
+	}
+	if _, ok := m.feeds.Load(id); !ok {
+		return
+	}
+	token := h.instanceID + ":" + strconv.FormatUint(m.settleSeq.Add(1), 10)
+	mk := &settleMarker{repeaterID: id, came: make(chan struct{})}
+	m.settles.Store(token, mk)
+	defer m.settles.Delete(token)
+	if _, ok := m.feeds.Load(id); !ok {
+		return
+	}
+	if err := h.pubsub.Publish(repeaterTopic(id), []byte(settleMarkerPrefix+token)); err != nil {
+		slog.Warn("failed to publish a settle marker", "repeaterID", id, "error", err)
+		return
+	}
+	select {
+	case <-mk.came:
+	case <-h.done:
+	}
 }
 
 // Barrier returns once the server named server has taken every packet that

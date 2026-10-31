@@ -375,8 +375,8 @@ func (s *heldSubscription) Close() error {
 // replica in a call, right before a burst. A peer plays each burst on the
 // 60 ms grid of the call and fills the slot of a burst that is not there
 // in time, so the burst at the move must not wait for the full handover
-// report, which comes handoverSettle after the claim, nor for
-// handoverWait. The replicas run on a test clock that moves with the
+// report, which comes once the old replica stopped the subscriptions of
+// the peer, nor for handoverWait. The replicas run on a test clock that moves with the
 // bursts and stops at the move: the peer must get the burst at the move
 // while the clock stands and the new replica does not have the full
 // report.

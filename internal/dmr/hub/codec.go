@@ -45,8 +45,8 @@ const (
 )
 
 // streamCodec is what the hub knows about the codec of one stream that it
-// routes. Only the routing worker of the stream uses it, apart from last
-// and tx, which mu guards.
+// routes. Only the routing worker of the stream uses it, apart from last,
+// over and tx, which mu guards.
 type streamCodec struct {
 	codec     transcode.Codec
 	header    bool
@@ -66,6 +66,7 @@ type streamCodec struct {
 
 	mu   sync.Mutex
 	last time.Time
+	over bool
 }
 
 func (sc *streamCodec) touch(now time.Time) {
@@ -74,10 +75,22 @@ func (sc *streamCodec) touch(now time.Time) {
 	sc.mu.Unlock()
 }
 
-func (sc *streamCodec) idle(now time.Time) bool {
+// idle reports whether the stream has had no burst for streamIdle, or
+// for an ended stream for kept.
+func (sc *streamCodec) idle(now time.Time, kept time.Duration) bool {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+	if sc.over {
+		return now.Sub(sc.last) > max(streamIdle, kept)
+	}
 	return now.Sub(sc.last) > streamIdle
+}
+
+func (sc *streamCodec) end() {
+	sc.ended = true
+	sc.mu.Lock()
+	sc.over = true
+	sc.mu.Unlock()
 }
 
 type heardNote struct {
@@ -284,8 +297,10 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 }
 
 func (h *Hub) pruneCodecStreams(now time.Time) {
+	hold, recheck := h.claimTimes()
+	kept := hold + recheck
 	h.codecStreams.Range(func(id uint, sc *streamCodec) bool {
-		if sc.idle(now) {
+		if sc.idle(now, kept) {
 			h.codecStreams.Delete(id)
 			sc.setTranscoder(nil)
 		}
@@ -296,12 +311,13 @@ func (h *Hub) pruneCodecStreams(now time.Time) {
 }
 
 // endCodecStream stops the transcoder of a stream at its terminator. The
-// stream stays known as ended until it idles, so that a late or repeated
-// burst after the terminator keeps the codec of the call; a new Voice LC
-// Header with the same stream ID starts a new call.
+// stream stays known as ended for as long as the hub keeps the claim of
+// the stream after its last burst, so that a late or repeated burst after
+// the terminator keeps the codec of the call; a new Voice LC Header with
+// the same stream ID starts a new call.
 func (h *Hub) endCodecStream(stream uint) {
 	if sc, ok := h.codecStreams.Load(stream); ok {
-		sc.ended = true
+		sc.end()
 		sc.setTranscoder(nil)
 	}
 }

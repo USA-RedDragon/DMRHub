@@ -40,7 +40,7 @@ func TestWSConnAnswersPingsWhileNotReading(t *testing.T) {
 			return
 		}
 		ctx := conn.CloseRead(r.Context())
-		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		pingCtx, cancel := context.WithTimeout(ctx, replyWait)
 		defer cancel()
 		pinged <- conn.Ping(pingCtx)
 		_ = conn.Close(websocket.StatusNormalClosure, "")

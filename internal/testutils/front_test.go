@@ -29,6 +29,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const replyWait = time.Minute
+
 func listenLoopback(t *testing.T) *net.UDPConn {
 	t.Helper()
 	c, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
@@ -40,7 +42,7 @@ func listenLoopback(t *testing.T) *net.UDPConn {
 func readUDP(t *testing.T, c *net.UDPConn) (string, *net.UDPAddr) {
 	t.Helper()
 	buf := make([]byte, 64)
-	require.NoError(t, c.SetReadDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, c.SetReadDeadline(time.Now().Add(replyWait)))
 	n, from, err := c.ReadFromUDP(buf)
 	require.NoError(t, err)
 	return string(buf[:n]), from

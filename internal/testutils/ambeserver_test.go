@@ -32,6 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const replyWait = time.Minute
+
 func fakeSlot(i byte) [9]byte {
 	var f vocoder.AMBEFrame
 	for j := range 6 {
@@ -149,7 +151,7 @@ func TestFakeAMBEServerKeepsLostFrameUntilCleared(t *testing.T) {
 	_, err = conn.Write(rawPacket(dvsi.TypeChannel, 0x02, 0x00, 0x04))
 	require.NoError(t, err)
 	buf := make([]byte, dvsi.MaxPacketLen)
-	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(replyWait)))
 	_, err = conn.Read(buf)
 	require.NoError(t, err)
 	_, err = conn.Write(rawPacket(dvsi.TypeChannel, append([]byte{0x01, dvsi.FrameBits}, b[:]...)...))

@@ -124,7 +124,11 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	store.SetNotify(messages.NewPusher(database, ps).Push)
 	ct.SetDataObserver(store)
 
-	h := hub.NewHub(database, kvStore, ps, ct)
+	var hubOpts []hub.Option
+	for _, be := range backends {
+		hubOpts = append(hubOpts, be.HubOptions...)
+	}
+	h := hub.NewHub(database, kvStore, ps, ct, hubOpts...)
 
 	// Create servers
 	mmdvmServer, err := mmdvm.MakeServer(&defConfig, h, database, ps, kvStore, "test", "test")

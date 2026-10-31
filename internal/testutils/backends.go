@@ -35,6 +35,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -55,6 +56,9 @@ type Backend struct {
 	// pubsub of an integration stack, such as to slow them down.
 	WrapKV     func(kv.KV) kv.KV
 	WrapPubSub func(pubsub.PubSub) pubsub.PubSub
+	// HubOptions are the options of the hub of an integration stack, such
+	// as a test clock.
+	HubOptions []hub.Option
 }
 
 // SQLiteMemoryBackend returns a backend using in-memory SQLite and in-memory pubsub/KV.

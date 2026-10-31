@@ -55,6 +55,10 @@ func classes() []class {
 	}
 }
 
+// opensSockets matches the calls through which a test can bind or dial a
+// port: listens, dials, serves, the starts of servers and HTTP requests.
+var opensSockets = regexp.MustCompile(`(\bnet\.\w*(Listen|Dial)|Listen(UDP|TCP|Packet|Config|AndServe\w*)\b|\.Listen\(|\.Dial(Context|UDP|TCP)?\(|\.Serve\(|\bMakeServer\(|\bhttptest\.New(TLS)?Server\(|\.Start\(|\bhttp\.(Get|Post|Head|PostForm)\(|\.Connect\()`)
+
 type site struct{ class, file string }
 
 func moduleRoot(t *testing.T) string {
@@ -111,18 +115,31 @@ func scan(t *testing.T, root string) map[site]int {
 // scanFile counts the sites of each class in the Go source b, but not
 // those in the func that a synctest.Test call runs: in its bubble the time
 // is virtual, so a sleep or a timeout there does not depend on the load of
-// the machine.
+// the machine. It counts no fixedport site in a source that opens no
+// socket: there a port is data, such as a config value under validation or
+// a row of the database, and no other process can hold it.
 func scanFile(cs []class, name string, b []byte) (map[string]int, error) {
 	bubbled, err := bubbleLines(name, b)
 	if err != nil {
 		return nil, err
 	}
+	lines := strings.Split(string(b), "\n")
+	sockets := false
+	for _, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "//") && opensSockets.MatchString(line) {
+			sockets = true
+			break
+		}
+	}
 	counts := map[string]int{}
-	for i, line := range strings.Split(string(b), "\n") {
+	for i, line := range lines {
 		if bubbled[i+1] || strings.HasPrefix(strings.TrimSpace(line), "//") {
 			continue
 		}
 		for _, c := range cs {
+			if c.name == "fixedport" && !sockets {
+				continue
+			}
 			if c.re.MatchString(line) {
 				counts[c.name]++
 			}
@@ -261,4 +278,26 @@ func TestNoNewWallClockWaits(t *testing.T) {
 			t.Errorf("%s has %d %s sites, fewer than the %d allowed: lower its count in %s", k.file, n, k.class, a.count, allowedFile)
 		}
 	}
+}
+
+// TestAPortCountsOnlyWhereTheSourceOpensASocket counts the fixed ports of a
+// source that only validates a config and of one that also listens.
+func TestAPortCountsOnlyWhereTheSourceOpensASocket(t *testing.T) {
+	t.Parallel()
+	data := `package x_test
+
+func TestX(t *testing.T) {
+	c := config.HTTP{Port: 3005, CanonicalHost: "http://localhost:3005"}
+	// net.Listen("tcp", ":3005")
+	require.NoError(t, c.Validate())
+}
+`
+	counts, err := scanFile(classes(), "x_test.go", []byte(data))
+	require.NoError(t, err)
+	require.Empty(t, counts)
+
+	listens := strings.Replace(data, "require.NoError(t, c.Validate())", `ln, err := net.Listen("tcp", "127.0.0.1:3005")`, 1)
+	counts, err = scanFile(classes(), "x_test.go", []byte(listens))
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"fixedport": 2}, counts)
 }

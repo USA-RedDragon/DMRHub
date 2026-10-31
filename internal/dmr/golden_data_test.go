@@ -95,8 +95,8 @@ func newGoldenNet(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, i
 		require.NoError(t, c.WaitReady(handshakeWait))
 		n.rpt[radio] = c
 	}
-	keyUp(t, n.rpt[anyTone], anyTone, goldenTG, slot2, 0xA0001)
-	keyUp(t, n.rpt[otherRadio], otherRadio, goldenTG, slot2, 0xA0002)
+	keyUp(t, stack, n.rpt[anyTone], anyTone, goldenTG, slot2, 0xA0001)
+	keyUp(t, stack, n.rpt[otherRadio], otherRadio, goldenTG, slot2, 0xA0002)
 	n.drain(500 * time.Millisecond)
 	return n
 }

@@ -20,6 +20,7 @@
 package dmr_test
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/rand/v2"
@@ -329,13 +330,15 @@ func newMXNet(t *testing.T, stack *testutils.IntegrationStack) *mxNet {
 	n.obSrc = testutils.NewOpenBridgeClient(mxOBSrc, obPassword)
 	t.Cleanup(n.obSrc.Close)
 	require.NoError(t, n.obSrc.Connect(stack.OpenBridgeAddr))
-	time.Sleep(settleDuration)
 
-	keyUp(t, n.user, mxUser, mxKeyTG, false, 0xD0001)
-	keyUp(t, n.src, mxRadio, mxKeyTG, false, 0xD0002)
+	keyUp(t, stack, n.user, mxUser, mxKeyTG, false, 0xD0001)
+	keyUp(t, stack, n.src, mxRadio, mxKeyTG, false, 0xD0002)
 	heard := smsTransmission(t, &sms.Text{Format: sms.FormatIP, Source: mxDataUser, Destination: mxRadio, Body: []byte("HEARD")}, enums.DataTypeRate12)
 	sendPackets(t, n.data.SendDMRD, heard.packets(0xD0003))
-	time.Sleep(drainWait)
+	waitFor(t, "the record of where the data radio was heard", func() bool {
+		_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:lastheard:%d", mxDataUser))
+		return err == nil
+	})
 	n.drain(500 * time.Millisecond)
 	return n
 }
@@ -500,7 +503,7 @@ func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, s
 					sent = pkts
 				}
 			} else {
-				heard = append(heard, awaitHeard(n.user, uint(addr.c.src), uint(addr.c.dst), 10*time.Second)...)
+				heard = append(heard, awaitHeard(n.user, uint(addr.c.src), uint(addr.c.dst), deliverWait)...)
 				sendPackets(t, n.user.SendDMRD, tx.packets(stream+uint(i)))
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -735,7 +738,6 @@ func TestTransparencyNonVoiceDoesNotLink(t *testing.T) {
 			require.NoError(t, c.Connect(stack.MMDVMAddr))
 			require.NoError(t, c.WaitReady(handshakeWait))
 		}
-		time.Sleep(settleDuration)
 
 		data := smsTransmission(t, &sms.Text{Format: sms.FormatIP, Source: mxRadio, Destination: 93, Group: true, Body: []byte("NO LINK")}, enums.DataTypeRate12)
 		sendPackets(t, a.SendDMRD, data.packets(0xF001))
@@ -743,8 +745,8 @@ func TestTransparencyNonVoiceDoesNotLink(t *testing.T) {
 		require.NoError(t, cs.SetPreamble(pdu.PreamblePDU{Group: true, TargetAddress: 93, SourceAddress: mxRadio}))
 		cs.LastBlock = true
 		sendPackets(t, a.SendDMRD, (&transmission{call: call{group: true, dst: 93, src: mxRadio}, bursts: []layer2.RawBurst{csbkBurst(t, &cs)}}).packets(0xF002))
-		time.Sleep(drainWait)
-		keyUp(t, a, mxRadio, 94, true, 0xF003)
+		keyUp(t, stack, a, mxRadio, 94, true, 0xF003)
+		assert.False(t, stack.Hub.Subscribes(mxSrcRpt, 93), "group data and a CSBK linked the repeater to talkgroup 93")
 		drainAll(500*time.Millisecond, a, b)
 
 		require.NoError(t, b.SendDMRD(makeGroupVoicePacket(mxRadio, 93, 0xF004, false)))

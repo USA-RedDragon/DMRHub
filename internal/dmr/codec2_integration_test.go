@@ -456,7 +456,7 @@ type c2Case struct {
 func runC2FromMMDVM(t *testing.T, n *c2Net, tc c2Case) {
 	t.Run("mmdvm-to-mmdvm/"+tc.name, func(t *testing.T) {
 		if !tc.c.group {
-			keyUp(t, n.user, c2User, c2KeyTG, tc.slot2, n.nextStream())
+			keyUp(t, n.stack, n.user, c2User, c2KeyTG, tc.slot2, n.nextStream())
 			n.drain(300 * time.Millisecond)
 		}
 		stream := n.nextStream()

@@ -22,6 +22,7 @@ package dmr_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -432,12 +433,16 @@ func drainAll(d time.Duration, clients ...drainer) [][]models.Packet {
 	return out
 }
 
-func keyUp(t *testing.T, c *testutils.MMDVMClient, src, tg uint, slot2 bool, stream uint) {
+func keyUp(t *testing.T, stack *testutils.IntegrationStack, c *testutils.MMDVMClient, src, tg uint, slot2 bool, stream uint) {
 	t.Helper()
 	require.NoError(t, c.SendDMRD(makeGroupVoicePacket(src, tg, stream, slot2)))
 	time.Sleep(callHoldTime)
 	require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(src, tg, stream, slot2)))
-	time.Sleep(drainWait)
+	waitSubscribed(t, stack.Hub, uint(c.RepeaterID), tg, true)
+	waitFor(t, fmt.Sprintf("the record of where radio %d was heard", src), func() bool {
+		_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:lastheard:%d", src))
+		return err == nil
+	})
 }
 
 func rowsOf(t *testing.T, db *gorm.DB, table, col string, v any) []map[string]any {
@@ -502,7 +507,7 @@ func matches(want, got map[string]any) bool {
 
 func waitRows(t *testing.T, db *gorm.DB, table, col string, v any, want []map[string]any) []map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(deliverWait)
 	var rows []map[string]any
 	for {
 		var all []map[string]any

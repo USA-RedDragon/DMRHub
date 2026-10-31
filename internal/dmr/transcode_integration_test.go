@@ -549,7 +549,7 @@ func TestTranscodingPrivateCall(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
-		keyUp(t, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
+		keyUp(t, n.stack, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
 		n.flush(300 * time.Millisecond)
 
 		c := call{dst: tcOther, src: tcTalker}
@@ -583,7 +583,7 @@ func TestTranscodingPrivateCallWithoutHeader(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
-		keyUp(t, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
+		keyUp(t, n.stack, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
 		n.flush(300 * time.Millisecond)
 
 		c := call{dst: tcOther, src: tcTalker}

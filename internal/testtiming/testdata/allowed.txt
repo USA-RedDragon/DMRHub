@@ -100,8 +100,7 @@ eventually	internal/dmr/routing_settings_integration_test.go	8	baseline of 2026-
 fixedport	internal/dmr/routing_settings_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/routing_settings_integration_test.go	13	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/routing_settings_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/rpto_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/rpto_integration_test.go	8	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/rpto_integration_test.go	2	polls the static and dynamic talkgroups of a repeater in the database, which the options write with no event; bounded by deliverWait
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
 deadline	internal/dmr/servers/ipsc/server_test.go	2	expectNoUDP: a negative check, where a slow machine can only delay a packet past the 100 ms and hide it, never fail the test; readUDP moves to eventWait in the t5 commits

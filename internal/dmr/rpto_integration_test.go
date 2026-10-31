@@ -87,7 +87,8 @@ func TestRPTOStaticTalkgroupsRoute(t *testing.T) {
 
 		require.NoError(t, c2.SendOptions("TS1=;TS2=10;DIAL=0;VOICE=1;TIMER=10;"))
 		waitStatics(t, stack, 100002, nil, []uint{10})
-		time.Sleep(settleDuration)
+		waitSubscribed(t, stack.Hub, 100002, 10, true)
+		waitSubscribed(t, stack.Hub, 100002, 1, false)
 
 		sendGroupCall(t, c1.SendDMRD, 10, 9101, true)
 		pkts := receiveCall(c2, 10)
@@ -97,7 +98,6 @@ func TestRPTOStaticTalkgroupsRoute(t *testing.T) {
 			assert.True(t, p.Slot, "the call should be on TS2")
 		}
 
-		time.Sleep(callHoldTime)
 		sendGroupCall(t, c1.SendDMRD, 1, 9102, false)
 		for _, p := range c2.Drain(drainWait) {
 			assert.NotEqual(t, uint(1), p.Dst, "the options cleared the TS1 static talkgroup")
@@ -131,7 +131,8 @@ func TestRPTOAcrossReplicas(t *testing.T) {
 		require.NoError(t, rpt.Connect(stack.MMDVMAddr))
 		defer rpt.Close()
 		require.NoError(t, rpt.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitSubscribed(t, second.Hub, 100001, 10, true)
+		waitSubscribed(t, second.Hub, 100001, 262, true)
 
 		sendGroupCall(t, rpt.SendDMRD, 10, 9201, true)
 		pkts := gw.Receive(deliverWait, callEnds(10))
@@ -143,11 +144,10 @@ func TestRPTOAcrossReplicas(t *testing.T) {
 
 		require.NoError(t, second.MMDVMServer.Stop(servers.WithGracefulHandoff(context.Background(), true)))
 		require.NoError(t, gw.Retarget(stack.MMDVMAddr))
-		time.Sleep(settleDuration)
+		waitSubscribed(t, stack.Hub, 100001, 262, true)
 		require.Equal(t, dmrdsession.StateRunning, gw.State())
 		assert.Zero(t, gw.Downs(), "the first replica should resume the session")
 
-		time.Sleep(callHoldTime)
 		sendGroupCall(t, rpt.SendDMRD, 262, 9203, false)
 		pkts = gw.Receive(deliverWait, callEnds(262))
 		require.NotEmpty(t, pkts, "the peer should hear its TS1 talkgroup after it moved to the first replica")
@@ -204,7 +204,7 @@ func TestRPTODialLinksDynamicTalkgroup(t *testing.T) {
 
 		require.NoError(t, c2.SendOptions("DIAL=10;"))
 		waitDynamic(t, stack, 100002, 0, 10)
-		time.Sleep(settleDuration)
+		waitSubscribed(t, stack.Hub, 100002, 10, true)
 
 		sendGroupCall(t, c1.SendDMRD, 10, 9301, true)
 		pkts := receiveCall(c2, 10)
@@ -214,10 +214,9 @@ func TestRPTODialLinksDynamicTalkgroup(t *testing.T) {
 			assert.True(t, p.Slot)
 		}
 
-		time.Sleep(callHoldTime)
 		sendGroupCall(t, c2.SendDMRD, 11, 9302, true)
 		waitDynamic(t, stack, 100002, 0, 11)
-		time.Sleep(settleDuration)
+		waitSubscribed(t, stack.Hub, 100002, 11, true)
 
 		require.NoError(t, c2.SendOptions("DIAL=0;"))
 		waitDynamic(t, stack, 100002, 0, 0)

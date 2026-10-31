@@ -38,9 +38,9 @@ type RepeaterQueue struct {
 }
 
 // Do queues fn after the jobs of the repeater id. A repeater with
-// maxQueuedPerRepeater jobs waiting drops fn.
-func (q *RepeaterQueue) Do(id uint, fn func()) {
-	q.add(id, fn)
+// maxQueuedPerRepeater jobs waiting drops fn, and Do reports false.
+func (q *RepeaterQueue) Do(id uint, fn func()) bool {
+	return q.add(id, fn)
 }
 
 // After calls fn once the jobs of the repeater id that are queued now are

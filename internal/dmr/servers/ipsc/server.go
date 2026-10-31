@@ -57,6 +57,9 @@ type IPSCServer struct {
 	translator *IPSCTranslator
 	hubHandle  *hub.ServerHandle
 
+	// writer writes the packets of the server, or udp when it is nil.
+	writer packetWriter
+
 	localID uint32
 	mu      sync.Mutex
 	m       *ipscsession.Master
@@ -81,6 +84,9 @@ type IPSCServer struct {
 	// peerJobs activates and deactivates the peers in the hub off the
 	// listener and s.mu.
 	peerJobs servers.RepeaterQueue
+	// joining holds, by address, the peers whose registration reply waits
+	// for their activation in the hub.
+	joining map[ipscsession.Addr]joiningPeer
 
 	timesMu      sync.Mutex
 	times        map[uint]repeaterTimes
@@ -106,6 +112,22 @@ type IPSCServer struct {
 	done     chan struct{}
 	stopped  atomic.Bool
 	stopOnce sync.Once
+}
+
+// packetWriter is what the server writes its packets to.
+type packetWriter interface {
+	WriteToUDP(b []byte, addr *net.UDPAddr) (int, error)
+}
+
+func (s *IPSCServer) writeTo(p []byte, to *net.UDPAddr) error {
+	var w packetWriter = s.udp
+	if s.writer != nil {
+		w = s.writer
+	}
+	if _, err := w.WriteToUDP(p, to); err != nil {
+		return fmt.Errorf("writing to %v: %w", to, err)
+	}
+	return nil
 }
 
 type burst struct {
@@ -491,33 +513,24 @@ func unregistered(out []ipscsession.Output) bool {
 
 // apply carries out the outputs of the Master. The caller holds s.mu.
 func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
-	for _, o := range out {
+	for i := 0; i < len(out); i++ {
+		o := out[i]
 		switch o.Kind {
 		case ipscsession.OutputSend:
-			if !s.ipList().Allows(netip.AddrFrom4(o.Addr.IP)) {
+			if s.hub != nil && i+1 < len(out) && out[i+1].Kind == ipscsession.OutputUp && out[i+1].Addr == o.Addr {
+				i++
+				s.up(ctx, out[i], o.Packet)
 				continue
 			}
-			if _, err := s.udp.WriteToUDP(o.Packet, toUDPAddr(o.Addr)); err != nil {
-				slog.Warn("error sending IPSC packet", "peer", toUDPAddr(o.Addr), "error", err)
-			}
-		case ipscsession.OutputUp:
-			slog.Info("IPSC peer registered", "peerID", o.ID)
-			p := &peerState{lastClaim: s.clock.Now()}
-			s.peers[o.ID] = p
-			s.updateRepeaterDBTimes(p, uint(o.ID), true)
-			if s.hub != nil {
-				id, peer := uint(o.ID), o.ID
-				since := s.heard
-				if since.IsZero() {
-					since = s.clock.Now()
+			if j, ok := s.joining[o.Addr]; ok && !s.stopped.Load() {
+				p, to := append([]byte(nil), o.Packet...), o.Addr
+				if s.peerJobs.Do(uint(j.id), func() { s.sendJoined(j, to, p, false) }) {
+					continue
 				}
-				s.peerJobs.Do(id, func() {
-					if s.hub.OwnerLeaving(ctx, id) {
-						s.awaitHandover(peer, since)
-					}
-					s.hub.ActivateRepeaterSince(ctx, id, since)
-				})
 			}
+			s.write(o.Addr, o.Packet)
+		case ipscsession.OutputUp:
+			s.up(ctx, o, nil)
 		case ipscsession.OutputDown:
 			slog.Info("IPSC peer down", "peerID", o.ID, "reason", o.Reason)
 			delete(s.peers, o.ID)
@@ -535,6 +548,81 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			s.bursts = append(s.bursts, burst{op: byte(op), data: append([]byte(nil), o.Packet...), addr: toUDPAddr(o.Addr)})
 		case ipscsession.OutputPeers:
 		}
+	}
+}
+
+// joiningPeer is a peer that registered, whose registration reply waits
+// until the hub has it active.
+type joiningPeer struct {
+	id uint32
+	p  *peerState
+}
+
+// up takes the peer of o, which is up, and activates it in the hub. A peer
+// that registers gets reply, its registration reply, only once the hub
+// has it active, since the peer expects every call from then on, and so
+// do the packets that the server sends to its address until then. The
+// caller holds s.mu.
+func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte) {
+	slog.Info("IPSC peer registered", "peerID", o.ID)
+	p := &peerState{lastClaim: s.clock.Now()}
+	s.peers[o.ID] = p
+	s.updateRepeaterDBTimes(p, uint(o.ID), true)
+	if s.hub == nil {
+		return
+	}
+	id, peer, to := uint(o.ID), o.ID, o.Addr
+	since := s.heard
+	if since.IsZero() {
+		since = s.clock.Now()
+	}
+	j := joiningPeer{id: peer, p: p}
+	if reply != nil {
+		reply = append([]byte(nil), reply...)
+		if s.joining == nil {
+			s.joining = map[ipscsession.Addr]joiningPeer{}
+		}
+		s.joining[to] = j
+	}
+	queued := s.peerJobs.Do(id, func() {
+		if s.hub.OwnerLeaving(ctx, id) {
+			s.awaitHandover(peer, since)
+		}
+		s.hub.ActivateRepeaterSince(ctx, id, since)
+		if reply != nil {
+			s.sendJoined(j, to, reply, true)
+		}
+	})
+	if !queued && reply != nil {
+		delete(s.joining, to)
+		s.write(to, reply)
+	}
+}
+
+// sendJoined sends p to the peer j at to, which the hub has active now,
+// when j is still registered at to. last ends the wait of j.
+func (s *IPSCServer) sendJoined(j joiningPeer, to ipscsession.Addr, p []byte, last bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if last && s.joining[to] == j {
+		delete(s.joining, to)
+	}
+	if s.stopped.Load() || s.peers[j.id] != j.p {
+		return
+	}
+	if info, ok := s.m.Peer(j.id); !ok || info.Addr != to {
+		return
+	}
+	s.write(to, p)
+}
+
+// write sends p to to, when the IP list of the repeaters allows to.
+func (s *IPSCServer) write(to ipscsession.Addr, p []byte) {
+	if !s.ipList().Allows(netip.AddrFrom4(to.IP)) {
+		return
+	}
+	if err := s.writeTo(p, toUDPAddr(to)); err != nil {
+		slog.Warn("error sending IPSC packet", "error", err)
 	}
 }
 
@@ -798,8 +886,8 @@ func (s *IPSCServer) sendPacketToPeers(data []byte, only uint32) {
 	s.mu.Unlock()
 	for _, d := range dests {
 		slog.Debug("IPSC burst sending", "peerID", d.id, "peer", d.to, "length", len(d.packet))
-		if _, err := s.udp.WriteToUDP(d.packet, d.to); err != nil {
-			slog.Warn("failed sending IPSC user packet", "peer", d.to, "error", err)
+		if err := s.writeTo(d.packet, d.to); err != nil {
+			slog.Warn("failed sending IPSC user packet", "error", err)
 		}
 	}
 }

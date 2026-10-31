@@ -555,7 +555,7 @@ func (s *Server) activate() {
 		return
 	}
 	id, since := uint(s.id), time.Now()
-	s.jobs.Do(id, func() { s.hub.ActivateRepeaterSince(s.ctx, id, since) })
+	s.jobs.Must(id, func() { s.hub.ActivateRepeaterSince(s.ctx, id, since) })
 }
 
 func (s *Server) deactivate() {
@@ -563,7 +563,7 @@ func (s *Server) deactivate() {
 		return
 	}
 	id := uint(s.id)
-	s.jobs.Do(id, func() { s.hub.DeactivateRepeater(s.ctx, id) })
+	s.jobs.Always(id, func() { s.hub.DeactivateRepeater(s.ctx, id) })
 }
 
 func (s *Server) renew() {

@@ -38,10 +38,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// moveWait is long enough for a SessionPeer, which pings every 200 ms, to
-// send several pings after its session moved.
-const moveWait = 1500 * time.Millisecond
-
 type moveRig struct {
 	stack    *testutils.IntegrationStack
 	second   testutils.Replica

@@ -9,7 +9,7 @@ console.log('Generating sitemap');
 
 const stream = new SitemapStream({ hostname: 'https://dmrhub.net' });
 
-const sitemapRoutes = [];
+const sitemapRoutes = [{ url: '/', changefreq: 'daily', priority: 1 }];
 
 for (const route of routes()) {
   if (!route.sitemap) {

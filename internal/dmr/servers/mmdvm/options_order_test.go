@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/require"
 )
 
@@ -161,4 +162,96 @@ func TestARepeaterGetsTheCallsOfItsNewStaticsFromTheAckOfItsOptions(t *testing.T
 		require.Equal(t, stream, got.StreamID)
 		return
 	}
+}
+
+// TestAnOptionsAckDoesNotReachALaterLogin holds the records queue of a
+// repeater while it sends an RPTO and then logs in again, as DMRGateway
+// does when its options wait times out. The RPTACK of the options must not
+// go out once the session it answers has ended, or the new login takes it
+// as the answer to its RPTK.
+func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
+	t.Parallel()
+	const id = uint32(311893)
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	memdb.Use(&cfg)
+	cfg.DMR.MMDVM.Bind = "127.0.0.1"
+	cfg.DMR.MMDVM.Port = 0
+	database, err := db.MakeDB(&cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.Create(&models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
+		Type:                  models.RepeaterTypeMMDVM,
+		Password:              testPassword,
+	}).Error)
+	require.NoError(t, database.Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	h := hub.NewHub(database, kvStore, ps, nil)
+	s, err := MakeServer(&cfg, h, database, ps, kvStore, "test", "test")
+	require.NoError(t, err)
+	s.newSalt = func() (uint32, error) { return testSalt, nil }
+	require.NoError(t, s.Start(context.Background()))
+	t.Cleanup(func() {
+		_ = s.Stop(context.Background())
+		h.Stop(context.Background())
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
+
+	probe := &optionsProbe{out: make(chan []byte, 16), atAck: func() {}}
+	s.transports.Store(probeTransport, probe)
+	from := endpoint{transport: probeTransport, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}}
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+	defer cancel()
+	next := func(what string) []byte {
+		t.Helper()
+		select {
+		case p := <-probe.out:
+			return p
+		case <-ctx.Done():
+			require.FailNow(t, "no "+what+" within "+answerWait.String())
+			return nil
+		}
+	}
+	send := func(c dmrd.Control) {
+		p, err := c.AppendBinary(nil, dmrd.DialectMMDVM)
+		require.NoError(t, err)
+		s.handleFrom(context.Background(), from, p, time.Now())
+	}
+	send(dmrd.Control{Command: dmrd.CommandRPTL, ID: id})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("salt"), dmrd.DialectMMDVM))
+	token, err := dmrdauth.Token(dmrd.DialectMMDVM, testSalt, []byte(testPassword))
+	require.NoError(t, err)
+	send(dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the login"), dmrd.DialectMMDVM))
+	s.handleFrom(context.Background(), from, rptc(t, dmrd.DialectMMDVM, id), time.Now())
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the config"), dmrd.DialectMMDVM))
+	s.records.Wait()
+
+	gate := make(chan struct{})
+	held := make(chan struct{})
+	require.True(t, s.records.Do(uint(id), func() {
+		close(held)
+		<-gate
+	}))
+	<-held
+	send(dmrd.Control{Command: dmrd.CommandRPTO, ID: id, Text: []byte("TS1=91;")})
+	send(dmrd.Control{Command: dmrd.CommandRPTL, ID: id})
+	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("salt of the new login"), dmrd.DialectMMDVM))
+	close(gate)
+	s.records.Wait()
+	s.lookups.Wait()
+
+	select {
+	case p := <-probe.out:
+		require.Failf(t, "a packet went out after the new login", "%q", p)
+	default:
+	}
+	s.mu.Lock()
+	state := s.links[from.String()].m.State()
+	s.mu.Unlock()
+	require.Equal(t, dmrdsession.StateAuth, state)
 }

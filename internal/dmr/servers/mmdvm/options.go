@@ -42,7 +42,8 @@ import (
 // feature for the other options, so they are logged and ignored, as is a
 // text that cannot be read. ack, when not nil, is the RPTACK of the
 // options. It goes out after the options are applied, since the repeater
-// expects the calls of its new talkgroups from then on.
+// expects the calls of its new talkgroups from then on, and only while the
+// session still runs.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack []byte) {
 	ep := l.ep
 	sendAck := func() {
@@ -75,7 +76,7 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 	logIgnoredOptions(id, text, &parsed)
 	text = append([]byte(nil), text...)
 	if !s.records.Do(id, func() {
-		defer sendAck()
+		defer s.ackLater(l, o.ID, ack)
 		statics := s.applyStatics(ctx, id, text)
 		dial1 := s.dial(ctx, id, false, parsed.DialTS1)
 		dial2 := s.dial(ctx, id, true, parsed.DialTS2)
@@ -85,6 +86,22 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 	}) {
 		sendAck()
 	}
+}
+
+// ackLater sends ack, the RPTACK of the options of the session of l,
+// once they are applied, while that session runs. A session that ended,
+// such as by a new login of the repeater, does not get it.
+func (s *Server) ackLater(l *link, id uint32, ack []byte) {
+	if ack == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id || l.m.State() != dmrdsession.StateRunning {
+		slog.Debug("Dropping the options RPTACK of a session that ended", "repeaterID", id, "remoteAddr", l.ep.String())
+		return
+	}
+	s.write(l.ep, ack)
 }
 
 // applyStatics saves the static talkgroups that text sets and reloads the

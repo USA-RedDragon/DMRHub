@@ -24,7 +24,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	apiws "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
@@ -73,42 +73,46 @@ func newPubSub(t *testing.T) pubsub.PubSub {
 
 func TestMessagesWebsocketKeepsEachConnectionApart(t *testing.T) {
 	t.Parallel()
-	ps := newPubSub(t)
-	h := apiws.CreateMessagesWebsocket(ps)
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/ws/messages", nil)
-	require.NoError(t, err)
-	var a, b recorder
+	synctest.Test(t, func(t *testing.T) {
+		ps := newPubSub(t)
+		h := apiws.CreateMessagesWebsocket(ps)
+		ctx := context.Background()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/ws/messages", nil)
+		require.NoError(t, err)
+		var a, b recorder
 
-	stopA := h.OnConnect(ctx, req, &a, fakeSession{values: map[any]any{"user_id": uint(1000001)}})
-	stopB := h.OnConnect(ctx, req, &b, fakeSession{values: map[any]any{"user_id": uint(1000002)}})
-	require.NotNil(t, stopA)
-	require.NotNil(t, stopB)
-	require.NoError(t, ps.Publish(messages.Topic(1000001), []byte(`{"to":"A"}`)))
-	require.NoError(t, ps.Publish(messages.Topic(1000002), []byte(`{"to":"B"}`)))
-	require.Eventually(t, func() bool { return len(a.got()) == 1 && len(b.got()) == 1 }, 2*time.Second, 10*time.Millisecond)
-	assert.Equal(t, []string{`{"to":"A"}`}, a.got())
-	assert.Equal(t, []string{`{"to":"B"}`}, b.got())
+		stopA := h.OnConnect(ctx, req, &a, fakeSession{values: map[any]any{"user_id": uint(1000001)}})
+		stopB := h.OnConnect(ctx, req, &b, fakeSession{values: map[any]any{"user_id": uint(1000002)}})
+		require.NotNil(t, stopA)
+		require.NotNil(t, stopB)
+		require.NoError(t, ps.Publish(messages.Topic(1000001), []byte(`{"to":"A"}`)))
+		require.NoError(t, ps.Publish(messages.Topic(1000002), []byte(`{"to":"B"}`)))
+		synctest.Wait()
+		assert.Equal(t, []string{`{"to":"A"}`}, a.got())
+		assert.Equal(t, []string{`{"to":"B"}`}, b.got())
 
-	stopA()
-	require.NoError(t, ps.Publish(messages.Topic(1000001), []byte(`{"to":"A2"}`)))
-	require.NoError(t, ps.Publish(messages.Topic(1000002), []byte(`{"to":"B2"}`)))
-	require.Eventually(t, func() bool { return len(b.got()) == 2 }, 2*time.Second, 10*time.Millisecond, "closing A leaves B open")
-	time.Sleep(50 * time.Millisecond)
-	assert.Len(t, a.got(), 1)
-	stopB()
+		stopA()
+		require.NoError(t, ps.Publish(messages.Topic(1000001), []byte(`{"to":"A2"}`)))
+		require.NoError(t, ps.Publish(messages.Topic(1000002), []byte(`{"to":"B2"}`)))
+		synctest.Wait()
+		assert.Equal(t, []string{`{"to":"B"}`, `{"to":"B2"}`}, b.got(), "closing A leaves B open")
+		assert.Len(t, a.got(), 1)
+		stopB()
+	})
 }
 
 func TestMessagesWebsocketWithoutAUserSendsNothing(t *testing.T) {
 	t.Parallel()
-	ps := newPubSub(t)
-	h := apiws.CreateMessagesWebsocket(ps)
-	ctx := context.Background()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/ws/messages", nil)
-	require.NoError(t, err)
-	var r recorder
-	assert.Nil(t, h.OnConnect(ctx, req, &r, fakeSession{values: map[any]any{}}))
-	require.NoError(t, ps.Publish(messages.Topic(0), []byte(`{}`)))
-	time.Sleep(50 * time.Millisecond)
-	assert.Empty(t, r.got())
+	synctest.Test(t, func(t *testing.T) {
+		ps := newPubSub(t)
+		h := apiws.CreateMessagesWebsocket(ps)
+		ctx := context.Background()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/ws/messages", nil)
+		require.NoError(t, err)
+		var r recorder
+		assert.Nil(t, h.OnConnect(ctx, req, &r, fakeSession{values: map[any]any{}}))
+		require.NoError(t, ps.Publish(messages.Topic(0), []byte(`{}`)))
+		synctest.Wait()
+		assert.Empty(t, r.got())
+	})
 }

@@ -253,8 +253,8 @@ func TestEveryUserChangeIsPublished(t *testing.T) {
 		e.do(t, change.method, fmt.Sprintf(change.path, id))
 		select {
 		case <-sub.Channel():
-		case <-time.After(2 * time.Second):
-			assert.Fail(t, "no user change was published", change.name)
+		default:
+			assert.Fail(t, "the handler answered before it published the user change", change.name)
 		}
 		require.NoError(t, sub.Close())
 	}
@@ -280,8 +280,8 @@ func TestRepeaterOwnershipChangesArePublished(t *testing.T) {
 		require.Equal(t, http.StatusOK, e.request(t, change.jar, change.method, change.path, change.body), change.name)
 		select {
 		case <-sub.Channel():
-		case <-time.After(2 * time.Second):
-			assert.Fail(t, "no user change was published", change.name)
+		default:
+			assert.Fail(t, "the handler answered before it published the user change", change.name)
 		}
 		require.NoError(t, sub.Close())
 	}

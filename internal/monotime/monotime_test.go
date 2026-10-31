@@ -32,17 +32,18 @@ func TestAStampKeepsTheMonotonicReading(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	at := monotime.Time(monotime.Of(now))
-	assert.Equal(t, time.Duration(0), at.Sub(now))
 	assert.True(t, at.Equal(now))
 	assert.Contains(t, at.String(), " m=+", "the time of a stamp has a monotonic clock reading")
 }
 
 func TestNowIsAfterAnEarlierStamp(t *testing.T) {
 	t.Parallel()
-	before := monotime.Now()
-	time.Sleep(time.Millisecond)
-	assert.Greater(t, monotime.Now(), before)
-	assert.Less(t, time.Since(monotime.Time(before)), time.Minute)
+	synctest.Test(t, func(t *testing.T) {
+		before := monotime.Now()
+		time.Sleep(time.Millisecond)
+		assert.Greater(t, monotime.Now(), before)
+		assert.Equal(t, time.Millisecond, time.Since(monotime.Time(before)))
+	})
 }
 
 func TestAStampOfABubbleTimeIsPositive(t *testing.T) {

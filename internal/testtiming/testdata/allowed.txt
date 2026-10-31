@@ -187,8 +187,6 @@ elapsed	internal/kv/redis_timeout_test.go	2	baseline of 2026-10-28, not reviewed
 timer	internal/messages/push_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/messages/store_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/messages/store_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/monotime/monotime_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/monotime/monotime_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/plugins/inside/manager_test.go	21	real guest: each wait is for a WebAssembly guest in wazero to start, connect, echo, quit or stop; the guest runs real CPU and blocks in real ppoll syscalls, so a synctest bubble stops its clock (tried 2026-10-31) and no test clock stands in for it; the lease, Quiet and backoff deadlines around these waits step a fake clock
 timer	internal/plugins/inside/manager_test.go	1	event wait: passedSince waits for the reconcile event of a manager, bounded by DefaultTiming().Lease, as a manager that takes longer than its lease for a pass loses its plugins
 eventually	internal/plugins/inside/parrot_test.go	1	real guest: the wait is for the built-in parrot, a WebAssembly guest in wazero, to start and connect; it runs real CPU and blocks in real ppoll syscalls, which no test clock stands in for

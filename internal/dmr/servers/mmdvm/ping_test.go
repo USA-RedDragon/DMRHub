@@ -19,6 +19,8 @@
 package mmdvm
 
 import (
+	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,6 +36,7 @@ func TestPingWritesOnlyTheLastPingTime(t *testing.T) {
 	t.Parallel()
 	r := newDialectRig(t, 311860)
 	r.login(dmrd.DialectMMDVM, 311860)
+	r.s.pingWG.Wait()
 
 	var statements atomic.Int64
 	count := func(*gorm.DB) { statements.Add(1) }
@@ -47,9 +50,7 @@ func TestPingWritesOnlyTheLastPingTime(t *testing.T) {
 	before := time.Now()
 	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
-
-	require.Eventually(t, func() bool { return statements.Load() >= 1 }, 5*time.Second, 10*time.Millisecond)
-	time.Sleep(100 * time.Millisecond)
+	r.s.pingWG.Wait()
 	assert.Equal(t, int64(1), statements.Load(), "statements for one ping")
 	var row models.Repeater
 	require.NoError(t, r.s.DB.First(&row, 311860).Error)
@@ -60,18 +61,23 @@ func TestASlowPingWriteDoesNotHoldUpThePackets(t *testing.T) {
 	t.Parallel()
 	r := newDialectRig(t, 311860)
 	r.login(dmrd.DialectMMDVM, 311860)
-	require.NoError(t, r.s.DB.Callback().Update().Before("gorm:update").Register("test:slow_store", func(*gorm.DB) {
-		time.Sleep(time.Second)
+	r.s.pingWG.Wait()
+	var inHandler, stores atomic.Int32
+	require.NoError(t, r.s.DB.Callback().Update().Before("gorm:update").Register("test:store_stack", func(*gorm.DB) {
+		stores.Add(1)
+		if strings.Contains(string(debug.Stack()), "(*Server).handle") {
+			inHandler.Add(1)
+		}
 	}))
 
 	before := time.Now()
 	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
-	took := time.Since(before)
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
-	assert.Less(t, took, 200*time.Millisecond, "the server took %s on a ping", took)
+	r.s.pingWG.Wait()
 
-	require.Eventually(t, func() bool {
-		var row models.Repeater
-		return r.s.DB.First(&row, 311860).Error == nil && !row.LastPing.Before(before.Truncate(time.Second))
-	}, 5*time.Second, 20*time.Millisecond, "the last ping is written")
+	require.NotZero(t, stores.Load(), "the last ping is written")
+	assert.Zero(t, inHandler.Load(), "the packet handler stored the last ping itself, so a slow store holds up the packets")
+	var row models.Repeater
+	require.NoError(t, r.s.DB.First(&row, 311860).Error)
+	assert.False(t, row.LastPing.Before(before.Truncate(time.Second)), "last ping %v, want after %v", row.LastPing, before)
 }

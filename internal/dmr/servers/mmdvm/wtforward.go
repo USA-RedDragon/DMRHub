@@ -32,6 +32,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/quic-go/quic-go"
@@ -152,6 +153,9 @@ type wtConn struct {
 	// connection of this replica by when its packets begin to come another
 	// way, and the time of it.
 	onPath atomic.Pointer[func(net.Addr, time.Time)]
+	// clock, when set, is the clock of the server, on which a path move
+	// is stamped, as the packets that the server sent are.
+	clock atomic.Pointer[clock.Clock]
 
 	mu      sync.Mutex
 	origins map[string]origin
@@ -263,7 +267,7 @@ func (c *wtConn) read() {
 		b := append([]byte(nil), buf[:n]...)
 		owner, ok, back := c.foreign(b, addr)
 		if back {
-			c.pathMoved(addr, time.Now())
+			c.pathMoved(addr, c.now())
 		}
 		if ok {
 			c.forward(owner, forwardIn, addr, b)
@@ -385,13 +389,21 @@ func (c *wtConn) take(msg []byte) {
 	case forwardIn:
 		known, moved := c.pathFrom(from, addr, b)
 		if moved {
-			c.pathMoved(known, time.Now())
+			c.pathMoved(known, c.now())
 		}
 		select {
 		case c.in <- datagram{data: b, addr: known}:
 		case <-c.done:
 		}
 	}
+}
+
+// now returns the time on the clock of the server.
+func (c *wtConn) now() time.Time {
+	if clk := c.clock.Load(); clk != nil {
+		return (*clk).Now()
+	}
+	return time.Now()
 }
 
 // pathMoved hands addr, the address of a connection whose packets began

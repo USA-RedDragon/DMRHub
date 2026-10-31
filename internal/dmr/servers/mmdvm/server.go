@@ -352,6 +352,8 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.wt != nil {
 		resume := s.resumeWebTransport
 		s.wt.onResume.Store(&resume)
+		clk := s.clock
+		s.wt.udp.clock.Store(&clk)
 		moved := s.resendMoved
 		s.wt.onPathMoved.Store(&moved)
 		ipList := s.webTransportIPList

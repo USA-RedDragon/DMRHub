@@ -14,20 +14,20 @@ sleep	internal/dmr/golden_integration_test.go	3	replay pace, not a wait: 60 ms b
 eventually	internal/dmr/hblink3_test.go	1	polls until the hotspot logs in to the HBlink3 process, which opens its master port at a time of its own with no event; bounded by 40 s, and the test runs only with hack/hblink3-test.sh
 pickport	internal/dmr/hblink3_test.go	1	the config of the external HBlink3 process must name its OpenBridge, master and report ports, which it binds itself, so a :0 port or a handed-in listener cannot be used; FreeUDPPort picks below the ephemeral range and never twice
 sleep	internal/dmr/hblink3_test.go	2	the GROUP_HANGTIME of 5 s of the external HBlink3 process, which holds its slots after its start and after a call with no event: the wait after the logins and before the SMS from the hub
-sleep	internal/dmr/hub/clockstep_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hub/fanout_bench_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/hub/clockstep_test.go	1	real clock: the test steps the wall clock of a VM back and then sleeps past undeliverableLogEvery on the monotonic clock; a late wake only adds time
+timer	internal/dmr/hub/fanout_bench_test.go	1	benchmark: burst also runs in BenchmarkGroupBurstFanout, which measures real time outside a bubble; the timeout only ends a hung benchmark
 timer	internal/dmr/hub/locator_test.go	1	real plugin over TCP: the plugin SDK has no dialer for an in-memory listener, so no bubble; nextFrom bounds each wait, positive waits by counts of packets or failAfter, quiet windows can only miss a packet
-timer	internal/dmr/hub/rules_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/slow_claim_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/hub/slow_db_test.go	1	virtual time: worstDelay runs only inside synctest bubbles, so the delay it measures is virtual
-sleep	internal/dmr/hub/slow_db_test.go	2	virtual time: slowDownBy and sendStream run only inside synctest bubbles, so each sleep is a slow query or the burst period in virtual time
-elapsed	internal/dmr/hub/slow_redis_test.go	1	virtual time: gather runs only inside synctest bubbles, so the delay it measures is virtual
-sleep	internal/dmr/hub/slow_redis_test.go	3	virtual time: stalledPubSub and stalledPlugins are made, and sendSlotStream runs, only inside synctest bubbles, so each sleep is a slow Redis call or the burst period in virtual time
-timer	internal/dmr/hub/slow_redis_test.go	2	virtual time: gather runs only inside synctest bubbles, so its quiet window and deadline are virtual
-sleep	internal/dmr/hub/stream_order_test.go	3	virtual time: claimSlowFor and slowTopic are made only inside synctest bubbles, so each sleep is the delay of a slow KV store or pubsub in virtual time
-elapsed	internal/dmr/hub/streams_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/streams_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/subscription_manager_test.go	2	virtual time: slowSubscribe and slowFeed are made only inside synctest bubbles, so each sleep is the delay of a slow pubsub in virtual time
+timer	internal/dmr/hub/rules_test.go	3	real servers: the rules tests run on Postgres, MySQL, MariaDB and Redis, which a bubble cannot hold; each wait is for an event, and failAfter only ends a hung test
+sleep	internal/dmr/hub/slow_claim_test.go	1	virtual time as of HEAD: slowKV.wait; every slowKV is made inside a synctest bubble
+elapsed	internal/dmr/hub/slow_db_test.go	1	virtual time as of HEAD: worstDelay; every caller runs inside a synctest bubble
+sleep	internal/dmr/hub/slow_db_test.go	2	virtual time as of HEAD: slowDownBy, sendStream; every caller runs inside a synctest bubble
+elapsed	internal/dmr/hub/slow_redis_test.go	1	virtual time as of HEAD: gather; every caller runs inside a synctest bubble
+sleep	internal/dmr/hub/slow_redis_test.go	3	virtual time as of HEAD: stalledPubSub.Publish, stalledPlugins.Deliver, sendSlotStream; every caller, and every value of the types, is inside a synctest bubble
+timer	internal/dmr/hub/slow_redis_test.go	2	virtual time as of HEAD: gather; every caller runs inside a synctest bubble
+sleep	internal/dmr/hub/stream_order_test.go	3	virtual time as of HEAD: claimSlowFor.slow, slowTopic.Subscribe, slowTopic.Feed; every value of the types is made inside a synctest bubble
+elapsed	internal/dmr/hub/streams_test.go	4	real servers: the claim hold lives in the KV store of Postgres, MySQL, MariaDB or Redis; these checks find a run that the machine held too long and repeat the case
+sleep	internal/dmr/hub/streams_test.go	3	real servers: the claim hold lives in the KV store of Postgres, MySQL, MariaDB or Redis, so the test waits out the hold in real time
+sleep	internal/dmr/hub/subscription_manager_test.go	2	virtual time as of HEAD: slowSubscribe.Subscribe, slowFeed.Add; every value of the types is made inside a synctest bubble
 sleep	internal/dmr/integration_test.go	1	poll step of waitFor, for the unlink of a dynamic talkgroup, which the hub makes off the routing path with no event a test can wait on
 eventually	internal/dmr/iplists_integration_test.go	5	polls the MSTCL count and the closed flag of a client and the registration time in the database, which have no event; bounded by deliverWait
 elapsed	internal/dmr/ipsc_slow_redis_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event

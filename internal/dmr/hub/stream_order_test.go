@@ -106,7 +106,6 @@ type delivered struct{ stream, seq uint }
 func receiveOrder(t *testing.T, arrivals <-chan arrival, streams map[uint]bool, want int, targets ...string) map[string][]delivered {
 	t.Helper()
 	got := map[string][]delivered{}
-	deadline := time.After(30 * time.Second)
 	for {
 		done := true
 		for _, target := range targets {
@@ -115,16 +114,12 @@ func receiveOrder(t *testing.T, arrivals <-chan arrival, streams map[uint]bool, 
 		if done {
 			return got
 		}
-		select {
-		case a := <-arrivals:
-			if !streams[a.rp.Packet.StreamID] {
-				continue
-			}
-			target := a.server + ":" + strconv.FormatUint(uint64(a.rp.RepeaterID), 10)
-			got[target] = append(got[target], delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
-		case <-deadline:
-			t.Fatalf("deliveries %v, want %d on each of %v", got, want, targets)
+		a := bubble.Receive(t, arrivals, 30*time.Second, "deliveries %v, want %d on each of %v", got, want, targets)
+		if !streams[a.rp.Packet.StreamID] {
+			continue
 		}
+		target := a.server + ":" + strconv.FormatUint(uint64(a.rp.RepeaterID), 10)
+		got[target] = append(got[target], delivered{a.rp.Packet.StreamID, a.rp.Packet.Seq})
 	}
 }
 

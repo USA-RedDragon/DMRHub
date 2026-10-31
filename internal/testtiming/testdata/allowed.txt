@@ -26,8 +26,7 @@ elapsed	internal/dmr/hub/slow_redis_test.go	1	baseline of 2026-10-28, not review
 eventually	internal/dmr/hub/slow_redis_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/slow_redis_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/slow_redis_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/stream_order_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hub/stream_order_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/hub/stream_order_test.go	3	virtual time: claimSlowFor and slowTopic are made only inside synctest bubbles, so each sleep is the delay of a slow KV store or pubsub in virtual time
 elapsed	internal/dmr/hub/streams_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/streams_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/subscription_manager_test.go	2	virtual time: slowSubscribe and slowFeed are made only inside synctest bubbles, so each sleep is the delay of a slow pubsub in virtual time

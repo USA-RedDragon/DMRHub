@@ -2,7 +2,7 @@
 
 ARG DMRGO_REF=main
 
-FROM --platform=$BUILDPLATFORM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS dmrgo-clone
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS dmrgo-clone
 ARG DMRGO_REF
 RUN apk add --no-cache git
 RUN git clone --quiet --filter=blob:none --no-checkout https://github.com/USA-RedDragon/dmrgo.git /dmrgo \
@@ -11,7 +11,7 @@ RUN git clone --quiet --filter=blob:none --no-checkout https://github.com/USA-Re
 FROM scratch AS dmrgo
 COPY --from=dmrgo-clone /dmrgo /
 
-FROM --platform=$BUILDPLATFORM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS site
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS site
 RUN apk add --no-cache git pandoc-cli python3 zstd
 COPY --from=dmrgo / /src/dmrgo
 COPY . /src/hub

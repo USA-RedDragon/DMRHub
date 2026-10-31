@@ -147,7 +147,7 @@ func burstsArrive(t *testing.T, stream uint, bursts int, send func(uint) []time.
 // calls, and the statements must run when the database lets them go.
 func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+	forAllBackendsWith(t, []testutils.Backend{testutils.BoundedWaits()}, func(t *testing.T, stack *testutils.IntegrationStack) {
 		db := holdDatabase(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")

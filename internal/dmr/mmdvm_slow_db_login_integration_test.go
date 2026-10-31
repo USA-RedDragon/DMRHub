@@ -36,7 +36,7 @@ import (
 // complete when the database lets its statements go.
 func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+	forAllBackendsWith(t, []testutils.Backend{testutils.BoundedWaits()}, func(t *testing.T, stack *testutils.IntegrationStack) {
 		db := holdDatabase(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")

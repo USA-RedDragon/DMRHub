@@ -156,6 +156,7 @@ func forAllSlowRedisBackends(t *testing.T, prefix string, topics []string, f fun
 			slow := &slowRedis{prefix: prefix, topics: topics}
 			be.WrapKV = func(k kv.KV) kv.KV { return slowRedisKV{KV: k, s: slow} }
 			be.WrapPubSub = func(p pubsub.PubSub) pubsub.PubSub { return slowRedisPubSub{PubSub: p, s: slow} }
+			be.BoundedWaits = true
 			stack := testutils.SetupIntegrationStack(t, be)
 			t.Cleanup(slow.release)
 			f(t, stack, slow)

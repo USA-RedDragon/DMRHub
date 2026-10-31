@@ -2,7 +2,7 @@ src/App.vue	28	27
 src/components/AppFooter.vue	10	9
 src/components/AppHeader.vue	98	63
 src/components/CallCodec.vue	2	1
-src/components/LastHeardTable.vue	59	36
+src/components/LastHeardTable.vue	59	34
 src/components/ModeToggle.vue	13	10
 src/components/RelativeTimestamp.vue	7	3
 src/components/Repeater.vue	7	0
@@ -108,7 +108,7 @@ src/services/settings.ts	16	0
 src/services/talkgroup.ts	15	8
 src/services/userdb.ts	15	8
 src/services/util.ts	7	6
-src/services/ws.ts	51	39
+src/services/ws.ts	51	35
 src/store/index.ts	25	25
 src/views/LastHeard.vue	1	1
 src/views/admin/NetsPage.vue	72	39

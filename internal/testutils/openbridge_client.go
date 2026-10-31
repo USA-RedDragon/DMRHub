@@ -77,10 +77,24 @@ func (c *OpenBridgeClient) DrainBridges(timeout time.Duration) []ReceivedBridge 
 	return Collect(c.bridges, timeout, nil)
 }
 
+// ReceiveBridges collects the data packets that arrive with a good
+// signature until done accepts them, or until within passes, as Collect
+// does.
+func (c *OpenBridgeClient) ReceiveBridges(within time.Duration, done func([]ReceivedBridge) bool) []ReceivedBridge {
+	return Collect(c.bridges, within, done)
+}
+
 // DrainControls collects the control packets, such as BCKA, that arrive
 // with a good signature within timeout.
 func (c *OpenBridgeClient) DrainControls(timeout time.Duration) []dmrd.BridgeControl {
 	return Collect(c.controls, timeout, nil)
+}
+
+// ReceiveControls collects the control packets that arrive with a good
+// signature until done accepts them, or until within passes, as Collect
+// does.
+func (c *OpenBridgeClient) ReceiveControls(within time.Duration, done func([]dmrd.BridgeControl) bool) []dmrd.BridgeControl {
+	return Collect(c.controls, within, done)
 }
 
 // Connect opens a socket to send to the OpenBridge server at addr. It

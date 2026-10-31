@@ -74,33 +74,13 @@ type ReceivedBridge struct {
 // DrainBridges collects the OpenBridge data packets, of any version, that
 // arrive with a good signature within timeout.
 func (c *OpenBridgeClient) DrainBridges(timeout time.Duration) []ReceivedBridge {
-	var out []ReceivedBridge
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case b := <-c.bridges:
-			out = append(out, b)
-		case <-timer.C:
-			return out
-		}
-	}
+	return Collect(c.bridges, timeout, nil)
 }
 
 // DrainControls collects the control packets, such as BCKA, that arrive
 // with a good signature within timeout.
 func (c *OpenBridgeClient) DrainControls(timeout time.Duration) []dmrd.BridgeControl {
-	var out []dmrd.BridgeControl
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case b := <-c.controls:
-			out = append(out, b)
-		case <-timer.C:
-			return out
-		}
-	}
+	return Collect(c.controls, timeout, nil)
 }
 
 // Connect opens a socket to send to the OpenBridge server at addr. It
@@ -143,17 +123,7 @@ func (c *OpenBridgeClient) ReceivedPackets() <-chan models.Packet {
 
 // Drain collects all packets received within the given timeout window.
 func (c *OpenBridgeClient) Drain(timeout time.Duration) []models.Packet {
-	var result []models.Packet
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case pkt := <-c.packets:
-			result = append(result, pkt)
-		case <-timer.C:
-			return result
-		}
-	}
+	return Collect(c.packets, timeout, nil)
 }
 
 // SendGroupVoice sends an OpenBridge group voice packet (voice head + voice + terminator).

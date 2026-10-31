@@ -210,14 +210,13 @@ deadline	internal/testutils/front_test.go	1	negative window: the read checks tha
 timer	internal/testutils/hubdelivery.go	1	negative window: GroupBurstReaches is for checks that a burst does not arrive, where a slow machine can only hide a fault; positive checks use RequireGroupBurst, an event wait
 elapsed	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/ipsc_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+timer	internal/testutils/ipsc_client.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/testutils/live.go	1	data: http://localhost:3005 is the canonical host of the config, not a socket
 pickport	internal/testutils/live.go	4	a live config must name its server ports (the live-config tests change and lock them), so :0 cannot be used; FreeUDPPort picks below the ephemeral range and the replica tries other ports on EADDRINUSE
 deadline	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/mmdvm_client.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/testutils/openbridge_client.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/testutils/openbridge_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/plugins.go	1	negative window: ServeIgnoresUnknownMessages checks that serve does not end within 500 ms of an unknown message; serve gives no sign that it handled it, and a slow machine can only hide a fault, never fail the test
 elapsed	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

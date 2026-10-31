@@ -141,15 +141,26 @@ func (c *MMDVMClient) ReceivedPackets() <-chan models.Packet {
 // Drain collects all packets received within the given timeout window.
 // Useful for negative assertions (proving nothing extra was delivered).
 func (c *MMDVMClient) Drain(timeout time.Duration) []models.Packet {
-	var result []models.Packet
-	timer := time.NewTimer(timeout)
+	return Collect(c.packets, timeout, nil)
+}
+
+// Collect reads ch until done accepts what it read, or until within
+// passes, and returns what it read. With a nil done it reads for all of
+// within. A test that waits for packets it expects passes done, so that it
+// goes on as soon as they come and within only bounds a failure.
+func Collect[T any](ch <-chan T, within time.Duration, done func([]T) bool) []T {
+	var out []T
+	timer := time.NewTimer(within)
 	defer timer.Stop()
 	for {
 		select {
-		case pkt := <-c.packets:
-			result = append(result, pkt)
+		case v := <-ch:
+			out = append(out, v)
+			if done != nil && done(out) {
+				return out
+			}
 		case <-timer.C:
-			return result
+			return out
 		}
 	}
 }

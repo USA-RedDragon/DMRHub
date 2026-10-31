@@ -191,18 +191,14 @@ func (c *IPSCClient) ReceivedPackets() <-chan IPSCBurst {
 
 // Drain collects all packets received within the given timeout window.
 func (c *IPSCClient) Drain(timeout time.Duration) []IPSCBurst {
+	return c.Receive(timeout, nil)
+}
+
+// Receive collects the bursts received until done accepts them, or until
+// within passes, as Collect does.
+func (c *IPSCClient) Receive(within time.Duration, done func([]IPSCBurst) bool) []IPSCBurst {
 	c.startSession()
-	var result []IPSCBurst
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	for {
-		select {
-		case pkt := <-c.packets:
-			result = append(result, pkt)
-		case <-timer.C:
-			return result
-		}
-	}
+	return Collect(c.packets, within, done)
 }
 
 // SendGroupVoice sends an IPSC group voice call: a voice LC header, a voice

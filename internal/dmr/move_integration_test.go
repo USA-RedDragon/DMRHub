@@ -168,7 +168,10 @@ func TestMMDVMMovesAfterTheClaimExpired(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		r := startMoveRig(t, stack)
 		require.NoError(t, stack.KV.Delete(t.Context(), "dmrhub:peer_owner:100001"))
-		time.Sleep(moveWait)
+		waitFor(t, "a ping of the repeater renews its claim", func() bool {
+			_, err := stack.KV.Get(t.Context(), "dmrhub:peer_owner:100001")
+			return err == nil
+		})
 		r.first.MarkDraining(t.Context())
 		r.front.Drain(stack.MMDVMAddr)
 		time.Sleep(moveWait)

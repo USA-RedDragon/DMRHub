@@ -199,35 +199,35 @@ sleep	internal/pubsub/pubsub_test.go	1	baseline of 2026-10-28, not reviewed: rep
 timer	internal/pubsub/pubsub_test.go	17	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/pubsub/redis_stall_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/pubsub/redis_stall_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/callmix_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/chaos_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/chaos_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/checks_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/checks_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/database_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/database_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/harness_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/hostile_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/hostile_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/kinds_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/kinds_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/ledger_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/load_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/load_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/load_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/repro_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/repro_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/repro_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/rig_test.go	8	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/rig_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/rig_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/sampler_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/sampler_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/transport_test.go	5	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/transport_test.go	9	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/stress/transport_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/stress/web_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/stress/web_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/stress/callmix_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 133 are settle waits between stress phases; should become an event wait (open item)
+elapsed	internal/stress/chaos_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/chaos_test.go	7	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 329, 421, 428 are settle waits between stress phases; should become an event wait (open item)
+elapsed	internal/stress/checks_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+timer	internal/stress/checks_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/database_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/database_test.go	3	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 95, 111 are settle waits between stress phases; should become an event wait (open item)
+elapsed	internal/stress/harness_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/hostile_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/hostile_test.go	6	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 89, 106, 147, 167, 209, 229 are settle waits between stress phases; should become an event wait (open item)
+sleep	internal/stress/kinds_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 208 are settle waits between stress phases; should become an event wait (open item)
+timer	internal/stress/kinds_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/ledger_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/load_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/load_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 83, 156, 168, 219 are settle waits between stress phases; should become an event wait (open item)
+timer	internal/stress/load_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/repro_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/repro_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 68, 71, 110 are settle waits between stress phases; should become an event wait (open item)
+timer	internal/stress/repro_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/rig_test.go	8	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/rig_test.go	6	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 236, 253, 305, 329, 543 are settle waits between stress phases; should become an event wait (open item)
+timer	internal/stress/rig_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/sampler_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+timer	internal/stress/sampler_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/transport_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/transport_test.go	9	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 110, 197, 264, 462, 473, 487 are settle waits between stress phases; should become an event wait (open item)
+timer	internal/stress/transport_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+elapsed	internal/stress/web_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+sleep	internal/stress/web_test.go	3	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 101, 161, 187 are settle waits between stress phases; should become an event wait (open item)
 sleep	internal/testutils/ambeserver.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
 timer	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers

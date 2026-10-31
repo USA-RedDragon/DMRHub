@@ -129,8 +129,6 @@ pickport	internal/dmr/servers/manager/manager_test.go	6	baseline of 2026-10-28, 
 sleep	internal/dmr/servers/manager/manager_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/manager/modem_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/servers/mmdvm/handover_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/servers/mmdvm/handover_internal_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

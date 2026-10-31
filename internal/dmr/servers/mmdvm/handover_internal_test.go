@@ -23,6 +23,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -49,13 +50,15 @@ func queueServer() *Server {
 // longer takes to the repeater, so the handover must hold it.
 func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	time.Sleep(time.Millisecond)
-	since := time.Now()
-	got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
-	require.Len(t, got, 1, "the handover misses the packet that waits in the queue")
-	assert.Equal(t, uint(3), got[0].Seq)
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		time.Sleep(time.Millisecond)
+		since := time.Now()
+		got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
+		require.Len(t, got, 1, "the handover misses the packet that waits in the queue")
+		assert.Equal(t, uint(3), got[0].Seq)
+	})
 }
 
 // TestHandOverNoPacketSentBeforeTheMove sends a packet to a repeater
@@ -63,10 +66,12 @@ func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 // it.
 func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	s.writeOut(<-s.outgoingChan)
-	assert.Empty(t, s.sentSince(1, time.Now().Add(2*MoveSlack), ruleFor(udpEndpoint(net.UDPAddr{}))))
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		s.writeOut(<-s.outgoingChan)
+		assert.Empty(t, s.sentSince(1, time.Now().Add(2*MoveSlack), ruleFor(udpEndpoint(net.UDPAddr{}))))
+	})
 }
 
 // TestHandOverAPacketSentJustBeforeTheClaim sends a packet to a repeater
@@ -76,10 +81,12 @@ func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 // handover must hold it.
 func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	s.writeOut(<-s.outgoingChan)
-	assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses the packet sent just before the claim")
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		s.writeOut(<-s.outgoingChan)
+		assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses the packet sent just before the claim")
+	})
 }
 
 // TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim sends a
@@ -90,12 +97,14 @@ func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
 // hold it.
 func TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	ep := endpoint{transport: webTransportName, addr: wtAddr("a")}
-	s.connected.Store(1, ep)
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	s.writeOut(<-s.outgoingChan)
-	assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), ruleFor(ep)), 1, "the handover misses the packet sent before a stalled claim")
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		ep := endpoint{transport: webTransportName, addr: wtAddr("a")}
+		s.connected.Store(1, ep)
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		s.writeOut(<-s.outgoingChan)
+		assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), ruleFor(ep)), 1, "the handover misses the packet sent before a stalled claim")
+	})
 }
 
 // TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame sends a call to an MMDVM
@@ -105,21 +114,23 @@ func TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim(t *testing.T) {
 // frame and no other.
 func TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	ep, _ := s.connected.Load(1)
-	now := time.Now()
-	for i := range 5 {
-		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: uint(i)})
-		s.writeOut(<-s.outgoingChan)
-	}
-	s.sentMu.Lock()
-	for i, p := range s.sent[1] {
-		p.at = now.Add(time.Duration(i-4)*60*time.Millisecond - 5*time.Millisecond)
-	}
-	s.sentMu.Unlock()
-	got := s.sentSince(1, now, ruleFor(ep))
-	require.Len(t, got, 1, "the handover holds more than the last frame")
-	assert.Equal(t, uint(4), got[0].Seq)
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		ep, _ := s.connected.Load(1)
+		now := time.Now()
+		for i := range 5 {
+			s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: uint(i)})
+			s.writeOut(<-s.outgoingChan)
+		}
+		s.sentMu.Lock()
+		for i, p := range s.sent[1] {
+			p.at = now.Add(time.Duration(i-4)*60*time.Millisecond - 5*time.Millisecond)
+		}
+		s.sentMu.Unlock()
+		got := s.sentSince(1, now, ruleFor(ep))
+		require.Len(t, got, 1, "the handover holds more than the last frame")
+		assert.Equal(t, uint(4), got[0].Seq)
+	})
 }
 
 // TestHandOverToAnMMDVMRepeaterOnlyTheLastOfAClump sends an MMDVM
@@ -129,36 +140,40 @@ func TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame(t *testing.T) {
 // hold only the last frame of each slot.
 func TestHandOverToAnMMDVMRepeaterOnlyTheLastOfAClump(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	ep, _ := s.connected.Load(1)
-	now := time.Now()
-	for _, p := range []models.Packet{{StreamID: 7, Seq: 1}, {StreamID: 8, Seq: 1, Slot: true}, {StreamID: 7, Seq: 2}} {
-		s.deliver(context.Background(), 1, p)
-		s.writeOut(<-s.outgoingChan)
-	}
-	s.sentMu.Lock()
-	for i, p := range s.sent[1] {
-		p.at = now.Add(time.Duration(i*3-20) * time.Millisecond)
-	}
-	s.sentMu.Unlock()
-	got := s.sentSince(1, now, ruleFor(ep))
-	require.Len(t, got, 2, "the handover holds more than the last frame of each slot")
-	assert.Equal(t, models.Packet{StreamID: 8, Seq: 1, Slot: true}, got[0])
-	assert.Equal(t, models.Packet{StreamID: 7, Seq: 2}, got[1])
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		ep, _ := s.connected.Load(1)
+		now := time.Now()
+		for _, p := range []models.Packet{{StreamID: 7, Seq: 1}, {StreamID: 8, Seq: 1, Slot: true}, {StreamID: 7, Seq: 2}} {
+			s.deliver(context.Background(), 1, p)
+			s.writeOut(<-s.outgoingChan)
+		}
+		s.sentMu.Lock()
+		for i, p := range s.sent[1] {
+			p.at = now.Add(time.Duration(i*3-20) * time.Millisecond)
+		}
+		s.sentMu.Unlock()
+		got := s.sentSince(1, now, ruleFor(ep))
+		require.Len(t, got, 2, "the handover holds more than the last frame of each slot")
+		assert.Equal(t, models.Packet{StreamID: 8, Seq: 1, Slot: true}, got[0])
+		assert.Equal(t, models.Packet{StreamID: 7, Seq: 2}, got[1])
+	})
 }
 
 // TestHandOverAPacketSentAfterTheMove sends a packet that was queued
 // before the move after it. The handover must hold it.
 func TestHandOverAPacketSentAfterTheMove(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	o := <-s.outgoingChan
-	time.Sleep(time.Millisecond)
-	since := time.Now()
-	time.Sleep(time.Millisecond)
-	s.writeOut(o)
-	assert.Len(t, s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{}))), 1)
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		o := <-s.outgoingChan
+		time.Sleep(time.Millisecond)
+		since := time.Now()
+		time.Sleep(time.Millisecond)
+		s.writeOut(o)
+		assert.Len(t, s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{}))), 1)
+	})
 }
 
 // slowTransport is a transport whose writes wait until release closes.
@@ -183,23 +198,25 @@ func (t *slowTransport) Close() error { return nil }
 // hold it.
 func TestHandOverAPacketWrittenLate(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	slow := &slowTransport{writing: make(chan struct{}), release: make(chan struct{})}
-	s.transports.Store("slow", slow)
-	s.connected.Store(1, endpoint{transport: "slow", addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
-	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
-	o := <-s.outgoingChan
-	wrote := make(chan struct{})
-	go func() {
-		defer close(wrote)
-		s.writeOut(o)
-	}()
-	<-slow.writing
-	time.Sleep(2 * MoveSlack)
-	got := s.sentSince(1, time.Now(), ruleFor(udpEndpoint(net.UDPAddr{})))
-	close(slow.release)
-	<-wrote
-	assert.Len(t, got, 1, "the handover misses the packet that left after the move")
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		slow := &slowTransport{writing: make(chan struct{}), release: make(chan struct{})}
+		s.transports.Store("slow", slow)
+		s.connected.Store(1, endpoint{transport: "slow", addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+		o := <-s.outgoingChan
+		wrote := make(chan struct{})
+		go func() {
+			defer close(wrote)
+			s.writeOut(o)
+		}()
+		<-slow.writing
+		time.Sleep(2 * MoveSlack)
+		got := s.sentSince(1, time.Now(), ruleFor(udpEndpoint(net.UDPAddr{})))
+		close(slow.release)
+		<-wrote
+		assert.Len(t, got, 1, "the handover misses the packet that left after the move")
+	})
 }
 
 // TestAHandoverToABrowserHotspotIsPaced hands over many packets to a
@@ -208,25 +225,27 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 // packets must not go out at once.
 func TestAHandoverToABrowserHotspotIsPaced(t *testing.T) {
 	t.Parallel()
-	s := queueServer()
-	s.outgoingChan = make(chan outgoing, 64)
-	s.connected.Store(1, endpoint{transport: webTransportName, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
-	s.moving = map[uint]*movingRepeater{1: {seen: map[packetKey]bool{}}}
-	const n = 40
-	lost := make([]models.Packet, 0, n)
-	for i := range n {
-		lost = append(lost, models.Packet{StreamID: 7, Seq: uint(i)})
-	}
-	var times []time.Time
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for range n {
-			<-s.outgoingChan
-			times = append(times, time.Now())
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		s.connected.Store(1, endpoint{transport: webTransportName, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+		s.moving = map[uint]*movingRepeater{1: {seen: map[packetKey]bool{}}}
+		const n = 40
+		lost := make([]models.Packet, 0, n)
+		for i := range n {
+			lost = append(lost, models.Packet{StreamID: 7, Seq: uint(i)})
 		}
-	}()
-	s.finishHandover(context.Background(), 1, lost)
-	<-done
-	assert.GreaterOrEqual(t, times[n-1].Sub(times[0]), (n-1)*wtHandoverGap, "the handover went out at once")
+		var times []time.Time
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for range n {
+				<-s.outgoingChan
+				times = append(times, time.Now())
+			}
+		}()
+		s.finishHandover(context.Background(), 1, lost)
+		<-done
+		assert.GreaterOrEqual(t, times[n-1].Sub(times[0]), (n-1)*wtHandoverGap, "the handover went out at once")
+	})
 }

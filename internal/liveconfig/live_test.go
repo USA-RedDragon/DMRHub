@@ -25,6 +25,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -495,4 +496,41 @@ func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 
 	locked := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store, db.MakeDB, errors.New("down"))
 	assert.False(t, locked.Closed(), "the deployment, not the state file, sets a locked database")
+}
+
+// TestASyncNeverGoesBackInRevision holds a sync of one replica after it
+// loaded revision 1, while another replica saves revision 2 and the first
+// puts it into effect. The held sync then must not put revision 1 back.
+func TestASyncNeverGoesBackInRevision(t *testing.T) {
+	t.Parallel()
+	database := newDB(t, testutils.SQLiteMemoryBackend())
+	l := boot(t, database, deployment{file: validDeployment})
+	other := boot(t, database, deployment{file: validDeployment})
+	save(t, other, func(c *config.Config) { c.NetworkName = "One" })
+
+	held := make(chan uint64, 1)
+	release := make(chan struct{})
+	var first atomic.Bool
+	liveconfig.OnLoaded(l, func(rev uint64) {
+		if first.CompareAndSwap(false, true) {
+			held <- rev
+			<-release
+		}
+	})
+	done := make(chan liveconfig.Report, 1)
+	go func() {
+		r, err := l.Sync(context.Background())
+		assert.NoError(t, err)
+		done <- r
+	}()
+	require.Equal(t, uint64(1), <-held)
+
+	save(t, other, func(c *config.Config) { c.NetworkName = "Two" })
+	r, err := l.Sync(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), r.Revision)
+
+	close(release)
+	assert.Equal(t, uint64(2), (<-done).Revision, "the held sync reported an older revision")
+	assert.Equal(t, "Two", l.Current().Get().NetworkName, "the held sync put an older revision back into effect")
 }

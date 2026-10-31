@@ -164,6 +164,7 @@ type Live struct {
 	report    Report
 	rep       Replica
 	generated map[string]string
+	loaded    func(revision uint64)
 
 	stopMu  sync.Mutex
 	cancel  context.CancelFunc
@@ -523,15 +524,18 @@ func results(others, answered map[string]Report) []ReplicaResult {
 }
 
 // Sync puts the latest saved settings into effect on this replica, if it
-// does not run with them yet, and returns its report.
+// does not run with them or a later revision yet, and returns its report.
 func (l *Live) Sync(ctx context.Context) (Report, error) {
 	saved, err := LoadSaved(ctx, l.opts.DB)
 	if err != nil {
 		return Report{}, err
 	}
+	if l.loaded != nil {
+		l.loaded(saved.Revision)
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if saved.Revision == l.report.Revision && l.report.At != (time.Time{}) {
+	if saved.Revision <= l.report.Revision && l.report.At != (time.Time{}) {
 		return l.report, nil
 	}
 	next := l.effective(saved)

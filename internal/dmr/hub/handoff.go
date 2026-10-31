@@ -28,9 +28,6 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
-// barrierWait is the longest time Barrier waits for a server.
-const barrierWait = time.Second
-
 // handoverSettle is how long a replica that hands a repeater over keeps
 // its subscriptions of the repeater after the claim, so that it gets each
 // packet that was published before the subscriptions of the replica that
@@ -54,24 +51,23 @@ func (h *Hub) StopFor(server string, id uint) {
 }
 
 // Barrier returns once the server named server has taken every packet that
-// the hub handed it before the call, or after barrierWait. A server that
-// hands a repeater over stops the subscriptions of the repeater and then
-// calls it, so that it knows every packet that it got for the repeater.
+// the hub handed it before the call, or once the server or the hub stops.
+// A server that hands a repeater over stops the subscriptions of the
+// repeater and then calls it, so that it knows every packet that it got for
+// the repeater. It has no time bound: a server that a starved machine
+// slows down still takes the packets, and the handover must hold them.
 func (h *Hub) Barrier(server string) {
 	h.mu.RLock()
-	_, ok := h.servers[server]
+	entry, ok := h.servers[server]
 	h.mu.RUnlock()
 	if !ok {
 		return
 	}
 	done := make(chan struct{})
 	go h.deliverToServerUnless(h.done, server, RoutedPacket{Barrier: done})
-	t := h.clock.NewTimer(barrierWait)
-	defer t.Stop()
 	select {
 	case <-done:
-	case <-t.C():
-		slog.Warn("A server did not reach a barrier in time", "server", server)
+	case <-entry.gone:
 	case <-h.done:
 	}
 }

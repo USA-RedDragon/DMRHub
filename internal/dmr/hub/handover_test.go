@@ -514,3 +514,47 @@ func TestHandOverWaitOfAnOwnerThatServes(t *testing.T) {
 		assert.Equal(t, time.Second, took, "the wait for an owner that does not drain is the bare wait")
 	})
 }
+
+// TestBarrierWaitsForASlowServer has a server take nothing for 3 s after a
+// Barrier, as a starved replica does. The Barrier must return only once
+// the server took the marker, so that a handover after it holds every
+// packet that the server got for the repeater.
+func TestBarrierWaitsForASlowServer(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := hub.NewHub(nil, nil, nil, nil)
+		t.Cleanup(func() { h.Stop(context.Background()) })
+		srv := h.RegisterServer(hub.ServerConfig{Name: "mmdvm", Role: hub.RoleRepeater})
+		start := time.Now()
+		returned := make(chan time.Duration, 1)
+		go func() {
+			h.Barrier("mmdvm")
+			returned <- time.Since(start)
+		}()
+		time.Sleep(3 * time.Second)
+		rp := <-srv.Packets
+		require.NotNil(t, rp.Barrier)
+		close(rp.Barrier)
+		assert.Equal(t, 3*time.Second, <-returned, "the Barrier returned before the server took it")
+	})
+}
+
+// TestBarrierEndsWhenTheServerGoes unregisters a server that never takes a
+// Barrier. The Barrier must return at once.
+func TestBarrierEndsWhenTheServerGoes(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := hub.NewHub(nil, nil, nil, nil)
+		t.Cleanup(func() { h.Stop(context.Background()) })
+		h.RegisterServer(hub.ServerConfig{Name: "mmdvm", Role: hub.RoleRepeater})
+		start := time.Now()
+		returned := make(chan time.Duration, 1)
+		go func() {
+			h.Barrier("mmdvm")
+			returned <- time.Since(start)
+		}()
+		time.Sleep(300 * time.Millisecond)
+		h.UnregisterServer("mmdvm")
+		assert.Equal(t, 300*time.Millisecond, <-returned, "the Barrier outlived its server")
+	})
+}

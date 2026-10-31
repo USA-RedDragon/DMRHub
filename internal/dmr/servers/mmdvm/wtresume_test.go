@@ -41,7 +41,7 @@ func TestResumeTokens(t *testing.T) {
 	assert.True(t, ok, "a fresh token is good")
 	assert.Equal(t, uint32(311860), id)
 
-	_, ok = s.checkResumeToken(token, now.Add(2*resumeTTL))
+	_, ok = s.checkResumeToken(token, now.Add(2*ResumeTTL))
 	assert.False(t, ok, "an old token is not good")
 
 	b := []byte(token)

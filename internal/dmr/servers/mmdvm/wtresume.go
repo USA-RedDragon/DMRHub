@@ -44,8 +44,8 @@ import (
 // one. The token is signed with a key that the replicas derive from the
 // secret that they share, so any of them can check it.
 const (
-	// resumeTTL is how long a resume token is good for.
-	resumeTTL = time.Minute
+	// ResumeTTL is how long a resume token is good for.
+	ResumeTTL = time.Minute
 	// resumeMACLen is how many octets of the HMAC a token holds.
 	resumeMACLen = 16
 	// noticeWait is the longest time the drain waits for the notices to
@@ -74,11 +74,11 @@ func resumeKey(secret []byte) []byte {
 }
 
 // resumeToken returns a token that lets the session of the repeater id
-// move to another WebTransport session until resumeTTL after now.
+// move to another WebTransport session until ResumeTTL after now.
 func (s *Server) resumeToken(id uint32, now time.Time) string {
 	var b [12 + resumeMACLen]byte
 	binary.BigEndian.PutUint32(b[:4], id)
-	binary.BigEndian.PutUint64(b[4:12], uint64(now.Add(resumeTTL).Unix())) //nolint:gosec // a time after 1970
+	binary.BigEndian.PutUint64(b[4:12], uint64(now.Add(ResumeTTL).Unix())) //nolint:gosec // a time after 1970
 	mac := hmac.New(sha256.New, s.resumeKey)
 	mac.Write(b[:12])
 	copy(b[12:], mac.Sum(nil))
@@ -143,13 +143,13 @@ func noticeTime(token string) time.Time {
 	if err != nil || len(b) < 12 {
 		return time.Now()
 	}
-	return time.Unix(int64(binary.BigEndian.Uint64(b[4:12])), 0).Add(-resumeTTL) //nolint:gosec // a time after 1970
+	return time.Unix(int64(binary.BigEndian.Uint64(b[4:12])), 0).Add(-ResumeTTL) //nolint:gosec // a time after 1970
 }
 
 // spendToken reports whether token was not used before, and marks it used
 // for as long as it is good, so that a token moves a session once.
 func (s *Server) spendToken(ctx context.Context, token string) bool {
-	fresh, err := s.kv.SetNX(ctx, spentKey(token), "1", resumeTTL)
+	fresh, err := s.kv.SetNX(ctx, spentKey(token), "1", ResumeTTL)
 	return err == nil && fresh
 }
 

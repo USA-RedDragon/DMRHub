@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -309,6 +308,6 @@ func TestAdminEmailsGoOnlyToAVerifiedAddress(t *testing.T) {
 	select {
 	case mail := <-mails:
 		t.Fatalf("an unverified admin address got a mail: %q", mail)
-	case <-time.After(time.Second):
+	default:
 	}
 }

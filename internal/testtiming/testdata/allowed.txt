@@ -202,9 +202,7 @@ fixedport	internal/http/api/controllers/v1/peers/create_error_test.go	1	baseline
 fixedport	internal/http/api/controllers/v1/peers/peers_test.go	19	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/peers/rotate_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/plugins/plugins_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/http/api/controllers/v1/users/callsign_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/http/api/controllers/v1/users/password_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/http/api/controllers/v1/users/settings_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+timer	internal/http/api/controllers/v1/users/callsign_test.go	1	event wait: the handler mails the callsign notice from a goroutine of its own, and the test runs on the network backends, which a synctest bubble cannot hold; testTimeout bounds the wait
 fixedport	internal/http/api/controllers/v1/users/users_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/http/api/websocket/calls_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/websocket/messages_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

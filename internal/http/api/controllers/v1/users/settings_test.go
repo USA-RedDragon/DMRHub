@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -82,28 +83,30 @@ func TestSMSStorageIsOffByDefault(t *testing.T) {
 
 func TestSMSStorageOnSetsTheTimeAndOffAndOnResetsIt(t *testing.T) {
 	t.Parallel()
-	router, db := settingsRouter(t, true)
-	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
-	jar := testutils.Login(t, router, "owner")
+	synctest.Test(t, func(t *testing.T) {
+		router, db := settingsRouter(t, true)
+		testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
+		jar := testutils.Login(t, router, "owner")
 
-	before := time.Now().Add(-time.Second)
-	assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
-	first := since(t, db, ownerAccountID)
-	require.NotNil(t, first)
-	assert.True(t, first.After(before))
+		before := time.Now().Add(-time.Second)
+		assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
+		first := since(t, db, ownerAccountID)
+		require.NotNil(t, first)
+		assert.True(t, first.After(before))
 
-	time.Sleep(20 * time.Millisecond)
-	assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
-	again := since(t, db, ownerAccountID)
-	require.NotNil(t, again)
-	assert.True(t, first.Equal(*again), "turning it on again while on keeps the time")
+		time.Sleep(20 * time.Millisecond)
+		assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
+		again := since(t, db, ownerAccountID)
+		require.NotNil(t, again)
+		assert.True(t, first.Equal(*again), "turning it on again while on keeps the time")
 
-	assert.False(t, smsStorage(t, router, jar, false).SMSStorage)
-	time.Sleep(20 * time.Millisecond)
-	assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
-	reset := since(t, db, ownerAccountID)
-	require.NotNil(t, reset)
-	assert.True(t, reset.After(*first), "off and on again starts from the new time")
+		assert.False(t, smsStorage(t, router, jar, false).SMSStorage)
+		time.Sleep(20 * time.Millisecond)
+		assert.True(t, smsStorage(t, router, jar, true).SMSStorage)
+		reset := since(t, db, ownerAccountID)
+		require.NotNil(t, reset)
+		assert.True(t, reset.After(*first), "off and on again starts from the new time")
+	})
 }
 
 func TestSettingsResponsesHaveNoTimeOrEmail(t *testing.T) {

@@ -68,24 +68,26 @@ func TestAPacketIsStampedWhenItArrives(t *testing.T) {
 	copy(ping, "RPTPING")
 	binary.BigEndian.PutUint32(ping[7:], 100001)
 	awaitStamps(t, s.Server, c)
-	sent := time.Now()
 	_, err = c.Write(ping)
 	require.NoError(t, err)
 
-	time.Sleep(200 * time.Millisecond)
+	reading := time.Now()
 	s.wg.Add(1)
 	go s.serve(udpTransport, s.Server, s.Buffer)
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+	defer cancel()
 	select {
 	case p := <-s.incomingChan:
-		assert.Less(t, p.ReceivedAt.Sub(sent), 100*time.Millisecond, "the packet is stamped when the reader takes it")
-	case <-time.After(2 * time.Second):
-		t.Fatal("the packet did not come")
+		assert.True(t, p.ReceivedAt.Before(reading), "the packet is stamped when the reader takes it: %v, the reader started at %v", p.ReceivedAt, reading)
+	case <-ctx.Done():
+		t.Fatalf("the packet did not come in %v", answerWait)
 	}
 }
 
-// awaitStamps waits until the kernel stamps the packets of c as they come.
-// It turns the stamps on for every socket a moment after the first socket
-// asks, and until then stamps a packet when it is read.
+// awaitStamps waits until the kernel stamps the packets of c as they come:
+// until a probe that is in the socket before the read carries a stamp from
+// before the read. It turns the stamps on for every socket a moment after
+// the first socket asks, and until then stamps a packet when it is read.
 func awaitStamps(t *testing.T, c *net.UDPConn, peer *net.UDPConn) {
 	t.Helper()
 	if !servers.StampArrivals(c) {
@@ -93,14 +95,14 @@ func awaitStamps(t *testing.T, c *net.UDPConn, peer *net.UDPConn) {
 	}
 	buf := make([]byte, 1500)
 	oob := make([]byte, servers.RxOOBLen)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		sent := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+	defer cancel()
+	for ctx.Err() == nil {
 		if _, err := peer.Write([]byte("probe")); err != nil {
 			t.Fatalf("probe: %v", err)
 		}
-		time.Sleep(20 * time.Millisecond)
-		if _, _, at, err := servers.ReadStamped(c, clock.Real(), true, buf, oob); err == nil && at.Sub(sent) < 10*time.Millisecond {
+		reading := time.Now()
+		if _, _, at, err := servers.ReadStamped(c, clock.Real(), true, buf, oob); err == nil && at.Before(reading) {
 			return
 		}
 	}

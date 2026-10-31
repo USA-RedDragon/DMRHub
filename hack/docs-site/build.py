@@ -16,7 +16,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 SHELL = HERE / "shell"
 
-GO_HIDDEN = ("docs/rx/", "docs/tx/", "docs/targets/gnuradio.md", "docs/start/05-receive-on-a-radio.md")
+GO_HIDDEN = ("docs/rx/", "docs/tx/", "docs/targets/gnuradio.md", "docs/start/05-receive-on-a-radio.md", "docs/guides/receive-sdr-fm.md")
 
 ICONS = {
     "menu": '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',

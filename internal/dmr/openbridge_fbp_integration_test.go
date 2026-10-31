@@ -63,8 +63,14 @@ func startFBPStack(t *testing.T, stack *testutils.IntegrationStack) fbpStack {
 	t.Cleanup(s.mc.Close)
 	require.NoError(t, s.mc.Connect(stack.MMDVMAddr))
 	require.NoError(t, s.mc.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
 	return s
+}
+
+func receiveData(c *testutils.OpenBridgeClient, stream uint32) []testutils.ReceivedBridge {
+	got := c.ReceiveBridges(deliverWait, func(got []testutils.ReceivedBridge) bool {
+		return got[len(got)-1].Data.Stream == stream
+	})
+	return dataOf(append(got, c.DrainBridges(100*time.Millisecond)...), stream)
 }
 
 func dataOf(bs []testutils.ReceivedBridge, stream uint32) []testutils.ReceivedBridge {
@@ -84,13 +90,10 @@ func TestEnhancedOpenBridgePeersGetKeepalives(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		s := startFBPStack(t, stack)
-		var bcka int
-		for _, c := range s.a.DrainControls(2500 * time.Millisecond) {
-			if c.Command == dmrd.CommandBCKA {
-				bcka++
-			}
-		}
-		assert.Positive(t, bcka, "the enhanced peer gets a BCKA")
+		got := s.a.ReceiveControls(deliverWait, func(got []dmrd.BridgeControl) bool {
+			return got[len(got)-1].Command == dmrd.CommandBCKA
+		})
+		assert.True(t, len(got) > 0 && got[len(got)-1].Command == dmrd.CommandBCKA, "the enhanced peer gets a BCKA")
 		assert.Empty(t, s.c.DrainControls(100*time.Millisecond), "a version 1 peer gets no control packet")
 	})
 }
@@ -105,7 +108,7 @@ func TestEnhancedOpenBridgeCarriesTheOrigin(t *testing.T) {
 		s := startFBPStack(t, stack)
 
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9601, false)))
-		got := dataOf(s.a.DrainBridges(drainWait), 9601)
+		got := receiveData(s.a, 9601)
 		if assert.Len(t, got, 1, "the enhanced peer gets the local call") {
 			assert.Equal(t, uint8(5), got[0].Version)
 			assert.Equal(t, uint8(1), got[0].Hops)
@@ -114,7 +117,7 @@ func TestEnhancedOpenBridgeCarriesTheOrigin(t *testing.T) {
 			assert.Equal(t, uint32(500001), got[0].Data.Repeater)
 			assert.InDelta(t, float64(time.Now().UnixNano()), float64(got[0].Time), float64(5*time.Second))
 		}
-		v1 := dataOf(s.c.DrainBridges(drainWait), 9601)
+		v1 := receiveData(s.c, 9601)
 		if assert.Len(t, v1, 1, "the version 1 peer gets the local call") {
 			assert.Equal(t, uint8(1), v1[0].Version)
 		}
@@ -122,7 +125,7 @@ func TestEnhancedOpenBridgeCarriesTheOrigin(t *testing.T) {
 		burst := makeBurst(1000001, 1, 9602, true, dmrconst.FrameDataSync, uint(enums.DataTypeCSBK), 0)
 		burst.Repeater = 500001
 		require.NoError(t, s.a.SendBridge(dmrd.Bridge{Version: 5, Data: burst.Data(), SourceServer: 3129, SourceRepeater: 312910, Hops: 3}))
-		fwd := dataOf(s.b.DrainBridges(drainWait), 9602)
+		fwd := receiveData(s.b, 9602)
 		if assert.Len(t, fwd, 1, "the other enhanced peer gets the call") {
 			assert.Equal(t, uint8(5), fwd[0].Version)
 			assert.Equal(t, uint8(4), fwd[0].Hops, "one more hop")
@@ -130,11 +133,12 @@ func TestEnhancedOpenBridgeCarriesTheOrigin(t *testing.T) {
 			assert.Equal(t, uint32(312910), fwd[0].SourceRepeater, "the source repeater is kept")
 			assert.Equal(t, burst.DMRData, [33]byte(fwd[0].Data.Burst))
 		}
-		v1 = dataOf(s.c.DrainBridges(drainWait), 9602)
+		v1 = receiveData(s.c, 9602)
 		if assert.Len(t, v1, 1, "the version 1 peer gets the call") {
 			assert.Equal(t, uint8(1), v1[0].Version)
 		}
-		assert.Len(t, s.mc.Drain(drainWait), 1, "the local repeater gets the call")
+		local := testutils.Collect(s.mc.ReceivedPackets(), deliverWait, func([]models.Packet) bool { return true })
+		assert.Len(t, append(local, s.mc.Drain(100*time.Millisecond)...), 1, "the local repeater gets the call")
 	})
 }
 
@@ -145,7 +149,6 @@ func TestEnhancedOpenBridgeHopLimit(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		s := startFBPStack(t, stack)
-		s.a.DrainControls(1500 * time.Millisecond)
 
 		burst := makeBurst(1000001, 1, 9603, true, dmrconst.FrameDataSync, uint(enums.DataTypeCSBK), 0)
 		burst.Repeater = 500001
@@ -153,12 +156,10 @@ func TestEnhancedOpenBridgeHopLimit(t *testing.T) {
 		assert.Empty(t, dataOf(s.b.DrainBridges(drainWait), 9603))
 		assert.Empty(t, dataOf(s.c.DrainBridges(100*time.Millisecond), 9603))
 		assert.Empty(t, s.mc.Drain(100*time.Millisecond))
-		var quench bool
-		for _, c := range s.a.DrainControls(time.Second) {
-			if c.Command == dmrd.CommandBCSQ && c.Stream == 9603 && c.TalkGroup == 1 {
-				quench = true
-			}
+		isQuench := func(c dmrd.BridgeControl) bool {
+			return c.Command == dmrd.CommandBCSQ && c.Stream == 9603 && c.TalkGroup == 1
 		}
-		assert.True(t, quench, "the sender gets a BCSQ for the stream")
+		got := s.a.ReceiveControls(deliverWait, func(got []dmrd.BridgeControl) bool { return isQuench(got[len(got)-1]) })
+		assert.True(t, len(got) > 0 && isQuench(got[len(got)-1]), "the sender gets a BCSQ for the stream")
 	})
 }

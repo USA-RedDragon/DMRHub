@@ -61,7 +61,6 @@ func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, 
 		require.NoError(t, c.WaitReady(handshakeWait))
 		clients = append(clients, c)
 	}
-	time.Sleep(settleDuration)
 
 	burst := func(src, stream uint, seq int) models.Packet {
 		p := makeGroupVoicePacket(src, 3100, stream, false)
@@ -77,17 +76,13 @@ func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, 
 	for i := range bursts {
 		require.NoError(t, clients[0].SendDMRD(burst(1000001, 1001, i)))
 		if i == 0 {
-			reached := time.After(drainWait)
-			for got[1001] == 0 {
-				select {
-				case p := <-clients[2].ReceivedPackets():
-					if p.Dst == 3100 {
-						got[p.StreamID]++
-					}
-				case <-reached:
-					require.FailNow(t, "the listener got no burst of the first talker")
+			testutils.Collect(clients[2].ReceivedPackets(), deliverWait, func(pkts []models.Packet) bool {
+				if p := pkts[len(pkts)-1]; p.Dst == 3100 {
+					got[p.StreamID]++
 				}
-			}
+				return got[1001] > 0
+			})
+			require.Positive(t, got[1001], "the listener got no burst of the first talker")
 		} else {
 			time.Sleep(30 * time.Millisecond)
 		}
@@ -101,7 +96,11 @@ func twoTalkers(t *testing.T, stack *testutils.IntegrationStack) (map[uint]int, 
 	require.NoError(t, clients[0].SendDMRD(a))
 	require.NoError(t, clients[1].SendDMRD(b))
 
-	for _, p := range clients[2].Drain(drainWait) {
+	first := testutils.Collect(clients[2].ReceivedPackets(), deliverWait, func(pkts []models.Packet) bool {
+		p := pkts[len(pkts)-1]
+		return p.StreamID == 1001 && isTerminator(p)
+	})
+	for _, p := range append(first, clients[2].Drain(drainWait)...) {
 		if p.Dst == 3100 {
 			got[p.StreamID]++
 		}
@@ -134,10 +133,9 @@ func TestTwoTalkersFirstHoldsTheTimeslot(t *testing.T) {
 		assert.Zero(t, got[1002], "the listener gets nothing of the second talker while the first one talks")
 
 		require.NoError(t, clients[1].SendDMRD(makeGroupVoicePacket(1000002, 3100, 1003, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, clients[1].SendDMRD(makeGroupVoiceTermPacket(1000002, 3100, 1003, false)))
 		later := 0
-		for _, p := range clients[2].Drain(drainWait) {
+		for _, p := range receiveCall(clients[2], 3100) {
 			if p.StreamID == 1003 {
 				later++
 			}

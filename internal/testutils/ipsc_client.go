@@ -114,11 +114,12 @@ func (c *IPSCClient) dial(addr string) error {
 		return fmt.Errorf("master address %v is not IPv4: %w", master, ErrIPSCNotConnected)
 	}
 	peer, err := ipscsession.NewPeer(&ipscsession.PeerConfig{
-		ID:     c.PeerID,
-		Master: to,
-		Auth:   c.useAuth,
-		Key:    c.key,
-		Alive:  time.Second,
+		ID:        c.PeerID,
+		Master:    to,
+		Auth:      c.useAuth,
+		Key:       c.key,
+		Alive:     time.Second,
+		MaxMissed: int(ipscsession.AliveDefault/time.Second) * ipscsession.MaxMissedDefault,
 	})
 	if err != nil {
 		return fmt.Errorf("making IPSC peer: %w", err)

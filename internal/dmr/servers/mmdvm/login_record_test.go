@@ -334,3 +334,42 @@ func TestAStuckQueueEndsALogin(t *testing.T) {
 	_, found := r.stored()
 	assert.False(t, found)
 }
+
+// TestAnEndedSessionLeavesNoRecordWhileTheQueueIsFull ends the session of
+// a repeater while its records queue is full. The KV record of the
+// session must still go once the queue moves, so that no replica resumes
+// a session that ended.
+func TestAnEndedSessionLeavesNoRecordWhileTheQueueIsFull(t *testing.T) {
+	t.Parallel()
+	r := newRecordRig(t, 311899)
+	r.auth()
+	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
+	require.Equal(t, dmrd.CommandRPTACK, r.next(r.pa, "RPTACK of the config"))
+	_, found := r.stored()
+	require.True(t, found)
+
+	free := r.hold(r.a, r.a.records.Do)
+	r.send(r.a, dmrd.Control{Command: dmrd.CommandRPTCL, ID: r.id})
+	free()
+	r.a.records.Wait()
+	_, found = r.stored()
+	assert.False(t, found, "the KV record of the ended session is still there")
+}
+
+// TestALoginThatEndsBeforeItsAckLeavesNoRecord ends a login with RPTCL
+// while the KV record of its config waits in the records queue. The
+// record must go once the queue moves, so that no replica resumes a
+// session that was never acked.
+func TestALoginThatEndsBeforeItsAckLeavesNoRecord(t *testing.T) {
+	t.Parallel()
+	r := newRecordRig(t, 311900)
+	r.auth()
+	free := r.hold(r.a, func(uint, func()) bool { return false })
+	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
+	r.send(r.a, dmrd.Control{Command: dmrd.CommandRPTCL, ID: r.id})
+	free()
+	r.a.lookups.Wait()
+	r.a.records.Wait()
+	_, found := r.stored()
+	assert.False(t, found, "the KV record of the login that ended is still there")
+}

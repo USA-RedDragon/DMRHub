@@ -623,8 +623,8 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 		st := l.m.State()
 		if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id ||
 			(st != dmrdsession.StateConfig && st != dmrdsession.StateRunning) {
-			if active && s.byID[id] == nil {
-				s.records.Do(uint(id), func() { s.hub.DeactivateRepeater(ctx, uint(id)) })
+			if stored && s.byID[id] == nil {
+				s.records.Always(uint(id), func() { s.undoConfig(ctx, uint(id), ep, repeater, active) })
 			}
 			return
 		}
@@ -643,6 +643,20 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 		}
 		s.forget(l)
 	}()
+}
+
+// undoConfig deletes rec, the KV record that a config of the repeater id
+// at ep stored, when the session ended before its RPTACK, unless a later
+// session or another replica stored a newer one. It ends the subscription
+// of the hub when active.
+func (s *Server) undoConfig(ctx context.Context, id uint, ep endpoint, rec models.Repeater, active bool) {
+	if now, err := s.kvClient.GetRepeater(ctx, id); err == nil && ep.matchesKV(now.IP, now.Port) && !now.LastPing.After(rec.LastPing) {
+		s.kvClient.DeleteRepeater(ctx, id)
+		s.dropOwnRecord(id)
+	}
+	if active {
+		s.hub.DeactivateRepeater(ctx, id)
+	}
 }
 
 // takeConfig saves the RPTC data in dialect d of the repeater id at ep to
@@ -753,7 +767,7 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
 	downAt := s.clock.Now()
-	s.records.Do(uint(o.ID), func() {
+	s.records.Always(uint(o.ID), func() {
 		owned := s.kvOwned(ctx, o, downAt)
 		deleted := owned && s.kvClient.DeleteRepeater(ctx, uint(o.ID))
 		if owned && !deleted {

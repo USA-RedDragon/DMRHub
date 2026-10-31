@@ -72,3 +72,50 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 		close(release)
 	})
 }
+
+// TestACallEndsWhileTasksThatAreNotPacketsKeepTheQueueBusy keeps a task
+// that is not a packet in the queue of a worker past the hang time of a
+// call. The call must still end on time.
+func TestACallEndsWhileTasksThatAreNotPacketsKeepTheQueueBusy(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		defConfig, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(&defConfig)
+		database, err := db.MakeDB(&defConfig)
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
+		require.NoError(t, err)
+		kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+		require.NoError(t, err)
+		ct := NewCallTracker(database, ps, kvStore)
+		t.Cleanup(func() {
+			ct.Stop()
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+			_ = ps.Close()
+			_ = kvStore.Close()
+		})
+
+		p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
+		idx := chanKey{server: models.RepeaterTypeMMDVM, repeater: p.Repeater, slot: p.Slot}.shard()
+		ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
+		ct.Flush()
+
+		end := time.Now().Add(3 * voiceHang)
+		var busy func(*shard)
+		busy = func(*shard) {
+			time.Sleep(sweepInterval / 5)
+			if time.Now().Before(end) {
+				ct.enqueue(idx, task{fn: busy})
+			}
+		}
+		ct.enqueue(idx, task{fn: busy})
+		time.Sleep(2 * voiceHang)
+
+		var active int64
+		require.NoError(t, database.Model(&models.Call{}).Where("active = ?", true).Count(&active).Error)
+		assert.Zero(t, active, "the call ended %s after its last packet", 2*voiceHang)
+		time.Sleep(time.Until(end) + sweepInterval)
+	})
+}

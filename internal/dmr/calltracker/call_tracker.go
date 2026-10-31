@@ -424,7 +424,7 @@ func (c *CallTracker) Flush() {
 		barriers[i] = make(chan struct{})
 		b := barriers[i]
 		select {
-		case c.shards[i].in <- task{fn: func(*shard) { close(b) }}:
+		case c.shards[i].in <- task{at: c.clock.Now(), fn: func(*shard) { close(b) }}:
 		case <-c.done:
 			return
 		}
@@ -439,6 +439,9 @@ func (c *CallTracker) Flush() {
 }
 
 func (c *CallTracker) enqueue(idx int, t task) {
+	if t.at.IsZero() {
+		t.at = c.clock.Now()
+	}
 	select {
 	case c.shards[idx].in <- t:
 	default:
@@ -941,6 +944,9 @@ func (s *shard) run() {
 	for {
 		select {
 		case t := <-s.in:
+			if t.at.After(s.clock) {
+				s.clock = t.at
+			}
 			switch {
 			case t.stop:
 				s.finishAll()
@@ -948,9 +954,6 @@ func (s *shard) run() {
 			case t.fn != nil:
 				t.fn(s)
 			default:
-				if t.at.After(s.clock) {
-					s.clock = t.at
-				}
 				s.handle(&t)
 			}
 		case <-ticker.C():

@@ -88,8 +88,8 @@ eventually	internal/dmr/response_replica_integration_test.go	2	polls the call an
 sleep	internal/dmr/response_replica_integration_test.go	1	pace, not a wait: 20 ms between the bursts of a data call, as a radio sends them
 eventually	internal/dmr/rotate_password_integration_test.go	2	polls the MSTCL count of the client and the registration time in the database, which have no event; bounded by deliverWait
 sleep	internal/dmr/rotate_password_integration_test.go	1	minimum, not a wait: the call holds callHoldTime, past the 100 ms key-up threshold of the call tracker; starvation only lengthens it
-elapsed	internal/dmr/rotation_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/rotation_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/rotation_integration_test.go	4	the time.Until of the pace of the calls, and the times of the rotation steps that the test logs; not waits
+sleep	internal/dmr/rotation_integration_test.go	2	the scenario, not a wait: the pace of the calls, one burst each rotationInterval, and the 1.5 s into the calls at which the rotation starts, so that it comes mid-call; the starvation probe skips the timing checks when the machine stretched them
 eventually	internal/dmr/routing_settings_integration_test.go	8	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/routing_settings_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/routing_settings_integration_test.go	13	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

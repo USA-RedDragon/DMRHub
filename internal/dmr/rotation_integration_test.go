@@ -352,7 +352,8 @@ func TestRotationMidCall(t *testing.T) {
 		require.NoError(t, ipscPeer.WaitReady(handshakeWait))
 		fronts.Add(t, b)
 		talkerB := peer(100002, 200*time.Millisecond, dmrdsession.TimeoutDefault)
-		time.Sleep(settleDuration)
+		waitRecorded(t, stack, 100001, 100002, 100003, 100004)
+		waitClaimed(t, stack, 200001)
 
 		one := rotationCall{src: 1000001, stream: 8101, tg: 1, slot: false, send: talkerB.SendDMRD}
 		two := rotationCall{src: 1000002, stream: 8102, tg: 2, slot: true, send: talkerA.SendDMRD}
@@ -374,8 +375,18 @@ func TestRotationMidCall(t *testing.T) {
 		b.Terminate(t, regB, fronts, rotationDrain)
 		t.Logf("%s: the second replica stopped", time.Since(start).Round(time.Millisecond))
 		calls.Wait()
-		time.Sleep(drainWait)
 		starvation.SkipIfStarved(t, starvationBound)
+		heardAll := func(what string, heard func() []testutils.Heard, streams ...uint) {
+			for _, stream := range streams {
+				waitFor(t, fmt.Sprintf("%s hears every burst of stream %d", what, stream), func() bool {
+					return len(firstArrivalsOf(heard(), stream)) >= rotationBursts
+				})
+			}
+		}
+		heardAll("repeater 100001", talkerA.Heard, one.stream)
+		heardAll("repeater 100002", talkerB.Heard, two.stream)
+		heardAll("repeater 100003", slow.Heard, one.stream, two.stream)
+		heardAll("the browser hotspot", browser.Heard, one.stream, two.stream)
 
 		for _, p := range []struct {
 			name string
@@ -413,13 +424,29 @@ func TestRotationMidCall(t *testing.T) {
 			checkResent(t, who, firstArrivalsOf(browser.Heard(), stream), rotationBursts, browserWindows)
 		}
 
-		ipscBursts := ipscPeer.Drain(settleDuration)
+		ipscBursts := ipscPeer.Receive(deliverWait, func(got []testutils.IPSCBurst) bool {
+			ends := 0
+			for _, b := range got {
+				if ipscEnds(b) {
+					ends++
+				}
+			}
+			return ends >= 2
+		})
 		ipscWindows := windowsAt(fronts.IPSC.Ended(ipscPeer.LocalAddr()), hub.MoveSlack)
 		for _, c := range []rotationCall{one, two} {
 			checkCall(t, fmt.Sprintf("the IPSC peer on TG %d", c.tg), ipscArrivals(t, ipscBursts, c), rotationBursts, ipscWindows)
 		}
 
-		bridges := ob.DrainBridges(settleDuration)
+		bridges := ob.ReceiveBridges(deliverWait, func(got []testutils.ReceivedBridge) bool {
+			last := map[uint32]bool{}
+			for _, br := range got {
+				if br.Data.Seq == rotationBursts-1 {
+					last[br.Data.Stream] = true
+				}
+			}
+			return last[uint32(one.stream)] && last[uint32(two.stream)]
+		})
 		obHeard := make([]testutils.Heard, 0, len(bridges))
 		for _, br := range bridges {
 			obHeard = append(obHeard, testutils.Heard{Packet: models.Packet{StreamID: uint(br.Data.Stream), Seq: uint(br.Data.Seq)}})

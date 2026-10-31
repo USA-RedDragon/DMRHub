@@ -76,6 +76,12 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	}
 	r, ok := s.rows[key]
 	if !ok {
+		if e := s.ended[key]; e != nil && e.ch.key == ch.key && e.hung && !e.deleted && !isVoiceHeader(p) && !heardBefore(e.call.LastSeq, p.Seq) {
+			r, ok = e, true
+			s.resume(key, r)
+		}
+	}
+	if !ok {
 		r = s.open(t, ch, key, models.CallKindVoice, "", voiceHang)
 		if r == nil {
 			return
@@ -93,6 +99,21 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	if p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		s.finish(r, t.at)
 	}
+}
+
+func isVoiceHeader(p *models.Packet) bool {
+	return p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceHead
+}
+
+func (s *shard) resume(k voiceKey, r *row) {
+	delete(s.ended, k)
+	r.finished, r.hung = false, false
+	r.call.Active = true
+	s.rows[k] = r
+	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Update("active", true).Error; err != nil {
+		slog.Error("CallTracker: error resuming call", "error", err)
+	}
+	slog.Debug("CallTracker: transmission resumed", "streamID", r.call.StreamID, "src", r.call.SourceID, "dst", r.call.DestinationID)
 }
 
 // lcFID returns the FID of the Full LC of p, a voice header or terminator,

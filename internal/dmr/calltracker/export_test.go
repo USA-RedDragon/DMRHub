@@ -37,3 +37,5 @@ func HoldWorker(c *CallTracker, server string, repeater uint, slot bool) func() 
 func WorkerOf(server string, repeater uint, slot bool) int {
 	return chanKey{server: server, repeater: repeater, slot: slot}.shard()
 }
+
+const VoiceHang = voiceHang

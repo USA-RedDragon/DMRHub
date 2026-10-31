@@ -1175,6 +1175,7 @@ type row struct {
 	last       time.Time
 	hang       time.Duration
 	finished   bool
+	hung       bool
 	deleted    bool
 	delivered  bool
 	remembered bool
@@ -1203,6 +1204,7 @@ type shard struct {
 	in       chan task
 	channels map[chanKey]*channel
 	rows     map[any]*row
+	ended    map[voiceKey]*row
 	streams  map[uint]*streamRows
 	aliases  map[sourceKey]*sourceState
 	burst    *layer2.Burst
@@ -1217,6 +1219,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		in:       make(chan task, shardDepth),
 		channels: map[chanKey]*channel{},
 		rows:     map[any]*row{},
+		ended:    map[voiceKey]*row{},
 		streams:  map[uint]*streamRows{},
 		aliases:  map[sourceKey]*sourceState{},
 		burst:    layer2.NewBurst(),
@@ -1350,8 +1353,12 @@ func (s *shard) finish(r *row, at time.Time) {
 		return
 	}
 	r.finished = true
+	r.hung = at.IsZero()
 	if r.key != nil && s.rows[r.key] == r {
 		delete(s.rows, r.key)
+	}
+	if k, ok := r.key.(voiceKey); ok {
+		s.ended[k] = r
 	}
 	if r.ch != nil && r.dataKey != nil && r.ch.data[*r.dataKey] == r {
 		delete(r.ch.data, *r.dataKey)
@@ -1449,6 +1456,11 @@ func (s *shard) sweep(now time.Time) {
 		}
 		if len(ch.data) == 0 && now.Sub(ch.last) >= idle && ch.idle() {
 			delete(s.channels, key)
+		}
+	}
+	for k, r := range s.ended {
+		if now.Sub(r.last) >= streamIdle {
+			delete(s.ended, k)
 		}
 	}
 	for id, st := range s.streams {

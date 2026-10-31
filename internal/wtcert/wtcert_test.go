@@ -72,7 +72,7 @@ func TestOwnCertificateIsValidAndHashedForBrowsers(t *testing.T) {
 		leaf, err := x509.ParseCertificate(cert.Certificate[0])
 		require.NoError(t, err)
 		assert.True(t, now.After(leaf.NotBefore) && now.Before(leaf.NotAfter), "valid at %v", now)
-		assert.LessOrEqual(t, leaf.NotAfter.Sub(leaf.NotBefore), 14*24*time.Hour, "browsers take a hash only for 14 days")
+		assert.False(t, leaf.NotAfter.After(leaf.NotBefore.Add(14*24*time.Hour)), "browsers take a hash only for 14 days")
 		_, ok := leaf.PublicKey.(*ecdsa.PublicKey)
 		assert.True(t, ok, "browsers take a hash only of an ECDSA certificate")
 		hashes, err := s.Hashes()

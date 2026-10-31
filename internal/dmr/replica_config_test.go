@@ -77,7 +77,7 @@ func TestStaticTalkgroupEditOnOneReplicaRoutesOnAnother(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		sendGroupBursts(t, c1, 1, 7001, 4)
-		require.Positive(t, countDst(c2.Drain(drainWait), 1), "TG1 must reach replica B before the edit")
+		require.Positive(t, countDst(receiveCall(c2, 1), 1), "TG1 must reach replica B before the edit")
 
 		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002}}
 		require.NoError(t, stack.DB.Model(&rpt).Association("TS1StaticTalkgroups").Replace([]models.Talkgroup{{ID: 2}}))
@@ -88,6 +88,6 @@ func TestStaticTalkgroupEditOnOneReplicaRoutesOnAnother(t *testing.T) {
 		assert.Zero(t, countDst(c2.Drain(drainWait), 1), "TG1 was removed on replica A and must stop on replica B")
 
 		sendGroupBursts(t, c1, 2, 7003, 8)
-		assert.Positive(t, countDst(c2.Drain(drainWait), 2), "TG2 was added on replica A and must reach replica B")
+		assert.Positive(t, countDst(receiveCall(c2, 2), 2), "TG2 was added on replica A and must reach replica B")
 	})
 }

@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -49,7 +50,7 @@ func TestPrivateTrafficToAnUnregisteredRadioGoesToPeers(t *testing.T) {
 		} {
 			p := makeBurst(1000001, unregistered, uint(9500+i), false, sent.frame, sent.value, 0)
 			require.NoError(t, s.mc.SendDMRD(p))
-			got := s.peer.Drain(drainWait)
+			got := testutils.Collect(s.peer.ReceivedPackets(), deliverWait, gotN[models.Packet](1))
 			if assert.Len(t, got, 1, "burst %d must reach the peer", i) {
 				assert.Equal(t, uint(unregistered), got[0].Dst)
 				assert.False(t, got[0].GroupCall)

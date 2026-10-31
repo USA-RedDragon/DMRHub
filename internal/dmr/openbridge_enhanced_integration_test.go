@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -100,7 +101,7 @@ func TestOpenBridgeSourceQuench(t *testing.T) {
 		s := startEnhancedStack(t, stack)
 
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9401, false)))
-		require.Len(t, s.peer.Drain(drainWait), 1, "the peer gets the stream before the quench")
+		require.Len(t, testutils.Collect(s.peer.ReceivedPackets(), deliverWait, gotN[models.Packet](1)), 1, "the peer gets the stream before the quench")
 
 		require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 9401}))
 		time.Sleep(200 * time.Millisecond)
@@ -108,6 +109,6 @@ func TestOpenBridgeSourceQuench(t *testing.T) {
 		assert.Empty(t, s.peer.Drain(drainWait), "the quenched stream must not go to the peer")
 
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9402, false)))
-		assert.Len(t, s.peer.Drain(drainWait), 1, "another stream still goes to the peer")
+		assert.Len(t, testutils.Collect(s.peer.ReceivedPackets(), deliverWait, gotN[models.Packet](1)), 1, "another stream still goes to the peer")
 	})
 }

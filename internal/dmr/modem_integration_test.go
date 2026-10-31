@@ -133,7 +133,7 @@ func TestModemHotspotCallsBothWays(t *testing.T) {
 			require.NoError(t, fake.SendDMR(enums.Slot2, b.control, b.burst))
 			time.Sleep(60 * time.Millisecond)
 		}
-		pkts := mm.Drain(drainWait)
+		pkts := testutils.Collect(mm.ReceivedPackets(), deliverWait, gotN[models.Packet](len(rf)))
 		require.GreaterOrEqual(t, len(pkts), len(rf), "the network repeater should get the RF call of the modem")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst)

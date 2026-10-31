@@ -120,7 +120,7 @@ func TestLiveMMDVMPortChange(t *testing.T) { //nolint:paralleltest // FreeUDPPor
 	require.NoError(t, mc2.SendDMRD(makeGroupVoicePacket(1000001, 1, 7101, false)))
 	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, mc2.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7101, false)))
-	assert.Len(t, ic.Drain(drainWait), 2, "the IPSC peer must get the call from the new MMDVM session")
+	assert.Len(t, ic.Receive(deliverWait, gotN[testutils.IPSCBurst](2)), 2, "the IPSC peer must get the call from the new MMDVM session")
 	assert.Zero(t, ic.Downs(), "the IPSC peer must stay registered")
 }
 

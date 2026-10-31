@@ -210,12 +210,12 @@ func TestIPListsRefuseOpenBridgePeers(t *testing.T) {
 			stack.Hub.SetIPLists(lists)
 			stream++
 			require.NoError(t, obc.SendGroupVoice(1000001, 1, stream))
-			assert.Equal(t, want, len(mc.Drain(drainWait)) > 0, "%s: ingress", name)
+			assert.Equal(t, want, len(testutils.Collect(mc.ReceivedPackets(), reachWait(want), callEnds(1))) > 0, "%s: ingress", name)
 			stream++
 			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, uint(stream), false)))
 			time.Sleep(50 * time.Millisecond)
 			require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, uint(stream), false)))
-			assert.Equal(t, want, len(obc.Drain(drainWait)) > 0, "%s: egress", name)
+			assert.Equal(t, want, len(testutils.Collect(obc.ReceivedPackets(), reachWait(want), callEnds(1))) > 0, "%s: egress", name)
 		}
 		check("off", config.IPLists{}, true)
 		check("block", config.IPLists{OpenBridge: config.IPList{Mode: config.IPListBlock, Block: []string{"127.0.0.0/8"}}}, false)

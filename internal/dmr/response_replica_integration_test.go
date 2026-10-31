@@ -130,7 +130,7 @@ func (n *responseNet) send(t *testing.T, c *testutils.MMDVMClient, src, dst uint
 // expectRouted checks that c got the bursts of stream, in order.
 func expectRouted(t *testing.T, c *testutils.MMDVMClient, stream uint, want []layer2.RawBurst, what string) {
 	t.Helper()
-	got := ofStream(c.Drain(drainWait), stream)
+	got := ofStream(testutils.Collect(c.ReceivedPackets(), deliverWait, func(pkts []models.Packet) bool { return len(ofStream(pkts, stream)) >= len(want) }), stream)
 	require.Len(t, got, len(want), "%s is routed", what)
 	for i := range want {
 		assert.Equal(t, [33]byte(want[i]), got[i].DMRData, "%s burst %d", what, i)

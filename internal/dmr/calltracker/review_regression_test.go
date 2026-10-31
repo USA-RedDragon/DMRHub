@@ -448,3 +448,43 @@ func TestARepeatedAnswerBurstThatFindsARequestDropsItsOwnRow(t *testing.T) {
 		assert.NotContains(t, got, uint(9602), "the answer kept a row of its own")
 	})
 }
+
+// TestAPrunedAnswerLeavesItsRowAsItIs holds the worker of an answered
+// radio check while the pair keeps sending checks, until the answer is
+// older than the match keeps. The held check must keep its ACK. (Third
+// review, F3.)
+func TestAPrunedAnswerLeavesItsRowAsItIs(t *testing.T) {
+	t.Parallel()
+	for _, total := range []time.Duration{65 * time.Second, 75 * time.Second} {
+		t.Run(total.String(), func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ct, database, _ := newTracker(t)
+				other := workerApart(repeaterA)
+				third := workerApart(repeaterA, other)
+				req, ans := radioCheckBursts(t)
+				newSender(t, ct, userA, userB, false, 9801).data(req)
+				ct.Flush()
+				release := calltracker.HoldWorker(ct, models.RepeaterTypeMMDVM, repeaterA, true)
+				time.Sleep(100 * time.Millisecond)
+				back := newSender(t, ct, userB, userA, false, 9802)
+				back.repeater = other
+				back.data(ans)
+				synctest.Wait()
+				time.Sleep(40 * time.Second)
+				r3 := newSender(t, ct, userA, userB, false, 9803)
+				r3.repeater = third
+				r3.data(req)
+				synctest.Wait()
+				time.Sleep(total - 40*time.Second)
+				r4 := newSender(t, ct, userA, userB, false, 9804)
+				r4.repeater = third
+				r4.data(req)
+				synctest.Wait()
+				release()
+				got := byStream(waitDone(t, ct, database, 3))
+				assert.Equal(t, models.CallResponseACK, got[9801].Response, "the ACK was wiped")
+			})
+		})
+	}
+}

@@ -589,10 +589,12 @@ func inWindow(start, at time.Time) bool {
 	return !start.After(at) && start.After(at.Add(-responseWindow))
 }
 
-// matchRow is a row that answers can be set on, and when it started.
+// matchRow is a row that answers can be set on, when it started, and the
+// response that the last step gave it.
 type matchRow struct {
-	ID    uint      `json:"id"`
-	Start time.Time `json:"start"`
+	ID    uint                `json:"id"`
+	Start time.Time           `json:"start"`
+	Resp  models.CallResponse `json:"resp,omitempty"`
 }
 
 // matchAnswer is an answer of one stream, the time the hub got its newest
@@ -611,6 +613,22 @@ type matchAnswer struct {
 type matchState struct {
 	Rows    []matchRow    `json:"rows,omitempty"`
 	Answers []matchAnswer `json:"answers,omitempty"`
+	// Cut is the time of the newest answer that the match dropped. A row
+	// that started less than the response window after it may have lost
+	// an answer, so it keeps the response that it had.
+	Cut time.Time `json:"cut,omitzero"`
+}
+
+// knows reports whether the match still has every answer that the row
+// that started at start could take.
+func (st *matchState) knows(start time.Time) bool {
+	return start.Add(-responseWindow).After(st.Cut)
+}
+
+func (st *matchState) cutAt(t time.Time) {
+	if t.After(st.Cut) {
+		st.Cut = t
+	}
 }
 
 // assignment is what a matchState makes of its answers: the row that each
@@ -622,7 +640,8 @@ type assignment struct {
 
 // assign gives each answer to the row that started last within its
 // window, the larger ID on a tie, and each row the response of the newest
-// answer it takes, or none.
+// answer it takes, or none. A row that may have lost an answer to the
+// pruning keeps the response that the last step gave it.
 func (st *matchState) assign() assignment {
 	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
 	at := map[uint]time.Time{}
@@ -643,6 +662,11 @@ func (st *matchState) assign() assignment {
 		a.winner[ans.Stream] = best.ID
 		if t, ok := at[best.ID]; !ok || ans.At.After(t) {
 			at[best.ID], a.resp[best.ID] = ans.At, ans.Response
+		}
+	}
+	for _, r := range st.Rows {
+		if !st.knows(r.Start) {
+			a.resp[r.ID] = r.Resp
 		}
 	}
 	return a
@@ -672,6 +696,8 @@ func (st *matchState) prune(ref time.Time) {
 	for _, a := range st.Answers {
 		if a.At.After(answerCut) {
 			answers = append(answers, a)
+		} else {
+			st.cutAt(a.At)
 		}
 	}
 	st.Answers = answers
@@ -688,6 +714,9 @@ func (st *matchState) prune(ref time.Time) {
 func (st *matchState) limit() {
 	if n := len(st.Answers); n > matchCap {
 		slices.SortFunc(st.Answers, func(a, b matchAnswer) int { return a.At.Compare(b.At) })
+		for _, a := range st.Answers[:n-matchCap] {
+			st.cutAt(a.At)
+		}
 		st.Answers = st.Answers[n-matchCap:]
 	}
 	if n := len(st.Rows); n > matchCap {
@@ -792,6 +821,9 @@ func (c *CallTracker) step(k pair, what string, op matchOp) (stepResult, error) 
 				res.drops = append(res.drops, a.OwnRow)
 			}
 			a.OwnRow = 0
+		}
+		for i := range st.Rows {
+			st.Rows[i].Resp = after.resp[st.Rows[i].ID]
 		}
 		st.limit()
 		return json.Marshal(st)

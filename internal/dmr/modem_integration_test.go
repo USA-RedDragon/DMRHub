@@ -106,18 +106,16 @@ func TestModemHotspotCallsBothWays(t *testing.T) {
 			}})
 		require.NoError(t, srv.Start(context.Background()))
 		t.Cleanup(func() { _ = srv.Stop(context.Background()) })
-		var fake *modemtest.Fake
-		select {
-		case fake = <-opened:
-			t.Cleanup(fake.Close)
-		case <-time.After(handshakeWait):
-			t.Fatal("the modem was not opened")
-		}
-		require.True(t, fake.WaitFor(handshakeWait, func(f *modemtest.Fake) bool { return f.Count(mmdvm.CommandGetStatus) >= 2 }))
-		time.Sleep(settleDuration)
+		got := testutils.Collect(opened, deliverWait, gotN[*modemtest.Fake](1))
+		require.Len(t, got, 1, "the modem was not opened")
+		fake := got[0]
+		t.Cleanup(fake.Close)
+		require.True(t, fake.WaitFor(deliverWait, func(f *modemtest.Fake) bool { return f.Count(mmdvm.CommandGetStatus) >= 2 }))
 
 		var row models.Repeater
-		require.NoError(t, stack.DB.First(&row, 100001).Error)
+		waitFor(t, "the modem server records the modem as a repeater", func() bool {
+			return stack.DB.First(&row, 100001).Error == nil && row.Type == models.RepeaterTypeModem && row.SoftwareID != ""
+		})
 		assert.Equal(t, models.RepeaterTypeModem, row.Type)
 		assert.Equal(t, uint(438800000), row.RXFrequency)
 		assert.Equal(t, uint(4), row.Slots)
@@ -145,14 +143,13 @@ func TestModemHotspotCallsBothWays(t *testing.T) {
 		assert.Equal(t, dmrconst.FrameDataSync, pkts[0].FrameType)
 		assert.Equal(t, uint(enums.DataTypeVoiceLCHeader), pkts[0].DTypeOrVSeq)
 
-		time.Sleep(4 * time.Second)
 		fromNet := modemCall(t, 1000001, 1, layer2.SyncSourceBS)
 		for i, b := range fromNet {
 			require.NoError(t, mm.SendDMRD(models.Packet{Signature: "DMRD", Seq: uint(i), Src: 1000001, Dst: 1, Repeater: 100002,
 				Slot: true, GroupCall: true, FrameType: b.frame, DTypeOrVSeq: b.value, StreamID: 0x7e57, DMRData: b.burst}))
 			time.Sleep(60 * time.Millisecond)
 		}
-		require.True(t, fake.WaitFor(5*time.Second, func(f *modemtest.Fake) bool { return len(f.Transmitted(enums.Slot2)) >= len(fromNet) }),
+		require.True(t, fake.WaitFor(deliverWait, func(f *modemtest.Fake) bool { return len(f.Transmitted(enums.Slot2)) >= len(fromNet) }),
 			"the modem should send the network call on the air")
 		fake.WaitFor(0, func(f *modemtest.Fake) bool {
 			for i, b := range f.Transmitted(enums.Slot2) {

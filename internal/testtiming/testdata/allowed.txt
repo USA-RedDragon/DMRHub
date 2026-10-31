@@ -57,8 +57,7 @@ sleep	internal/dmr/mmdvm_slow_db_login_integration_test.go	3	baseline of 2026-10
 elapsed	internal/dmr/mmdvm_slow_redis_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/mmdvm_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/modem_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/modem_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/modem_integration_test.go	2	pace, not a wait: one burst each 60 ms, as a radio and a network repeater send a call
 elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
 sleep	internal/dmr/move_integration_test.go	2	pace of the call, one burst each rotationInterval as a radio sends it, and a 5 ms pause after the keepalive that makes the front move the peer, before the burst at the move
 timer	internal/dmr/move_integration_test.go	1	the bound of the wait for a burst at the move: drainWait for the burst before it, and reportHold, the product hold of the handover report, for the burst at the move, which the test checks did not wait for the full hold

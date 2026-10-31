@@ -83,8 +83,8 @@ sleep	internal/dmr/openbridge_slow_db_integration_test.go	3	baseline of 2026-10-
 timer	internal/dmr/openbridge_slow_db_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/openbridge_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/openbridge_slow_redis_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/peer_last_ping_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/peer_last_ping_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/peer_last_ping_integration_test.go	1	polls the count of peer writes from a gorm callback, which has no event; bounded by deliverWait
+sleep	internal/dmr/peer_last_ping_integration_test.go	2	the settle after an OpenBridge client opens, while the second replica learns the seeded peer through a pubsub notice that the test cannot wait on, and the window of the negative check that no packet makes a write
 sleep	internal/dmr/peer_rotate_password_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/plugin_drain_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/plugin_drain_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

@@ -82,9 +82,9 @@ func TestOpenBridgeRecordsTheLastPingOfAPeer(t *testing.T) {
 				require.NoError(t, c.SendGroupVoice(1000001, 1, stream))
 				stream++
 			}
-			require.Len(t, mc.Drain(drainWait), 6, "replica %d takes the calls", i+1)
+			require.Len(t, testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](6)), 6, "replica %d takes the calls", i+1)
 			want := int32(i + 1)
-			require.Eventually(t, func() bool { return writes.Load() == want }, 2*time.Second, 10*time.Millisecond,
+			require.Eventually(t, func() bool { return writes.Load() == want }, deliverWait, 10*time.Millisecond,
 				"replica %d records the last ping once", i+1)
 			got := peer()
 			assert.False(t, got.LastPing.Before(sent.Truncate(time.Second)), "replica %d records a recent last ping, got %v", i+1, got.LastPing)

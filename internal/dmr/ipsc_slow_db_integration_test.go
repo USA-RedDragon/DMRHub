@@ -21,8 +21,8 @@ package dmr_test
 
 import (
 	"testing"
-	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -50,38 +50,30 @@ func TestIPSCSlowDatabaseHoldsNoBurst(t *testing.T) {
 		t.Cleanup(ic.Close)
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
 		require.NoError(t, ic.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
-		call := func(stream uint32) {
-			arrived := make(chan bool, 1)
-			go func() {
-				n := 0
-				deadline := time.After(30 * time.Second)
-				for n < 3 {
-					select {
-					case p := <-mc.ReceivedPackets():
-						if p.Src == 1000001 && p.Dst == 1 {
-							n++
-						}
-					case <-deadline:
-						arrived <- false
-						return
-					}
+		fromCaller := func(got []models.Packet) int {
+			n := 0
+			for _, p := range got {
+				if p.Src == 1000001 && p.Dst == 1 {
+					n++
 				}
-				arrived <- true
-			}()
+			}
+			return n
+		}
+		call := func(stream uint32) {
 			require.NoError(t, ic.SendGroupVoice(1000001, 1, false, stream))
-			require.True(t, <-arrived, "stream %d: the call did not reach the repeater", stream)
+			got := testutils.Collect(mc.ReceivedPackets(), deliverWait, func(got []models.Packet) bool { return fromCaller(got) >= 3 })
+			require.GreaterOrEqual(t, fromCaller(got), 3, "stream %d: the call did not reach the repeater", stream)
 		}
 
 		call(12001)
-		time.Sleep(time.Second)
+		waitFor(t, "the call tracker drops the row of the first call, shorter than a key-up", func() bool { return db.ranOn("delete", "calls") >= 1 })
 
 		db.hold()
 		call(12002)
-		require.Eventually(t, func() bool { return db.held.Load() > 0 }, handshakeWait, 10*time.Millisecond, "the call ran no statement for the database to hold")
+		waitFor(t, "the call runs a statement for the database to hold", func() bool { return db.held.Load() > 0 })
 		t.Logf("the call passed while the database held %d statements", db.held.Load())
 		db.release()
-		require.Eventually(t, func() bool { return db.held.Load() == 0 }, handshakeWait, 10*time.Millisecond, "the held statements did not run when the database let them go")
+		waitFor(t, "the held statements run when the database lets them go", func() bool { return db.held.Load() == 0 })
 	})
 }

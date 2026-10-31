@@ -53,7 +53,6 @@ func TestIPSCSlowRedisHoldsNoOtherPeer(t *testing.T) {
 		t.Cleanup(talker.Close)
 		require.NoError(t, talker.Connect(stack.IPSCAddr))
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		const bursts = 16
 		send := func(stream uint32, during func()) {

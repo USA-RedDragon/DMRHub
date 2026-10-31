@@ -39,13 +39,14 @@ type dbHold struct {
 	gate    chan struct{}
 	held    atomic.Int64
 	entered atomic.Int64
+	ran     map[string]int
 }
 
 // holdDatabase returns a dbHold of database that does not hold yet, and
 // lets the held statements go when the test ends.
 func holdDatabase(t *testing.T, database *gorm.DB) *dbHold {
 	t.Helper()
-	d := &dbHold{}
+	d := &dbHold{ran: map[string]int{}}
 	wait := func(*gorm.DB) {
 		d.mu.Lock()
 		gate := d.gate
@@ -65,6 +66,15 @@ func holdDatabase(t *testing.T, database *gorm.DB) *dbHold {
 	require.NoError(t, cb.Create().Before("gorm:create").Register("test:hold_create", wait))
 	require.NoError(t, cb.Update().Before("gorm:update").Register("test:hold_update", wait))
 	require.NoError(t, cb.Delete().Before("gorm:delete").Register("test:hold_delete", wait))
+	ran := func(op string) func(*gorm.DB) {
+		return func(db *gorm.DB) {
+			d.mu.Lock()
+			d.ran[op+" "+db.Statement.Table]++
+			d.mu.Unlock()
+		}
+	}
+	require.NoError(t, cb.Create().After("gorm:create").Register("test:ran_create", ran("create")))
+	require.NoError(t, cb.Delete().After("gorm:delete").Register("test:ran_delete", ran("delete")))
 	t.Cleanup(d.release)
 	return d
 }
@@ -78,6 +88,12 @@ func (d *dbHold) hold() {
 	}
 }
 
+func (d *dbHold) ranOn(op, table string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ran[op+" "+table]
+}
+
 // release lets the held statements go, and holds no more.
 func (d *dbHold) release() {
 	d.mu.Lock()
@@ -88,22 +104,16 @@ func (d *dbHold) release() {
 	}
 }
 
-func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]time.Time {
-	out := make(chan map[uint]time.Time, 1)
+func watchStream(got <-chan models.Packet, stream uint, n int) <-chan map[uint]bool {
+	out := make(chan map[uint]bool, 1)
 	go func() {
-		arrived := map[uint]time.Time{}
-		deadline := time.After(30 * time.Second)
-		for len(arrived) < n {
-			select {
-			case p := <-got:
-				if p.StreamID == stream {
-					arrived[p.Seq] = time.Now()
-				}
-			case <-deadline:
-				out <- arrived
-				return
+		arrived := map[uint]bool{}
+		testutils.Collect(got, deliverWait, func(ps []models.Packet) bool {
+			if p := ps[len(ps)-1]; p.StreamID == stream {
+				arrived[p.Seq] = true
 			}
-		}
+			return len(arrived) >= n
+		})
 		out <- arrived
 	}()
 	return out
@@ -120,7 +130,7 @@ func allBurstsArrive(t *testing.T, stream uint, send func(uint) []time.Time, tar
 // get all of them.
 func burstsArrive(t *testing.T, stream uint, bursts int, send func(uint) []time.Time, targets ...<-chan models.Packet) {
 	t.Helper()
-	watches := make([]<-chan map[uint]time.Time, len(targets))
+	watches := make([]<-chan map[uint]bool, len(targets))
 	for i, got := range targets {
 		watches[i] = watchStream(got, stream, bursts)
 	}
@@ -161,7 +171,6 @@ func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 		addr := to.LocalAddr()
 		stack.SeedPeer(t, 500002, 1000001, obPassword, addr.IP.String(), addr.Port, false, true)
 		stack.SeedPeerRule(t, 500002, false, 1, 9999999)
-		time.Sleep(settleDuration)
 
 		send := func(fromPeer bool) func(uint) []time.Time {
 			return func(stream uint) []time.Time {
@@ -184,14 +193,14 @@ func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 
 		allBurstsArrive(t, 8001, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
 		allBurstsArrive(t, 8002, send(false), to.ReceivedPackets())
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the call tracker writes the first calls", func() bool { return db.ranOn("create", "calls") >= 2 })
 
 		db.hold()
 		allBurstsArrive(t, 8003, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
 		allBurstsArrive(t, 8004, send(false), to.ReceivedPackets())
-		require.Eventually(t, func() bool { return db.held.Load() > 0 }, handshakeWait, 10*time.Millisecond, "the calls ran no statement for the database to hold")
+		waitFor(t, "the calls run a statement for the database to hold", func() bool { return db.held.Load() > 0 })
 		t.Logf("the calls passed while the database held %d statements", db.held.Load())
 		db.release()
-		require.Eventually(t, func() bool { return db.held.Load() == 0 }, handshakeWait, 10*time.Millisecond, "the held statements did not run when the database let them go")
+		waitFor(t, "the held statements run when the database lets them go", func() bool { return db.held.Load() == 0 })
 	})
 }

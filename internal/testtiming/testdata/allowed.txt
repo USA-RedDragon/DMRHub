@@ -40,22 +40,18 @@ sleep	internal/dmr/hub/talkgroup_lookup_test.go	1	baseline of 2026-10-28, not re
 timer	internal/dmr/hub/undeliverable_view_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/integration_test.go	1	poll step of waitFor, for the unlink of a dynamic talkgroup, which the hub makes off the routing path with no event a test can wait on
 eventually	internal/dmr/iplists_integration_test.go	5	polls the MSTCL count and the closed flag of a client and the registration time in the database, which have no event; bounded by deliverWait
-eventually	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/ipsc_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/ipsc_slow_db_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/ipsc_slow_redis_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/ipsc_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/ipsc_slow_redis_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event
+sleep	internal/dmr/ipsc_slow_redis_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the call lasts while the other peer registers and Redis holds; a starved machine only spreads them
 eventually	internal/dmr/live_config_integration_test.go	4	polls the MSTCL and down counts of the clients, bounded by deliverWait, and which server holds the OpenBridge egress lease, bounded by 2 or 3 EgressLeaseTTL, the product constant
 pickport	internal/dmr/live_config_integration_test.go	1	the test changes the MMDVM port in the live config, which takes a port number, not :0; the server binds the number it is given (a product limit, not a test choice)
 sleep	internal/dmr/live_config_integration_test.go	1	negative window of one EgressLeaseTTL, the product time a takeover of the egress lease needs: a restarted server must not take the lease from its holder in it
 elapsed	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/live_replicas_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 pickport	internal/dmr/live_replicas_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/mmdvm_slow_db_login_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/mmdvm_slow_db_login_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/mmdvm_slow_redis_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/mmdvm_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/mmdvm_slow_db_login_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event
+sleep	internal/dmr/mmdvm_slow_db_login_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the call lasts while the logins wait on the held database; a starved machine only spreads them
+elapsed	internal/dmr/mmdvm_slow_redis_integration_test.go	1	the time.Until of the pace of the bursts, which keeps them on their schedule; not a wait for an event
+sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the call lasts while the other repeaters ping, log out and send and Redis holds; a starved machine only spreads them
 sleep	internal/dmr/modem_integration_test.go	2	pace, not a wait: one burst each 60 ms, as a radio and a network repeater send a call
 elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
 sleep	internal/dmr/move_integration_test.go	2	pace of the call, one burst each rotationInterval as a radio sends it, and a 5 ms pause after the keepalive that makes the front move the peer, before the burst at the move
@@ -65,11 +61,9 @@ timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewe
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them
 sleep	internal/dmr/openbridge_replica_integration_test.go	1	pace, not a wait: one burst each 30 ms, so that the call lasts while the holder of the lease stops; a starved machine only spreads them
-eventually	internal/dmr/openbridge_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/openbridge_slow_db_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/openbridge_slow_db_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/openbridge_slow_redis_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/openbridge_slow_redis_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/openbridge_slow_db_integration_test.go	1	pace, not a wait: one burst each burstPeriod, so that the calls last while the database holds; a starved machine only spreads them
+elapsed	internal/dmr/openbridge_slow_redis_integration_test.go	2	the time.Until of the pace of the bursts of the two tests, which keeps them on their schedule; not a wait for an event
+sleep	internal/dmr/openbridge_slow_redis_integration_test.go	2	pace, not a wait: one burst each burstPeriod in the two tests, so that the calls last while Redis holds; a starved machine only spreads them
 eventually	internal/dmr/peer_last_ping_integration_test.go	1	polls the count of peer writes from a gorm callback, which has no event; bounded by deliverWait
 sleep	internal/dmr/peer_last_ping_integration_test.go	1	the window of the negative check that no packet makes a peer write, which has no state to read instead
 deadline	internal/dmr/plugin_drain_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

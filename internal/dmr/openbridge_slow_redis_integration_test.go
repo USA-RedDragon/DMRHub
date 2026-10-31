@@ -45,14 +45,19 @@ type slowRedis struct {
 	mu     sync.Mutex
 	gate   chan struct{}
 	held   atomic.Int64
+	keys   []string
+	sent   map[string]int
 }
 
-func (s *slowRedis) wait(slow bool) {
+func (s *slowRedis) wait(slow bool, what string) {
 	if !slow {
 		return
 	}
 	s.mu.Lock()
 	gate := s.gate
+	if gate != nil {
+		s.keys = append(s.keys, what)
+	}
 	s.mu.Unlock()
 	if gate != nil {
 		s.held.Add(1)
@@ -80,6 +85,18 @@ func (s *slowRedis) release() {
 	}
 }
 
+func (s *slowRedis) heldKeys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.keys)
+}
+
+func (s *slowRedis) published(topic string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sent[topic]
+}
+
 func (s *slowRedis) holdsKey(key string) bool {
 	return s.prefix != "" && strings.HasPrefix(key, s.prefix)
 }
@@ -90,27 +107,27 @@ type slowRedisKV struct {
 }
 
 func (k slowRedisKV) Has(ctx context.Context, key string) (bool, error) {
-	k.s.wait(k.s.holdsKey(key))
+	k.s.wait(k.s.holdsKey(key), key)
 	return k.KV.Has(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Get(ctx context.Context, key string) ([]byte, error) {
-	k.s.wait(k.s.holdsKey(key))
+	k.s.wait(k.s.holdsKey(key), key)
 	return k.KV.Get(ctx, key) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Set(ctx context.Context, key string, value []byte) error {
-	k.s.wait(k.s.holdsKey(key))
+	k.s.wait(k.s.holdsKey(key), key)
 	return k.KV.Set(ctx, key, value) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
-	k.s.wait(k.s.holdsKey(key))
+	k.s.wait(k.s.holdsKey(key), key)
 	return k.KV.Expire(ctx, key, ttl) //nolint:wrapcheck
 }
 
 func (k slowRedisKV) Delete(ctx context.Context, key string) error {
-	k.s.wait(k.s.holdsKey(key))
+	k.s.wait(k.s.holdsKey(key), key)
 	return k.KV.Delete(ctx, key) //nolint:wrapcheck
 }
 
@@ -120,8 +137,15 @@ type slowRedisPubSub struct {
 }
 
 func (p slowRedisPubSub) Publish(topic string, message []byte) error {
-	p.s.wait(slices.Contains(p.s.topics, topic))
-	return p.PubSub.Publish(topic, message) //nolint:wrapcheck
+	p.s.wait(slices.Contains(p.s.topics, topic), topic)
+	err := p.PubSub.Publish(topic, message)
+	p.s.mu.Lock()
+	if p.s.sent == nil {
+		p.s.sent = map[string]int{}
+	}
+	p.s.sent[topic]++
+	p.s.mu.Unlock()
+	return err //nolint:wrapcheck
 }
 
 func forAllSlowRedisBackends(t *testing.T, prefix string, topics []string, f func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis)) {
@@ -170,7 +194,6 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 		addr := to.LocalAddr()
 		stack.SeedPeer(t, 500002, 1000001, obPassword, addr.IP.String(), addr.Port, false, true)
 		stack.SeedPeerRule(t, 500002, false, 1, 9999999)
-		time.Sleep(settleDuration)
 
 		send := func(fromPeer bool) func(uint) []time.Time {
 			return func(stream uint) []time.Time {
@@ -195,7 +218,7 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 
 		allBurstsArrive(t, 8101, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
 		allBurstsArrive(t, 8102, send(false), to.ReceivedPackets())
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the peer events of the first call are published", func() bool { return slow.published("hub:events:peers") >= 8 })
 
 		slow.hold()
 		allBurstsArrive(t, 8103, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
@@ -205,7 +228,7 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 
 		require.NoError(t, to.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 8105}))
 		require.NoError(t, to.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 8106}))
-		time.Sleep(100 * time.Millisecond)
+		waitFor(t, "the second BCSQ quenches its stream", func() bool { return stack.OpenBridgeServer.IsQuenched(500002, 8106) })
 		require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 8106, false)))
 		var quenched int
 		for _, p := range to.Drain(drainWait) {
@@ -232,7 +255,7 @@ func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 		from := testutils.NewOpenBridgeClient(500001, obPassword)
 		t.Cleanup(from.Close)
 		require.NoError(t, from.Connect(otherAddr))
-		time.Sleep(settleDuration)
+		r.peerNoticeTaken(t)
 
 		send := func(stream uint) []time.Time {
 			sent := make([]time.Time, 0, 8)
@@ -249,7 +272,9 @@ func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 			return sent
 		}
 		allBurstsArrive(t, 8201, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the peer events and hand-offs of the first call are published", func() bool {
+			return slow.published("hub:events:peers") >= 8 && slow.published("openbridge:egress") >= 8
+		})
 
 		slow.hold()
 		allBurstsArrive(t, 8202, send, r.on1.ReceivedPackets(), r.on2.ReceivedPackets())

@@ -22,6 +22,7 @@ package dmr_test
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -60,7 +61,6 @@ func TestMMDVMSlowRedisHoldsNoOtherRepeater(t *testing.T) {
 			clients[id] = c
 		}
 		talker, listener, pinger, leaver := clients[100001], clients[100002], clients[100004], clients[100005]
-		time.Sleep(settleDuration)
 
 		records := servers.MakeKVClient(stack.KV)
 		before, err := records.GetRepeater(context.Background(), 100004)
@@ -107,22 +107,25 @@ func TestMMDVMSlowRedisHoldsNoOtherRepeater(t *testing.T) {
 			}
 		}
 		burstsArrive(t, 8301, bursts, send(false), listener.ReceivedPackets())
-		time.Sleep(200 * time.Millisecond)
 
 		slow.hold()
 		burstsArrive(t, 8302, bursts, send(true), listener.ReceivedPackets())
 		held := slow.held.Load()
+		others := slices.DeleteFunc(slow.heldKeys(), func(k string) bool {
+			return k == "mmdvm:repeater:100001" || k == "mmdvm:repeater:100002"
+		})
 		slow.release()
-		assert.Positive(t, held, "no other repeater waited on Redis while the call went on")
+		assert.Positive(t, held, "no call waited on Redis while the call went on")
+		assert.NotEmpty(t, others, "no other repeater waited on Redis while the call went on")
 
-		assert.Eventually(t, func() bool {
+		waitFor(t, "the ping reaches the record of the repeater", func() bool {
 			r, err := records.GetRepeater(context.Background(), 100004)
 			return err == nil && r.PingsReceived > before.PingsReceived
-		}, 5*time.Second, 50*time.Millisecond, "the ping reached the record of the repeater")
-		assert.Eventually(t, func() bool {
+		})
+		waitFor(t, "the logout removes the record of the repeater", func() bool {
 			_, err := records.GetRepeater(context.Background(), 100005)
 			return err != nil
-		}, 5*time.Second, 50*time.Millisecond, "the logout removed the record of the repeater")
+		})
 		_, err = records.GetRepeater(context.Background(), 100001)
 		assert.NoError(t, err, "the talker keeps its record")
 	})

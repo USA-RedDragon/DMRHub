@@ -55,7 +55,6 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 			return c
 		}
 		talker, listener := connect(100001), connect(100002)
-		time.Sleep(settleDuration)
 
 		send := func(bursts int, during func()) func(uint) []time.Time {
 			return func(stream uint) []time.Time {
@@ -76,7 +75,7 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 			}
 		}
 		burstsArrive(t, 8401, 16, send(16, nil), listener.ReceivedPackets())
-		time.Sleep(200 * time.Millisecond)
+		waitFor(t, "the call tracker writes the first call", func() bool { return db.ranOn("create", "calls") >= 1 })
 
 		db.hold()
 		var wg sync.WaitGroup

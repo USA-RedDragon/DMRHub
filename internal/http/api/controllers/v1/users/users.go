@@ -1110,6 +1110,14 @@ func hubUserChanged(c *gin.Context, userID uint) {
 	}
 }
 
+func hubRadioChanged(c *gin.Context, radioID uint) {
+	if v, ok := c.Get("Hub"); ok {
+		if h, ok := v.(*hub.Hub); ok && h != nil {
+			h.RadioChanged(radioID)
+		}
+	}
+}
+
 func endOtherSessions(c *gin.Context, userID uint) bool {
 	sessionID := sessions.Default(c).ID()
 	store, ok := c.Value("SessionStore").(*sessionstore.Store)

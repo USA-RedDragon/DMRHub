@@ -259,6 +259,7 @@ func addRadioID(c *gin.Context, db *gorm.DB, user *models.User, verify bool) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
 		return
 	}
+	hubRadioChanged(c, row.RadioID)
 	at := row.VerifiedAt
 	c.JSON(http.StatusCreated, apimodels.RadioID{ID: row.RadioID, Callsign: callsignOf(row.RadioID, user.Callsign), VerifiedAt: &at})
 }
@@ -294,5 +295,6 @@ func deleteRadioID(c *gin.Context, db *gorm.DB, user *models.User) {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: "Radio ID not found"})
 		return
 	}
+	hubRadioChanged(c, uint(id))
 	c.JSON(http.StatusOK, gin.H{messageKey: "Radio ID removed"})
 }

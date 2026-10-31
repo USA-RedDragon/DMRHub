@@ -339,7 +339,6 @@ func newMXNet(t *testing.T, stack *testutils.IntegrationStack) *mxNet {
 		_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:lastheard:%d", mxDataUser))
 		return err == nil
 	})
-	n.drain(500 * time.Millisecond)
 	return n
 }
 
@@ -348,29 +347,72 @@ type mxGot struct {
 	ipsc, ipscOther                   []testutils.IPSCBurst
 }
 
-func (n *mxNet) drain(d time.Duration) mxGot {
+const mxNegativeWindow = 500 * time.Millisecond
+
+func (n *mxNet) collect(t *testing.T, src mxSource, addr mxAddr, p mxPayload, sent []models.Packet, rowsBefore int, heard []models.Packet, heardIPSC []testutils.IPSCBurst) mxGot {
+	t.Helper()
+	clients := []drainer{n.tg, n.user, n.data, n.target, n.other, n.ob}
+	expected := map[string][]int{"group": {0, 5}, "user": {1, 5}, "data-only-user": {2, 5}, "repeater": {3, 5}, "ipsc-repeater": {5}}[addr.name]
+	heardBy := map[string]int{"group": 0, "user": 1, "data-only-user": 2, "repeater": 3}
 	var g mxGot
-	deadline := time.Now().Add(d + 10*time.Second)
-	start := time.Now()
-	for {
-		var r mxGot
-		done := make(chan struct{}, 2)
-		go func() { r.ipsc = n.ipsc.Drain(500 * time.Millisecond); done <- struct{}{} }()
-		go func() { r.ipscOther = n.ipscOther.Drain(500 * time.Millisecond); done <- struct{}{} }()
-		got := drainAll(500*time.Millisecond, n.tg, n.user, n.data, n.target, n.other, n.ob)
-		<-done
-		<-done
-		quiet := len(r.ipsc)+len(r.ipscOther) == 0
-		for _, p := range got {
-			quiet = quiet && len(p) == 0
+	ipscDone := make(chan []testutils.IPSCBurst, 1)
+	go func() {
+		arrived := func(got []testutils.IPSCBurst) bool {
+			return len(withoutRepeatedHeaders(ipscBursts(t, ipscOfCall(append(heardIPSC, got...), addr.c)))) >= len(sent)
 		}
-		g.tg, g.user, g.data = append(g.tg, got[0]...), append(g.user, got[1]...), append(g.data, got[2]...)
-		g.target, g.other, g.ob = append(g.target, got[3]...), append(g.other, got[4]...), append(g.ob, got[5]...)
-		g.ipsc, g.ipscOther = append(g.ipsc, r.ipsc...), append(g.ipscOther, r.ipscOther...)
-		if (quiet && time.Since(start) >= d) || time.Now().After(deadline) {
-			return g
+		if (addr.name == "ipsc-repeater" || addr.name == "group" && p.ipsc) && !arrived(nil) {
+			ipscDone <- n.ipsc.Receive(deliverWait, arrived)
+			return
 		}
+		ipscDone <- nil
+	}()
+	got := make([][]models.Packet, len(clients))
+	if i, ok := heardBy[addr.name]; ok {
+		got[i] = heard
 	}
+	more := drainUntil(func(out [][]models.Packet) bool {
+		for _, i := range expected {
+			if !callArrived(src, addr, sent, append(got[i], out[i]...)) {
+				return false
+			}
+		}
+		return true
+	}, clients...)
+	for i := range got {
+		got[i] = append(got[i], more[i]...)
+	}
+	g.ipsc = slices.Concat(heardIPSC, <-ipscDone)
+	if addr.name == "unregistered" {
+		waitFor(t, "the hub records the call to the unregistered radio", func() bool {
+			return len(rowsOf(t, n.stack.DB, "calls", "destination_id", addr.c.dst)) > rowsBefore
+		})
+	}
+	var tail mxGot
+	done := make(chan struct{}, 2)
+	go func() { tail.ipsc = n.ipsc.Drain(mxNegativeWindow); done <- struct{}{} }()
+	go func() { tail.ipscOther = n.ipscOther.Drain(mxNegativeWindow); done <- struct{}{} }()
+	tailGot := drainAll(mxNegativeWindow, clients...)
+	<-done
+	<-done
+	for i := range got {
+		got[i] = append(got[i], tailGot[i]...)
+	}
+	g.tg, g.user, g.data, g.target, g.other, g.ob = got[0], got[1], got[2], got[3], got[4], got[5]
+	g.ipsc, g.ipscOther = append(g.ipsc, tail.ipsc...), tail.ipscOther
+	return g
+}
+
+func (n *mxNet) receiverOf(addr mxAddr) *testutils.MMDVMClient {
+	return map[string]*testutils.MMDVMClient{"group": n.tg, "user": n.user, "data-only-user": n.data, "repeater": n.target}[addr.name]
+}
+
+func callArrived(src mxSource, addr mxAddr, sent, pkts []models.Packet) bool {
+	mine := ofCall(pkts, uint(addr.c.src), uint(addr.c.dst))
+	if src.ipsc {
+		return len(firstStream(mine)) >= len(sent)
+	}
+	last := sent[len(sent)-1]
+	return slices.ContainsFunc(ofStream(mine, last.StreamID), func(p models.Packet) bool { return p.Seq&0xFF == last.Seq&0xFF })
 }
 
 type mxSource struct {
@@ -495,25 +537,32 @@ func TestTransparencyMatrix(t *testing.T) {
 func runMXCase(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload, stream uint) {
 	t.Run(p.name, func(t *testing.T) {
 		txs := p.build(t, addr.c)
-		var sent, heard []models.Packet
+		rowsBefore := len(rowsOf(t, n.stack.DB, "calls", "destination_id", addr.c.dst))
+		receiver := n.receiverOf(addr)
+		var sent, prev, heard []models.Packet
+		var heardIPSC []testutils.IPSCBurst
 		for i, tx := range txs {
 			if tx.src == addr.c.src {
-				pkts := src.send(t, n, tx, stream+uint(i))
+				prev = src.send(t, n, tx, stream+uint(i))
 				if i == 0 {
-					sent = pkts
+					sent = prev
 				}
 			} else {
-				heard = append(heard, awaitHeard(n.user, uint(addr.c.src), uint(addr.c.dst), deliverWait)...)
+				switch {
+				case receiver != nil:
+					heard = append(heard, testutils.Collect(receiver.ReceivedPackets(), deliverWait, func(got []models.Packet) bool {
+						return callArrived(src, addr, prev, append(heard, got...))
+					})...)
+				case addr.name == "ipsc-repeater":
+					heardIPSC = append(heardIPSC, n.ipsc.Receive(deliverWait, func(got []testutils.IPSCBurst) bool {
+						return len(withoutRepeatedHeaders(ipscBursts(t, ipscOfCall(append(heardIPSC, got...), addr.c)))) >= len(prev)
+					})...)
+				}
 				sendPackets(t, n.user.SendDMRD, tx.packets(stream+uint(i)))
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		total := 0
-		for _, tx := range txs {
-			total += len(tx.bursts)
-		}
-		g := n.drain(time.Duration(total) * 60 * time.Millisecond)
-		g.user = append(heard, g.user...)
+		g := n.collect(t, src, addr, p, sent, rowsBefore, heard, heardIPSC)
 		mine := func(pkts []models.Packet) []models.Packet {
 			return ofCall(pkts, uint(addr.c.src), uint(addr.c.dst))
 		}
@@ -833,24 +882,48 @@ func awaitReplicaRoutes(t *testing.T, src *testutils.MMDVMClient, to replicaTarg
 	t.Helper()
 	probes := map[uint]bool{}
 	var mmdvmGot, obGot, ipscGot bool
-	deadline := time.Now().Add(2 * handshakeWait)
+	ipscFrom, ipscEnded, last := 0, 0, uint(0)
+	var mmdvmAll, obAll []models.Packet
+	deadline := time.Now().Add(deliverWait)
 	for stream := uint(0xF000); !mmdvmGot || !obGot || !ipscGot; stream++ {
 		require.True(t, time.Now().Before(deadline), "the replicas did not route the talkgroup: MMDVM %v, OpenBridge %v, IPSC %v", mmdvmGot, obGot, ipscGot)
 		probes[stream] = true
+		last = stream
 		require.NoError(t, src.SendDMRD(makeGroupVoicePacket(mxRadio, mxTG, stream, false)))
 		require.NoError(t, src.SendDMRD(makeGroupVoiceTermPacket(mxRadio, mxTG, stream, false)))
 		got := drainAll(300*time.Millisecond, to.mmdvm, to.ob)
+		mmdvmAll, obAll = append(mmdvmAll, got[0]...), append(obAll, got[1]...)
 		mmdvmGot = mmdvmGot || slices.ContainsFunc(got[0], func(p models.Packet) bool { return probes[p.StreamID] })
 		obGot = obGot || slices.ContainsFunc(got[1], func(p models.Packet) bool { return probes[p.StreamID] })
-		ipscGot = ipscGot || slices.ContainsFunc(to.ipsc.Drain(100*time.Millisecond), func(b testutils.IPSCBurst) bool { return b.Dst == mxTG })
+		ipscBursts := to.ipsc.Drain(100 * time.Millisecond)
+		if !ipscGot && slices.ContainsFunc(ipscBursts, func(b testutils.IPSCBurst) bool { return b.Dst == mxTG }) {
+			ipscGot, ipscFrom = true, len(probes)
+		}
+		ipscEnded += countEnds(ipscBursts)
 	}
-	drained := make(chan struct{})
+	ipscDone := make(chan struct{})
 	go func() {
-		to.ipsc.Drain(time.Second)
-		close(drained)
+		defer close(ipscDone)
+		want := len(probes) - ipscFrom + 1
+		if ipscEnded < want {
+			to.ipsc.Receive(deliverWait, func(got []testutils.IPSCBurst) bool { return ipscEnded+countEnds(got) >= want })
+		}
 	}()
-	drainQuiet(time.Second, to.mmdvm, to.ob)
-	<-drained
+	lastEnd := []models.Packet{makeGroupVoiceTermPacket(mxRadio, mxTG, last, false)}
+	drainUntil(func(out [][]models.Packet) bool {
+		return callsArrived(lastEnd)([][]models.Packet{append(mmdvmAll, out[0]...)}) && callsArrived(lastEnd)([][]models.Packet{append(obAll, out[1]...)})
+	}, to.mmdvm, to.ob)
+	<-ipscDone
+}
+
+func countEnds(bursts []testutils.IPSCBurst) int {
+	n := 0
+	for _, b := range bursts {
+		if ipscEnds(b) {
+			n++
+		}
+	}
+	return n
 }
 
 type replicaTargets struct {
@@ -864,9 +937,31 @@ func runReplicaCase(t *testing.T, stack *testutils.IntegrationStack, from string
 		pkts := p.build(t, c)[0].packets(stream)
 		sendPackets(t, send, pkts)
 		ipscGot := make(chan []testutils.IPSCBurst, 1)
-		go func() { ipscGot <- to.ipsc.Drain(time.Duration(len(pkts))*60*time.Millisecond + 3*time.Second) }()
-		got := drainQuiet(time.Duration(len(pkts))*60*time.Millisecond+time.Second, to.mmdvm, to.ob)
+		go func() {
+			ipscGot <- to.ipsc.Receive(deliverWait, func(got []testutils.IPSCBurst) bool {
+				return len(withoutRepeatedHeaders(ipscBursts(t, ipscOfCall(got, c)))) >= len(pkts)
+			})
+		}()
+		expected := []drainer{to.mmdvm}
+		if from == "mmdvm" {
+			expected = append(expected, to.ob)
+		}
+		got := drainUntil(func(out [][]models.Packet) bool {
+			for i := range expected {
+				if !callsArrived(pkts)([][]models.Packet{out[i]}) {
+					return false
+				}
+			}
+			return true
+		}, to.mmdvm, to.ob)
 		ipscBurstsGot := <-ipscGot
+		tail := make(chan []testutils.IPSCBurst, 1)
+		go func() { tail <- to.ipsc.Drain(mxNegativeWindow) }()
+		more := drainAll(mxNegativeWindow, to.mmdvm, to.ob)
+		for i := range got {
+			got[i] = append(got[i], more[i]...)
+		}
+		ipscBurstsGot = append(ipscBurstsGot, <-tail...)
 		route := needRoute()
 		if p.voice {
 			route = nil

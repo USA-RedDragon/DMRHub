@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -105,10 +106,11 @@ func TestSteadyHitsGetANewWindowEachRate(t *testing.T) {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			_, database := newStore(t, be, 3)
-			store := ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: 300 * time.Millisecond, Limit: 3})
+			fake := clock.NewFake(time.Now())
+			store := ratelimit.NewGORMStore(&ratelimit.GORMOptions{DB: database, Rate: 300 * time.Millisecond, Limit: 3, Clock: fake})
 			for range 3 {
 				require.False(t, store.Limit("10.0.0.2", nil).RateLimited)
-				time.Sleep(120 * time.Millisecond)
+				fake.Advance(120 * time.Millisecond)
 			}
 			assert.False(t, store.Limit("10.0.0.2", nil).RateLimited, "300 ms after the first hit a new window starts, however steady the hits")
 		})

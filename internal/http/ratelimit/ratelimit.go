@@ -25,6 +25,7 @@ import (
 	"time"
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -34,12 +35,15 @@ type GORMStore struct {
 	db    *gorm.DB
 	rate  time.Duration
 	limit uint
+	clock clock.Clock
 }
 
 type GORMOptions struct {
 	DB    *gorm.DB
 	Rate  time.Duration
 	Limit uint
+	// Clock is the clock of the windows; nil is the real clock.
+	Clock clock.Clock
 }
 
 func NewGORMStore(options *GORMOptions) *GORMStore {
@@ -47,6 +51,7 @@ func NewGORMStore(options *GORMOptions) *GORMStore {
 		db:    options.DB,
 		rate:  options.Rate,
 		limit: options.Limit,
+		clock: clock.Or(options.Clock),
 	}
 }
 
@@ -57,7 +62,7 @@ func NewGORMStore(options *GORMOptions) *GORMStore {
 // count.
 func (s *GORMStore) Limit(key string, _ *gin.Context) (ret ratelimit.Info) {
 	ret.Limit = s.limit
-	now := time.Now()
+	now := s.clock.Now()
 	rl, err := s.hit(key, now)
 	if err != nil {
 		slog.Error("Failed to count a ratelimit hit", "error", err)

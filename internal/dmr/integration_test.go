@@ -102,6 +102,16 @@ func waitRecorded(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) 
 	}
 }
 
+func waitClaimed(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
+	t.Helper()
+	for _, id := range ids {
+		waitFor(t, fmt.Sprintf("the claim of a replica on repeater %d", id), func() bool {
+			_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:peer_owner:%d", id))
+			return err == nil
+		})
+	}
+}
+
 func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func() {
 	t.Helper()
 	ch := make(chan struct{}, 1)

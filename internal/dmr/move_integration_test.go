@@ -20,6 +20,7 @@
 package dmr_test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -79,9 +80,29 @@ func startMoveRig(t *testing.T, stack *testutils.IntegrationStack) moveRig {
 	require.NoError(t, r.listener.Connect(r.second.MMDVMAddr))
 	t.Cleanup(r.listener.Close)
 	require.NoError(t, r.listener.WaitReady(handshakeWait))
-	time.Sleep(settleDuration)
+	waitRecorded(t, stack, 100001, 100002)
 	r.front.Add(t, r.second.MMDVMAddr)
 	return r
+}
+
+func (r moveRig) waitMoved(t *testing.T) {
+	t.Helper()
+	waitFor(t, "the front moves the repeater", func() bool { return r.front.Moves() >= 1 })
+	waitSubscribed(t, r.second.Hub, 100001, 100001, true)
+}
+
+func (r moveRig) pings() uint {
+	rec, err := servers.MakeKVClient(r.stack.KV).GetRepeater(context.Background(), 100001)
+	if err != nil {
+		return 0
+	}
+	return rec.PingsReceived
+}
+
+func (r moveRig) waitPing(t *testing.T) {
+	t.Helper()
+	before := r.pings()
+	waitFor(t, "a ping of the repeater", func() bool { return r.pings() > before })
 }
 
 // TestMMDVMMovesFromADrainingReplica drains the replica of a repeater as a
@@ -94,7 +115,7 @@ func TestMMDVMMovesFromADrainingReplica(t *testing.T) {
 		r := startMoveRig(t, stack)
 		r.first.MarkDraining(t.Context())
 		r.front.Drain(stack.MMDVMAddr)
-		time.Sleep(moveWait)
+		r.waitMoved(t)
 
 		require.Equal(t, 1, r.front.Moves(), "the front moved the repeater")
 		assert.Zero(t, r.peer.Downs(), "the repeater lost its session")
@@ -114,7 +135,7 @@ func TestMMDVMNewPortWithoutADrainLogsIn(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		r := startMoveRig(t, stack)
 		r.front.Drain(stack.MMDVMAddr)
-		time.Sleep(moveWait)
+		waitFor(t, "the repeater logs in again", func() bool { return r.peer.Downs() > 0 })
 
 		require.Equal(t, 1, r.front.Moves(), "the front moved the repeater")
 		assert.Positive(t, r.peer.Downs(), "a replica that serves keeps its sessions")
@@ -130,14 +151,14 @@ func TestMMDVMSecondAddressAfterAMoveLogsIn(t *testing.T) {
 		r := startMoveRig(t, stack)
 		r.first.MarkDraining(t.Context())
 		r.front.Drain(stack.MMDVMAddr)
-		time.Sleep(moveWait)
+		r.waitMoved(t)
 		require.Zero(t, r.peer.Downs())
 
 		ping, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: 100001}).AppendBinary(nil, dmrd.DialectMMDVM)
 		require.NoError(t, err)
 		assert.Equal(t, dmrd.CommandMSTNAK, dmrd.Classify(exchange(t, r.second.MMDVMAddr, ping), dmrd.DialectMMDVM))
 
-		time.Sleep(moveWait)
+		r.waitPing(t)
 		assert.Zero(t, r.peer.Downs(), "the repeater keeps its session")
 	})
 }
@@ -174,7 +195,7 @@ func TestMMDVMMovesAfterTheClaimExpired(t *testing.T) {
 		})
 		r.first.MarkDraining(t.Context())
 		r.front.Drain(stack.MMDVMAddr)
-		time.Sleep(moveWait)
+		r.waitMoved(t)
 
 		require.Equal(t, 1, r.front.Moves(), "the front moved the repeater")
 		assert.Zero(t, r.peer.Downs(), "the repeater lost its session")
@@ -197,10 +218,10 @@ func TestMMDVMOptionsNeedALoginAfterAMove(t *testing.T) {
 			"options do not move a session")
 
 		r.front.Drain(stack.MMDVMAddr)
-		time.Sleep(moveWait)
+		r.waitMoved(t)
 		require.Zero(t, r.peer.Downs())
 		require.NoError(t, r.peer.SendRaw(rpto))
-		time.Sleep(settleDuration)
+		r.waitPing(t)
 		ts1, ts2 := staticIDs(t, stack, 100001)
 		assert.Empty(t, ts1)
 		assert.Empty(t, ts2, "options of a moved session changed the static talkgroups")
@@ -227,7 +248,7 @@ func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
 		require.NoError(t, old.Connect(stack.MMDVMAddr))
 		defer old.Close()
 		require.NoError(t, old.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitRecorded(t, stack, 100002)
 		fresh := testutils.NewMMDVMClient(100002, "", testPassword)
 		require.NoError(t, fresh.Connect(second.MMDVMAddr))
 		defer fresh.Close()
@@ -236,7 +257,8 @@ func TestMMDVMLoginElsewhereEndsTheOldSession(t *testing.T) {
 		require.NoError(t, talker.Connect(second.MMDVMAddr))
 		defer talker.Close()
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitSubscribed(t, stack.Hub, 100002, 100002, false)
+		waitSubscribed(t, second.Hub, 100002, 1, true)
 
 		sendGroupCall(t, talker.SendDMRD, 1, 7401, false)
 		assert.NotEmpty(t, receiveCall(fresh, 1), "the new session gets the call")
@@ -278,12 +300,14 @@ func TestIPSCMovesFromADrainingReplica(t *testing.T) {
 		require.NoError(t, talker.Connect(second.MMDVMAddr))
 		defer talker.Close()
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitClaimed(t, stack, 200001, 200002)
 		front.Add(t, second.IPSCAddr)
 
 		first.MarkDraining(t.Context())
 		front.Drain(stack.IPSCAddr)
-		time.Sleep(2500 * time.Millisecond)
+		waitFor(t, "the front moves both peers", func() bool { return front.Moves() >= 2 })
+		waitSubscribed(t, second.Hub, 200001, 1, true)
+		waitSubscribed(t, second.Hub, 200002, 1, true)
 		require.Equal(t, 2, front.Moves(), "the front moved both peers")
 
 		sendGroupCall(t, talker.SendDMRD, 1, 7501, false)
@@ -377,7 +401,7 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 		require.NoError(t, talker.Connect(second.MMDVMAddr))
 		defer talker.Close()
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitClaimed(t, stack, 200001)
 		front.Add(t, second.IPSCAddr)
 
 		var got []uint16
@@ -457,7 +481,7 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 			}
 		}()
 		<-done
-		time.Sleep(drainWait)
+		waitFor(bursts-1, deliverWait)
 		close(stop)
 		<-collected
 		require.Equal(t, 1, front.Moves(), "the front moved the peer")

@@ -60,9 +60,9 @@ eventually	internal/dmr/mmdvm_slow_redis_integration_test.go	2	baseline of 2026-
 sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/modem_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/modem_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/move_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/move_integration_test.go	16	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/move_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
+sleep	internal/dmr/move_integration_test.go	2	pace of the call, one burst each rotationInterval as a radio sends it, and a 5 ms pause after the keepalive that makes the front move the peer, before the burst at the move
+timer	internal/dmr/move_integration_test.go	1	the bound of the wait for a burst at the move: drainWait for the burst before it, and reportHold, the product hold of the handover report, for the burst at the move, which the test checks did not wait for the full hold
 sleep	internal/dmr/net_integration_test.go	7	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives

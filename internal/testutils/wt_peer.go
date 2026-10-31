@@ -35,6 +35,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/wtcert"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
@@ -54,11 +55,9 @@ func WebTransportOn() Backend {
 }
 
 // moveRetry is how often a WebTransportPeer that was told to move tries
-// another session, and moveFor how long it tries: the life of the resume
-// token of the drain notice, resumeTTL in internal/dmr/servers/mmdvm.
+// another session, until the resume token of the drain notice expires.
 const (
 	moveRetry = 100 * time.Millisecond
-	moveFor   = time.Minute
 	// moveOverlap is how long a WebTransportPeer keeps the old session
 	// after it moved.
 	moveOverlap = time.Second
@@ -235,7 +234,7 @@ func (p *WebTransportPeer) serve(sess *webtransport.Session) {
 // nobody reads.
 func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 	defer p.wg.Done()
-	ctx, cancel := context.WithTimeout(context.Background(), moveFor)
+	ctx, cancel := context.WithTimeout(context.Background(), mmdvm.ResumeTTL)
 	defer cancel()
 	for ctx.Err() == nil {
 		select {

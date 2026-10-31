@@ -25,6 +25,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -168,18 +169,27 @@ func Collect[T any](ch <-chan T, within time.Duration, done func([]T) bool) []T 
 // SendDMRD sends a raw DMRD voice packet to the server.
 func (c *MMDVMClient) SendDMRD(pkt models.Packet) error {
 	pkt.Repeater = uint(c.RepeaterID)
-	data := pkt.Encode()
-	_, err := c.conn.Write(data)
-	if err != nil {
+	if err := c.write(pkt.Encode()); err != nil {
 		return fmt.Errorf("writing DMRD packet: %w", err)
 	}
 	return nil
 }
 
+// write sends p, again once when the socket reports a refusal: that error
+// belongs to an earlier datagram, which an ICMP port unreachable answered
+// while the server restarted, and this one was not sent.
+func (c *MMDVMClient) write(p []byte) error {
+	_, err := c.conn.Write(p)
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		_, err = c.conn.Write(p)
+	}
+	return err //nolint:wrapcheck
+}
+
 // SendRaw sends p to the server as it is, for packets that SendDMRD cannot
 // build, such as DMRA, DMRG and malformed packets.
 func (c *MMDVMClient) SendRaw(p []byte) error {
-	if _, err := c.conn.Write(p); err != nil {
+	if err := c.write(p); err != nil {
 		return fmt.Errorf("writing raw packet: %w", err)
 	}
 	return nil

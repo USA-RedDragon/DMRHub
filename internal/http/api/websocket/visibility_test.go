@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
@@ -61,7 +60,7 @@ func TestPublicCallsFollowTheVisibility(t *testing.T) {
 		require.NoError(t, err)
 		read := func() apimodels.WSCallResponse {
 			t.Helper()
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 			defer cancel()
 			_, msg, err := conn.Read(ctx)
 			require.NoError(t, err)

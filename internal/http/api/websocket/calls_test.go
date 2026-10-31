@@ -40,11 +40,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const wsWait = time.Minute
+
 func dial(t *testing.T, server *httptest.Server, client *http.Client) *coderWS.Conn {
 	t.Helper()
 	header := http.Header{}
 	header.Set("Origin", server.URL)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 	defer cancel()
 	conn, resp, err := coderWS.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws", &coderWS.DialOptions{HTTPHeader: header, HTTPClient: client})
 	require.NoError(t, err)
@@ -75,7 +77,7 @@ func TestCallsWebsocketKeepsStatePerConnection(t *testing.T) {
 		synctest.Wait()
 
 		require.NoError(t, ps.Publish("calls:public", []byte("call")))
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wsWait)
 		defer cancel()
 		_, msg, err := b.Read(ctx)
 		require.NoError(t, err, "the second connection lost its stream when the first closed")

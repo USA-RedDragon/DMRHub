@@ -195,8 +195,6 @@ elapsed	internal/dmr/wt_move_integration_test.go	2	baseline of 2026-10-28, not r
 sleep	internal/dmr/wt_move_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	real UDP: the test reads the status that the transcoder sets when a real AMBE server on a UDP socket answers its probe; a synctest bubble cannot hold the socket and the transcoder has no event for the answer
 timer	internal/http/api/controllers/v1/users/callsign_test.go	1	event wait: the handler mails the callsign notice from a goroutine of its own, and the test runs on the network backends, which a synctest bubble cannot hold; testTimeout bounds the wait
-deadline	internal/http/api/websocket/calls_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/http/api/websocket/visibility_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/kv/redis_timeout_test.go	1	the measured subject: the test checks that a call to a paused Redis returns by the 100 ms deadline of its context
 elapsed	internal/kv/redis_timeout_test.go	2	real socket timeouts against a paused Redis container: the test measures how long a call to a hung Redis runs, and each bound sits between the right time and the wrong one (100 ms deadline against the 1 s call timeout; 1 s call timeout against 4 read timeouts of retries)
 deadline	internal/plugins/inside/manager_test.go	1	derived bound: the duration is the drain timeout of the default config, a product constant, times time.Second

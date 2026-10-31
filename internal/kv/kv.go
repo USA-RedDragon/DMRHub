@@ -53,6 +53,9 @@ type KV interface {
 	// LRange returns all elements of the list stored under key, oldest
 	// first, without changing it. A list that does not exist is empty.
 	LRange(ctx context.Context, key string) ([][]byte, error)
+	// DeleteIfEqual deletes key only if its value equals value, in one
+	// step, and reports whether it deleted it.
+	DeleteIfEqual(ctx context.Context, key string, value []byte) (bool, error)
 	Close() error
 }
 

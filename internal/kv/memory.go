@@ -20,6 +20,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -298,6 +299,23 @@ func (kv inMemoryKV) LRange(_ context.Context, key string) ([][]byte, error) {
 		return nil, nil
 	}
 	return decodeListEntries(value.value), nil
+}
+
+func (kv inMemoryKV) DeleteIfEqual(_ context.Context, key string, value []byte) (bool, error) {
+	start := time.Now()
+	defer func() {
+		kv.metrics.RecordKVOperation("deleteifequal", kvStatusSuccess, time.Since(start).Seconds())
+	}()
+
+	deleted := false
+	kv.kv.Compute(key, func(oldValue kvValue, loaded bool) (kvValue, xsync.ComputeOp) {
+		if !loaded || (!oldValue.ttl.IsZero() && oldValue.ttl.Before(time.Now())) || !bytes.Equal(oldValue.value, value) {
+			return oldValue, xsync.CancelOp
+		}
+		deleted = true
+		return kvValue{}, xsync.DeleteOp
+	})
+	return deleted, nil
 }
 
 // encodeListEntry encodes a single entry as [4-byte big-endian length][data].

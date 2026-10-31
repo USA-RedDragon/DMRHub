@@ -208,6 +208,16 @@ func (kv *redisKV) LRange(ctx context.Context, key string) ([][]byte, error) {
 	return result, nil
 }
 
+const deleteIfEqualScript = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0`
+
+func (kv *redisKV) DeleteIfEqual(ctx context.Context, key string, value []byte) (bool, error) {
+	n, err := redis.NewScript(deleteIfEqualScript).Run(ctx, kv.client, []string{key}, value).Int()
+	if err != nil {
+		return false, fmt.Errorf("redis deleteifequal %s: %w", key, err)
+	}
+	return n == 1, nil
+}
+
 func (kv *redisKV) Close() error {
 	if err := kv.client.Close(); err != nil {
 		return fmt.Errorf("redis close: %w", err)

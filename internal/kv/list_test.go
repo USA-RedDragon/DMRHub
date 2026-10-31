@@ -144,3 +144,59 @@ func TestKVLRangeOfAnExpiredListIsEmptyInMemory(t *testing.T) {
 		assert.Empty(t, got)
 	})
 }
+
+func TestKVDeleteIfEqualDeletesItsOwnValue(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "lease", []byte("mine")))
+		deleted, err := store.DeleteIfEqual(ctx, "lease", []byte("mine"))
+		require.NoError(t, err)
+		assert.True(t, deleted)
+		_, err = store.Get(ctx, "lease")
+		assert.ErrorIs(t, err, kv.ErrNotFound)
+	})
+}
+
+func TestKVDeleteIfEqualKeepsAValueThatAnotherWriterSet(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "lease", []byte("mine")))
+		require.NoError(t, store.Set(ctx, "lease", []byte("theirs")))
+		deleted, err := store.DeleteIfEqual(ctx, "lease", []byte("mine"))
+		require.NoError(t, err)
+		assert.False(t, deleted)
+		got, err := store.Get(ctx, "lease")
+		require.NoError(t, err)
+		assert.Equal(t, []byte("theirs"), got)
+	})
+}
+
+func TestKVDeleteIfEqualOfNoKey(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		deleted, err := store.DeleteIfEqual(context.Background(), "none", []byte("mine"))
+		require.NoError(t, err)
+		assert.False(t, deleted)
+	})
+}
+
+func TestKVDeleteIfEqualKeepsASetNXValueOfAnotherWriter(t *testing.T) {
+	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := context.Background()
+		ok, err := store.SetNX(ctx, "lease", "theirs", time.Minute)
+		require.NoError(t, err)
+		require.True(t, ok)
+		deleted, err := store.DeleteIfEqual(ctx, "lease", []byte("mine"))
+		require.NoError(t, err)
+		assert.False(t, deleted)
+		deleted, err = store.DeleteIfEqual(ctx, "lease", []byte("theirs"))
+		require.NoError(t, err)
+		assert.True(t, deleted)
+		ok, err = store.SetNX(ctx, "lease", "mine", time.Minute)
+		require.NoError(t, err)
+		assert.True(t, ok, "the key stayed after its owner deleted it")
+	})
+}

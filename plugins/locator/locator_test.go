@@ -24,8 +24,10 @@ import (
 	"math/rand/v2"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
@@ -220,85 +222,95 @@ func answers(t *testing.T, bursts []*pluginv1.Burst) []answer {
 
 func waitAnswers(t *testing.T, o *out, n int) []answer {
 	t.Helper()
-	require.Eventually(t, func() bool { return len(answers(t, o.sent())) >= n }, 5*time.Second, 50*time.Millisecond)
+	bubble.Eventually(t, func() bool { return len(answers(t, o.sent())) >= n }, 5*time.Second, 50*time.Millisecond)
 	time.Sleep(300 * time.Millisecond)
 	return answers(t, o.sent())
 }
 
 func TestALocationReportOfATrackedRadioIsReported(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
-	require.Eventually(t, func() bool { return len(o.reported()) == 1 }, 3*time.Second, 20*time.Millisecond)
-	p := o.reported()[0]
-	assert.Equal(t, uint32(radio), p.GetRadio())
-	assert.InDelta(t, 30.2672, p.GetLatitude(), 1e-4)
-	assert.InDelta(t, -97.7431, p.GetLongitude(), 1e-4)
-	assert.Equal(t, pluginv1.PositionFormat_POSITION_FORMAT_LRRP, p.GetFormat())
-	assert.Equal(t, uint32(2), p.GetSlot())
-	assert.Equal(t, uint32(service), p.GetService())
-	assert.InDelta(t, 10, p.GetAccuracyMeters(), 0)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
+		bubble.Eventually(t, func() bool { return len(o.reported()) == 1 }, 3*time.Second, 20*time.Millisecond)
+		p := o.reported()[0]
+		assert.Equal(t, uint32(radio), p.GetRadio())
+		assert.InDelta(t, 30.2672, p.GetLatitude(), 1e-4)
+		assert.InDelta(t, -97.7431, p.GetLongitude(), 1e-4)
+		assert.Equal(t, pluginv1.PositionFormat_POSITION_FORMAT_LRRP, p.GetFormat())
+		assert.Equal(t, uint32(2), p.GetSlot())
+		assert.Equal(t, uint32(service), p.GetService())
+		assert.InDelta(t, 10, p.GetAccuracyMeters(), 0)
+	})
 }
 
 func TestAReportOfAnUntrackedRadioIsNotReportedAndIsStopped(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
-	got := waitAnswers(t, o, 1)
-	require.Len(t, got, 1)
-	require.NotNil(t, got[0].lrrp)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[0].lrrp.Document)
-	assert.Equal(t, []byte{0, 0, 0, 7}, got[0].lrrp.Request.RequestID, "the request that the report answers")
-	assert.Empty(t, o.reported())
-	sent := o.sent()
-	assert.Equal(t, uint32(service), sent[0].GetSource())
-	assert.Equal(t, uint32(2), sent[0].GetSlot())
-	assert.Equal(t, enums.ColorCode(3), layer2.RawBurst(sent[0].GetPayload()).SlotType().ColorCode, "the color code of the radio")
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
+		got := waitAnswers(t, o, 1)
+		require.Len(t, got, 1)
+		require.NotNil(t, got[0].lrrp)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[0].lrrp.Document)
+		assert.Equal(t, []byte{0, 0, 0, 7}, got[0].lrrp.Request.RequestID, "the request that the report answers")
+		assert.Empty(t, o.reported())
+		sent := o.sent()
+		assert.Equal(t, uint32(service), sent[0].GetSource())
+		assert.Equal(t, uint32(2), sent[0].GetSlot())
+		assert.Equal(t, enums.ColorCode(3), layer2.RawBurst(sent[0].GetPayload()).SlotType().ColorCode, "the color code of the radio")
 
-	handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
-	time.Sleep(500 * time.Millisecond)
-	assert.Len(t, answers(t, o.sent()), 1, "one stop request each ten minutes")
+		handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), false))
+		time.Sleep(500 * time.Millisecond)
+		assert.Len(t, answers(t, o.sent()), 1, "one stop request each ten minutes")
+	})
 }
 
 func TestAPositionAtZeroZeroIsNotReported(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	handle(l, radioBursts(t, report(t, 0, 0, 7), false))
-	time.Sleep(500 * time.Millisecond)
-	assert.Empty(t, o.reported())
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		handle(l, radioBursts(t, report(t, 0, 0, 7), false))
+		time.Sleep(500 * time.Millisecond)
+		assert.Empty(t, o.reported())
+	})
 }
 
 func TestAConfirmedReportIsAnswered(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), true))
-	require.Eventually(t, func() bool { return len(o.sent()) > 0 }, 3*time.Second, 20*time.Millisecond)
-	ack := o.sent()[0]
-	assert.Equal(t, uint32(service), ack.GetSource())
-	assert.Equal(t, uint32(radio), ack.GetDestination())
-	assert.Equal(t, uint32(2), ack.GetSlot())
-	var b layer2.Burst
-	require.NoError(t, b.DecodeFromBytes(layer2.RawBurst(ack.GetPayload())))
-	dh, ok := b.Data.(*pdu.DataHeader)
-	require.True(t, ok, "the answer is a data header")
-	resp, ok := dh.AsResponse()
-	require.True(t, ok, "the answer is a response header")
-	assert.Equal(t, uint32(radio), resp.LLIDDestination)
-	assert.Equal(t, uint32(service), resp.LLIDSource)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 7), true))
+		bubble.Eventually(t, func() bool { return len(o.sent()) > 0 }, 3*time.Second, 20*time.Millisecond)
+		ack := o.sent()[0]
+		assert.Equal(t, uint32(service), ack.GetSource())
+		assert.Equal(t, uint32(radio), ack.GetDestination())
+		assert.Equal(t, uint32(2), ack.GetSlot())
+		var b layer2.Burst
+		require.NoError(t, b.DecodeFromBytes(layer2.RawBurst(ack.GetPayload())))
+		dh, ok := b.Data.(*pdu.DataHeader)
+		require.True(t, ok, "the answer is a data header")
+		resp, ok := dh.AsResponse()
+		require.True(t, ok, "the answer is a response header")
+		assert.Equal(t, uint32(radio), resp.LLIDDestination)
+		assert.Equal(t, uint32(service), resp.LLIDSource)
+	})
 }
 
 func TestARSRegistrationIsAcknowledged(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
-	got := waitAnswers(t, o, 1)
-	require.Len(t, got, 1, "an untracked radio gets the ack only")
-	require.NotNil(t, got[0].ars)
-	assert.Equal(t, ars.TypeAck, got[0].ars.Header.Type)
-	assert.False(t, got[0].ars.Header.AckRequired, "a successful registration")
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		got := waitAnswers(t, o, 1)
+		require.Len(t, got, 1, "an untracked radio gets the ack only")
+		require.NotNil(t, got[0].ars)
+		assert.Equal(t, ars.TypeAck, got[0].ars.Header.Type)
+		assert.False(t, got[0].ars.Header.AckRequired, "a successful registration")
+	})
 }
 
 // registered returns a Locator that tracks the radio every interval
@@ -317,14 +329,16 @@ func registered(t *testing.T, interval uint32) (*locator.Locator, *out, *lrrp.Me
 
 func TestARSRegistrationOfATrackedRadioStartsATriggeredRequest(t *testing.T) {
 	t.Parallel()
-	_, o, req := registered(t, 900)
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, req.Document)
-	assert.True(t, req.Request.Periodic)
-	assert.True(t, req.Request.HasInterval)
-	assert.Equal(t, uint32(900), req.Request.Interval)
-	assert.True(t, req.Request.HasRequestID)
-	last := o.sent()[len(o.sent())-1]
-	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
+	synctest.Test(t, func(t *testing.T) {
+		_, o, req := registered(t, 900)
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, req.Document)
+		assert.True(t, req.Request.Periodic)
+		assert.True(t, req.Request.HasInterval)
+		assert.Equal(t, uint32(900), req.Request.Interval)
+		assert.True(t, req.Request.HasRequestID)
+		last := o.sent()[len(o.sent())-1]
+		assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
+	})
 }
 
 // TestARSRegistrationBeforeTheTrackedListStartsARequest registers a radio
@@ -333,76 +347,88 @@ func TestARSRegistrationOfATrackedRadioStartsATriggeredRequest(t *testing.T) {
 // registration must start the triggered request at once.
 func TestARSRegistrationBeforeTheTrackedListStartsARequest(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
-	require.Len(t, waitAnswers(t, o, 1), 1, "the ack")
-	track(l, 900)
-	got := waitAnswers(t, o, 2)
-	require.Len(t, got, 2, "the tracked list did not start the request")
-	require.NotNil(t, got[1].lrrp)
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
-	assert.Equal(t, uint32(900), got[1].lrrp.Request.Interval)
-	last := o.sent()[len(o.sent())-1]
-	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		require.Len(t, waitAnswers(t, o, 1), 1, "the ack")
+		track(l, 900)
+		got := waitAnswers(t, o, 2)
+		require.Len(t, got, 2, "the tracked list did not start the request")
+		require.NotNil(t, got[1].lrrp)
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+		assert.Equal(t, uint32(900), got[1].lrrp.Request.Interval)
+		last := o.sent()[len(o.sent())-1]
+		assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with")
+	})
 }
 
 func TestARSDeregistrationStopsTheTriggeredRequest(t *testing.T) {
 	t.Parallel()
-	l, o, req := registered(t, 600)
-	bursts := radioBursts(t, registration(t, ars.TypeDeviceDeregistration), false)
-	handle(l, bursts)
-	got := waitAnswers(t, o, 3)
-	require.Len(t, got, 3)
-	require.NotNil(t, got[2].lrrp)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
-	assert.Equal(t, req.Request.RequestID, got[2].lrrp.Request.RequestID)
+	synctest.Test(t, func(t *testing.T) {
+		l, o, req := registered(t, 600)
+		bursts := radioBursts(t, registration(t, ars.TypeDeviceDeregistration), false)
+		handle(l, bursts)
+		got := waitAnswers(t, o, 3)
+		require.Len(t, got, 3)
+		require.NotNil(t, got[2].lrrp)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+		assert.Equal(t, req.Request.RequestID, got[2].lrrp.Request.RequestID)
+	})
 }
 
 func TestTurningTrackingOffSendsAStopWhereTheRequestWent(t *testing.T) {
 	t.Parallel()
-	l, o, req := registered(t, 600)
-	l.SetTracking(tracking(false, 600))
-	got := waitAnswers(t, o, 3)
-	require.Len(t, got, 3)
-	require.NotNil(t, got[2].lrrp)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
-	assert.Equal(t, req.Request.RequestID, got[2].lrrp.Request.RequestID)
-	last := o.sent()[len(o.sent())-1]
-	assert.Equal(t, uint32(service), last.GetSource())
-	assert.Equal(t, uint32(2), last.GetSlot())
+	synctest.Test(t, func(t *testing.T) {
+		l, o, req := registered(t, 600)
+		l.SetTracking(tracking(false, 600))
+		got := waitAnswers(t, o, 3)
+		require.Len(t, got, 3)
+		require.NotNil(t, got[2].lrrp)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+		assert.Equal(t, req.Request.RequestID, got[2].lrrp.Request.RequestID)
+		last := o.sent()[len(o.sent())-1]
+		assert.Equal(t, uint32(service), last.GetSource())
+		assert.Equal(t, uint32(2), last.GetSlot())
+	})
 }
 
 func TestARadioMissingFromTheTrackedListIsStopped(t *testing.T) {
 	t.Parallel()
-	l, o, _ := registered(t, 600)
-	l.SetTracked(nil)
-	got := waitAnswers(t, o, 3)
-	require.Len(t, got, 3)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+	synctest.Test(t, func(t *testing.T) {
+		l, o, _ := registered(t, 600)
+		l.SetTracked(nil)
+		got := waitAnswers(t, o, 3)
+		require.Len(t, got, 3)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+	})
 }
 
 func TestANewIntervalSendsAStopAndARequestWithIt(t *testing.T) {
 	t.Parallel()
-	l, o, req := registered(t, 600)
-	l.SetTracking(tracking(true, 1800))
-	got := waitAnswers(t, o, 4)
-	require.Len(t, got, 4)
-	require.NotNil(t, got[2].lrrp)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
-	require.NotNil(t, got[3].lrrp)
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
-	assert.Equal(t, uint32(1800), got[3].lrrp.Request.Interval)
-	assert.NotEqual(t, req.Request.RequestID, got[3].lrrp.Request.RequestID)
+	synctest.Test(t, func(t *testing.T) {
+		l, o, req := registered(t, 600)
+		l.SetTracking(tracking(true, 1800))
+		got := waitAnswers(t, o, 4)
+		require.Len(t, got, 4)
+		require.NotNil(t, got[2].lrrp)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document)
+		require.NotNil(t, got[3].lrrp)
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
+		assert.Equal(t, uint32(1800), got[3].lrrp.Request.Interval)
+		assert.NotEqual(t, req.Request.RequestID, got[3].lrrp.Request.RequestID)
+	})
 }
 
 func TestATrackingChangeOfARadioWithNoOpenRequestSendsNothing(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	l.SetTracking(tracking(true, 1800))
-	l.SetTracking(tracking(false, 1800))
-	time.Sleep(300 * time.Millisecond)
-	assert.Empty(t, o.sent())
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		l.SetTracking(tracking(true, 1800))
+		l.SetTracking(tracking(false, 1800))
+		time.Sleep(300 * time.Millisecond)
+		assert.Empty(t, o.sent())
+	})
 }
 
 func heardOften(l *locator.Locator, stop chan struct{}) {
@@ -418,78 +444,90 @@ func heardOften(l *locator.Locator, stop chan struct{}) {
 
 func TestASilentTrackedRadioThatIsHeardIsAskedAgain(t *testing.T) {
 	t.Parallel()
-	l, o, _ := registered(t, 1)
-	stop := make(chan struct{})
-	defer close(stop)
-	go heardOften(l, stop)
-	got := waitAnswers(t, o, 4)
-	require.GreaterOrEqual(t, len(got), 4)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document, "the silent request is stopped")
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
+	synctest.Test(t, func(t *testing.T) {
+		l, o, _ := registered(t, 1)
+		stop := make(chan struct{})
+		defer close(stop)
+		go heardOften(l, stop)
+		got := waitAnswers(t, o, 4)
+		require.GreaterOrEqual(t, len(got), 4)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document, "the silent request is stopped")
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
+	})
 }
 
 func TestASilentRadioThatIsNotHeardIsNotAskedAgain(t *testing.T) {
 	t.Parallel()
-	_, o, _ := registered(t, 1)
-	time.Sleep(5 * time.Second)
-	assert.Len(t, answers(t, o.sent()), 2)
+	synctest.Test(t, func(t *testing.T) {
+		_, o, _ := registered(t, 1)
+		time.Sleep(5 * time.Second)
+		assert.Len(t, answers(t, o.sent()), 2)
+	})
 }
 
 func TestAHeardTrackedRadioWithNoRequestIsAskedOnce(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	stop := make(chan struct{})
-	defer close(stop)
-	go heardOften(l, stop)
-	got := waitAnswers(t, o, 1)
-	require.Len(t, got, 1)
-	require.NotNil(t, got[0].lrrp)
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[0].lrrp.Document)
-	assert.Equal(t, uint32(600), got[0].lrrp.Request.Interval)
-	first := o.sent()[0]
-	assert.Equal(t, uint32(5050), first.GetSource(), "from the plugin's first ID")
-	assert.Equal(t, uint32(2), first.GetSlot())
-	assert.Equal(t, enums.ColorCode(3), layer2.RawBurst(first.GetPayload()).SlotType().ColorCode)
-	time.Sleep(2 * time.Second)
-	assert.Len(t, answers(t, o.sent()), 1)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		stop := make(chan struct{})
+		defer close(stop)
+		go heardOften(l, stop)
+		got := waitAnswers(t, o, 1)
+		require.Len(t, got, 1)
+		require.NotNil(t, got[0].lrrp)
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[0].lrrp.Document)
+		assert.Equal(t, uint32(600), got[0].lrrp.Request.Interval)
+		first := o.sent()[0]
+		assert.Equal(t, uint32(5050), first.GetSource(), "from the plugin's first ID")
+		assert.Equal(t, uint32(2), first.GetSlot())
+		assert.Equal(t, enums.ColorCode(3), layer2.RawBurst(first.GetPayload()).SlotType().ColorCode)
+		time.Sleep(2 * time.Second)
+		assert.Len(t, answers(t, o.sent()), 1)
+	})
 }
 
 func TestARestartedLocatorLearnsTheOpenRequestFromAReport(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 0xABCD), false))
-	require.Eventually(t, func() bool { return len(o.reported()) == 1 }, 3*time.Second, 20*time.Millisecond)
-	l.SetTracking(tracking(false, 600))
-	got := waitAnswers(t, o, 1)
-	require.Len(t, got, 1)
-	assert.Equal(t, lrrp.DocumentStopRequest, got[0].lrrp.Document)
-	assert.Equal(t, []byte{0, 0, 0xAB, 0xCD}, got[0].lrrp.Request.RequestID)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		handle(l, radioBursts(t, report(t, 30.2672, -97.7431, 0xABCD), false))
+		bubble.Eventually(t, func() bool { return len(o.reported()) == 1 }, 3*time.Second, 20*time.Millisecond)
+		l.SetTracking(tracking(false, 600))
+		got := waitAnswers(t, o, 1)
+		require.Len(t, got, 1)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[0].lrrp.Document)
+		assert.Equal(t, []byte{0, 0, 0xAB, 0xCD}, got[0].lrrp.Request.RequestID)
+	})
 }
 
 func TestTwoLocatorsUseDifferentRequestIDs(t *testing.T) {
 	t.Parallel()
-	_, _, one := registered(t, 600)
-	_, _, two := registered(t, 600)
-	assert.NotEqual(t, one.Request.RequestID, two.Request.RequestID)
+	synctest.Test(t, func(t *testing.T) {
+		_, _, one := registered(t, 600)
+		_, _, two := registered(t, 600)
+		assert.NotEqual(t, one.Request.RequestID, two.Request.RequestID)
+	})
 }
 
 func TestARegisteringRadioThatIsHeardGetsOneRequest(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 600)
-	bursts := radioBursts(t, registration(t, ars.TypeDeviceRegistration), false)
-	l.Handle(bursts[0])
-	l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3})
-	time.Sleep(1500 * time.Millisecond)
-	handle(l, bursts[1:])
-	waitAnswers(t, o, 2)
-	time.Sleep(time.Second)
-	got := answers(t, o.sent())
-	require.Len(t, got, 2, "the ack and one request")
-	assert.NotNil(t, got[0].ars)
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 600)
+		bursts := radioBursts(t, registration(t, ars.TypeDeviceRegistration), false)
+		l.Handle(bursts[0])
+		l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3})
+		time.Sleep(1500 * time.Millisecond)
+		handle(l, bursts[1:])
+		waitAnswers(t, o, 2)
+		time.Sleep(time.Second)
+		got := answers(t, o.sent())
+		require.Len(t, got, 2, "the ack and one request")
+		assert.NotNil(t, got[0].ars)
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+	})
 }
 
 // TestARadioThatIsHeardBeforeItsRegistrationIsAskedAgainLater hears a
@@ -500,39 +538,43 @@ func TestARegisteringRadioThatIsHeardGetsOneRequest(t *testing.T) {
 // once its request goes silent and it is heard.
 func TestARadioThatIsHeardBeforeItsRegistrationIsAskedAgainLater(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	track(l, 1)
-	time.Sleep(1500 * time.Millisecond)
-	l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3})
-	time.Sleep(100 * time.Millisecond)
-	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
-	got := waitAnswers(t, o, 2)
-	require.NotNil(t, got[0].ars, "the ack comes first")
-	n := len(got)
-	stop := make(chan struct{})
-	defer close(stop)
-	go heardOften(l, stop)
-	require.Eventually(t, func() bool { return len(answers(t, o.sent())) >= n+2 }, 10*time.Second, 50*time.Millisecond,
-		"the silent radio that is heard is not asked again")
-	got = answers(t, o.sent())
-	assert.Equal(t, lrrp.DocumentStopRequest, got[n].lrrp.Document, "the silent request is stopped")
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[n+1].lrrp.Document)
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 1)
+		time.Sleep(1500 * time.Millisecond)
+		l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3})
+		time.Sleep(100 * time.Millisecond)
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		got := waitAnswers(t, o, 2)
+		require.NotNil(t, got[0].ars, "the ack comes first")
+		n := len(got)
+		stop := make(chan struct{})
+		defer close(stop)
+		go heardOften(l, stop)
+		bubble.Eventually(t, func() bool { return len(answers(t, o.sent())) >= n+2 }, 10*time.Second, 50*time.Millisecond,
+			"the silent radio that is heard is not asked again")
+		got = answers(t, o.sent())
+		assert.Equal(t, lrrp.DocumentStopRequest, got[n].lrrp.Document, "the silent request is stopped")
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[n+1].lrrp.Document)
+	})
 }
 
 func TestARadioIsAskedFromTheIDItRegisteredWith(t *testing.T) {
 	t.Parallel()
-	l, o := newLocator(t)
-	handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
-	waitAnswers(t, o, 1)
-	track(l, 600)
-	stop := make(chan struct{})
-	defer close(stop)
-	go heardOften(l, stop)
-	require.Eventually(t, func() bool { return len(answers(t, o.sent())) >= 2 }, 15*time.Second, 50*time.Millisecond,
-		"the request comes after the 5 seconds the Locator leaves a radio that sent data alone")
-	got := answers(t, o.sent())
-	require.Len(t, got, 2, "the ack, then the request once the radio is tracked")
-	assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
-	last := o.sent()[len(o.sent())-1]
-	assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with, not the plugin's first")
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		waitAnswers(t, o, 1)
+		track(l, 600)
+		stop := make(chan struct{})
+		defer close(stop)
+		go heardOften(l, stop)
+		bubble.Eventually(t, func() bool { return len(answers(t, o.sent())) >= 2 }, 15*time.Second, 50*time.Millisecond,
+			"the request comes after the 5 seconds the Locator leaves a radio that sent data alone")
+		got := answers(t, o.sent())
+		require.Len(t, got, 2, "the ack, then the request once the radio is tracked")
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
+		last := o.sent()[len(o.sent())-1]
+		assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with, not the plugin's first")
+	})
 }

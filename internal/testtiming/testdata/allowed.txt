@@ -291,10 +291,8 @@ timer	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: repl
 elapsed	internal/wtcert/wtcert_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	plugins/locator/hub_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	plugins/locator/hub_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	plugins/locator/idle_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	plugins/locator/locator_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	plugins/locator/locator_test.go	10	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	plugins/locator/locator_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (waitAnswers)
+timer	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (heardOften)
 sleep	plugins/parrot/hub_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	plugins/parrot/hub_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	sdk/plugin/move_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

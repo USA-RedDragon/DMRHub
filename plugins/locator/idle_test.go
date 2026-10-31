@@ -21,6 +21,7 @@ package locator_test
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
@@ -29,19 +30,23 @@ import (
 
 func TestAnIdleLocatorDoesNotWake(t *testing.T) {
 	t.Parallel()
-	l, _ := newLocator(t)
-	time.Sleep(500 * time.Millisecond)
-	assert.Zero(t, locator.Wakes(l))
+	synctest.Test(t, func(t *testing.T) {
+		l, _ := newLocator(t)
+		time.Sleep(500 * time.Millisecond)
+		assert.Zero(t, locator.Wakes(l))
+	})
 }
 
 func TestALocatorWithATrackedRadioWakesOnlyWhenSomethingIsDue(t *testing.T) {
 	t.Parallel()
-	l, _, _ := registered(t, 600)
-	stop := make(chan struct{})
-	defer close(stop)
-	go heardOften(l, stop)
-	time.Sleep(time.Second)
-	before := locator.Wakes(l)
-	time.Sleep(time.Second)
-	assert.Equal(t, before, locator.Wakes(l))
+	synctest.Test(t, func(t *testing.T) {
+		l, _, _ := registered(t, 600)
+		stop := make(chan struct{})
+		defer close(stop)
+		go heardOften(l, stop)
+		time.Sleep(time.Second)
+		before := locator.Wakes(l)
+		time.Sleep(time.Second)
+		assert.Equal(t, before, locator.Wakes(l))
+	})
 }

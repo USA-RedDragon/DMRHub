@@ -32,6 +32,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const egressLeaseKey = "dmrhub:openbridge:egress"
+
 type replicaOB struct {
 	stack    *testutils.IntegrationStack
 	second   testutils.Replica
@@ -67,8 +69,13 @@ func startReplicaOB(t *testing.T, stack *testutils.IntegrationStack) replicaOB {
 		return c
 	}
 	r.on1, r.on2 = client(100001, stack.MMDVMAddr), client(100003, r.second.MMDVMAddr)
-	time.Sleep(settleDuration)
+	r.peerNoticeTaken(t)
 	return r
+}
+
+func (r replicaOB) peerNoticeTaken(t *testing.T) {
+	t.Helper()
+	takeNotice(t, r.stack.PubSub, r.second.Hub.OnPeerChange, "hub:peers:changed")
 }
 
 func portOf(t *testing.T, addr string) int {
@@ -86,7 +93,7 @@ func (r replicaOB) leader(t *testing.T) (*openbridge.Server, string, string) {
 	t.Helper()
 	var l *openbridge.Server
 	var la, oa string
-	require.Eventually(t, func() bool {
+	waitFor(t, "exactly one replica holds the egress lease", func() bool {
 		one, two := r.stack.OpenBridgeServer.IsEgressLeader(), r.second.OpenBridgeServer.IsEgressLeader()
 		switch {
 		case one && !two:
@@ -97,14 +104,14 @@ func (r replicaOB) leader(t *testing.T) (*openbridge.Server, string, string) {
 			return false
 		}
 		return true
-	}, 2*openbridge.EgressLeaseTTL, 50*time.Millisecond, "exactly one replica holds the egress lease")
+	})
 	return l, la, oa
 }
 
 // TestOpenBridgeEgressFromOneReplica checks that a peer gets each call
 // once, from the replica that holds the egress lease, whichever replica
-// routed it, and that the other replica takes over within the lease time
-// when the holder stops.
+// routed it, and that the other replica takes over when the holder stops,
+// which gives the lease up instead of letting it run out.
 func TestOpenBridgeEgressFromOneReplica(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
@@ -121,27 +128,22 @@ func TestOpenBridgeEgressFromOneReplica(t *testing.T) {
 			}
 		}
 
-		var survivor *testutils.MMDVMClient
+		survivor, other := r.on1, r.stack.OpenBridgeServer
 		if leader == r.stack.OpenBridgeServer {
-			survivor = r.on2
-		} else {
-			survivor = r.on1
+			survivor, other = r.on2, r.second.OpenBridgeServer
 		}
-		start := time.Now()
+		holder, err := stack.KV.Get(t.Context(), egressLeaseKey)
+		require.NoError(t, err)
 		require.NoError(t, leader.Stop(t.Context()))
-		var from int
-		for time.Since(start) < 3*openbridge.EgressLeaseTTL {
-			stream++
-			require.NoError(t, survivor.SendDMRD(makeGroupVoicePacket(1000001, 1, uint(stream), false)))
-			if got := dataOf(r.peer.DrainBridges(100*time.Millisecond), stream); len(got) > 0 {
-				from = got[0].From.Port
-				break
-			}
+		if now, err := stack.KV.Get(t.Context(), egressLeaseKey); err == nil {
+			assert.NotEqual(t, string(holder), string(now), "the holder that stopped gives up the lease")
 		}
-		gap := time.Since(start)
-		t.Logf("egress moved to the other replica after %s", gap.Round(time.Millisecond))
-		assert.Equal(t, portOf(t, otherAddr), from, "the other replica sends after the holder stops")
-		assert.Less(t, gap, openbridge.EgressLeaseTTL, "no traffic waits longer than the lease")
+		waitFor(t, "the other replica takes the egress lease", other.IsEgressLeader)
+		stream++
+		require.NoError(t, survivor.SendDMRD(makeGroupVoicePacket(1000001, 1, uint(stream), false)))
+		got := dataOf(r.peer.ReceiveBridges(deliverWait, func(b []testutils.ReceivedBridge) bool { return len(dataOf(b, stream)) > 0 }), stream)
+		require.NotEmpty(t, got, "the peer gets the call after the holder stops")
+		assert.Equal(t, portOf(t, otherAddr), got[0].From.Port, "the other replica sends after the holder stops")
 	})
 }
 
@@ -158,7 +160,7 @@ func TestOpenBridgeQuenchAcrossReplicas(t *testing.T) {
 		require.Len(t, dataOf(r.peer.DrainBridges(drainWait), 9801), 1, "the peer gets the stream before the quench")
 
 		require.NoError(t, r.peer.SendControlTo(otherAddr, dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 9801}))
-		require.Eventually(t, func() bool { return leader.IsQuenched(500002, 9801) }, handshakeWait, 10*time.Millisecond, "the holder of the lease did not get the quench")
+		waitFor(t, "the holder of the lease gets the quench", func() bool { return leader.IsQuenched(500002, 9801) })
 		for _, c := range []*testutils.MMDVMClient{r.on1, r.on2} {
 			require.NoError(t, c.SendDMRD(makeGroupVoicePacket(1000001, 1, 9801, false)))
 		}

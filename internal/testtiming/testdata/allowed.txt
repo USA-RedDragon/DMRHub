@@ -64,9 +64,7 @@ sleep	internal/dmr/net_integration_test.go	7	baseline of 2026-10-28, not reviewe
 timer	internal/dmr/net_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them
-elapsed	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/openbridge_replica_integration_test.go	1	pace, not a wait: one burst each 30 ms, so that the call lasts while the holder of the lease stops; a starved machine only spreads them
 eventually	internal/dmr/openbridge_slow_db_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/openbridge_slow_db_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/openbridge_slow_db_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -77,8 +75,7 @@ sleep	internal/dmr/peer_last_ping_integration_test.go	1	the window of the negati
 deadline	internal/dmr/plugin_drain_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/plugin_drain_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/plugin_drain_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/replica_change_notice_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/replica_change_notice_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/replica_change_notice_test.go	1	pace, not a wait: one burst each 60 ms in sendPrivateBursts, as a radio sends a call; a starved machine only spreads them
 sleep	internal/dmr/replica_config_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call
 eventually	internal/dmr/response_replica_integration_test.go	2	polls the call and message rows, which the call tracker writes with no event a test can wait on
 sleep	internal/dmr/response_replica_integration_test.go	1	pace, not a wait: 20 ms between the bursts of a data call, as a radio sends them

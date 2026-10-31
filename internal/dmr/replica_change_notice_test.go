@@ -96,11 +96,12 @@ func takeNotices(t *testing.T, ps pubsub.PubSub, watch map[string]func(func(uint
 func (n *noticeTaker) await(t *testing.T, topic string) {
 	t.Helper()
 	require.NoError(t, n.ps.Publish(topic, []byte("notice-test:"+strconv.Itoa(noticeMarker))))
-	select {
-	case <-n.taken[topic]:
-	case <-time.After(handshakeWait):
-		require.Failf(t, "replica B did not take the notice", "topic %s", topic)
-	}
+	require.Len(t, testutils.Collect(n.taken[topic], deliverWait, gotN[uint](1)), 1, "replica B did not take the notice of topic %s", topic)
+}
+
+func takeNotice(t *testing.T, ps pubsub.PubSub, on func(func(uint)) func(), topic string) {
+	t.Helper()
+	takeNotices(t, ps, map[string]func(func(uint)) func(){topic: on}).await(t, topic)
 }
 
 func adminRouter(t *testing.T, stack *testutils.IntegrationStack) (*gin.Engine, testutils.CookieJar) {
@@ -162,7 +163,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			"hub:peers:changed":      replicaB.Hub.OnPeerChange,
 			"hub:repeaters:changed":  replicaB.Hub.OnRepeaterChange,
 		})
-		time.Sleep(settleDuration)
+		notices.await(t, "hub:peers:changed")
 
 		func() {
 			sendGroupBursts(t, c1, 5, 9101, 2)
@@ -171,7 +172,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			notices.await(t, "hub:talkgroups:changed")
 			sendGroupBursts(t, c2, 5, 9102, 2)
-			time.Sleep(300 * time.Millisecond)
+			waitSubscribed(t, replicaB.Hub, 100002, 5, true)
 			c2.Drain(100 * time.Millisecond)
 			sendGroupBursts(t, c1, 5, 9103, 4)
 			assert.Positive(t, countDst(c2.Drain(noticeWait), 5), "a talkgroup made on replica A must route on replica B at once")
@@ -184,7 +185,10 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			notices.await(t, "hub:users:changed")
 			require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000004, 1, 9202, false)))
-			time.Sleep(300 * time.Millisecond)
+			waitFor(t, "replica B records where radio 1000004 was heard", func() bool {
+				_, err := stack.KV.Get(context.Background(), "dmrhub:lastheard:1000004")
+				return err == nil
+			})
 			c2.Drain(100 * time.Millisecond)
 			sendPrivateBursts(t, c1, 1000001, 1000004, 9203)
 			assert.Positive(t, countPrivate(c2.Drain(noticeWait), 1000004), "a user made on replica A must get private calls on replica B at once")

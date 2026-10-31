@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,21 +83,16 @@ func newHangPacer(t *testing.T) (*pacer, bubbleClock, *hangLog, *[]uint) {
 
 func (l *hangLog) next(t *testing.T, within time.Duration) hangSend {
 	t.Helper()
-	select {
-	case s := <-l.got:
-		return s
-	case <-time.After(within):
-		t.Fatalf("nothing was sent within %v", within)
-		return hangSend{}
-	}
+	return bubble.Receive(t, l.got, within, "a send")
 }
 
 func (l *hangLog) none(t *testing.T, why string) {
 	t.Helper()
+	l.clock.advance(300 * time.Millisecond)
 	select {
 	case s := <-l.got:
 		t.Fatalf("%c was sent: %s", s.tag, why)
-	case <-time.After(300 * time.Millisecond):
+	default:
 	}
 }
 

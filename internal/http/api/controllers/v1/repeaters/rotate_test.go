@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -71,35 +72,38 @@ func rotated(t *testing.T, body []byte) apimodels.RepeaterRotatePasswordResponse
 // hub tells every replica to end the sessions of the repeater.
 func TestAnOwnerRotatesThePasswordOfTheirRepeater(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	require.NoError(t, err)
-	defer tdb.CloseDB()
-	database := tdb.DB()
-	owner := testutils.SeedAccount(t, database, 3191868, "KI5VMF", "ki5vmf")
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801}, Type: models.RepeaterTypeMMDVM, Password: "oldPassword1", OwnerID: owner.ID}).Error)
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860}, Type: models.RepeaterTypeIPSC, Password: "0000000000000000000000000000000000003039", OwnerID: owner.ID}).Error)
-	var announced secretLog
-	defer tdb.Hub().OnRepeaterSecretChange(announced.add)()
-	jar := testutils.Login(t, router, "ki5vmf")
+	synctest.Test(t, func(t *testing.T) {
+		router, tdb, err := testutils.CreateTestDBRouter()
+		require.NoError(t, err)
+		defer tdb.CloseDB()
+		database := tdb.DB()
+		owner := testutils.SeedAccount(t, database, 3191868, "KI5VMF", "ki5vmf")
+		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801}, Type: models.RepeaterTypeMMDVM, Password: "oldPassword1", OwnerID: owner.ID}).Error)
+		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860}, Type: models.RepeaterTypeIPSC, Password: "0000000000000000000000000000000000003039", OwnerID: owner.ID}).Error)
+		var announced secretLog
+		defer tdb.Hub().OnRepeaterSecretChange(announced.add)()
+		jar := testutils.Login(t, router, "ki5vmf")
 
-	before := time.Now()
-	w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/repeaters/319186801/rotate-password", nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.Equal(t, map[string]bool{"password": true, "rotated_at": true}, testutils.JSONKeys(t, w.Body.Bytes()))
-	res := rotated(t, w.Body.Bytes())
-	require.Regexp(t, regexp.MustCompile(`^[A-Za-z0-9]{12}$`), res.Password)
-	require.NotEqual(t, "oldPassword1", res.Password)
-	require.Equal(t, res.Password, passwordOf(t, tdb, 319186801))
-	require.False(t, res.RotatedAt.Before(before.Truncate(time.Second)))
+		before := time.Now()
+		w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/repeaters/319186801/rotate-password", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.Equal(t, map[string]bool{"password": true, "rotated_at": true}, testutils.JSONKeys(t, w.Body.Bytes()))
+		res := rotated(t, w.Body.Bytes())
+		require.Regexp(t, regexp.MustCompile(`^[A-Za-z0-9]{12}$`), res.Password)
+		require.NotEqual(t, "oldPassword1", res.Password)
+		require.Equal(t, res.Password, passwordOf(t, tdb, 319186801))
+		require.False(t, res.RotatedAt.Before(before.Truncate(time.Second)))
 
-	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/repeaters/311860/rotate-password", nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	key := rotated(t, w.Body.Bytes())
-	require.Regexp(t, regexp.MustCompile(`^[0-9a-f]{40}$`), key.Password)
-	require.Equal(t, key.Password, passwordOf(t, tdb, 311860))
+		w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/repeaters/311860/rotate-password", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		key := rotated(t, w.Body.Bytes())
+		require.Regexp(t, regexp.MustCompile(`^[0-9a-f]{40}$`), key.Password)
+		require.Equal(t, key.Password, passwordOf(t, tdb, 311860))
 
-	require.Eventually(t, func() bool { return len(announced.list()) == 2 }, time.Second, 10*time.Millisecond)
-	require.Equal(t, []uint{319186801, 311860}, announced.list())
+		synctest.Wait()
+		require.Len(t, announced.list(), 2)
+		require.Equal(t, []uint{319186801, 311860}, announced.list())
+	})
 }
 
 // TestOnlyTheOwnerOrAnAdminRotatesAPassword checks who may rotate the
@@ -107,40 +111,44 @@ func TestAnOwnerRotatesThePasswordOfTheirRepeater(t *testing.T) {
 // may.
 func TestOnlyTheOwnerOrAnAdminRotatesAPassword(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	require.NoError(t, err)
-	defer tdb.CloseDB()
-	database := tdb.DB()
-	owner := testutils.SeedAccount(t, database, 3191868, "KI5VMF", "ki5vmf")
-	testutils.SeedAccount(t, database, 3191869, "N0CALL", "other")
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801}, Type: models.RepeaterTypeMMDVM, Password: "oldPassword1", OwnerID: owner.ID}).Error)
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311861}, Type: models.RepeaterTypeModem}).Error)
-	var announced secretLog
-	defer tdb.Hub().OnRepeaterSecretChange(announced.add)()
-	const path = "/api/v1/repeaters/319186801/rotate-password"
+	synctest.Test(t, func(t *testing.T) {
+		router, tdb, err := testutils.CreateTestDBRouter()
+		require.NoError(t, err)
+		defer tdb.CloseDB()
+		database := tdb.DB()
+		owner := testutils.SeedAccount(t, database, 3191868, "KI5VMF", "ki5vmf")
+		testutils.SeedAccount(t, database, 3191869, "N0CALL", "other")
+		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801}, Type: models.RepeaterTypeMMDVM, Password: "oldPassword1", OwnerID: owner.ID}).Error)
+		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311861}, Type: models.RepeaterTypeModem}).Error)
+		var announced secretLog
+		defer tdb.Hub().OnRepeaterSecretChange(announced.add)()
+		const path = "/api/v1/repeaters/319186801/rotate-password"
 
-	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, path, nil)
-	require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
-	w = testutils.Do(t, router, testutils.Login(t, router, "other"), http.MethodPost, path, nil)
-	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
-	require.Equal(t, "oldPassword1", passwordOf(t, tdb, 319186801))
-	require.Empty(t, announced.list())
+		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, path, nil)
+		require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+		w = testutils.Do(t, router, testutils.Login(t, router, "other"), http.MethodPost, path, nil)
+		require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+		require.Equal(t, "oldPassword1", passwordOf(t, tdb, 319186801))
+		synctest.Wait()
+		require.Empty(t, announced.list())
 
-	_, _, adminJar := testutils.LoginAdmin(t, router)
-	w = testutils.Do(t, router, adminJar, http.MethodPost, path, nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.NotEqual(t, "oldPassword1", passwordOf(t, tdb, 319186801))
+		_, _, adminJar := testutils.LoginAdmin(t, router)
+		w = testutils.Do(t, router, adminJar, http.MethodPost, path, nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.NotEqual(t, "oldPassword1", passwordOf(t, tdb, 319186801))
 
-	for _, c := range []struct {
-		path string
-		code int
-	}{
-		{"/api/v1/repeaters/311862/rotate-password", http.StatusNotFound},
-		{"/api/v1/repeaters/311861/rotate-password", http.StatusBadRequest},
-		{"/api/v1/repeaters/abc/rotate-password", http.StatusBadRequest},
-	} {
-		w := testutils.Do(t, router, adminJar, http.MethodPost, c.path, nil)
-		require.Equal(t, c.code, w.Code, "%s: %s", c.path, w.Body.String())
-	}
-	require.Eventually(t, func() bool { return len(announced.list()) == 1 }, time.Second, 10*time.Millisecond)
+		for _, c := range []struct {
+			path string
+			code int
+		}{
+			{"/api/v1/repeaters/311862/rotate-password", http.StatusNotFound},
+			{"/api/v1/repeaters/311861/rotate-password", http.StatusBadRequest},
+			{"/api/v1/repeaters/abc/rotate-password", http.StatusBadRequest},
+		} {
+			w := testutils.Do(t, router, adminJar, http.MethodPost, c.path, nil)
+			require.Equal(t, c.code, w.Code, "%s: %s", c.path, w.Body.String())
+		}
+		synctest.Wait()
+		require.Len(t, announced.list(), 1)
+	})
 }

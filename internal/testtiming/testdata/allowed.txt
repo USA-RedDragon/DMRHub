@@ -203,7 +203,6 @@ fixedport	internal/http/api/controllers/v1/peers/peers_test.go	19	baseline of 20
 fixedport	internal/http/api/controllers/v1/peers/rotate_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/plugins/plugins_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/http/api/controllers/v1/positions/settings_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/http/api/controllers/v1/repeaters/rotate_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/http/api/controllers/v1/users/callsign_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/http/api/controllers/v1/users/password_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/http/api/controllers/v1/users/settings_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

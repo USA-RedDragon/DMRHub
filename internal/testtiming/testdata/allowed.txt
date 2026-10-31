@@ -84,6 +84,7 @@ timer	internal/dmr/openbridge_enhanced_integration_test.go	1	baseline of 2026-10
 sleep	internal/dmr/openbridge_fbp_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/openbridge_integration_test.go	13	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/openbridge_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/openbridge_live_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/openbridge_live_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/openbridge_replica_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -97,6 +98,7 @@ sleep	internal/dmr/openbridge_slow_redis_integration_test.go	7	baseline of 2026-
 eventually	internal/dmr/peer_last_ping_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/peer_last_ping_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/peer_rotate_password_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/plugin_drain_integration_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/plugin_drain_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/plugin_drain_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/replica_change_notice_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -116,6 +118,7 @@ eventually	internal/dmr/rpto_integration_test.go	2	baseline of 2026-10-28, not r
 sleep	internal/dmr/rpto_integration_test.go	9	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
+deadline	internal/dmr/servers/ipsc/server_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
 elapsed	internal/dmr/servers/manager/drain_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/manager/drain_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -127,15 +130,21 @@ eventually	internal/dmr/servers/mmdvm/alias_test.go	1	baseline of 2026-10-28, no
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/handover_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/handover_internal_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/modem_login_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/options_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/mmdvm/options_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/outage_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/ping_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/mmdvm/ping_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/ping_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/mmdvm/rxtime_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/rxtime_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/mmdvm/rxtime_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/session_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/mmdvm/session_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/mmdvm/shutdown_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/servers/mmdvm/stop_backlog_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -144,8 +153,10 @@ timer	internal/dmr/servers/mmdvm/stop_backlog_test.go	1	baseline of 2026-10-28, 
 eventually	internal/dmr/servers/mmdvm/stop_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/servers/mmdvm/stop_internal_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/mmdvm/stop_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/mmdvm/webtransport_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/mmdvm/wtforward_internal_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/modem/probe_linux_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/servers/modem/pty_linux_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/modem/replicas_linux_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -180,13 +191,22 @@ sleep	internal/dmr/wt_forward_integration_test.go	2	baseline of 2026-10-28, not 
 elapsed	internal/dmr/wt_move_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/wt_move_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	real UDP: the test reads the status that the transcoder sets when a real AMBE server on a UDP socket answers its probe; a synctest bubble cannot hold the socket and the transcoder has no event for the answer
+deadline	internal/http/api/controllers/v1/plugins/inside_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/http/api/controllers/v1/users/callsign_test.go	1	event wait: the handler mails the callsign notice from a goroutine of its own, and the test runs on the network backends, which a synctest bubble cannot hold; testTimeout bounds the wait
+deadline	internal/http/api/websocket/calls_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/http/api/websocket/visibility_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/http/websocket/close_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/http/websocket/origin_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/http/websocket/ws_test.go	5	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/kv/redis_timeout_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/kv/redis_timeout_test.go	2	real socket timeouts against a paused Redis container: the test measures how long a call to a hung Redis runs, and each bound sits between the right time and the wrong one (100 ms deadline against the 1 s call timeout; 1 s call timeout against 4 read timeouts of retries)
+deadline	internal/plugins/inside/manager_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/plugins/inside/manager_test.go	21	real guest: each wait is for a WebAssembly guest in wazero to start, connect, echo, quit or stop; the guest runs real CPU and blocks in real ppoll syscalls, so a synctest bubble stops its clock (tried 2026-10-31) and no test clock stands in for it; the lease, Quiet and backoff deadlines around these waits step a fake clock
 timer	internal/plugins/inside/manager_test.go	1	event wait: passedSince waits for the reconcile event of a manager, bounded by DefaultTiming().Lease, as a manager that takes longer than its lease for a pass loses its plugins
 eventually	internal/plugins/inside/parrot_test.go	1	real guest: the wait is for the built-in parrot, a WebAssembly guest in wazero, to start and connect; it runs real CPU and blocks in real ppoll syscalls, which no test clock stands in for
 sleep	internal/plugins/inside/parrot_test.go	1	real guest: the parrot guest times its playback on its own real clock, so the test paces the bursts of the call as a radio does
 timer	internal/plugins/inside/parrot_test.go	1	real guest: the timer bounds the wait for the playback, which the parrot guest times on its own real clock
+deadline	internal/plugins/server_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/plugins/wasm/engine_test.go	2	real guest: the waits are for a WebAssembly guest in wazero to connect and to log its panic; the guest runs real CPU and blocks in real ppoll syscalls, which neither a synctest bubble nor a test clock can stand in for
 timer	internal/plugins/wasm/engine_test.go	3	real guest: next waits for a guest to echo and the panic test for a guest to end on its own, which no test clock stands in for; the spin test ticks once per CPU window and fails only when the guest used more CPU than its share of every window that passed, so its bound follows the guest CPU time, not the wall clock
 eventually	internal/plugins/wasm/share_test.go	1	real guest: the meter must see both guests block in their real poll_oneoff, which no test clock can stand in for
@@ -213,6 +233,7 @@ timer	internal/stress/repro_test.go	1	release stress battery (stress build tag, 
 elapsed	internal/stress/rig_test.go	8	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 sleep	internal/stress/rig_test.go	6	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 236, 253, 305, 329, 543 are settle waits between stress phases; should become an event wait (open item)
 timer	internal/stress/rig_test.go	2	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
+deadline	internal/stress/sampler_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/stress/sampler_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 timer	internal/stress/sampler_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 elapsed	internal/stress/transport_test.go	5	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
@@ -221,19 +242,24 @@ timer	internal/stress/transport_test.go	2	release stress battery (stress build t
 elapsed	internal/stress/web_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 sleep	internal/stress/web_test.go	3	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 101, 161, 187 are settle waits between stress phases; should become an event wait (open item)
 sleep	internal/testutils/ambeserver.go	2	protocol pacing of the fake AMBE server: the sleeps model the reply delay of a real device, which the tests set on purpose
+deadline	internal/testutils/ambeserver_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/testutils/backends.go	5	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
 timer	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
 elapsed	internal/testutils/clockstep/clockstep_linux.go	1	checks a real wall-clock step: Step moves the wall clock of the VM and verifies that it moved by d; only a real clock can show that
 timer	internal/testutils/droidstar.go	1	event wait: WaitLine wakes on each new line of the external DroidStar process; the timer only ends a wait that fails
 pickport	internal/testutils/freeport_test.go	1	tests FreeUDPPort itself
+deadline	internal/testutils/front_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/hubdelivery.go	1	negative window: GroupBurstReaches is for checks that a burst does not arrive, where a slow machine can only hide a fault; positive checks use RequireGroupBurst, an event wait
 elapsed	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/ipsc_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/ipsc_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/testutils/live.go	1	data: http://localhost:3005 is the canonical host of the config, not a socket
 pickport	internal/testutils/live.go	4	a live config must name its server ports (the live-config tests change and lock them), so :0 cannot be used; FreeUDPPort picks below the ephemeral range and the replica tries other ports on EADDRINUSE
+deadline	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/mmdvm_client.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+deadline	internal/testutils/openbridge_client.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/openbridge_client.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/plugins.go	1	negative window: ServeIgnoresUnknownMessages checks that serve does not end within 500 ms of an unknown message; serve gives no sign that it handled it, and a slow machine can only hide a fault, never fail the test
 elapsed	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -241,7 +267,9 @@ timer	internal/testutils/session_peer.go	3	baseline of 2026-10-28, not reviewed:
 elapsed	internal/testutils/starvation.go	2	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
 sleep	internal/testutils/starvation.go	1	measurement, not a wait: the starvation probe sleeps in steps and times how late each wakes to measure CPU starvation
 timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
+deadline	internal/testutils/wsclient_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails
+deadline	internal/testutils/wt_peer.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/testutils/wt_peer.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/wt_peer.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -249,3 +277,4 @@ sleep	plugins/locator/hub_test.go	2	radio pacing: the bursts go into a hub on th
 sleep	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (waitAnswers)
 timer	plugins/locator/locator_test.go	1	virtual time: the helper runs only in the synctest bubbles of the tests of this file, which the check cannot see from its body (heardOften)
 sleep	plugins/parrot/hub_test.go	1	radio pacing: the bursts of the captured call go into a hub on the real clock one burst time apart, as a radio sends them; the wait for the reply is an event
+deadline	sdk/plugin/stdio_internal_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

@@ -52,6 +52,7 @@ func classes() []class {
 		{"timer", regexp.MustCompile(`(time\.After\(|time\.NewTimer\(|time\.NewTicker\(|time\.Tick\()`)},
 		{"fixedport", regexp.MustCompile(`(127\.0\.0\.1:\d{2,5}|localhost:\d{2,5}|"\:\d{3,5}"|Port\s*[:=]\s*\d{3,5}\b)`)},
 		{"pickport", regexp.MustCompile(`\b(FreeUDPPort|FreeTCPPort|freePort)\(`)},
+		{"deadline", regexp.MustCompile(`(\bcontext\.With(Timeout|Deadline)|\.Set(Read|Write)?Deadline)\(.*\btime\.(Nanosecond|Microsecond|Millisecond|Second|Minute|Hour)\b`)},
 	}
 }
 
@@ -254,7 +255,8 @@ func TestX(t *testing.T) {
 
 // TestNoNewWallClockWaits fails on each site in a test, or in
 // internal/testutils, that sleeps, bounds a wait with a wall-clock timeout,
-// measures elapsed time, starts a timer or names a port, past the count
+// measures elapsed time, starts a timer, names a port or sets a context or
+// socket deadline of a literal duration, past the count
 // that testdata/allowed.txt allows for its class and file. It also fails
 // when a file has fewer such sites than allowed, so that the list shrinks
 // with each fix. DMRHUB_TIMING_ALLOWED=write writes the list from the tree,
@@ -300,4 +302,26 @@ func TestX(t *testing.T) {
 	counts, err = scanFile(classes(), "x_test.go", []byte(listens))
 	require.NoError(t, err)
 	require.Equal(t, map[string]int{"fixedport": 2}, counts)
+}
+
+// TestADeadlineCountsWhenItsDurationIsALiteral counts the context and
+// socket deadlines of a source: those with a literal duration count, and
+// one with a named bound does not.
+func TestADeadlineCountsWhenItsDurationIsALiteral(t *testing.T) {
+	t.Parallel()
+	data := []byte(`package x_test
+
+func TestX(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	_, _ = context.WithDeadline(ctx, time.Now().Add(2*time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Minute))
+	wait, stop := context.WithTimeout(ctx, deliveryWait)
+	_ = conn.SetReadDeadline(time.Now().Add(readTimeout))
+}
+`)
+	counts, err := scanFile(classes(), "x_test.go", data)
+	require.NoError(t, err)
+	require.Equal(t, 5, counts["deadline"])
 }

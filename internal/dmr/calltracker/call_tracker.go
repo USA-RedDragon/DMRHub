@@ -788,7 +788,7 @@ func (c *CallTracker) step(k pair, what string, op matchOp) (stepResult, error) 
 			if a.OwnRow == 0 || after.winner[a.Stream] == 0 {
 				continue
 			}
-			if op.answer == nil || a.Stream != op.answer.Stream {
+			if op.answer == nil || a.OwnRow != op.answer.OwnRow {
 				res.drops = append(res.drops, a.OwnRow)
 			}
 			a.OwnRow = 0

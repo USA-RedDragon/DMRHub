@@ -421,3 +421,30 @@ func TestAFinishThatRacesASettleKeepsTheSettleAcrossReplicas(t *testing.T) {
 		assert.Equal(t, models.CallResponseACK, got[9512].Response)
 	})
 }
+
+// TestARepeatedAnswerBurstThatFindsARequestDropsItsOwnRow answers a radio
+// check before the check is heard, so the answer makes a row of its own,
+// and repeats the answer after the check started. The check takes the
+// answer, and the row of the answer must go. (Third review, F2.)
+func TestARepeatedAnswerBurstThatFindsARequestDropsItsOwnRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+		other := workerApart(repeaterA)
+		req, ans := radioCheckBursts(t)
+		back := newSender(t, ct, userB, userA, false, 9602)
+		back.repeater = other
+		back.data(ans)
+		ct.Flush()
+		time.Sleep(10 * time.Millisecond)
+		newSender(t, ct, userA, userB, false, 9601).data(req)
+		ct.Flush()
+		time.Sleep(10 * time.Millisecond)
+		back.data(ans)
+		ct.Flush()
+
+		got := byStream(waitDone(t, ct, database, 1))
+		assert.Equal(t, models.CallResponseACK, got[9601].Response, "the check has no ACK")
+		assert.NotContains(t, got, uint(9602), "the answer kept a row of its own")
+	})
+}

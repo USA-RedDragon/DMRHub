@@ -34,6 +34,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
@@ -90,24 +91,6 @@ func ipscEnds(b testutils.IPSCBurst) bool {
 	return u.Info.End() || u.Burst.Type() == ipscwire.BurstType(enums.DataTypeTerminatorWithLC)
 }
 
-func callUntilHeard(t *testing.T, c, to *testutils.MMDVMClient, src, tg, stream uint) []models.Packet {
-	t.Helper()
-	for range deliverWait / drainWait {
-		require.NoError(t, c.SendDMRD(makeGroupVoicePacket(src, tg, stream, false)))
-		require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(src, tg, stream, false)))
-		got := testutils.Collect(to.ReceivedPackets(), drainWait, func(got []models.Packet) bool {
-			p := got[len(got)-1]
-			return p.Dst == tg && isTerminator(p)
-		})
-		if len(got) > 0 && isTerminator(got[len(got)-1]) {
-			return got
-		}
-		stream++
-	}
-	t.Fatalf("repeater %d got no call to %d within %s", to.RepeaterID, tg, deliverWait)
-	return nil
-}
-
 func waitRecorded(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
 	t.Helper()
 	kv := servers.MakeKVClient(stack.KV)
@@ -134,6 +117,14 @@ func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func() {
 		t.Helper()
 		require.Len(t, testutils.Collect(ch, deliverWait, gotN[struct{}](1)), 1, "the change notice of %d took no effect", id)
 	}
+}
+
+func waitSubscribed(t *testing.T, h *hub.Hub, repeaterID, tg uint, want bool) {
+	t.Helper()
+	state := map[bool]string{true: "takes", false: "no longer takes"}[want]
+	waitFor(t, fmt.Sprintf("repeater %d %s talkgroup %d", repeaterID, state, tg), func() bool {
+		return h.Subscribes(repeaterID, tg) == want
+	})
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {
@@ -949,8 +940,12 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		require.NoError(t, c1.SendDMRD(term1))
 
 		require.NotEmpty(t, receiveCall(c2, 5), "C2 should receive the TG5 call of C1")
+		waitSubscribed(t, stack.Hub, 100001, 5, true)
 
-		pkts := callUntilHeard(t, c2, c1, 1000001, 5, 2002)
+		require.NoError(t, c2.SendDMRD(makeGroupVoiceHeaderPacket(1000001, 5, 2002, false)))
+		require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000001, 5, 2002, false)))
+		require.NoError(t, c2.SendDMRD(makeGroupVoiceTermPacket(1000001, 5, 2002, false)))
+		pkts := receiveCall(c1, 5)
 		for _, p := range pkts {
 			assert.Equal(t, uint(5), p.Dst, "C1: packet should be TG5")
 		}
@@ -961,11 +956,7 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		unlinkTerm := makePrivateVoiceTermPacket(4000, 3001)
 		require.NoError(t, c1.SendDMRD(unlinkTerm))
 
-		waitFor(t, "the unlink of TS1 of repeater 100001", func() bool {
-			var r models.Repeater
-			return stack.DB.First(&r, 100001).Error == nil && r.TS1DynamicTalkgroupID == nil
-		})
-		c1.Drain(500 * time.Millisecond)
+		waitSubscribed(t, stack.Hub, 100001, 5, false)
 
 		// Step 4: C2 sends another group voice to TG5 — C1 should NOT receive it.
 		header3 := makeGroupVoiceHeaderPacket(1000001, 5, 2050, false)

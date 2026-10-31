@@ -22,6 +22,7 @@ package mmdvm
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -32,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
@@ -44,53 +46,55 @@ import (
 
 func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 	t.Parallel()
-	const repeaterID, radio = uint(311862), uint(3191868)
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	memdb.Use(&cfg)
-	database, err := db.MakeDB(&cfg)
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
-	require.NoError(t, err)
-	ct := calltracker.NewCallTracker(database, ps, kvStore)
-	h := hub.NewHub(database, kvStore, ps, ct)
-	t.Cleanup(func() {
-		h.Stop(context.Background())
-		ct.Stop()
-		sqlDB, _ := database.DB()
-		_ = sqlDB.Close()
-		_ = ps.Close()
-		_ = kvStore.Close()
-	})
-	s := Server{clock: clock.Real(), DB: database, hub: h}
-
-	lcs, err := pdu.EncodeTalkerAlias("KI5VMF", layer3.TalkerAliasSevenBit)
-	require.NoError(t, err)
-	for i := range lcs {
-		a := dmrd.TalkerAlias{Repeater: uint32(repeaterID), Source: uint32(radio), Type: uint8(i), Data: lcs[i].RawPayload, Size: 19}
-		p, err := a.AppendBinary(nil)
+	synctest.Test(t, func(t *testing.T) {
+		const repeaterID, radio = uint(311862), uint(3191868)
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRA, ID: uint32(repeaterID), Packet: p}, time.Now())
-	}
-	pos := dmrd.Position{Repeater: uint32(repeaterID), Source: uint32(radio), Size: 14}
-	p, err := pos.AppendBinary(nil)
-	require.NoError(t, err)
-	s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRG, ID: uint32(repeaterID), Packet: p}, time.Now())
+		memdb.Use(&cfg)
+		database, err := db.MakeDB(&cfg)
+		require.NoError(t, err)
+		kvStore, err := kv.MakeKV(context.Background(), &cfg)
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+		require.NoError(t, err)
+		ct := calltracker.NewCallTracker(database, ps, kvStore)
+		h := hub.NewHub(database, kvStore, ps, ct)
+		t.Cleanup(func() {
+			h.Stop(context.Background())
+			ct.Stop()
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+			_ = ps.Close()
+			_ = kvStore.Close()
+		})
+		s := Server{clock: clock.Real(), DB: database, hub: h}
 
-	var calls []models.Call
-	require.Eventually(t, func() bool {
-		calls = nil
-		return database.Where("active = ?", false).Order("kind").Find(&calls).Error == nil && len(calls) == 2
-	}, 5*time.Second, 50*time.Millisecond)
-	assert.Equal(t, models.CallKindAlias, calls[0].Kind)
-	assert.Equal(t, "KI5VMF", calls[0].TalkerAlias)
-	assert.Equal(t, models.CallKindGPS, calls[1].Kind)
-	assert.True(t, calls[1].Partial)
-	for _, c := range calls {
-		assert.Equal(t, radio, c.SourceID)
-		assert.Equal(t, repeaterID, c.IngressID)
-		assert.Equal(t, models.RepeaterTypeMMDVM, c.Transport)
-	}
+		lcs, err := pdu.EncodeTalkerAlias("KI5VMF", layer3.TalkerAliasSevenBit)
+		require.NoError(t, err)
+		for i := range lcs {
+			a := dmrd.TalkerAlias{Repeater: uint32(repeaterID), Source: uint32(radio), Type: uint8(i), Data: lcs[i].RawPayload, Size: 19}
+			p, err := a.AppendBinary(nil)
+			require.NoError(t, err)
+			s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRA, ID: uint32(repeaterID), Packet: p}, time.Now())
+		}
+		pos := dmrd.Position{Repeater: uint32(repeaterID), Source: uint32(radio), Size: 14}
+		p, err := pos.AppendBinary(nil)
+		require.NoError(t, err)
+		s.data(context.Background(), dmrdsession.Output{Kind: dmrdsession.OutputData, Command: dmrd.CommandDMRG, ID: uint32(repeaterID), Packet: p}, time.Now())
+
+		var calls []models.Call
+		bubble.Eventually(t, func() bool {
+			calls = nil
+			return database.Where("active = ?", false).Order("kind").Find(&calls).Error == nil && len(calls) == 2
+		}, 5*time.Second, 50*time.Millisecond, "the alias and the position must be recorded as ended calls")
+		assert.Equal(t, models.CallKindAlias, calls[0].Kind)
+		assert.Equal(t, "KI5VMF", calls[0].TalkerAlias)
+		assert.Equal(t, models.CallKindGPS, calls[1].Kind)
+		assert.True(t, calls[1].Partial)
+		for _, c := range calls {
+			assert.Equal(t, radio, c.SourceID)
+			assert.Equal(t, repeaterID, c.IngressID)
+			assert.Equal(t, models.RepeaterTypeMMDVM, c.Transport)
+		}
+	})
 }

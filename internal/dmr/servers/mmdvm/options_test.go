@@ -325,11 +325,10 @@ func TestOptionsDialLinksDynamicTalkgroup(t *testing.T) {
 			for _, o := range tc.options {
 				require.Equal(t, dmrd.CommandRPTACK, r.options(optionsRepeater, o), "options %q", o)
 			}
-			require.Eventually(t, func() bool {
-				ts1, ts2 := r.dynamic(optionsRepeater)
-				return ts1 == tc.ts1 && ts2 == tc.ts2
-			}, 2*time.Second, 10*time.Millisecond, "dynamic talkgroups should become TS1 %d TS2 %d", tc.ts1, tc.ts2)
-			ts1, ts2 := r.dynamic(otherRepeater)
+			ts1, ts2 := r.dynamic(optionsRepeater)
+			require.Equal(t, tc.ts1, ts1, "TS1")
+			require.Equal(t, tc.ts2, ts2, "TS2")
+			ts1, ts2 = r.dynamic(otherRepeater)
 			require.Equal(t, uint(1), ts1, "the options must not change another repeater")
 			require.Equal(t, uint(2), ts2, "the options must not change another repeater")
 		})

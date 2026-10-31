@@ -22,6 +22,7 @@ package ipsc
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -69,6 +70,8 @@ func TestAPeerCallIsTimedFromWhenItsBurstsCame(t *testing.T) {
 	}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: uint(decodeUserT(t, call[0]).Destination)}).Error)
 	h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeIPSC, Role: hub.RoleRepeater})
+	sub := ps.Subscribe("calls")
+	t.Cleanup(func() { _ = sub.Close() })
 
 	s, srv := newTestServerWithUDP(t)
 	s.hub = h
@@ -81,10 +84,16 @@ func TestAPeerCallIsTimedFromWhenItsBurstsCame(t *testing.T) {
 		require.NoError(t, s.handlePacketAt(t.Context(), signTestPacket(t, raw), addr, came.Add(time.Duration(i)*period)))
 	}
 
+	for {
+		var c models.Call
+		require.NoError(t, json.Unmarshal(await(t, sub.Channel(), "the end of the call"), &c))
+		if !c.Active {
+			break
+		}
+	}
 	var calls []models.Call
-	require.Eventually(t, func() bool {
-		calls = nil
-		return database.Find(&calls).Error == nil && len(calls) == 1 && !calls[0].Active
-	}, 10*time.Second, 10*time.Millisecond, "the call tracker did not keep and end the call")
+	require.NoError(t, database.Find(&calls).Error)
+	require.Len(t, calls, 1, "the call tracker did not keep the call")
+	assert.False(t, calls[0].Active, "the call tracker did not end the call")
 	assert.InDelta(t, time.Duration(len(call)-1)*period, calls[0].Duration, float64(period), "the call must last from its first burst to its terminator")
 }

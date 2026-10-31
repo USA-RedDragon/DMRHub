@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -39,6 +40,7 @@ import (
 	configcontroller "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -175,54 +177,56 @@ func TestModemTestRefusesSettingsThatDoNotWork(t *testing.T) {
 // nothing.
 func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	local := &modem.Status{Replica: "r1", Port: "/dev/ttyAMA0", Baud: 115200, Error: "no version reply from the modem"}
-	api := newModemAPI(t, &modem.Replicas{Host: modemHost{st: local}, ID: "r1"})
-	code, out := api.test(t, modemBody(t, "/dev/ttyAMA0", 115200))
-	require.Equal(t, http.StatusOK, code)
-	require.True(t, out.Live)
-	require.NotNil(t, out.State)
-	assert.True(t, out.State.Self)
-	assert.Equal(t, *local, *out.State.Status)
-	assert.Zero(t, api.opens.Load())
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		local := &modem.Status{Replica: "r1", Port: "/dev/ttyAMA0", Baud: 115200, Error: "no version reply from the modem"}
+		api := newModemAPI(t, &modem.Replicas{Host: modemHost{st: local}, ID: "r1"})
+		code, out := api.test(t, modemBody(t, "/dev/ttyAMA0", 115200))
+		require.Equal(t, http.StatusOK, code)
+		require.True(t, out.Live)
+		require.NotNil(t, out.State)
+		assert.True(t, out.State.Self)
+		assert.Equal(t, *local, *out.State.Status)
+		assert.Zero(t, api.opens.Load())
 
-	store, err := kv.MakeKV(ctx, &config.Config{})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	cfg.DMR.Modem.Port, cfg.DMR.Modem.RepeaterID = "/dev/ttyACM0", 311860
-	cfg.DMR.Modem.RXFrequency, cfg.DMR.Modem.TXFrequency = 438800000, 438800000
-	srv := modem.NewServerWithOptions(&cfg, nil, nil, "test", modem.Options{KV: store, Replica: "r2", Reply: 200 * time.Millisecond,
-		Reopen: time.Hour, Retry: time.Hour, Open: func(string, int) (modem.Port, error) {
-			host, dev := net.Pipe()
-			f := modemtest.New(dev, 2)
-			t.Cleanup(f.Close)
-			return host, nil
-		}})
-	require.NoError(t, srv.Start(ctx))
-	t.Cleanup(func() { _ = srv.Stop(ctx) })
-	remote := newModemAPI(t, &modem.Replicas{KV: store, ID: "r1"})
-	require.Eventually(t, func() bool {
-		w := serve(t, remote.router, http.MethodGet, "/modem", nil, nil)
-		var st modem.State
-		return w.Code == http.StatusOK && json.Unmarshal(w.Body.Bytes(), &st) == nil && st.Status != nil && st.Status.Linked
-	}, 5*time.Second, 10*time.Millisecond)
-	code, out = remote.test(t, modemBody(t, "/dev/ttyACM0", 115200))
-	require.Equal(t, http.StatusOK, code)
-	require.True(t, out.Live)
-	assert.False(t, out.State.Self)
-	assert.Equal(t, "r2", out.State.Status.Replica)
-	assert.Equal(t, "MMDVM fake 20261026", out.State.Status.Firmware)
-	assert.Zero(t, remote.opens.Load())
+		store, err := kv.MakeKV(ctx, &config.Config{})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = store.Close() })
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		cfg.DMR.Modem.Port, cfg.DMR.Modem.RepeaterID = "/dev/ttyACM0", 311860
+		cfg.DMR.Modem.RXFrequency, cfg.DMR.Modem.TXFrequency = 438800000, 438800000
+		srv := modem.NewServerWithOptions(&cfg, nil, nil, "test", modem.Options{KV: store, Replica: "r2", Reply: 200 * time.Millisecond,
+			Reopen: time.Hour, Retry: time.Hour, Open: func(string, int) (modem.Port, error) {
+				host, dev := net.Pipe()
+				f := modemtest.New(dev, 2)
+				t.Cleanup(f.Close)
+				return host, nil
+			}})
+		require.NoError(t, srv.Start(ctx))
+		t.Cleanup(func() { _ = srv.Stop(ctx) })
+		remote := newModemAPI(t, &modem.Replicas{KV: store, ID: "r1"})
+		bubble.Eventually(t, func() bool {
+			w := serve(t, remote.router, http.MethodGet, "/modem", nil, nil)
+			var st modem.State
+			return w.Code == http.StatusOK && json.Unmarshal(w.Body.Bytes(), &st) == nil && st.Status != nil && st.Status.Linked
+		}, 5*time.Second, 10*time.Millisecond, "the modem of r2 is linked")
+		code, out = remote.test(t, modemBody(t, "/dev/ttyACM0", 115200))
+		require.Equal(t, http.StatusOK, code)
+		require.True(t, out.Live)
+		assert.False(t, out.State.Self)
+		assert.Equal(t, "r2", out.State.Status.Replica)
+		assert.Equal(t, "MMDVM fake 20261026", out.State.Status.Firmware)
+		assert.Zero(t, remote.opens.Load())
 
-	master, slave := openPTY(t)
-	fake := modemtest.New(master, 2)
-	t.Cleanup(fake.Close)
-	code, out = remote.test(t, modemBody(t, slave, 115200))
-	require.Equal(t, http.StatusOK, code)
-	require.False(t, out.Live, "a modem on another port does not hold this one")
-	assert.True(t, out.Result.Answered)
+		master, slave := openPTY(t)
+		fake := modemtest.New(master, 2)
+		t.Cleanup(fake.Close)
+		code, out = remote.test(t, modemBody(t, slave, 115200))
+		require.Equal(t, http.StatusOK, code)
+		require.False(t, out.Live, "a modem on another port does not hold this one")
+		assert.True(t, out.Result.Answered)
+	})
 }
 
 func TestGETModemWithNoModem(t *testing.T) {

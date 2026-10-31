@@ -195,8 +195,7 @@ sleep	internal/dmr/wt_forward_integration_test.go	2	baseline of 2026-10-28, not 
 elapsed	internal/dmr/wt_move_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/wt_move_integration_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmrdb/dmrdb_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/http/api/controllers/v1/config/modem_linux_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	real UDP: the test reads the status that the transcoder sets when a real AMBE server on a UDP socket answers its probe; a synctest bubble cannot hold the socket and the transcoder has no event for the answer
 fixedport	internal/http/api/controllers/v1/peers/codec2_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/peers/create_error_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/peers/peers_test.go	19	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

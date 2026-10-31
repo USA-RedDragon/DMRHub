@@ -76,6 +76,10 @@ type link struct {
 	// heard is when the server read the packet of the link that it
 	// handles.
 	heard time.Time
+	// active reports that the hub has the repeater of the link that the
+	// session accepts now already active, so that up does not activate it
+	// again.
+	active bool
 }
 
 func (s *Server) now() time.Duration {
@@ -577,31 +581,43 @@ func (s *Server) password(repeaterID uint) (string, error) {
 // password, so that the database never holds up the packets of other
 // repeaters, such as when every repeater logs in again at once. Each link
 // takes one config at a time; the session answers a repeated RPTC once.
+// The hub subscribes a repeater that logs in to its calls before the
+// RPTACK of its config, since the repeater expects every call from then on.
 func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	if l.looking {
 		return
 	}
 	l.looking = true
 	id, ep, d := l.m.ID(), l.ep, l.dialect
+	login := l.m.State() == dmrdsession.StateConfig
+	since := l.heard
+	if since.IsZero() {
+		since = s.clock.Now()
+	}
 	data = append([]byte(nil), data...)
 	s.lookups.Add(1)
 	go func() {
 		defer s.lookups.Done()
 		ok := s.takeConfig(ctx, id, ep, d, data)
+		active := ok && login && s.hub != nil &&
+			s.records.After(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		l.looking = false
-		if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id {
-			return
-		}
 		st := l.m.State()
-		if st != dmrdsession.StateConfig && st != dmrdsession.StateRunning {
+		if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id ||
+			(st != dmrdsession.StateConfig && st != dmrdsession.StateRunning) {
+			if active && s.byID[id] == nil {
+				s.records.Do(uint(id), func() { s.hub.DeactivateRepeater(ctx, uint(id)) })
+			}
 			return
 		}
 		now := s.now()
 		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 		if ok {
+			l.active = active
 			s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
+			l.active = false
 		} else {
 			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
 		}
@@ -668,7 +684,7 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 	s.stopBeacon(l)
 	ep, d := l.ep, l.dialect
 	l.beacon = s.clock.AfterFunc(beaconDelay, func() { s.sendBeacon(id, ep, d) })
-	if s.hub != nil {
+	if s.hub != nil && !l.active {
 		since := l.heard
 		if since.IsZero() {
 			since = s.clock.Now()

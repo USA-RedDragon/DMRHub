@@ -448,3 +448,69 @@ func TestSetInstanceIDFailsOnceAServerStarted(t *testing.T) {
 		assert.Equal(t, "replica-one", h.InstanceID())
 	})
 }
+
+// handOverWaitFor starts a HandOverWait of 1 s with a limit of 10 s on two
+// for repeater 100001, which one owns, runs after, and returns once the
+// wait ended. Its setup takes no time in a bubble.
+func handOverWaitFor(t *testing.T, draining bool, after func(r1 *servers.InstanceRegistry, store kv.KV)) {
+	t.Helper()
+	r, database, store := replicas(t, 2)
+	one, r1, two := r[0].hub, r[0].reg, r[1].hub
+	seedUser(t, database, 1000001, "N0CALL")
+	seedRepeater(t, database, 100001, 1000001)
+	ctx := context.Background()
+	one.ActivateRepeater(ctx, 100001)
+	if draining {
+		r1.MarkDraining(ctx)
+	}
+	expired, stop := two.HandOverWait(ctx, 100001, time.Second, 10*time.Second)
+	defer stop()
+	after(r1, store)
+	<-expired
+}
+
+func TestHandOverWaitLastsWhileTheOwnerDrains(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		handOverWaitFor(t, true, func(*servers.InstanceRegistry, kv.KV) {})
+		took := time.Since(start)
+		assert.Equal(t, 10*time.Second, took, "the wait ends at its limit while the owner drains")
+	})
+}
+
+func TestHandOverWaitEndsSoonAfterTheOwnerStops(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		handOverWaitFor(t, true, func(r1 *servers.InstanceRegistry, _ kv.KV) {
+			time.Sleep(3 * time.Second)
+			r1.Deregister(context.Background())
+		})
+		took := time.Since(start)
+		assert.InDelta(t, 4*time.Second, took, float64(100*time.Millisecond), "the wait ends 1 s after the owner deregistered")
+	})
+}
+
+func TestHandOverWaitEndsSoonAfterTheOwnerDied(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		handOverWaitFor(t, true, func(r1 *servers.InstanceRegistry, store kv.KV) {
+			time.Sleep(3 * time.Second)
+			require.NoError(t, store.Delete(context.Background(), "dmrhub:instance:"+r1.ID()))
+		})
+		took := time.Since(start)
+		assert.InDelta(t, 4*time.Second, took, float64(100*time.Millisecond), "the wait ends 1 s after the record of the owner expired")
+	})
+}
+
+func TestHandOverWaitOfAnOwnerThatServes(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		handOverWaitFor(t, false, func(*servers.InstanceRegistry, kv.KV) {})
+		took := time.Since(start)
+		assert.Equal(t, time.Second, took, "the wait for an owner that does not drain is the bare wait")
+	})
+}

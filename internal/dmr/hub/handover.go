@@ -132,6 +132,54 @@ func (h *Hub) TakeOver(ctx context.Context, repeaterID uint) bool {
 	return won
 }
 
+// ownerCheck is how often HandOverWait reads whether the replica that
+// hands a repeater over still drains.
+const ownerCheck = 100 * time.Millisecond
+
+// HandOverWait returns a channel that closes when a replica that takes the
+// repeater id over should stop waiting for the handover of the replica
+// that owns it now: wait after the KV store last showed that replica as
+// registered and draining, or limit after the call, whichever comes first.
+// A replica that a starved machine slows down still drains, so its
+// handover is waited for; one that stopped or died ends the wait that
+// long after. limit is at least wait. Call it before the claim. stop ends the
+// wait and frees it.
+func (h *Hub) HandOverWait(ctx context.Context, id uint, wait, limit time.Duration) (<-chan struct{}, func()) {
+	ctx = context.WithoutCancel(ctx)
+	owner, draining := h.leavingOwner(ctx, id)
+	expired := make(chan struct{})
+	quit := make(chan struct{})
+	var once sync.Once
+	stop := func() { once.Do(func() { close(quit) }) }
+	start := h.clock.Now()
+	end := start.Add(max(limit, wait))
+	go func() {
+		defer close(expired)
+		check := h.clock.NewTicker(ownerCheck)
+		defer check.Stop()
+		deadline := start.Add(wait)
+		for {
+			select {
+			case <-quit:
+				return
+			case <-h.done:
+				return
+			case <-check.C():
+			}
+			now := h.clock.Now()
+			if draining && servers.InstanceDraining(ctx, h.kv, owner) {
+				deadline = now.Add(wait)
+			} else {
+				draining = false
+			}
+			if !now.Before(deadline) || !now.Before(end) {
+				return
+			}
+		}
+	}()
+	return expired, stop
+}
+
 // OnClaimedElsewhere calls fn with each repeater that is active on this
 // hub when another replica claims it, and the time when the packet that
 // made the other replica claim it came in there. A server ends its own

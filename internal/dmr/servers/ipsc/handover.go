@@ -31,6 +31,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 )
 
@@ -56,8 +57,9 @@ import (
 // lands here in a call then does not wait handoverSettle and miss its slot
 // at the peer.
 const (
-	// handoverWait is the longest time this replica holds the packets to a
-	// peer that moved while it waits for the report.
+	// handoverWait is how long this replica holds the packets to a peer
+	// that moved for the report after the replica that served it no longer
+	// drains, or after the move when it never did.
 	handoverWait = time.Second
 	// handedGrace is how long after a handover the packets that it sent
 	// are not sent again when the hub of this replica hands them over too,
@@ -264,7 +266,7 @@ func unmarshalPackets(raws [][]byte) []models.Packet {
 // the reports of the replica that served it come or handoverWait passes.
 // since is when the packet of the peer that moved it here came. Call it
 // before the claim of the peer.
-func (s *IPSCServer) awaitHandover(id uint32, since time.Time) {
+func (s *IPSCServer) awaitHandover(ctx context.Context, id uint32, since time.Time) {
 	var early pubsub.Subscription
 	var wg sync.WaitGroup
 	wg.Go(func() { early = s.hub.AwaitHandOverEarly(models.RepeaterTypeIPSC, uint(id)) })
@@ -286,18 +288,18 @@ func (s *IPSCServer) awaitHandover(id uint32, since time.Time) {
 	}
 	s.moving[id] = newMoving()
 	s.movingMu.Unlock()
+	expired, stop := s.hub.HandOverWait(ctx, uint(id), handoverWait, servers.DrainLimit(s.cfg))
 	go func() {
 		defer func() { _ = sub.Close() }()
 		if early != nil {
 			defer func() { _ = early.Close() }()
 		}
-		t := s.clock.NewTimer(handoverWait)
-		defer t.Stop()
+		defer stop()
 		for {
 			var report *handoverReport
 			select {
 			case <-s.done:
-			case <-t.C():
+			case <-expired:
 				slog.Warn("No handover came for an IPSC peer that moved here", "peerID", id)
 			case b, ok := <-earlyCh:
 				earlyCh = nil

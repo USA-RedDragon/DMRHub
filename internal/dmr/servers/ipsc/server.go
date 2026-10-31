@@ -587,7 +587,7 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 	}
 	queued := s.peerJobs.Must(id, func() {
 		if s.hub.OwnerLeaving(ctx, id) {
-			s.awaitHandover(peer, since)
+			s.awaitHandover(ctx, peer, since)
 		}
 		s.hub.ActivateRepeaterSince(ctx, id, since)
 		if reply != nil {

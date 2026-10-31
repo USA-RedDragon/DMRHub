@@ -27,6 +27,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 )
 
 // A repeater that moves from a draining replica to this one reaches this
@@ -36,8 +37,9 @@ import (
 // sent after the move, and this one holds what it has for the repeater
 // until they come, then sends both in order, each once.
 const (
-	// handoverWait is the longest time this server holds the packets to a
-	// repeater that moved here while it waits for the handover.
+	// handoverWait is how long this server holds the packets to a
+	// repeater that moved here for the handover after the replica that
+	// served it no longer drains, or after the move when it never did.
 	handoverWait = time.Second
 	// handedGrace is how long after a handover the packets that it sent
 	// are not sent again when the hub of this replica hands them over too,
@@ -216,14 +218,14 @@ func (s *Server) awaitHandover(ctx context.Context, id uint) {
 	}
 	s.moving[id] = &movingRepeater{seen: map[packetKey]bool{}}
 	s.movingMu.Unlock()
+	expired, stop := s.hub.HandOverWait(ctx, id, handoverWait, servers.DrainLimit(s.config))
 	go func() {
 		defer func() { _ = sub.Close() }()
-		t := s.clock.NewTimer(handoverWait)
-		defer t.Stop()
+		defer stop()
 		var lost []models.Packet
 		select {
 		case <-s.done:
-		case <-t.C():
+		case <-expired:
 			slog.Warn("No handover came for a repeater that moved here", "repeaterID", id)
 		case b, ok := <-sub.Channel():
 			var h handover

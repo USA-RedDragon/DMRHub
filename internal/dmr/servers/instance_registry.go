@@ -29,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 )
 
@@ -118,6 +119,15 @@ func (r *InstanceRegistry) MarkDraining(ctx context.Context) {
 	if err := r.write(ctx); err != nil {
 		slog.Error("failed to mark the instance as draining", "instanceID", r.instanceID, "error", err)
 	}
+}
+
+// DrainLimit returns the drain timeout of cfg, the longest time that a
+// replica that stops drains, or 0 for a nil cfg.
+func DrainLimit(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return 0
+	}
+	return time.Duration(cfg.DMR.DrainTimeout) * time.Second
 }
 
 // InstanceDraining reports whether the instance id is registered and

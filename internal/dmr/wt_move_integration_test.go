@@ -164,6 +164,23 @@ func TestWebTransportMoveGetsWhatTheLoadBalancerLost(t *testing.T) {
 	})
 }
 
+// TestWebTransportMoveWaitsForAStarvedHandover drains the replica of a
+// browser hotspot while the load balancer holds the hotspot off the other
+// replica, so that a call in that time goes only to the draining replica.
+// The handover of the draining replica then comes after handoverWait on
+// the test clock of the replicas, as on a starved machine. The replica that
+// the hotspot moved to must wait for it while the other replica still
+// drains, and the hotspot must get every burst of the call.
+func TestWebTransportMoveWaitsForAStarvedHandover(t *testing.T) {
+	t.Parallel()
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			checkHeldWebTransportMove(t, be, time.Second, 2*time.Second)
+		})
+	}
+}
+
 // TestWebTransportMoveInTheSecondOfItsLogin drains the replica of a browser
 // hotspot in the second of its login, so that the drain notice, which is
 // whole seconds, is before the claim of the login. The draining replica

@@ -22,6 +22,7 @@ package kv_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -67,14 +68,16 @@ func TestKVGetNonexistent(t *testing.T) {
 
 func TestKVGetExpiredIsNotFound(t *testing.T) {
 	t.Parallel()
-	store := makeTestKV(t)
-	ctx := context.Background()
+	synctest.Test(t, func(t *testing.T) {
+		store := makeTestKV(t)
+		ctx := context.Background()
 
-	assert.NoError(t, store.Set(ctx, "expiring", []byte("x")))
-	assert.NoError(t, store.Expire(ctx, "expiring", time.Nanosecond))
-	time.Sleep(time.Millisecond)
-	_, err := store.Get(ctx, "expiring")
-	assert.ErrorIs(t, err, kv.ErrNotFound)
+		assert.NoError(t, store.Set(ctx, "expiring", []byte("x")))
+		assert.NoError(t, store.Expire(ctx, "expiring", time.Nanosecond))
+		time.Sleep(time.Millisecond)
+		_, err := store.Get(ctx, "expiring")
+		assert.ErrorIs(t, err, kv.ErrNotFound)
+	})
 }
 
 func TestKVHas(t *testing.T) {
@@ -110,26 +113,28 @@ func TestKVDelete(t *testing.T) {
 
 func TestKVExpire(t *testing.T) {
 	t.Parallel()
-	store := makeTestKV(t)
-	ctx := context.Background()
+	synctest.Test(t, func(t *testing.T) {
+		store := makeTestKV(t)
+		ctx := context.Background()
 
-	_ = store.Set(ctx, "expiring", []byte("val"))
+		_ = store.Set(ctx, "expiring", []byte("val"))
 
-	err := store.Expire(ctx, "expiring", 50*time.Millisecond)
-	assert.NoError(t, err)
+		err := store.Expire(ctx, "expiring", 50*time.Millisecond)
+		assert.NoError(t, err)
 
-	// Key should exist immediately
-	has, _ := store.Has(ctx, "expiring")
-	assert.True(t, has)
+		// Key should exist immediately
+		has, _ := store.Has(ctx, "expiring")
+		assert.True(t, has)
 
-	// Wait for expiry
-	time.Sleep(100 * time.Millisecond)
+		// Wait for expiry
+		time.Sleep(100 * time.Millisecond)
 
-	has, _ = store.Has(ctx, "expiring")
-	assert.False(t, has)
+		has, _ = store.Has(ctx, "expiring")
+		assert.False(t, has)
 
-	_, err = store.Get(ctx, "expiring")
-	assert.Error(t, err)
+		_, err = store.Get(ctx, "expiring")
+		assert.Error(t, err)
+	})
 }
 
 func TestKVExpireNonexistent(t *testing.T) {
@@ -441,22 +446,24 @@ func TestKVSetNXSecondCallFails(t *testing.T) {
 
 func TestKVSetNXExpiryAllowsReacquire(t *testing.T) {
 	t.Parallel()
-	store := makeTestKV(t)
-	ctx := context.Background()
+	synctest.Test(t, func(t *testing.T) {
+		store := makeTestKV(t)
+		ctx := context.Background()
 
-	acquired, err := store.SetNX(ctx, "setnx_exp", "v1", 100*time.Millisecond)
-	assert.NoError(t, err)
-	assert.True(t, acquired)
+		acquired, err := store.SetNX(ctx, "setnx_exp", "v1", 100*time.Millisecond)
+		assert.NoError(t, err)
+		assert.True(t, acquired)
 
-	// Wait for expiry.
-	time.Sleep(200 * time.Millisecond)
+		// Wait for expiry.
+		time.Sleep(200 * time.Millisecond)
 
-	// Should succeed again after TTL expires.
-	acquired, err = store.SetNX(ctx, "setnx_exp", "v2", 5*time.Second)
-	assert.NoError(t, err)
-	assert.True(t, acquired, "SetNX should succeed after TTL expiration")
+		// Should succeed again after TTL expires.
+		acquired, err = store.SetNX(ctx, "setnx_exp", "v2", 5*time.Second)
+		assert.NoError(t, err)
+		assert.True(t, acquired, "SetNX should succeed after TTL expiration")
 
-	val, err := store.Get(ctx, "setnx_exp")
-	assert.NoError(t, err)
-	assert.Equal(t, "v2", string(val))
+		val, err := store.Get(ctx, "setnx_exp")
+		assert.NoError(t, err)
+		assert.Equal(t, "v2", string(val))
+	})
 }

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/consts"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -69,8 +70,8 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	require.Error(t, err)
 
 	t.Logf("a call to a hung Redis returned after %v with a 100 ms deadline and after %v without one", withDeadline, withoutDeadline)
-	assert.Less(t, withDeadline, 300*time.Millisecond, "the call ignored the deadline of its context")
-	assert.Less(t, withoutDeadline, 2*time.Second, "the call without a deadline was not bounded")
+	assert.Less(t, withDeadline, consts.RedisCallTimeout, "the call ignored the deadline of its context and ran for the call timeout")
+	assert.Less(t, withoutDeadline, 2*consts.RedisCallTimeout, "the call without a deadline was not bounded by the call timeout, so each retry got its own read timeout")
 }
 
 func TestRedisGetMissingIsNotFound(t *testing.T) {

@@ -24,7 +24,6 @@ import (
 	"crypto/sha1" //nolint:gosec
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -55,7 +54,6 @@ func TestOpenBridgeInboundPeerToLocalRepeater(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		// Connect OpenBridge client
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
@@ -67,7 +65,7 @@ func TestOpenBridgeInboundPeerToLocalRepeater(t *testing.T) {
 		require.NoError(t, err)
 
 		// MMDVM client should receive the packet
-		pkts := mc.Drain(drainWait)
+		pkts := receiveCall(mc, 1)
 		assert.NotEmpty(t, pkts, "MMDVM client should receive packets from OpenBridge peer")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst)
@@ -94,7 +92,6 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obc.Close()
@@ -115,14 +112,8 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 		}
 
 		got := make([]uint, 0, count)
-		deadline := time.After(10 * time.Second)
-		for len(got) < count {
-			select {
-			case p := <-mc.ReceivedPackets():
-				got = append(got, p.Seq)
-			case <-deadline:
-				t.Fatalf("got %d of %d packets: %v", len(got), count, got)
-			}
+		for _, p := range testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](count)) {
+			got = append(got, p.Seq)
 		}
 		assert.Equal(t, want, got)
 	})
@@ -133,28 +124,22 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 // routes tg to the repeater of mc. It adds each stream it used to probes.
 func awaitPeerRoute(t *testing.T, obc *testutils.OpenBridgeClient, mc *testutils.MMDVMClient, tg uint, stream *uint, probes map[uint]bool) {
 	t.Helper()
-	deadline := time.After(handshakeWait)
-	for {
+	routed := func(got []models.Packet) bool {
+		p := got[len(got)-1]
+		return probes[p.StreamID] && p.Dst == tg
+	}
+	for range deliverWait / drainWait {
 		*stream++
 		probes[*stream] = true
 		for _, pkt := range []models.Packet{makeGroupVoicePacket(1000001, tg, *stream, false), makeGroupVoiceTermPacket(1000001, tg, *stream, false)} {
 			pkt.Repeater = 500001
 			require.NoError(t, obc.SendRawPacket(pkt))
 		}
-		retry := time.After(200 * time.Millisecond)
-		for waiting := true; waiting; {
-			select {
-			case p := <-mc.ReceivedPackets():
-				if probes[p.StreamID] && p.Dst == tg {
-					return
-				}
-			case <-retry:
-				waiting = false
-			case <-deadline:
-				require.Failf(t, "the hub did not route the talkgroup", "TG %d", tg)
-			}
+		if got := testutils.Collect(mc.ReceivedPackets(), drainWait, routed); len(got) > 0 && routed(got) {
+			return
 		}
 	}
+	require.Failf(t, "the hub did not route the talkgroup", "TG %d", tg)
 }
 
 // TestOpenBridgeInboundKeepsOrderAcrossStreams sends short calls from an
@@ -210,17 +195,12 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 
 		for tg, mc := range clients {
 			var got []sent
-			deadline := time.After(10 * time.Second)
-			for len(got) < len(want[tg]) {
-				select {
-				case p := <-mc.ReceivedPackets():
-					if !probes[p.StreamID] {
-						got = append(got, sent{p.StreamID, p.Seq})
-					}
-				case <-deadline:
-					t.Fatalf("TG %d: got %d of %d packets: %v", tg, len(got), len(want[tg]), got)
+			testutils.Collect(mc.ReceivedPackets(), deliverWait, func(pkts []models.Packet) bool {
+				if p := pkts[len(pkts)-1]; !probes[p.StreamID] {
+					got = append(got, sent{p.StreamID, p.Seq})
 				}
-			}
+				return len(got) >= len(want[tg])
+			})
 			assert.Equal(t, want[tg], got, "TG %d", tg)
 		}
 	})
@@ -254,17 +234,15 @@ func TestOpenBridgeOutboundLocalRepeaterToPeer(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		// MMDVM client sends group voice to TG1
 		voicePkt := makeGroupVoicePacket(1000001, 1, 8001, false)
 		require.NoError(t, mc.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 1, 8001, false)
 		require.NoError(t, mc.SendDMRD(termPkt))
 
 		// OpenBridge client should receive the packet with valid HMAC
-		pkts := obc.Drain(drainWait)
+		pkts := testutils.Collect(obc.ReceivedPackets(), deliverWait, callEnds(1))
 		assert.NotEmpty(t, pkts, "OpenBridge peer should receive outbound packets")
 		for _, p := range pkts {
 			assert.Equal(t, uint(1), p.Dst)
@@ -302,14 +280,13 @@ func TestOpenBridgePeerToPeerForwarding(t *testing.T) {
 		obcA := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obcA.Close()
 		require.NoError(t, obcA.Connect(stack.OpenBridgeAddr))
-		time.Sleep(settleDuration)
 
 		// OB client A sends a group call
 		err := obcA.SendGroupVoice(1000001, 1, 9001)
 		require.NoError(t, err)
 
 		// OB client B should receive the forwarded packet
-		pktsB := obcB.Drain(drainWait)
+		pktsB := testutils.Collect(obcB.ReceivedPackets(), deliverWait, callEnds(1))
 		assert.NotEmpty(t, pktsB, "Peer B should receive forwarded packets from Peer A")
 	})
 }
@@ -333,7 +310,6 @@ func TestOpenBridgeIngressRuleRejection(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obc.Close()
@@ -373,11 +349,9 @@ func TestOpenBridgeEgressRuleRejection(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		voicePkt := makeGroupVoicePacket(1000001, 1, 5001, false)
 		require.NoError(t, mc.SendDMRD(voicePkt))
-		time.Sleep(50 * time.Millisecond)
 		termPkt := makeGroupVoiceTermPacket(1000001, 1, 5001, false)
 		require.NoError(t, mc.SendDMRD(termPkt))
 
@@ -403,7 +377,6 @@ func TestOpenBridgeInvalidHMACRejection(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		// Connect with the WRONG password — HMAC will be invalid
 		obcBad := testutils.NewOpenBridgeClient(500001, "wrongPassword")
@@ -434,7 +407,6 @@ func TestOpenBridgeUnknownPeerRejection(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500099, "anyPassword")
 		defer obc.Close()
@@ -465,7 +437,6 @@ func TestOpenBridgeTS2Drop(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		obc := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obc.Close()
@@ -527,18 +498,17 @@ func TestOpenBridgeCrossProtocolIPSCToOpenBridge(t *testing.T) {
 		defer ic.Close()
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
 		require.NoError(t, ic.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		// IPSC → OpenBridge: IPSC sends group voice, OB peer should receive
 		err := ic.SendGroupVoice(1000001, 1, false, 11001)
 		require.NoError(t, err)
-		obPkts := obc.Drain(drainWait)
+		obPkts := testutils.Collect(obc.ReceivedPackets(), deliverWait, callEnds(1))
 		assert.NotEmpty(t, obPkts, "OpenBridge peer should receive packets from IPSC client")
 
 		// OpenBridge → IPSC: OB peer sends group voice, IPSC client should receive
 		err = obc.SendGroupVoice(1000001, 1, 12001)
 		require.NoError(t, err)
-		ipscPkts := ic.Drain(drainWait)
+		ipscPkts := receiveIPSCCall(ic, 1)
 		assert.NotEmpty(t, ipscPkts, "IPSC client should receive packets from OpenBridge peer")
 	})
 }
@@ -573,14 +543,13 @@ func TestOpenBridgeOncePerPacketAcrossReplicas(t *testing.T) {
 		obcA := testutils.NewOpenBridgeClient(500001, obPassword)
 		defer obcA.Close()
 		require.NoError(t, obcA.Connect(stack.OpenBridgeAddr))
-		time.Sleep(settleDuration)
 
 		require.NoError(t, obcA.SendGroupVoice(1000001, 1, 9101))
-		assert.Len(t, mc.Drain(drainWait), 3, "the repeater must get each peer packet once")
-		assert.Len(t, obcB.Drain(drainWait), 3, "the other peer must get each peer packet once")
+		assert.Len(t, append(receiveCall(mc, 1), mc.Drain(drainWait)...), 3, "the repeater must get each peer packet once")
+		assert.Len(t, append(testutils.Collect(obcB.ReceivedPackets(), deliverWait, callEnds(1)), obcB.Drain(drainWait)...), 3, "the other peer must get each peer packet once")
 
 		require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, 9102, false)))
 		require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 9102, false)))
-		assert.Len(t, obcB.Drain(drainWait), 2, "the peer must get each repeater packet once")
+		assert.Len(t, append(testutils.Collect(obcB.ReceivedPackets(), deliverWait, callEnds(1)), obcB.Drain(drainWait)...), 2, "the peer must get each repeater packet once")
 	})
 }

@@ -54,10 +54,18 @@ const (
 const deliverWait = 30 * time.Second
 
 func receiveCall(c *testutils.MMDVMClient, dst uint) []models.Packet {
-	return testutils.Collect(c.ReceivedPackets(), deliverWait, func(got []models.Packet) bool {
+	return testutils.Collect(c.ReceivedPackets(), deliverWait, callEnds(dst))
+}
+
+func callEnds(dst uint) func([]models.Packet) bool {
+	return func(got []models.Packet) bool {
 		p := got[len(got)-1]
 		return p.Dst == dst && isTerminator(p)
-	})
+	}
+}
+
+func gotN[T any](n int) func([]T) bool {
+	return func(got []T) bool { return len(got) >= n }
 }
 
 func receiveIPSCCall(c *testutils.IPSCClient, dst uint) []testutils.IPSCBurst {

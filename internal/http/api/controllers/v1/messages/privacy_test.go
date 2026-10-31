@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
@@ -85,7 +86,8 @@ func TestRoutedSMSReachesTheInboxOnlyAfterOptIn(t *testing.T) {
 			require.NoError(t, err)
 			kvStore, err := kv.MakeKV(context.TODO(), cfg)
 			require.NoError(t, err)
-			ct := calltracker.NewCallTracker(e.db, ps, kvStore)
+			fake := clock.NewFake(time.Now())
+			ct := calltracker.NewCallTracker(e.db, ps, kvStore, calltracker.WithClock(fake))
 			store := messages.NewStore(e.db, kvStore)
 			ct.SetDataObserver(store)
 			t.Cleanup(func() {
@@ -103,21 +105,19 @@ func TestRoutedSMSReachesTheInboxOnlyAfterOptIn(t *testing.T) {
 				}
 			}
 			stored := func(n int64) {
-				require.Eventually(t, func() bool {
-					ct.Flush()
-					store.Flush()
-					var c int64
-					require.NoError(t, e.db.Model(&models.Message{}).Count(&c).Error)
-					return c == n
-				}, 8*time.Second, 50*time.Millisecond)
+				ct.Flush()
+				store.Flush()
+				var c int64
+				require.NoError(t, e.db.Model(&models.Message{}).Count(&c).Error)
+				require.Equal(t, n, c)
 			}
 
 			send(8001, "while off")
 			stored(1)
 			assert.Equal(t, 0, e.list("/api/v1/messages/inbox").Total, "the hub stored it, the user does not see it")
 
-			e.storage(true)
-			time.Sleep(10 * time.Millisecond)
+			since := e.storage(true)
+			fake.Advance(fake.Until(since) + time.Second)
 			send(8002, "while on")
 			stored(2)
 			l := e.list("/api/v1/messages/inbox")

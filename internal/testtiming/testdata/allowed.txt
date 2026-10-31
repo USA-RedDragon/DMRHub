@@ -197,9 +197,6 @@ sleep	internal/dmr/wt_move_integration_test.go	4	baseline of 2026-10-28, not rev
 timer	internal/dmrdb/dmrdb_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/controllers/v1/config/modem_linux_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/http/api/controllers/v1/config/transcoding_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/http/api/controllers/v1/messages/messages_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-eventually	internal/http/api/controllers/v1/messages/privacy_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/http/api/controllers/v1/messages/privacy_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/http/api/controllers/v1/meta_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/peers/codec2_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/api/controllers/v1/peers/create_error_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

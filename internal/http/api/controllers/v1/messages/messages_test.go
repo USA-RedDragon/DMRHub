@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -165,25 +166,27 @@ func TestOnlyMessagesAfterTheOptInShow(t *testing.T) {
 
 func TestOffAndOnHidesTheMessagesInBetween(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t)
-	first := e.storage(true)
-	between := e.msg(first.Add(time.Millisecond), other, owner, false, "between")
-	assert.Equal(t, 1, e.list("/api/v1/messages/inbox").Total)
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv(t)
+		first := e.storage(true)
+		between := e.msg(first.Add(time.Millisecond), other, owner, false, "between")
+		assert.Equal(t, 1, e.list("/api/v1/messages/inbox").Total)
 
-	time.Sleep(10 * time.Millisecond)
-	e.storage(false)
-	second := e.storage(true)
-	require.True(t, second.After(between.ReceivedAt))
-	var u models.User
-	require.NoError(t, e.db.First(&u, owner).Error)
-	require.NotNil(t, u.SMSStorageSince)
-	assert.True(t, u.SMSStorageSince.Equal(second), "the time is the latest enable")
+		time.Sleep(10 * time.Millisecond)
+		e.storage(false)
+		second := e.storage(true)
+		require.True(t, second.After(between.ReceivedAt))
+		var u models.User
+		require.NoError(t, e.db.First(&u, owner).Error)
+		require.NotNil(t, u.SMSStorageSince)
+		assert.True(t, u.SMSStorageSince.Equal(second), "the time is the latest enable")
 
-	later := e.msg(second.Add(time.Millisecond), other, owner, false, "later")
-	l := e.list("/api/v1/messages/inbox")
-	assert.Equal(t, []string{"later"}, texts(l))
-	assert.Equal(t, http.StatusNotFound, e.get(between.ID))
-	assert.Equal(t, http.StatusOK, e.get(later.ID))
+		later := e.msg(second.Add(time.Millisecond), other, owner, false, "later")
+		l := e.list("/api/v1/messages/inbox")
+		assert.Equal(t, []string{"later"}, texts(l))
+		assert.Equal(t, http.StatusNotFound, e.get(between.ID))
+		assert.Equal(t, http.StatusOK, e.get(later.ID))
+	})
 }
 
 func TestOnlyOwnedRadioIDsShow(t *testing.T) {

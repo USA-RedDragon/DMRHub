@@ -52,3 +52,34 @@ func TestReceiveReturnsTheValue(t *testing.T) {
 		assert.Equal(t, 7, bubble.Receive(t, ch, time.Hour))
 	})
 }
+
+type fatalRecorder struct {
+	testing.TB
+	failed bool
+}
+
+func (f *fatalRecorder) Helper() {}
+
+func (f *fatalRecorder) Fatalf(string, ...any) { f.failed = true }
+
+func TestNoneWaitsTheWholeWindow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ch := make(chan int, 1)
+		time.AfterFunc(2*time.Hour, func() { ch <- 7 })
+		start := time.Now()
+		bubble.None(t, ch, time.Hour)
+		assert.Equal(t, time.Hour, time.Since(start))
+	})
+}
+
+func TestNoneFailsOnAValueInTheWindow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ch := make(chan int, 1)
+		time.AfterFunc(59*time.Minute, func() { ch <- 7 })
+		rec := &fatalRecorder{TB: t}
+		bubble.None(rec, ch, time.Hour)
+		assert.True(t, rec.failed, "a value came in the window and None did not fail")
+	})
+}

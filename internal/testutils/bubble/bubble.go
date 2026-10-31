@@ -49,15 +49,30 @@ func Eventually(t testing.TB, cond func() bool, within, tick time.Duration, msgA
 // within within.
 func Receive[T any](t testing.TB, ch <-chan T, within time.Duration, msgAndArgs ...any) T {
 	t.Helper()
+	v, ok := wait(ch, within)
+	if !ok {
+		t.Fatalf("nothing came in %v%s", within, message(msgAndArgs))
+	}
+	return v
+}
+
+// None fails the test when a value of ch comes within within.
+func None[T any](t testing.TB, ch <-chan T, within time.Duration, msgAndArgs ...any) {
+	t.Helper()
+	if v, ok := wait(ch, within); ok {
+		t.Fatalf("%v came in %v%s", v, within, message(msgAndArgs))
+	}
+}
+
+func wait[T any](ch <-chan T, within time.Duration) (T, bool) {
 	timer := time.NewTimer(within)
 	defer timer.Stop()
 	select {
 	case v := <-ch:
-		return v
+		return v, true
 	case <-timer.C:
-		t.Fatalf("nothing came in %v%s", within, message(msgAndArgs))
 		var zero T
-		return zero
+		return zero, false
 	}
 }
 

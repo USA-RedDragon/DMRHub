@@ -498,3 +498,53 @@ func TestIPSCMoveKeepsEachBurstInItsSlot(t *testing.T) {
 		require.True(t, atMove, "the burst at the move waited for the full handover report")
 	})
 }
+
+// TestAMovedCallIsOneRow moves the repeater of a talker to the other
+// replica in the middle of a call, as a rolling restart does. The call is
+// one transmission, so the replicas keep one row of it, which the replica
+// that the repeater moved to continues and ends.
+func TestAMovedCallIsOneRow(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		r := startMoveRig(t, stack)
+		const stream = 7311
+		pkts := make([]models.Packet, 0, 26)
+		for i := range 25 {
+			p := makeGroupVoicePacket(1000001, 1, stream, false)
+			p.Seq = uint(i)
+			switch {
+			case i == 0:
+				p.FrameType, p.DTypeOrVSeq = dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead)
+			case (i-1)%6 == 0:
+				p.FrameType, p.DTypeOrVSeq = dmrconst.FrameVoiceSync, 0
+			default:
+				p.DTypeOrVSeq = uint((i - 1) % 6)
+			}
+			pkts = append(pkts, p)
+		}
+		term := makeGroupVoiceTermPacket(1000001, 1, stream, false)
+		term.Seq = 25
+		pkts = append(pkts, term)
+
+		const half = 10
+		sendC2(t, r.peer.SendDMRD, pkts[:half])
+		awaitStream(t, r.listener, stream, half)
+		r.first.MarkDraining(t.Context())
+		r.front.Drain(stack.MMDVMAddr)
+		sendC2(t, r.peer.SendDMRD, pkts[half:])
+		r.listener.Drain(drainWait)
+		require.Equal(t, 1, r.front.Moves(), "the front moved the repeater")
+
+		stack.CallTracker.Stop()
+		r.second.CallTracker.Flush()
+		var rows []models.Call
+		require.NoError(t, stack.DB.Omit("call_data").Where("stream_id = ? AND kind = ?", stream, models.CallKindVoice).Find(&rows).Error)
+		ids := make([]uint, 0, len(rows))
+		for _, c := range rows {
+			ids = append(ids, c.ID)
+		}
+		require.Len(t, ids, 1, "voice rows of the moved call")
+		assert.False(t, rows[0].Active)
+		assert.Equal(t, uint(1000001), rows[0].SourceID)
+	})
+}

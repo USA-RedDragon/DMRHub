@@ -149,6 +149,7 @@ type CallTracker struct {
 	dropped atomic.Uint64
 	metrics *metrics.Metrics
 	bursts  atomic.Uint64
+	replica string
 }
 
 type observerBox struct{ o DataObserver }
@@ -215,6 +216,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option)
 	var seed [8]byte
 	_, _ = rand.Read(seed[:])
 	ct.bursts.Store(binary.LittleEndian.Uint64(seed[:]) >> (shardBits + 2))
+	ct.replica = rand.Text()
 	ct.loadActiveNets()
 	ct.subscribe("net:events", ct.netEvent)
 	ct.subscribe(responsesTopic, ct.remoteResponse)
@@ -1186,6 +1188,9 @@ type row struct {
 	ns        uint8
 	hasNS     bool
 	converted map[string]bool
+	shared    bool
+	deferred  bool
+	given     given
 }
 
 type channel struct {
@@ -1266,8 +1271,24 @@ func (s *shard) channel(key chanKey, peer bool) *channel {
 }
 
 func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub string, hang time.Duration) *row {
+	call := s.newCall(t, kind, sub)
+	s.t.resolve(call, t.peer)
+	if err := s.t.db.Omit(clause.Associations, "CallData").Create(call).Error; err != nil {
+		slog.Error("CallTracker: error creating call", "kind", kind, "error", err)
+		return nil
+	}
+	r := &row{call: call, ch: ch, key: key, last: t.at, hang: hang}
+	if key != nil {
+		s.rows[key] = r
+	}
+	s.note(t, r)
+	slog.Debug("CallTracker: transmission started", "kind", kind, "sub", sub, "streamID", t.p.StreamID, "src", t.p.Src, "dst", t.p.Dst)
+	return r
+}
+
+func (s *shard) newCall(t *task, kind models.CallKind, sub string) *models.Call {
 	p := &t.p
-	call := &models.Call{
+	return &models.Call{
 		StreamID:       p.StreamID,
 		StartTime:      t.at,
 		Active:         true,
@@ -1282,18 +1303,6 @@ func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub st
 		LastPacketTime: t.at,
 		LastSeq:        256,
 	}
-	s.t.resolve(call, t.peer)
-	if err := s.t.db.Omit(clause.Associations, "CallData").Create(call).Error; err != nil {
-		slog.Error("CallTracker: error creating call", "kind", kind, "error", err)
-		return nil
-	}
-	r := &row{call: call, ch: ch, key: key, last: t.at, hang: hang}
-	if key != nil {
-		s.rows[key] = r
-	}
-	s.note(t, r)
-	slog.Debug("CallTracker: transmission started", "kind", kind, "sub", sub, "streamID", p.StreamID, "src", p.Src, "dst", p.Dst)
-	return r
 }
 
 func (s *shard) touch(r *row, t *task) {
@@ -1368,6 +1377,9 @@ func (s *shard) finish(r *row, at time.Time) {
 	call.Duration = r.last.Sub(call.StartTime)
 	if !at.IsZero() && call.Kind == models.CallKindVoice {
 		call.Duration = at.Sub(call.StartTime)
+	}
+	if r.shared && s.finishShared(r, at) {
+		return
 	}
 	if call.Kind == models.CallKindVoice && !at.IsZero() && call.Duration < keyUp {
 		r.deleted = true
@@ -1549,7 +1561,7 @@ func (s *shard) undeliverable(stream uint, id uint64, target string) {
 		}
 	}
 	r.call.Undeliverable = append(r.call.Undeliverable, target)
-	if !r.finished {
+	if !r.finished || r.deferred {
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Select("undeliverable").Updates(&models.Call{Undeliverable: r.call.Undeliverable}).Error; err != nil {

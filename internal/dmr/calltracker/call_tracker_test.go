@@ -283,8 +283,8 @@ func TestTrackVoiceCall(t *testing.T) {
 
 // TestTrackVoiceLossOfAMovedCall moves a call from one replica to another
 // in the middle of a superframe, as a repeater that moves at a rolling
-// restart does. Each replica keeps a row of the part that it heard, and no
-// burst was lost, so neither row may count a loss.
+// restart does. The call is one row, which holds every burst of both
+// parts, and no burst was lost, so the row counts no loss.
 func TestTrackVoiceLossOfAMovedCall(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -294,6 +294,7 @@ func TestTrackVoiceLossOfAMovedCall(t *testing.T) {
 		s.voiceCall(2, false)
 		s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
 		s.send(dmrconst.FrameVoice, 1, layer2.RawBurst{})
+		one.Flush()
 		s.ct = two
 		for v := uint(2); v <= 5; v++ {
 			s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
@@ -307,9 +308,9 @@ func TestTrackVoiceLossOfAMovedCall(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 
-		for _, c := range waitDone(t, two, database, 2) {
-			assert.Zero(t, c.Loss, "the row of the part from %s counts a loss", c.StartTime)
-		}
+		c := waitDone(t, two, database, 1)[0]
+		assert.Zero(t, c.Loss)
+		assert.Len(t, c.CallData, 38*layer2.RawBurstSize, "the row holds the bursts of both parts")
 	})
 }
 

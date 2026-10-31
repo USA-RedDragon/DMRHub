@@ -58,6 +58,9 @@ type Metrics struct {
 	// TrackerMatchFailedTotal counts rows and answers that the call
 	// tracker could not match because the KV failed.
 	TrackerMatchFailedTotal prometheus.Counter
+	// TrackerShareFailedTotal counts the voice calls that the call tracker
+	// could not share with the other replicas because the KV failed.
+	TrackerShareFailedTotal prometheus.Counter
 
 	// MessagesDroppedTotal counts data messages that the message store dropped.
 	MessagesDroppedTotal prometheus.Counter
@@ -169,6 +172,10 @@ func NewMetrics() *Metrics {
 				Name: "call_tracker_match_failed_total",
 				Help: "The total number of rows and answers that the call tracker could not match with each other because the KV failed, so that an answer was not credited",
 			}),
+			TrackerShareFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "call_tracker_share_failed_total",
+				Help: "The total number of times that the call tracker could not share a voice call with the other replicas because the KV failed, so that a call that moves can make two rows",
+			}),
 			MessagesDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "message_store_dropped_total",
 				Help: "The total number of data messages that the message store did not save because its queue was full",
@@ -204,6 +211,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.PublishUnconfirmedTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
 	prometheus.MustRegister(m.TrackerMatchFailedTotal)
+	prometheus.MustRegister(m.TrackerShareFailedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
 	prometheus.MustRegister(m.PubSubDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
@@ -248,6 +256,12 @@ func (m *Metrics) IncrementTrackerDropped() {
 // tracker could not match.
 func (m *Metrics) IncrementTrackerMatchFailed() {
 	m.TrackerMatchFailedTotal.Inc()
+}
+
+// IncrementTrackerShareFailed counts a voice call that the call tracker
+// could not share with the other replicas.
+func (m *Metrics) IncrementTrackerShareFailed() {
+	m.TrackerShareFailedTotal.Inc()
 }
 
 // IncrementMessagesDropped counts a data message that the message store

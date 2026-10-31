@@ -352,3 +352,39 @@ func TestABurstToThePeersThatThePeerLookupGaveUpOnIsCountedAsALookupWait(t *test
 		held.release()
 	})
 }
+
+func TestAGroupBurstToARepeaterThatTheLookupGaveUpOnIsCountedAsALookupWait(t *testing.T) { //nolint:paralleltest
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		seedUser(t, database, testSrcID, "SENDER")
+		seedRepeater(t, database, testRepeaterID, testSrcID)
+		seedRepeater(t, database, 100002, testSrcID)
+		seedTalkgroup(t, database, 1, "TG1")
+		var rpt models.Repeater
+		require.NoError(t, database.First(&rpt, 100002).Error)
+		require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
+		srv := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		t.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		knowTalkgroups(t, h)
+		waitAllReceive(t, h, srv, 1, 1, 64000)
+
+		var failing atomic.Bool
+		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:fail_repeaters", func(tx *gorm.DB) {
+			if failing.Load() && tx.Statement.Table == "repeaters" {
+				_ = tx.AddError(errors.New("the database is down"))
+			}
+		}))
+		held := holdQueries(t, database, "repeaters")
+		failing.Store(true)
+		h.CodecChanged(100002)
+		failing.Store(false)
+		held.armed.Store(true)
+		got := lookupWaitOf(t, func() {
+			h.RoutePacket(context.Background(), makeVoicePacket(1, 64001, true, false), models.RepeaterTypeMMDVM)
+		})
+		assert.InDelta(t, 1, got, 0, "the group burst that the lookup of a repeater that takes it gave up on")
+		held.release()
+	})
+}

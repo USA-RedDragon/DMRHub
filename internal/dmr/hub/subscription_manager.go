@@ -648,6 +648,7 @@ func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Pa
 	p, err := m.hub.routingRepeater(repeaterID)
 	if err != nil {
 		slog.Error("Failed to find repeater for delivery", "repeaterID", repeaterID, "error", err)
+		countLookupWait(err)
 		return
 	}
 	if m.hub.refusal(repeaterID, packet.Slot, packet, true) != "" {
@@ -666,6 +667,7 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 	p, err := m.hub.routingRepeater(repeaterID)
 	if err != nil {
 		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
+		countLookupWait(err)
 		return
 	}
 

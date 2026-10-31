@@ -8,7 +8,7 @@ on:
 
 jobs:
   frontend:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
 
@@ -31,7 +31,7 @@ jobs:
           retention-days: 1
 
   frontend-eslint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       checks: write
@@ -152,7 +152,7 @@ jobs:
   #         retention-days: 30
 
   frontend-e2e-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       checks: write
@@ -248,7 +248,7 @@ jobs:
       app-key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
 
   backend-benchmark-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read
@@ -282,7 +282,7 @@ jobs:
       - run: make benchmark
 
   backend-race-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read
@@ -321,7 +321,7 @@ jobs:
           go test -tags codec2wasm -timeout 30m ./... -race
 
   backend-mysql-integration-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read
@@ -360,7 +360,7 @@ jobs:
           env CGO_ENABLED=0 DMRHUB_TEST_MYSQL=1 go test -timeout 60m -run '/(mysql|mariadb)$' ./internal/dmr/
 
   backend-unit-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read
@@ -432,7 +432,7 @@ jobs:
           retention-days: 30
 
   backend-fuzz-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read
@@ -468,7 +468,7 @@ jobs:
           ./hack/fuzz.sh
 
   backend-unit-tests-coverage:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: frontend
     permissions:
       contents: read

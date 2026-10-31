@@ -8,7 +8,7 @@ on:
 
 jobs:
   notify:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Send notification
         uses: USA-RedDragon/telegram-notification@5c9e380b10cc3af7bd3290a51c3e42485ee2b93f # v1.0.0

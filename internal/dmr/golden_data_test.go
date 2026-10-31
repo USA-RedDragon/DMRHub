@@ -97,12 +97,12 @@ func newGoldenNet(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, i
 	}
 	keyUp(t, stack, n.rpt[anyTone], anyTone, goldenTG, slot2, 0xA0001)
 	keyUp(t, stack, n.rpt[otherRadio], otherRadio, goldenTG, slot2, 0xA0002)
-	n.drain(500 * time.Millisecond)
+	n.drain(callsArrived([]models.Packet{makeGroupVoiceTermPacket(anyTone, goldenTG, 0xA0001, slot2)}, []models.Packet{makeGroupVoiceTermPacket(otherRadio, goldenTG, 0xA0002, slot2)}))
 	return n
 }
 
-func (n *goldenNet) drain(d time.Duration) (map[uint32][]models.Packet, []models.Packet) {
-	got := drainQuiet(d, n.rpt[anyTone], n.rpt[otherRadio], n.ob)
+func (n *goldenNet) drain(done func([][]models.Packet) bool) (map[uint32][]models.Packet, []models.Packet) {
+	got := drainUntil(done, n.rpt[anyTone], n.rpt[otherRadio], n.ob)
 	return map[uint32][]models.Packet{anyTone: got[0], otherRadio: got[1]}, got[2]
 }
 
@@ -155,7 +155,13 @@ func TestGoldenAirCaptures(t *testing.T) {
 				n := newGoldenNet(t, stack, g.slot2)
 				txs := splitTransmissions(t, readAirCapture(t, "testdata/"+g.name+".txt"), g.slot2)
 				sent := n.sendAir(t, txs, 0xB000)
-				got, ob := n.drain(drainWait)
+				var routed [][]models.Packet
+				for i, tx := range txs {
+					if !isDropped(g.dropped, tx.dst) {
+						routed = append(routed, sent[i])
+					}
+				}
+				got, ob := n.drain(callsArrived(routed...))
 
 				t.Run("repeaters", func(t *testing.T) {
 					t.Parallel()
@@ -265,15 +271,22 @@ func TestGoldenIPSCDataToMMDVM(t *testing.T) {
 					require.NoError(t, ic.SendRaw(p))
 					time.Sleep(30 * time.Millisecond)
 				}
-				got, _ := n.drain(drainWait)
-
 				group, dst, src := first.Call()
+				targets := []uint32{dst}
+				if group {
+					targets = []uint32{anyTone, otherRadio}
+				}
+				got, _ := n.drain(func(out [][]models.Packet) bool {
+					for _, radio := range targets {
+						i, ok := map[uint32]int{anyTone: 0, otherRadio: 1}[radio]
+						if ok && len(ofCall(out[i], uint(src), uint(dst))) < len(want) {
+							return false
+						}
+					}
+					return true
+				})
 				t.Run("repeaters", func(t *testing.T) {
 					needs(t, join(needRoute(), g.needs)...)
-					targets := []uint32{dst}
-					if group {
-						targets = []uint32{anyTone, otherRadio}
-					}
 					for _, radio := range targets {
 						pkts := ofCall(got[radio], uint(src), uint(dst))
 						for _, p := range pkts {
@@ -450,7 +463,7 @@ func TestGoldenAppCaptures(t *testing.T) {
 				tx := transmission{call: c, slot2: true, bursts: append(preambles(t, c, 5, len(blocks)), blocks...)}
 				tx.at = make([]float64, len(tx.bursts))
 				sent := n.sendAir(t, []transmission{tx}, 0xC000)
-				got, _ := n.drain(drainWait)
+				got, _ := n.drain(callsArrived(sent...))
 
 				t.Run("repeaters", func(t *testing.T) {
 					needs(t, needRoute()...)

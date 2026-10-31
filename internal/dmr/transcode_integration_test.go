@@ -83,7 +83,6 @@ func newTCNet(t *testing.T, stack *testutils.IntegrationStack) *tcNet {
 	n.obCodec2 = c2OBPeer(t, stack, tcOBCodec2, false)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", tcOBCodec2).Update("codec2", true).Error)
 	stack.Hub.PeerChanged(tcOBCodec2)
-	n.flush(500 * time.Millisecond)
 	return n
 }
 
@@ -120,22 +119,23 @@ func (n *tcNet) drainCall(sent []models.Packet) tcGot {
 	}
 	clients := []*testutils.MMDVMClient{n.c2, n.ambeListen, n.c2Listen, n.ambeTalk}
 	var g tcGot
-	ended := make(chan struct{})
 	ipscDone := make(chan []testutils.IPSCBurst, 1)
 	go func() {
-		var all []testutils.IPSCBurst
-		for {
-			got := n.ipsc.Drain(300 * time.Millisecond)
-			all = append(all, got...)
-			select {
-			case <-ended:
-				if len(got) == 0 {
-					ipscDone <- all
-					return
-				}
-			default:
-			}
+		first := sent[0]
+		if !first.GroupCall || first.Dst != tcTG || first.Slot {
+			ipscDone <- nil
+			return
 		}
+		c := call{group: true, dst: uint32(first.Dst), src: uint32(first.Src)} //nolint:gosec
+		ipscDone <- n.ipsc.Receive(deliverWait, func(got []testutils.IPSCBurst) bool {
+			ends := 0
+			for _, b := range ipscOfCall(got, c) {
+				if ipscEnds(b) {
+					ends++
+				}
+			}
+			return ends >= len(streams)
+		})
 	}()
 	earliest, deadline := time.Now().Add(callWait(sent)), time.Now().Add(callWait(sent)+30*time.Second)
 	var out [][]models.Packet
@@ -156,7 +156,6 @@ func (n *tcNet) drainCall(sent []models.Packet) tcGot {
 	for i := range got {
 		out[i] = append(out[i], got[i]...)
 	}
-	close(ended)
 	g.c2, g.ambeListen, g.c2Listen, g.ambeTalk, g.ob, g.obCodec2 = out[0], out[1], out[2], out[3], out[4], out[5]
 	g.ipsc = <-ipscDone
 	return g
@@ -186,19 +185,17 @@ func isTerminator(p models.Packet) bool {
 	return p.FrameType == dmrconst.FrameDataSync && p.DTypeOrVSeq == uint(dmrconst.DTypeVoiceTerm)
 }
 
-// flush drains what the clients got before, until they are quiet for d.
-func (n *tcNet) flush(d time.Duration) {
+// flush drains the call c that the clients got, until each client that
+// got a packet of it got its end.
+func (n *tcNet) flush(c call) {
 	done := make(chan struct{})
-	stop := time.Now().Add(d)
 	go func() {
 		defer close(done)
-		for {
-			if len(n.ipsc.Drain(500*time.Millisecond)) == 0 && time.Now().After(stop) {
-				return
-			}
+		if c.group && c.dst == tcTG {
+			n.ipsc.Receive(deliverWait, ipscCallEnds(c))
 		}
 	}()
-	drainQuiet(d, n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
+	drainUntil(callEnded(c), n.c2, n.ambeListen, n.c2Listen, n.ambeTalk, n.ob, n.obCodec2)
 	<-done
 }
 
@@ -550,7 +547,7 @@ func TestTranscodingPrivateCall(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
 		keyUp(t, n.stack, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
-		n.flush(300 * time.Millisecond)
+		n.flush(call{group: true, dst: tcTG, src: tcOther})
 
 		c := call{dst: tcOther, src: tcTalker}
 		stream := n.nextStream()
@@ -584,7 +581,7 @@ func TestTranscodingPrivateCallWithoutHeader(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		n := newTCNet(t, stack)
 		keyUp(t, n.stack, n.ambeTalk, tcOther, tcTG, false, n.nextStream())
-		n.flush(300 * time.Millisecond)
+		n.flush(call{group: true, dst: tcTG, src: tcOther})
 
 		c := call{dst: tcOther, src: tcTalker}
 		stream := n.nextStream()
@@ -687,14 +684,13 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		c2 := connect(tcC2Rpt, stack.MMDVMAddr)
 		listen := connect(tcAMBERpt, second.MMDVMAddr)
 		talk := connect(tcAMBETalkRpt, second.MMDVMAddr)
-		drainQuiet(500*time.Millisecond, c2, listen, talk)
 
 		group := call{group: true, dst: tcTG, src: tcTalker}
 		stream := uint(0xB0010)
 		cc := newC2Call(t, group, false, tcBursts, uint64(stream))
 		sent := cc.tx.packets(stream)
 		sendC2(t, c2.SendDMRD, sent)
-		got := drainQuiet(callWait(sent), c2, listen, talk)
+		got := drainUntil(callEnded(group), c2, listen, talk)
 		requireCopy(t, sent, ofStream(got[1], stream), tcAMBERpt, tcLC(t, group, enums.FIDStandardized), ambeCopySlots(t, srv, 0, cc.slots))
 		requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400), sentAMBE: 1})
 
@@ -703,7 +699,7 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		ac := voiceCall(t, tcLC(t, a, enums.FIDStandardized), a, tcAMBESlots(5))
 		sent = ac.tx.packets(stream)
 		sendC2(t, talk.SendDMRD, sent)
-		got = drainQuiet(callWait(sent), c2, listen, talk)
+		got = drainUntil(callEnded(a), c2, listen, talk)
 		lc2 := ac.lc
 		lc2.SetFID(0xC2)
 		requireCopy(t, sent, ofStream(got[0], stream), tcC2Rpt, lc2, codec2CopySlots(t, codec2.Mode2400, ac.slots))

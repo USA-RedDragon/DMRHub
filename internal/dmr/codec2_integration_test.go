@@ -241,7 +241,6 @@ func newC2Net(t *testing.T, stack *testutils.IntegrationStack) *c2Net {
 	n.ipsc, n.ipscSrc = c2IPSCPeer(t, stack, c2IPSC), c2IPSCPeer(t, stack, c2IPSCSrc)
 	n.ob = c2OBPeer(t, stack, c2OB, false)
 	n.obEnhanced = c2OBPeer(t, stack, c2OBEnhanced, true)
-	n.drain(500 * time.Millisecond)
 	return n
 }
 
@@ -302,22 +301,17 @@ func (e enhancedDrainer) Drain(d time.Duration) []models.Packet {
 	return out
 }
 
-func (n *c2Net) drain(d time.Duration) c2Got {
+func (n *c2Net) drain(c call, slot2 bool) c2Got {
 	var g c2Got
 	done := make(chan []testutils.IPSCBurst, 1)
-	stop := time.Now().Add(d)
 	go func() {
-		var all []testutils.IPSCBurst
-		for {
-			got := n.ipsc.Drain(500 * time.Millisecond)
-			all = append(all, got...)
-			if len(got) == 0 && time.Now().After(stop) {
-				done <- all
-				return
-			}
+		if !c.group || c.dst != c2TG1 || slot2 {
+			done <- nil
+			return
 		}
+		done <- n.ipsc.Receive(deliverWait, ipscCallEnds(c))
 	}()
-	got := drainQuiet(d, n.listen, n.user, n.talker, n.ob, enhancedDrainer{n.obEnhanced})
+	got := drainUntil(callEnded(c), n.listen, n.user, n.talker, n.ob, enhancedDrainer{n.obEnhanced})
 	g.listen, g.user, g.talker, g.ob, g.obEnhanced = got[0], got[1], got[2], got[3], got[4]
 	g.ipsc = <-done
 	return g
@@ -457,13 +451,12 @@ func runC2FromMMDVM(t *testing.T, n *c2Net, tc c2Case) {
 	t.Run("mmdvm-to-mmdvm/"+tc.name, func(t *testing.T) {
 		if !tc.c.group {
 			keyUp(t, n.stack, n.user, c2User, c2KeyTG, tc.slot2, n.nextStream())
-			n.drain(300 * time.Millisecond)
 		}
 		stream := n.nextStream()
 		cc := newC2Call(t, tc.c, tc.slot2, 6*c2Superframes, uint64(stream))
 		sent := cc.tx.packets(stream)
 		sendC2(t, n.talker.SendDMRD, sent)
-		g := n.drain(callWait(sent))
+		g := n.drain(tc.c, tc.slot2)
 		to, rpt := g.listen, uint(c2ListenRpt)
 		if !tc.c.group {
 			to, rpt = g.user, c2UserRpt
@@ -502,7 +495,7 @@ func runC2FromOB(t *testing.T, n *c2Net, name string, send func(models.Packet) e
 		cc := newC2Call(t, c, false, 6*c2Superframes, uint64(stream))
 		sent := cc.tx.packets(stream)
 		sendC2(t, send, sent)
-		g := n.drain(callWait(sent))
+		g := n.drain(c, false)
 		got := ofStream(g.listen, stream)
 		checkC2(t, sent, cc.lc, got)
 		assertSamePackets(t, sent, got, c2ListenRpt, false)
@@ -532,7 +525,7 @@ func runC2FromIPSC(t *testing.T, n *c2Net) {
 			require.NoError(t, n.ipscSrc.SendBurst(p.Src, p.Dst, p.GroupCall, p.Slot, uint32(stream), layer2.RawBurst(p.DMRData), h, i == len(sent)-1)) //nolint:gosec
 			time.Sleep(30 * time.Millisecond)
 		}
-		g := n.drain(callWait(sent))
+		g := n.drain(c, false)
 		got := firstStream(ofCall(g.listen, uint(c.src), uint(c.dst)))
 		checkC2(t, want, cc.lc, got)
 		checkC2Payloads(t, "openbridge-v1", want, cc.lc, firstStream(ofCall(g.ob, uint(c.src), uint(c.dst))))
@@ -574,10 +567,10 @@ func TestCodec2LateEntry(t *testing.T) {
 		var gotIPSC []testutils.IPSCBurst
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go func() { defer wg.Done(); gotIPSC = lateIPSC.Drain(callWait(sent)) }()
-		got := ofStream(drainQuiet(callWait(sent), late)[0], stream)
+		go func() { defer wg.Done(); gotIPSC = lateIPSC.Receive(deliverWait, ipscCallEnds(c)) }()
+		got := ofStream(drainUntil(callEnded(c), late)[0], stream)
 		wg.Wait()
-		n.drain(100 * time.Millisecond)
+		n.drain(c, false)
 
 		checkLateMMDVM(t, sent[join:], cc.lc, got)
 		checkLateIPSC(t, sent[join:], cc.lc, ipscC2(t, gotIPSC, c), 6-(join-1)%6)
@@ -636,7 +629,7 @@ func TestCodec2HandoffResume(t *testing.T) {
 		got := awaitStream(t, n.listen, stream, half)
 		stack.RestartMMDVM(t, testutils.RestartHandoff)
 		sendC2(t, n.talker.SendDMRD, sent[half:])
-		g := n.drain(callWait(sent))
+		g := n.drain(c, false)
 		got = append(got, ofStream(g.listen, stream)...)
 		checkC2(t, sent, cc.lc, got)
 		assertSamePackets(t, sent, got, c2ListenRpt, false)

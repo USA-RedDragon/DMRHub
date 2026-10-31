@@ -248,13 +248,12 @@ func TestCodecDetection(t *testing.T) {
 		stack.StartServers(t)
 		c2, listen := c2MMDVM(t, stack, tcC2Rpt), c2MMDVM(t, stack, tcAMBERpt)
 		ob := c2OBPeer(t, stack, tcOB, false)
-		drainQuiet(500*time.Millisecond, c2, listen, ob)
 
 		stream := uint(0xD0000)
 		send := func(t *testing.T, from func(models.Packet) error, pkts []models.Packet) {
 			t.Helper()
 			sendC2(t, from, pkts)
-			drainQuiet(callWait(pkts), c2, listen, ob)
+			drainUntil(callsArrived(pkts), c2, listen, ob)
 		}
 		ts1 := call{group: true, dst: tcTG, src: tcTalker}
 		var heardAt *time.Time

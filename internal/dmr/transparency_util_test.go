@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -419,6 +420,70 @@ func drainQuiet(d time.Duration, clients ...drainer) [][]models.Packet {
 	}
 }
 
+func drainUntil(done func([][]models.Packet) bool, clients ...drainer) [][]models.Packet {
+	out := make([][]models.Packet, len(clients))
+	deadline := time.Now().Add(deliverWait)
+	for !done(out) && !time.Now().After(deadline) {
+		got := drainAll(100*time.Millisecond, clients...)
+		for i := range got {
+			out[i] = append(out[i], got[i]...)
+		}
+	}
+	return out
+}
+
+func callsArrived(sent ...[]models.Packet) func([][]models.Packet) bool {
+	last := map[uint]uint{}
+	for _, pkts := range sent {
+		if len(pkts) > 0 {
+			p := pkts[len(pkts)-1]
+			last[p.StreamID] = p.Seq & 0xFF
+		}
+	}
+	return func(out [][]models.Packet) bool {
+		for stream, seq := range last {
+			reached := false
+			for _, pkts := range out {
+				mine := ofStream(pkts, stream)
+				if len(mine) == 0 {
+					continue
+				}
+				reached = true
+				if !slices.ContainsFunc(mine, func(p models.Packet) bool { return p.Seq&0xFF == seq }) {
+					return false
+				}
+			}
+			if !reached {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func callEnded(c call) func([][]models.Packet) bool {
+	return func(out [][]models.Packet) bool {
+		ended := false
+		for _, pkts := range out {
+			mine := ofCall(pkts, uint(c.src), uint(c.dst))
+			if len(mine) == 0 {
+				continue
+			}
+			if !slices.ContainsFunc(mine, isTerminator) {
+				return false
+			}
+			ended = true
+		}
+		return ended
+	}
+}
+
+func ipscCallEnds(c call) func([]testutils.IPSCBurst) bool {
+	return func(got []testutils.IPSCBurst) bool {
+		return slices.ContainsFunc(ipscOfCall(got, c), ipscEnds)
+	}
+}
+
 func drainAll(d time.Duration, clients ...drainer) [][]models.Packet {
 	out := make([][]models.Packet, len(clients))
 	var wg sync.WaitGroup
@@ -508,6 +573,13 @@ func matches(want, got map[string]any) bool {
 func waitRows(t *testing.T, db *gorm.DB, table, col string, v any, want []map[string]any) []map[string]any {
 	t.Helper()
 	deadline := time.Now().Add(deliverWait)
+	mine := make([]map[string]any, 0, len(want))
+	for _, w := range want {
+		if x, ok := w[col]; !ok || fmt.Sprint(x) == fmt.Sprint(v) {
+			mine = append(mine, w)
+		}
+	}
+	want = mine
 	var rows []map[string]any
 	for {
 		var all []map[string]any

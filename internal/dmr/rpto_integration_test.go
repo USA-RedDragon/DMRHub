@@ -59,7 +59,6 @@ func waitStatics(t *testing.T, stack *testutils.IntegrationStack, id uint, ts1, 
 func sendGroupCall(t *testing.T, send func(models.Packet) error, dst, stream uint, slot bool) {
 	t.Helper()
 	require.NoError(t, send(makeGroupVoicePacket(1000001, dst, stream, slot)))
-	time.Sleep(50 * time.Millisecond)
 	require.NoError(t, send(makeGroupVoiceTermPacket(1000001, dst, stream, slot)))
 }
 
@@ -91,7 +90,7 @@ func TestRPTOStaticTalkgroupsRoute(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		sendGroupCall(t, c1.SendDMRD, 10, 9101, true)
-		pkts := c2.Drain(drainWait)
+		pkts := receiveCall(c2, 10)
 		require.NotEmpty(t, pkts, "the repeater should hear the TS2 static talkgroup that its options set")
 		for _, p := range pkts {
 			assert.Equal(t, uint(10), p.Dst)
@@ -135,7 +134,7 @@ func TestRPTOAcrossReplicas(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		sendGroupCall(t, rpt.SendDMRD, 10, 9201, true)
-		pkts := gw.Drain(drainWait)
+		pkts := gw.Receive(deliverWait, callEnds(10))
 		require.NotEmpty(t, pkts, "the peer on the second replica should hear its TS2 talkgroup")
 		for _, p := range pkts {
 			assert.Equal(t, uint(10), p.Dst)
@@ -150,7 +149,7 @@ func TestRPTOAcrossReplicas(t *testing.T) {
 
 		time.Sleep(callHoldTime)
 		sendGroupCall(t, rpt.SendDMRD, 262, 9203, false)
-		pkts = gw.Drain(drainWait)
+		pkts = gw.Receive(deliverWait, callEnds(262))
 		require.NotEmpty(t, pkts, "the peer should hear its TS1 talkgroup after it moved to the first replica")
 		for _, p := range pkts {
 			assert.Equal(t, uint(262), p.Dst)
@@ -208,7 +207,7 @@ func TestRPTODialLinksDynamicTalkgroup(t *testing.T) {
 		time.Sleep(settleDuration)
 
 		sendGroupCall(t, c1.SendDMRD, 10, 9301, true)
-		pkts := c2.Drain(drainWait)
+		pkts := receiveCall(c2, 10)
 		require.NotEmpty(t, pkts, "the repeater should hear the talkgroup that DIAL linked")
 		for _, p := range pkts {
 			assert.Equal(t, uint(10), p.Dst)

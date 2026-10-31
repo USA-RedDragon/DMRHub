@@ -21,7 +21,6 @@ package dmr_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -53,7 +52,6 @@ func TestARepeaterGetsTheCallsOfARepeaterInOrderAcrossTopics(t *testing.T) {
 		defer dst.Close()
 		require.NoError(t, dst.Connect(stack.MMDVMAddr))
 		require.NoError(t, dst.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		type sent struct{ stream, seq uint }
 		var want []sent
@@ -74,15 +72,9 @@ func TestARepeaterGetsTheCallsOfARepeaterInOrderAcrossTopics(t *testing.T) {
 			}
 		}
 
-		var got []sent
-		deadline := time.After(10 * time.Second)
-		for len(got) < len(want) {
-			select {
-			case p := <-dst.ReceivedPackets():
-				got = append(got, sent{p.StreamID, p.Seq})
-			case <-deadline:
-				t.Fatalf("got %d of %d packets: %v", len(got), len(want), got)
-			}
+		got := make([]sent, 0, len(want))
+		for _, p := range testutils.Collect(dst.ReceivedPackets(), deliverWait, func(got []models.Packet) bool { return len(got) == len(want) }) {
+			got = append(got, sent{p.StreamID, p.Seq})
 		}
 		assert.Equal(t, want, got)
 	})

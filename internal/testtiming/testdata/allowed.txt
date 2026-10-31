@@ -5,15 +5,15 @@ eventually	internal/dmr/codec_detection_test.go	3	polls the call row and the hea
 sleep	internal/dmr/contention_integration_test.go	2	pace, not a wait: the 30 ms between the interleaved bursts of the two talkers, which the test is about; a starved machine only spreads them
 elapsed	internal/dmr/droidstar_test.go	4	measurements, not waits: the login and reconnect times the test logs and checks, and the probe loop of firstCallHeard, which its caller bounds
 sleep	internal/dmr/droidstar_test.go	2	the 1 s gap that hearCalls leaves between two calls, a pace and not a wait, and the poll step of waitLogin: the hub writes the login time to the database with no event
-eventually	internal/dmr/freedmr_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/dmr/freedmr_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/freedmr_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/freedmr_test.go	1	polls until the hotspot logs in to the FreeDMR process, which opens its master port at a time of its own with no event; bounded by 40 s, and the test runs only with hack/freedmr-test.sh
+pickport	internal/dmr/freedmr_test.go	1	the config of the external FreeDMR process must name its OpenBridge, master and report ports, which it binds itself, so a :0 port or a handed-in listener cannot be used; FreeUDPPort picks below the ephemeral range and never twice
+sleep	internal/dmr/freedmr_test.go	6	timers of the external FreeDMR process, which has no event: the 12 s after the logins (it covers the 5 s GROUP_HANGTIME that FreeDMR starts its slots in, as HBlink3 does; the rest is not measured), the 6 s GROUP_HANGTIME waits between calls, the 60 ms pace that its flood check needs (more than 25 bursts a second are dropped), and the 65 s that proves the BCKA keepalives keep its 60 s link timer from firing
 elapsed	internal/dmr/golden_data_test.go	1	the time.Until of the recorded times of the parrot capture replay; not a wait for an event
 sleep	internal/dmr/golden_data_test.go	4	replay pace, not a wait: the gaps of the air capture (clamped to 0.1 to 3 s), and the 30 ms and 20 ms between the packets of the IPSC and DMRGateway replays, and the recorded times of the parrot capture; a starved machine only spreads them
 sleep	internal/dmr/golden_integration_test.go	3	replay pace, not a wait: 60 ms between the packets of a captured call; a starved machine only spreads them
-eventually	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-pickport	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hblink3_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+eventually	internal/dmr/hblink3_test.go	1	polls until the hotspot logs in to the HBlink3 process, which opens its master port at a time of its own with no event; bounded by 40 s, and the test runs only with hack/hblink3-test.sh
+pickport	internal/dmr/hblink3_test.go	1	the config of the external HBlink3 process must name its OpenBridge, master and report ports, which it binds itself, so a :0 port or a handed-in listener cannot be used; FreeUDPPort picks below the ephemeral range and never twice
+sleep	internal/dmr/hblink3_test.go	2	the GROUP_HANGTIME of 5 s of the external HBlink3 process, which holds its slots after its start and after a call with no event: the wait after the logins and before the SMS from the hub
 sleep	internal/dmr/hub/clockstep_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/fanout_bench_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/lastseen_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

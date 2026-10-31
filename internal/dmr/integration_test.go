@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,7 @@ import (
 const (
 	testPassword   = "s3cret"
 	ipscAuthKey    = "0000000000000000000000000000000000003039" // hex auth key for IPSC peers
-	handshakeWait  = 5 * time.Second
+	handshakeWait  = dmrdsession.LoginTimeoutDefault
 	drainWait      = 2 * time.Second
 	settleDuration = 500 * time.Millisecond
 	// callHoldTime keeps a test call well past the 100ms key-up threshold in

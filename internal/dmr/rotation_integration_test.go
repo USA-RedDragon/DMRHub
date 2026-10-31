@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/mmdvm"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -338,7 +339,7 @@ func TestRotationMidCall(t *testing.T) {
 			require.NoError(t, p.WaitReady(handshakeWait))
 			return p
 		}
-		talkerA := peer(100001, 200*time.Millisecond, 5*time.Second)
+		talkerA := peer(100001, 200*time.Millisecond, dmrdsession.TimeoutDefault)
 		slow := peer(100003, 3*time.Second, 15*time.Second)
 		browser, err := testutils.NewWebTransportPeer(100004, testPassword)
 		require.NoError(t, err)
@@ -350,7 +351,7 @@ func TestRotationMidCall(t *testing.T) {
 		t.Cleanup(ipscPeer.Close)
 		require.NoError(t, ipscPeer.WaitReady(handshakeWait))
 		fronts.Add(t, b)
-		talkerB := peer(100002, 200*time.Millisecond, 5*time.Second)
+		talkerB := peer(100002, 200*time.Millisecond, dmrdsession.TimeoutDefault)
 		time.Sleep(settleDuration)
 
 		one := rotationCall{src: 1000001, stream: 8101, tg: 1, slot: false, send: talkerB.SendDMRD}

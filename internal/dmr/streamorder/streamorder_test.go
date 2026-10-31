@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/streamorder"
@@ -77,43 +78,47 @@ func TestQueueRefusesAfterStop(t *testing.T) {
 
 func TestSlowStreamDoesNotDelayOthers(t *testing.T) {
 	t.Parallel()
-	done := make(chan struct{})
-	defer close(done)
-	q := streamorder.New[uint](4, done)
+	synctest.Test(t, func(t *testing.T) {
+		done := make(chan struct{})
+		defer close(done)
+		q := streamorder.New[uint](4, done)
 
-	release := make(chan struct{})
-	defer close(release)
-	assert.True(t, q.Do(context.Background(), 1, func() { <-release }))
+		release := make(chan struct{})
+		defer close(release)
+		assert.True(t, q.Do(context.Background(), 1, func() { <-release }))
 
-	ran := make(chan struct{})
-	for _, s := range []uint{9, 17, 2} {
-		assert.True(t, q.Do(context.Background(), s, func() { ran <- struct{}{} }))
-		select {
-		case <-ran:
-		case <-time.After(time.Second):
-			t.Fatalf("stream %d waited behind a slow stream", s)
+		ran := make(chan struct{})
+		for _, s := range []uint{9, 17, 2} {
+			assert.True(t, q.Do(context.Background(), s, func() { ran <- struct{}{} }))
+			select {
+			case <-ran:
+			case <-time.After(time.Second):
+				t.Fatalf("stream %d waited behind a slow stream", s)
+			}
 		}
-	}
+	})
 }
 
 func TestDoNeverBlocks(t *testing.T) {
 	t.Parallel()
-	done := make(chan struct{})
-	defer close(done)
-	q := streamorder.New[uint](4, done)
+	synctest.Test(t, func(t *testing.T) {
+		done := make(chan struct{})
+		defer close(done)
+		q := streamorder.New[uint](4, done)
 
-	release := make(chan struct{})
-	defer close(release)
-	returned := make(chan struct{})
-	go func() {
-		for range 100 {
-			q.Do(context.Background(), 1, func() { <-release })
+		release := make(chan struct{})
+		defer close(release)
+		returned := make(chan struct{})
+		go func() {
+			for range 100 {
+				q.Do(context.Background(), 1, func() { <-release })
+			}
+			close(returned)
+		}()
+		select {
+		case <-returned:
+		case <-time.After(time.Second):
+			t.Fatal("Do blocked on a full stream")
 		}
-		close(returned)
-	}()
-	select {
-	case <-returned:
-	case <-time.After(time.Second):
-		t.Fatal("Do blocked on a full stream")
-	}
+	})
 }

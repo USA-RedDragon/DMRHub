@@ -344,3 +344,38 @@ func TestKVUpdateRunsOutOfTriesOnRedis(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("theirs"), got)
 }
+
+// TestKVUpdateOutlastsManyWritersOnRedis has 32 writers update one key on
+// Redis at once. Every update must get through within its tries.
+func TestKVUpdateOutlastsManyWritersOnRedis(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	testutils.PostgresRedisBackend().Setup(t, &cfg)
+	store, err := kv.MakeKV(t.Context(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	const writers, each = 32, 25
+	var wg sync.WaitGroup
+	var conflicts atomic.Int64
+	for range writers {
+		wg.Go(func() {
+			for range each {
+				err := store.Update(context.Background(), "many", time.Minute, func(old []byte) ([]byte, error) {
+					n, _ := strconv.Atoi(string(old))
+					return strconv.AppendInt(nil, int64(n+1), 10), nil
+				})
+				if errors.Is(err, kv.ErrConflict) {
+					conflicts.Add(1)
+					continue
+				}
+				assert.NoError(t, err)
+			}
+		})
+	}
+	wg.Wait()
+	assert.Zero(t, conflicts.Load(), "updates ran out of tries")
+	got, err := store.Get(context.Background(), "many")
+	require.NoError(t, err)
+	assert.Equal(t, strconv.Itoa(writers*each-int(conflicts.Load())), string(got))
+}

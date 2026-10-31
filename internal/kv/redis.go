@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"runtime"
 	"time"
 
@@ -216,7 +217,12 @@ type fnError struct{ err error }
 func (e fnError) Error() string { return e.err.Error() }
 
 func (kv *redisKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
-	for range updateTries {
+	for try := range updateTries {
+		if try > 0 {
+			if err := backoff(ctx, try); err != nil {
+				return fmt.Errorf("redis update %s: %w", key, err)
+			}
+		}
 		err := kv.client.Watch(ctx, func(tx *redis.Tx) error {
 			old, err := tx.Get(ctx, key).Bytes()
 			switch {
@@ -248,6 +254,21 @@ func (kv *redisKV) Update(ctx context.Context, key string, ttl time.Duration, fn
 		}
 	}
 	return fmt.Errorf("redis update %s: %w", key, ErrConflict)
+}
+
+// backoff waits a random time below a limit that doubles with each try,
+// from 1 ms up to 256 ms, so that writers that changed one key at once try
+// again at different times.
+func backoff(ctx context.Context, try int) error {
+	limit := min(time.Millisecond<<(try-1), 256*time.Millisecond)
+	t := time.NewTimer(rand.N(limit) + 1) //nolint:gosec
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck
+	case <-t.C:
+		return nil
+	}
 }
 
 const deleteIfEqualScript = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0`

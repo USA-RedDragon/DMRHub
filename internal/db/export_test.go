@@ -20,6 +20,8 @@
 package db
 
 import (
+	"time"
+
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -47,3 +49,6 @@ func Dialect(config *configPkg.Config) gorm.Dialector {
 func Migrate(db *gorm.DB, config *configPkg.Config) error {
 	return migrate(db, config)
 }
+
+// LockWait is how long one GET_LOCK call of the MySQL migration lock waits.
+const LockWait = mysqlLockWait * time.Second

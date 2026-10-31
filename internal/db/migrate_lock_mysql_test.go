@@ -20,8 +20,8 @@
 package db_test
 
 import (
+	"context"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -63,18 +63,30 @@ func TestMigrationLockHoldsOffASecondReplica(t *testing.T) {
 				}
 				got <- unlock
 			}()
+			ctx, cancel := context.WithTimeout(t.Context(), db.LockWait)
+			defer cancel()
+			for !lockWaiter(ctx, t, first, cfg.Database.Driver) {
+				select {
+				case unlock := <-got:
+					assert.NoError(t, unlock())
+					require.NoError(t, unlockFirst())
+					require.Fail(t, "the second replica took the migration lock while the first held it")
+				default:
+				}
+				require.NoError(t, ctx.Err(), "the second replica did not wait for the migration lock within %s", db.LockWait)
+			}
 			select {
 			case unlock := <-got:
 				assert.NoError(t, unlock())
 				require.NoError(t, unlockFirst())
 				require.Fail(t, "the second replica took the migration lock while the first held it")
-			case <-time.After(2 * time.Second):
+			default:
 			}
 			require.NoError(t, unlockFirst())
 			select {
 			case unlock := <-got:
 				require.NoError(t, unlock())
-			case <-time.After(30 * time.Second):
+			case <-ctx.Done():
 				require.Fail(t, "the second replica never took the migration lock after the first let it go")
 			}
 		})
@@ -106,10 +118,13 @@ func TestMigrationLocksOfTwoDatabasesAreApart(t *testing.T) {
 					}
 					got <- unlock
 				}()
+				ctx, cancel := context.WithTimeout(t.Context(), db.LockWait)
 				select {
 				case unlock := <-got:
+					cancel()
 					unlocks = append(unlocks, unlock)
-				case <-time.After(5 * time.Second):
+				case <-ctx.Done():
+					cancel()
 					for _, unlock := range unlocks {
 						assert.NoError(t, unlock())
 					}
@@ -121,4 +136,18 @@ func TestMigrationLocksOfTwoDatabasesAreApart(t *testing.T) {
 			}
 		})
 	}
+}
+
+func lockWaiter(ctx context.Context, t *testing.T, gdb *gorm.DB, driver config.DatabaseDriver) bool {
+	t.Helper()
+	query := "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB = DATABASE() AND INFO LIKE 'SELECT GET_LOCK%'"
+	if driver == config.DatabaseDriverPostgres {
+		query = "SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+	}
+	var n int64
+	err := gdb.WithContext(ctx).Raw(query).Scan(&n).Error
+	if ctx.Err() == nil {
+		require.NoError(t, err, "read the waiters for the migration lock")
+	}
+	return n > 0
 }

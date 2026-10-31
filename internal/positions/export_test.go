@@ -20,6 +20,7 @@
 package positions
 
 import (
+	"context"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
@@ -36,4 +37,17 @@ func SetClock(g *Gateway, every time.Duration, c clock.Clock) {
 // sent it; and with each login reply to its clients. Call it before Start.
 func Observe(g *Gateway, refreshed func(connected bool), handled func(p models.Position, sent bool), login func(verified bool)) {
 	g.obs = observer{refreshed: refreshed, handled: handled, login: login}
+}
+
+// LeaseKey is the KV key of the APRS-IS lease.
+const LeaseKey = leaseKey
+
+// ID returns the lease value of g.
+func ID(g *Gateway) string {
+	return g.id
+}
+
+// Release is release.
+func Release(ctx context.Context, g *Gateway) {
+	g.release(ctx)
 }

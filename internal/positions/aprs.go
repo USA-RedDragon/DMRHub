@@ -202,10 +202,8 @@ func (g *Gateway) release(ctx context.Context) {
 		g.client.Stop()
 		g.client = nil
 	}
-	if g.leader {
-		if v, err := g.kv.Get(ctx, leaseKey); err == nil && string(v) == g.id {
-			_ = g.kv.Delete(ctx, leaseKey)
-		}
+	if _, err := g.kv.DeleteIfEqual(ctx, leaseKey, []byte(g.id)); err != nil {
+		slog.Error("APRS-IS: cannot give up the lease", "error", err)
 	}
 	g.leader = false
 }

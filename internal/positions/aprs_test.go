@@ -310,3 +310,28 @@ func TestWithoutALoginTheGatewayConnectsNowhere(t *testing.T) {
 	assert.False(t, next(t, w.refreshed, "lease check"), "the gateway started an APRS-IS client")
 	assert.Empty(t, g.srv.Logins())
 }
+
+// TestAStopGivesUpALeaseThatItsTakeDidNotSee gives the lease to a gateway
+// whose take of it got no reply, so the gateway does not know that it
+// leads. Its release must delete the lease, and must keep a lease of
+// another replica.
+func TestAStopGivesUpALeaseThatItsTakeDidNotSee(t *testing.T) {
+	t.Parallel()
+	g := newGateway(t)
+	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
+	ctx := context.Background()
+	ok, err := g.kv.SetNX(ctx, positions.LeaseKey, positions.ID(gw), time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+	positions.Release(ctx, gw)
+	_, err = g.kv.Get(ctx, positions.LeaseKey)
+	require.ErrorIs(t, err, kv.ErrNotFound, "the lease of the stopped replica stayed")
+
+	ok, err = g.kv.SetNX(ctx, positions.LeaseKey, "another replica", time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+	positions.Release(ctx, gw)
+	v, err := g.kv.Get(ctx, positions.LeaseKey)
+	require.NoError(t, err)
+	assert.Equal(t, "another replica", string(v))
+}

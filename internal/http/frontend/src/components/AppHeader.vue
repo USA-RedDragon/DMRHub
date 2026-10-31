@@ -36,27 +36,17 @@
         <SheetContent side="left" class="w-72 p-0">
           <SheetHeader class="border-b border-border px-4 py-4">
             <SheetTitle>
-              <router-link
-                to="/"
+              <a
+                href="/"
                 class="text-lg font-bold text-foreground no-underline"
-                @click="mobileOpen = false"
               >
                 {{ title }}
-              </router-link>
+              </a>
             </SheetTitle>
             <SheetDescription class="sr-only">Navigation menu</SheetDescription>
           </SheetHeader>
 
           <nav class="flex flex-col gap-1 px-2 py-3">
-            <router-link
-              to="/"
-              class="mobile-nav-link"
-              :class="{ active: route.path === '/' }"
-              @click="mobileOpen = false"
-            >
-              <Home class="h-4 w-4" />
-              Home
-            </router-link>
             <router-link
               to="/lastheard"
               class="mobile-nav-link"
@@ -295,6 +285,12 @@
               </router-link>
             </template>
 
+            <Separator class="my-1" />
+            <a href="/" class="mobile-nav-link">
+              <BookOpen class="h-4 w-4" />
+              Docs
+            </a>
+
             <!-- Auth -->
             <Separator class="my-1" />
             <template v-if="!userStore.loggedIn">
@@ -340,22 +336,15 @@
       </Sheet>
 
       <!-- Brand -->
-      <router-link
-        to="/"
+      <a
+        href="/"
         class="mr-6 text-xl font-bold tracking-tight text-foreground no-underline hover:text-foreground"
       >
         {{ title }}
-      </router-link>
+      </a>
 
       <!-- Desktop navigation -->
       <nav class="hidden md:flex items-center gap-1">
-        <router-link
-          to="/"
-          class="desktop-nav-link"
-          :class="{ active: route.path === '/' }"
-        >
-          Home
-        </router-link>
         <router-link
           to="/lastheard"
           class="desktop-nav-link"
@@ -618,6 +607,7 @@
 
       <!-- Right side: auth -->
       <div class="ml-auto hidden md:flex items-center gap-2">
+        <a href="/" class="desktop-nav-link">Docs</a>
         <template v-if="!userStore.loggedIn">
           <router-link v-if="settingsStore.registration !== 'closed'" to="/register" class="desktop-nav-link">
             Register
@@ -658,9 +648,9 @@ import {
 } from 'reka-ui';
 import {
   Antenna,
+  BookOpen,
   ChevronDown,
   Globe,
-  Home,
   LogIn,
   LogOut,
   Mail,

@@ -1,6 +1,6 @@
 # Create an account
 
-You need an account to enroll a hotspot, pick talkgroups, read your text messages and see your positions. Anyone can see the **Home**, **Last Heard**, **Talkgroups** and **Nets** pages without an account.
+You need an account to enroll a hotspot, pick talkgroups, read your text messages and see your positions. Anyone can see the **Last Heard**, **Talkgroups** and **Nets** pages without an account.
 
 ## Before you start
 

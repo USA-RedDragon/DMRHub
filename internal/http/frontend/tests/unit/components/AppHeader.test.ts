@@ -31,6 +31,13 @@ describe('AppHeader', () => {
     expect(missing).toEqual([]);
   });
 
+  it('reaches the docs at / only with a full page load', () => {
+    expect(source).not.toMatch(/\bto="\/"/);
+    expect(source).not.toMatch(/>\s*Home\s*</);
+    const plain = [...source.matchAll(/<a\s[^>]*href="\/"[^>]*>\s*([\s\S]*?)\s*<\/a>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
+    expect(plain).toEqual(['{{ title }}', 'Docs', '{{ title }}', 'Docs']);
+  });
+
   it('opens the Admin menu without going anywhere', () => {
     const triggers = [...source.matchAll(/<DropdownMenuTrigger[\s\S]*?<\/DropdownMenuTrigger>/g)].map((m) => m[0]);
     const admin = triggers.find((t) => /\bAdmin\b/.test(t));

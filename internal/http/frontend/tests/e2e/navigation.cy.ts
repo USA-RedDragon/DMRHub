@@ -27,14 +27,13 @@ describe('Navigation & Auth Guards', () => {
 
     cy.visit('/');
 
-    // Should see Home, Last Heard, Register, Login
     cy.get('header nav.hidden.md\\:flex').within(() => {
-      cy.contains('Home').should('be.visible');
+      cy.contains('Home').should('not.exist');
       cy.contains('Last Heard').should('be.visible');
     });
 
-    // Auth links
     cy.get('header .hidden.md\\:flex').last().within(() => {
+      cy.contains('Docs').should('have.attr', 'href', '/');
       cy.contains('Register').should('be.visible');
       cy.contains('Login').should('be.visible');
     });

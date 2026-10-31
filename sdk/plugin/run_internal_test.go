@@ -17,6 +17,7 @@ import (
 	"flag"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -73,25 +74,27 @@ func TestRunWaitsAgainFromASecondAfterALongConnection(t *testing.T) {
 
 func TestRunStopsWhileItWaits(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
-	dials := 0
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		run(ctx, func(context.Context) (*Conn, error) {
-			dials++
-			time.AfterFunc(50*time.Millisecond, cancel)
-			return nil, errDown
-		}, func(context.Context, *Conn) error { return nil }, sleep, time.Now)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not stop when its context ended")
-	}
-	if dials != 1 {
-		t.Fatalf("dialed %d times, want 1", dials)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		dials := 0
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			run(ctx, func(context.Context) (*Conn, error) {
+				dials++
+				time.AfterFunc(50*time.Millisecond, cancel)
+				return nil, errDown
+			}, func(context.Context, *Conn) error { return nil }, sleep, time.Now)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Run did not stop when its context ended")
+		}
+		if dials != 1 {
+			t.Fatalf("dialed %d times, want 1", dials)
+		}
+	})
 }
 
 func TestTheOptionsComeFromFlagsAndTheEnvironment(t *testing.T) {

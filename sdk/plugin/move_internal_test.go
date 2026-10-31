@@ -19,6 +19,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"sync"
@@ -92,7 +93,6 @@ func (e statusError) GRPCStatus() *status.Status {
 var (
 	errRefused  = statusError(codes.Unavailable)
 	errReplaced = statusError(codes.Aborted)
-	errTimeout  = errors.New("Recv did not return")
 )
 
 func welcome(s pluginv1.PluginService_ConnectServer) {
@@ -124,18 +124,28 @@ func recvWithin(t *testing.T, c *Conn) (*pluginv1.ConnectResponse, error) {
 		m, err := c.Recv()
 		ch <- res{m, err}
 	}()
+	r := within(t, ch, "a message or the end of the stream")
+	return r.m, r.err
+}
+
+func within[T any](t *testing.T, ch <-chan T, what string) T {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), moveFor)
+	defer cancel()
 	select {
-	case r := <-ch:
-		return r.m, r.err
-	case <-time.After(5 * time.Second):
-		t.Fatal(errTimeout)
-		return nil, errTimeout
+	case v := <-ch:
+		return v
+	case <-ctx.Done():
+		t.Fatalf("no %s within %s, the longest move of a plugin", what, moveFor)
+		var zero T
+		return zero
 	}
 }
 
 func TestAConnMovesToANewStreamOnDraining(t *testing.T) {
 	t.Parallel()
 	newUp := make(chan struct{})
+	oldEnd := make(chan struct{})
 	newGot := make(chan *pluginv1.ConnectRequest, 8)
 	opts := startHub(t,
 		func(s pluginv1.PluginService_ConnectServer) error {
@@ -146,7 +156,10 @@ func TestAConnMovesToANewStreamOnDraining(t *testing.T) {
 			<-newUp
 			sendBurst(s, 2)
 			sendBurst(s, 3)
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-oldEnd:
+			case <-s.Context().Done():
+			}
 			return errReplaced
 		},
 		refused,
@@ -182,6 +195,7 @@ func TestAConnMovesToANewStreamOnDraining(t *testing.T) {
 		}
 		seen[m.GetBurst().GetSequence()]++
 	}
+	close(oldEnd)
 	first := <-newGot
 	if !first.GetSubscribe().GetTracking() {
 		t.Fatalf("the new stream got %v first, want the tracking subscription", first)
@@ -189,15 +203,9 @@ func TestAConnMovesToANewStreamOnDraining(t *testing.T) {
 	if err := c.Send(&pluginv1.Burst{StreamId: 99}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case m := <-newGot:
-		if m.GetBurst().GetStreamId() != 99 {
-			t.Fatalf("the new stream got %v", m)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("a burst sent after the move did not reach the new stream")
+	if m := within(t, newGot, "burst sent after the move on the new stream"); m.GetBurst().GetStreamId() != 99 {
+		t.Fatalf("the new stream got %v", m)
 	}
-	time.Sleep(300 * time.Millisecond)
 	for seq := uint32(1); seq <= 4; seq++ {
 		if seen[seq] != 1 {
 			t.Fatalf("burst %d came %d times: %v", seq, seen[seq], seen)
@@ -260,16 +268,8 @@ func TestAConnSaysHelloOnEachStream(t *testing.T) {
 	}()
 	for stream := 1; stream <= 2; stream++ {
 		var first, second *pluginv1.ConnectRequest
-		select {
-		case first = <-got:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("stream %d got nothing", stream)
-		}
-		select {
-		case second = <-got:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("stream %d got nothing", stream)
-		}
+		first = within(t, got, fmt.Sprintf("hello on stream %d", stream))
+		second = within(t, got, fmt.Sprintf("subscription on stream %d", stream))
 		if first.GetHello().GetVersion() != "v9" {
 			t.Fatalf("stream %d got %v first, want the hello", stream, first)
 		}

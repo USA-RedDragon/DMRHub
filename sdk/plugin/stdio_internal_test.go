@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
@@ -103,58 +104,62 @@ func TestStdioRefusesAnotherFirstMessage(t *testing.T) {
 
 func TestStdioKeepsTheOrderOfABacklog(t *testing.T) {
 	t.Parallel()
-	h := newFakeHost(t)
-	const n = 600
-	wrote := make(chan struct{})
-	go func() {
-		defer close(wrote)
+	synctest.Test(t, func(t *testing.T) {
+		h := newFakeHost(t)
+		const n = 600
+		wrote := make(chan struct{})
+		go func() {
+			defer close(wrote)
+			for i := range n {
+				h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{Sequence: uint32(i % 256), StreamId: uint32(i + 1)}}})
+			}
+		}()
+		select {
+		case <-wrote:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the host could not write while the plugin was not reading")
+		}
 		for i := range n {
-			h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{Sequence: uint32(i % 256), StreamId: uint32(i + 1)}}})
+			m, err := h.s.recv()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.GetBurst().GetStreamId() != uint32(i+1) {
+				t.Fatalf("message %d is stream %d", i, m.GetBurst().GetStreamId())
+			}
 		}
-	}()
-	select {
-	case <-wrote:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the host could not write while the plugin was not reading")
-	}
-	for i := range n {
-		m, err := h.s.recv()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if m.GetBurst().GetStreamId() != uint32(i+1) {
-			t.Fatalf("message %d is stream %d", i, m.GetBurst().GetStreamId())
-		}
-	}
+	})
 }
 
 func TestStdioAnswersTheNetworkBehindABacklog(t *testing.T) {
 	t.Parallel()
-	h := newFakeHost(t)
-	type result struct {
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		_, err := h.s.dial(context.Background(), "nets.example.org:443")
-		done <- result{err}
-	}()
-	open := h.read().GetNet()
-	if open.GetOpen() != "nets.example.org:443" {
-		t.Fatalf("the plugin asked %v, want an open of nets.example.org:443", open)
-	}
-	for i := range 600 {
-		h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{StreamId: uint32(i + 1)}}})
-	}
-	h.write(netAnswer(&pluginv1.NetResponse{Conn: open.GetConn(), Op: pluginv1.NetOp_NET_OP_OPEN}))
-	select {
-	case r := <-done:
-		if r.err != nil {
-			t.Fatal(r.err)
+	synctest.Test(t, func(t *testing.T) {
+		h := newFakeHost(t)
+		type result struct {
+			err error
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the open got no answer while bursts waited for the plugin")
-	}
+		done := make(chan result, 1)
+		go func() {
+			_, err := h.s.dial(context.Background(), "nets.example.org:443")
+			done <- result{err}
+		}()
+		open := h.read().GetNet()
+		if open.GetOpen() != "nets.example.org:443" {
+			t.Fatalf("the plugin asked %v, want an open of nets.example.org:443", open)
+		}
+		for i := range 600 {
+			h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{StreamId: uint32(i + 1)}}})
+		}
+		h.write(netAnswer(&pluginv1.NetResponse{Conn: open.GetConn(), Op: pluginv1.NetOp_NET_OP_OPEN}))
+		select {
+		case r := <-done:
+			if r.err != nil {
+				t.Fatal(r.err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the open got no answer while bursts waited for the plugin")
+		}
+	})
 }
 
 func TestStdioDialReadsWritesAndCloses(t *testing.T) {

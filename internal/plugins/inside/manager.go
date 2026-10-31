@@ -90,7 +90,7 @@ type Deps struct {
 	Builtins []builtin.Plugin
 	// Timing is zero for DefaultTiming.
 	Timing Timing
-	// Clock times the leases, the backoffs and the wait of a new version
+	// Clock times the renewal of the leases, the backoffs and the wait of a new version
 	// for the calls to end. Nil is the real clock. The KV store keeps the
 	// TTLs of the leases on a clock of its own.
 	Clock clock.Clock

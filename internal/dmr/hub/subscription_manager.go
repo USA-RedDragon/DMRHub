@@ -643,6 +643,7 @@ func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
 
 // deliverPrivate delivers a private call to the repeater.
 func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Packet, repeaterID uint) {
+	m.hub.noteRelayedSource(packet)
 	packet.Repeater = repeaterID
 	p, err := m.hub.routingRepeater(repeaterID)
 	if err != nil {

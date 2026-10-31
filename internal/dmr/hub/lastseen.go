@@ -64,6 +64,13 @@ func (h *Hub) noteHeardOn(packet models.Packet, sourceName string) {
 	h.heardOn.Store(packet.Src, heardAt{repeater: packet.Repeater, at: h.clock.Now()})
 }
 
+func (h *Hub) noteRelayedSource(packet models.Packet) {
+	if packet.Repeater == 0 {
+		return
+	}
+	h.heardOn.Store(packet.Src, heardAt{repeater: packet.Repeater, at: h.clock.Now()})
+}
+
 // noteSighting queues the place where the source of packet was heard, once
 // per stream. It never blocks.
 func (h *Hub) noteSighting(packet models.Packet, sourceName string) {

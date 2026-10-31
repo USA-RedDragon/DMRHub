@@ -29,8 +29,10 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -333,15 +335,21 @@ func (h *Hub) privateTarget(ctx context.Context, packet models.Packet) (uint, bo
 	owner, err := h.radioOwners.Get(packet.Dst)
 	if err != nil {
 		slog.Error("Error finding the owner of a radio", "error", err)
+		if errors.Is(err, lookup.ErrSlow) {
+			metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLookupWait)
+		}
 		return 0, false
 	}
 	if owner == 0 && route.Reach == config.PrivateReachMembers {
 		h.logPrivateDrop(key, packet, route, "the radio ID is not a member's")
 		return 0, false
 	}
-	repeaterID, ok := h.locateRadio(ctx, packet.Dst, owner, route)
+	repeaterID, ok, slow := h.locateRadio(ctx, packet.Dst, owner, route)
 	if !ok {
 		if route.Unknown != config.PrivateUnknownFlood {
+			if slow {
+				metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLastSeenWait)
+			}
 			h.logPrivateDrop(key, packet, route, "the radio was not heard where its traffic may follow it")
 			return 0, false
 		}

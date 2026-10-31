@@ -20,10 +20,13 @@
 package hub
 
 import (
+	"errors"
 	"log/slog"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
+	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 )
 
@@ -111,20 +114,31 @@ func (h *Hub) slotRefuses(r *repeaterRules, slot bool, packet models.Packet, out
 	if len(users) == 0 {
 		return false
 	}
-	if h.listed(users, packet.Src) {
+	src, srcSlow := h.listed(users, packet.Src)
+	if src {
 		return false
 	}
-	return !out || packet.GroupCall || !h.listed(users, packet.Dst)
+	if out && !packet.GroupCall {
+		dst, dstSlow := h.listed(users, packet.Dst)
+		if dst {
+			return false
+		}
+		srcSlow = srcSlow || dstSlow
+	}
+	if srcSlow {
+		metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLookupWait)
+	}
+	return true
 }
 
-func (h *Hub) listed(users map[uint]struct{}, radio uint) bool {
+func (h *Hub) listed(users map[uint]struct{}, radio uint) (bool, bool) {
 	owner, err := h.radioOwners.Get(radio)
 	if err != nil {
 		slog.Error("Cannot find the owner of a radio on a locked slot", "radio", radio, "error", err)
-		return false
+		return false, errors.Is(err, lookup.ErrSlow)
 	}
 	_, ok := users[owner]
-	return ok
+	return ok, false
 }
 
 func (h *Hub) talkgroupRefused(r *repeaterRules, tg uint) bool {

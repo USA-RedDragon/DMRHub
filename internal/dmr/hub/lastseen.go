@@ -30,6 +30,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
@@ -294,7 +295,7 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 // in the last seconds, which the record may not hold yet; and, for an
 // account ID, its last call on a repeater that the user owns or an admin
 // trusts.
-func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config.PrivateRoute) (uint, bool) {
+func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config.PrivateRoute) (uint, bool, bool) {
 	anyone := route.Reach == config.PrivateReachAnyone
 	now := h.clock.Now()
 	var best heardAt
@@ -310,7 +311,9 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 	}
 	key := lastHeardKey(radioID)
 	read := context.WithoutCancel(ctx)
-	if v, err := h.lastSeen.Do(radioID, func() ([]byte, error) { return h.kv.Get(read, key) }); err == nil { //nolint:wrapcheck
+	v, err := h.lastSeen.Do(radioID, func() ([]byte, error) { return h.kv.Get(read, key) }) //nolint:wrapcheck
+	slow := errors.Is(err, lookup.ErrSlow)
+	if err == nil {
 		var rec lastHeard
 		if json.Unmarshal(v, &rec) == nil {
 			if anyone {
@@ -331,7 +334,7 @@ func (h *Hub) locateRadio(ctx context.Context, radioID, owner uint, route config
 			consider(call)
 		}
 	}
-	return best.repeater, best.repeater != 0
+	return best.repeater, best.repeater != 0, slow
 }
 
 // lastCallRepeater returns the repeater and time of the last call of the

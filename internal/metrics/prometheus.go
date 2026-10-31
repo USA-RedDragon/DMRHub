@@ -111,6 +111,21 @@ const DropReasonOversize = "oversize"
 // from a source address that the IP list of its server refuses.
 const DropReasonIPList = "ip_list"
 
+// DropReasonLookupWait is the IngressDroppedBurstsTotal reason for a burst
+// that was dropped because a lookup in the database took longer than
+// lookup.Wait.
+const DropReasonLookupWait = "lookup_wait"
+
+// DropReasonClaimWait is the IngressDroppedBurstsTotal reason for a burst
+// that was dropped because the check of the claim of its stream in the KV
+// store took longer than the claim wait of the hub.
+const DropReasonClaimWait = "claim_wait"
+
+// DropReasonLastSeenWait is the IngressDroppedBurstsTotal reason for a
+// private burst that was dropped because the read of where its target was
+// heard took longer than lookup.Wait.
+const DropReasonLastSeenWait = "last_seen_wait"
+
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
 	metricsInstance *Metrics  //nolint:gochecknoglobals

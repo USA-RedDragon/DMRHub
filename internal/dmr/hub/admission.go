@@ -20,11 +20,13 @@
 package hub
 
 import (
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
@@ -63,9 +65,16 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 	if !p.checked && anyRadio {
 		p.checked = true
 	}
+	waited := false
 	if !p.checked {
-		allowed, final := h.mayTransmit(r.Transmit, packet, sourceName)
+		var allowed, final bool
+		allowed, final, waited = h.mayTransmit(r.Transmit, packet, sourceName)
 		p.checked, p.refused = final, !allowed
+	}
+	if p.refused && waited {
+		metrics.NewMetrics().IncrementIngressDropped(metrics.DropReasonLookupWait)
+		h.streamPolicies.Store(key, p)
+		return false
 	}
 	if p.refused {
 		h.refuseStream(key, &p, packet, sourceName, "transmit")
@@ -82,26 +91,27 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 }
 
 // mayTransmit reports whether the radio of packet may transmit under
-// policy, and whether the answer is final for its stream.
-func (h *Hub) mayTransmit(policy config.Transmit, packet models.Packet, sourceName string) (bool, bool) {
+// policy, whether the answer is final for its stream, and whether the
+// lookup of the owner of the radio gave up at lookup.Wait.
+func (h *Hub) mayTransmit(policy config.Transmit, packet models.Packet, sourceName string) (bool, bool, bool) {
 	if h.getServerRole(sourceName) == RolePeer {
-		return true, true
+		return true, true, false
 	}
 	switch policy {
 	case config.TransmitRadioID:
 		_, ok := userdb.Get(packet.Src)
-		return ok, true
+		return ok, true, false
 	case config.TransmitMembers:
 		owner, err := h.radioOwners.Get(packet.Src)
 		if err != nil {
 			slog.Warn("Cannot find the owner of a radio, dropping its burst", "src", packet.Src, "error", err)
-			return false, false
+			return false, false, errors.Is(err, lookup.ErrSlow)
 		}
-		return owner != 0, true
+		return owner != 0, true, false
 	case config.TransmitAny:
-		return true, true
+		return true, true, false
 	default:
-		return true, true
+		return true, true, false
 	}
 }
 

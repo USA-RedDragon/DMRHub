@@ -140,7 +140,6 @@ func NewWebTransportPeer(id uint32, password string) (*WebTransportPeer, error) 
 		Password: []byte(password),
 		Config:   cfg[:],
 		Retry:    200 * time.Millisecond,
-		Timeout:  5 * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("making session peer: %w", err)

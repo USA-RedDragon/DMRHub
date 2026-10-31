@@ -76,9 +76,16 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	}
 	r, ok := s.rows[key]
 	if !ok {
-		if e := s.ended[key]; e != nil && e.ch.key == ch.key && e.hung && !e.deleted && !isVoiceHeader(p) && !heardBefore(e.call.LastSeq, p.Seq) {
-			r, ok = e, true
-			s.resume(key, r)
+		if e := s.ended[key]; e != nil && e.ch.key == ch.key && !isVoiceHeader(p) {
+			switch {
+			case heardBefore(e.call.LastSeq, p.Seq):
+				if t.at.Sub(e.last) < voiceHang {
+					return
+				}
+			case e.hung && !e.deleted:
+				r, ok = e, true
+				s.resume(key, r)
+			}
 		}
 	}
 	if !ok {

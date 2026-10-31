@@ -20,6 +20,7 @@
 package calltracker_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"testing/synctest"
@@ -170,6 +171,31 @@ func TestAQueuedBurstWithinTheHangKeepsTheCallOpen(t *testing.T) {
 
 		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 		waitDone(t, ct, database, 1)
+	})
+}
+
+// TestCopiesAfterTheTerminatorMakeNoRow sends the last bursts of a call
+// again after its terminator, as a network that repeats or reorders
+// packets does. The copies are no new call.
+func TestCopiesAfterTheTerminatorMakeNoRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+
+		s := newSender(t, ct, userA, tgID, true, 7062)
+		s.voiceCall(2, false)
+		time.Sleep(150 * time.Millisecond)
+		term := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		ct.Flush()
+		for i, v := range []uint{4, 5} {
+			p := s.packet(dmrconst.FrameVoice, v, layer2.RawBurst{})
+			p.Seq = (term.Seq - 2 + uint(i)) & 0xff
+			ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
+		}
+		time.Sleep(calltracker.VoiceHang + time.Second)
+
+		calls := waitDone(t, ct, database, 1)
+		assert.Zero(t, calls[0].Loss)
 	})
 }
 

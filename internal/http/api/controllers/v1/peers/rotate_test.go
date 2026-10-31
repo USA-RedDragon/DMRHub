@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -75,61 +76,68 @@ func seedRotatePeer(t *testing.T, tdb *testutils.TestDB) {
 // database, and the hub announces the change of the peer to every replica.
 func TestAnOwnerRotatesThePasswordOfTheirPeer(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	require.NoError(t, err)
-	defer tdb.CloseDB()
-	seedRotatePeer(t, tdb)
-	var announced changeLog
-	defer tdb.Hub().OnPeerChange(announced.add)()
+	synctest.Test(t, func(t *testing.T) {
+		router, tdb, err := testutils.CreateTestDBRouter()
+		require.NoError(t, err)
+		defer tdb.CloseDB()
+		seedRotatePeer(t, tdb)
+		var announced changeLog
+		defer tdb.Hub().OnPeerChange(announced.add)()
 
-	before := time.Now()
-	w := testutils.Do(t, router, testutils.Login(t, router, "owner"), http.MethodPost, rotatePath, nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.Equal(t, map[string]bool{"password": true, "rotated_at": true}, testutils.JSONKeys(t, w.Body.Bytes()))
-	var res apimodels.PeerRotatePasswordResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res))
-	require.Regexp(t, regexp.MustCompile(`^[A-Za-z0-9._-]{13}$`), res.Password)
-	require.NotEqual(t, "oldPassword1!", res.Password)
-	require.Equal(t, res.Password, peerPassword(t, tdb))
-	require.False(t, res.RotatedAt.Before(before.Truncate(time.Second)))
-	require.Eventually(t, func() bool { return len(announced.list()) == 1 }, time.Second, 10*time.Millisecond)
-	require.Equal(t, []uint{3000}, announced.list())
+		before := time.Now()
+		w := testutils.Do(t, router, testutils.Login(t, router, "owner"), http.MethodPost, rotatePath, nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.Equal(t, map[string]bool{"password": true, "rotated_at": true}, testutils.JSONKeys(t, w.Body.Bytes()))
+		var res apimodels.PeerRotatePasswordResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res))
+		require.Regexp(t, regexp.MustCompile(`^[A-Za-z0-9._-]{13}$`), res.Password)
+		require.NotEqual(t, "oldPassword1!", res.Password)
+		require.Equal(t, res.Password, peerPassword(t, tdb))
+		require.False(t, res.RotatedAt.Before(before.Truncate(time.Second)))
+		synctest.Wait()
+		require.Len(t, announced.list(), 1)
+		require.Equal(t, []uint{3000}, announced.list())
+	})
 }
 
 // TestOnlyTheOwnerOrAnAdminRotatesAPeerPassword checks who may rotate the
 // password of a peer: a visitor and another user may not, and an admin may.
 func TestOnlyTheOwnerOrAnAdminRotatesAPeerPassword(t *testing.T) {
 	t.Parallel()
-	router, tdb, err := testutils.CreateTestDBRouter()
-	require.NoError(t, err)
-	defer tdb.CloseDB()
-	seedRotatePeer(t, tdb)
-	var announced changeLog
-	defer tdb.Hub().OnPeerChange(announced.add)()
+	synctest.Test(t, func(t *testing.T) {
+		router, tdb, err := testutils.CreateTestDBRouter()
+		require.NoError(t, err)
+		defer tdb.CloseDB()
+		seedRotatePeer(t, tdb)
+		var announced changeLog
+		defer tdb.Hub().OnPeerChange(announced.add)()
 
-	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, rotatePath, nil)
-	require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
-	w = testutils.Do(t, router, testutils.Login(t, router, "other"), http.MethodPost, rotatePath, nil)
-	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
-	require.Equal(t, "oldPassword1!", peerPassword(t, tdb))
-	require.Empty(t, announced.list())
+		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, rotatePath, nil)
+		require.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+		w = testutils.Do(t, router, testutils.Login(t, router, "other"), http.MethodPost, rotatePath, nil)
+		require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+		require.Equal(t, "oldPassword1!", peerPassword(t, tdb))
+		synctest.Wait()
+		require.Empty(t, announced.list())
 
-	_, _, adminJar := testutils.LoginAdmin(t, router)
-	w = testutils.Do(t, router, adminJar, http.MethodPost, rotatePath, nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.NotEqual(t, "oldPassword1!", peerPassword(t, tdb))
+		_, _, adminJar := testutils.LoginAdmin(t, router)
+		w = testutils.Do(t, router, adminJar, http.MethodPost, rotatePath, nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.NotEqual(t, "oldPassword1!", peerPassword(t, tdb))
 
-	for _, c := range []struct {
-		path string
-		code int
-	}{
-		{"/api/v1/peers/3001/rotate-password", http.StatusNotFound},
-		{"/api/v1/peers/abc/rotate-password", http.StatusBadRequest},
-	} {
-		w := testutils.Do(t, router, adminJar, http.MethodPost, c.path, nil)
-		require.Equal(t, c.code, w.Code, "%s: %s", c.path, w.Body.String())
-	}
-	require.Eventually(t, func() bool { return len(announced.list()) == 1 }, time.Second, 10*time.Millisecond)
+		for _, c := range []struct {
+			path string
+			code int
+		}{
+			{"/api/v1/peers/3001/rotate-password", http.StatusNotFound},
+			{"/api/v1/peers/abc/rotate-password", http.StatusBadRequest},
+		} {
+			w := testutils.Do(t, router, adminJar, http.MethodPost, c.path, nil)
+			require.Equal(t, c.code, w.Code, "%s: %s", c.path, w.Body.String())
+		}
+		synctest.Wait()
+		require.Len(t, announced.list(), 1)
+	})
 }
 
 // TestAStalePeerPatchKeepsTheRotatedPassword saves the peer after its

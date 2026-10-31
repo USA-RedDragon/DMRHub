@@ -93,9 +93,18 @@ type handedHang struct {
 	Left time.Duration `json:"left"`
 }
 
+type handedIngress struct {
+	CallControl uint32 `json:"callControl"`
+	Stream      uint32 `json:"stream"`
+	Seq         uint8  `json:"seq"`
+	BurstIndex  int    `json:"burstIndex"`
+	Started     bool   `json:"started"`
+}
+
 type handoverReport struct {
-	Calls []handedCall `json:"calls"`
-	Hangs []handedHang `json:"hangs,omitempty"`
+	Calls   []handedCall    `json:"calls"`
+	Ingress []handedIngress `json:"ingress,omitempty"`
+	Hangs   []handedHang    `json:"hangs,omitempty"`
 	// Lost holds the packets, in msgp, that the peer did not get.
 	Lost [][]byte `json:"lost"`
 }
@@ -173,13 +182,14 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 		return
 	}
 	calls, lost, hangs := s.pacer.handOver(peer, since)
-	report := handoverReport{Calls: calls, Hangs: hangs, Lost: marshalPackets(nil, lost)}
+	report := handoverReport{Calls: calls, Ingress: s.ingressOf(peer), Hangs: hangs, Lost: marshalPackets(nil, lost)}
 	if b, err := json.Marshal(report); err == nil {
 		s.hub.HandOverEarly(models.RepeaterTypeIPSC, id, b)
 	}
 	s.hub.StopFor(models.RepeaterTypeIPSC, id)
 	_, lost, report.Hangs = s.pacer.handOver(peer, since)
 	report.Lost = marshalPackets(report.Lost, lost)
+	report.Ingress = s.ingressOf(peer)
 	b, err := json.Marshal(report)
 	if err != nil {
 		slog.Error("Error encoding an IPSC handover", "peerID", id, "error", err)
@@ -187,6 +197,13 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	}
 	s.hub.HandOver(models.RepeaterTypeIPSC, id, b)
 	slog.Info("IPSC peer moved to another replica", "peerID", id, "calls", len(report.Calls))
+}
+
+func (s *IPSCServer) ingressOf(peer uint32) []handedIngress {
+	if s.translator == nil {
+		return nil
+	}
+	return s.translator.ingressCalls(peer)
 }
 
 func marshalPackets(out [][]byte, pkts []models.Packet) [][]byte {
@@ -276,6 +293,9 @@ func (s *IPSCServer) applyReport(id uint32, report *handoverReport, calls bool) 
 	}
 	if !calls {
 		return
+	}
+	if s.translator != nil {
+		s.translator.continueIngress(id, report.Ingress)
 	}
 	t := s.egressTranslator(id)
 	for _, c := range report.Calls {

@@ -20,6 +20,8 @@
 package ipsc
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"log/slog"
 	"math"
 	"sync"
@@ -155,7 +157,10 @@ func NewIPSCTranslator(peerID uint32) *IPSCTranslator {
 }
 
 func newTranslator(c clock.Clock, peerID uint32) *IPSCTranslator {
+	var seed [4]byte
+	_, _ = rand.Read(seed[:])
 	return &IPSCTranslator{
+		nextStreamID:        binary.LittleEndian.Uint32(seed[:]),
 		clock:               clock.Or(c),
 		streams:             make(map[uint32]*streamState),
 		reverseStreams:      make(map[uint32]*reverseStreamState),
@@ -690,6 +695,7 @@ func fullLCMatchesPacket(cw [12]byte, pkt models.Packet) bool {
 
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
 type reverseStreamState struct {
+	peer         uint32
 	streamID     uint32
 	ended        bool
 	seq          uint8
@@ -697,6 +703,38 @@ type reverseStreamState struct {
 	started      bool            // whether we've seen a voice header
 	lastActivity time.Time       // tracks when this stream was last active
 	rx           *voice.Receiver // places the voice bursts of the call
+}
+
+func (t *IPSCTranslator) ingressCalls(peer uint32) []handedIngress {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var out []handedIngress
+	for cc, rss := range t.reverseStreams {
+		if rss.peer == peer && !rss.ended {
+			out = append(out, handedIngress{CallControl: cc, Stream: rss.streamID, Seq: rss.seq, BurstIndex: rss.burstIndex, Started: rss.started})
+		}
+	}
+	return out
+}
+
+func (t *IPSCTranslator) continueIngress(peer uint32, calls []handedIngress) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, c := range calls {
+		rss, ok := t.reverseStreams[c.CallControl]
+		if !ok || rss.ended {
+			rx, err := voice.NewReceiver(&voice.ReceiverConfig{Lost: -1, Hang: -1, Scratch: t.burst})
+			if err != nil {
+				slog.Error("IPSCTranslator: cannot make voice receiver", "error", err)
+				continue
+			}
+			rss = &reverseStreamState{rx: rx}
+			t.reverseStreams[c.CallControl] = rss
+		}
+		rss.peer, rss.streamID, rss.seq, rss.burstIndex = peer, c.Stream, c.Seq, c.BurstIndex
+		rss.started = rss.started || c.Started
+		rss.lastActivity = t.clock.Now()
+	}
 }
 
 // TranslateToMMDVM converts raw IPSC user packet data into MMDVM DMRD Packets.
@@ -732,6 +770,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			return nil
 		}
 		rss = &reverseStreamState{
+			peer:         u.ID,
 			streamID:     t.nextStreamID,
 			lastActivity: t.clock.Now(),
 			rx:           rx,

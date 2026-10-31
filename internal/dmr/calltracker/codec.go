@@ -141,7 +141,11 @@ func (s *shard) codecNote(n codecNote) {
 			changed = true
 		}
 	}
-	if !changed || !r.finished || r.deferred {
+	if !changed || !r.finished {
+		return
+	}
+	if r.deferred {
+		s.noteDeferred(r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).

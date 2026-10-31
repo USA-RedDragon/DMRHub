@@ -1382,7 +1382,8 @@ func (s *shard) finish(r *row, at time.Time) {
 	if !at.IsZero() && call.Kind == models.CallKindVoice {
 		call.Duration = at.Sub(call.StartTime)
 	}
-	if r.shared && s.finishShared(r, at) {
+	if r.shared {
+		s.finishShared(r, at)
 		return
 	}
 	if call.Kind == models.CallKindVoice && !at.IsZero() && call.Duration < keyUp {
@@ -1567,7 +1568,11 @@ func (s *shard) undeliverable(stream uint, id uint64, target string) {
 		}
 	}
 	r.call.Undeliverable = append(r.call.Undeliverable, target)
-	if !r.finished || r.deferred {
+	if !r.finished {
+		return
+	}
+	if r.deferred {
+		s.noteDeferred(r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Select("undeliverable").Updates(&models.Call{Undeliverable: r.call.Undeliverable}).Error; err != nil {

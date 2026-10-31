@@ -20,6 +20,7 @@
 package calltracker_test
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -29,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -222,6 +224,76 @@ func TestAFailedSaveOfAMovedCallKeepsItsParts(t *testing.T) {
 		c := oneRow(t, one, waitDone(t, one, database, 1))
 		assert.False(t, fail.Load(), "no save failed")
 		assert.Equal(t, 14, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		requireEventMatches(t, sub, c)
+	})
+}
+
+// TestANoteOfAWaitingPartReachesTheRow marks the audio that could not be
+// converted on the part of a moved call that waits in the shared record
+// for the other part. The mark reaches the row that the other replica
+// saves.
+func TestANoteOfAWaitingPartReachesTheRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, sub := newSharedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9007)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		last := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		two.Missed(last, 60)
+		two.Flush()
+
+		c := oneRow(t, one, waitDone(t, one, database, 1))
+		assert.Equal(t, 60, c.MissedMS)
+		assert.Equal(t, 14, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		requireEventMatches(t, sub, c)
+	})
+}
+
+type failingKV struct {
+	kv.KV
+	fail atomic.Bool
+}
+
+func (f *failingKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	if f.fail.Load() {
+		return errors.New("the KV store is down")
+	}
+	return f.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
+}
+
+// TestAKVFailureAtTheEndOfAMovedCallKeepsTheRow ends a moved call on its
+// new replica while the KV store fails, after the old replica saved its
+// part. The end adds the part to the stored row, and does not write the
+// part alone over it.
+func TestAKVFailureAtTheEndOfAMovedCallKeepsTheRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		sub := watchCalls(t, ps)
+		shared := &failingKV{KV: kvStore}
+		one := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(one.Stop)
+		two := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(two.Stop)
+
+		s := newSender(t, one, userA, tgID, true, 9008)
+		s.voiceCall(2, false)
+		time.Sleep(calltracker.VoiceHang + time.Second)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		two.Flush()
+		shared.fail.Store(true)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+		c := oneRow(t, two, waitDone(t, two, database, 1))
+		assert.Equal(t, 20, len(c.CallData)/layer2.RawBurstSize, "bursts")
 		requireEventMatches(t, sub, c)
 	})
 }

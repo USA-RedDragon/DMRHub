@@ -491,7 +491,7 @@ func mergeVoice(tmpl *models.Call, base *models.Call, start time.Time, parts []v
 	return out
 }
 
-func (s *shard) finishShared(r *row, at time.Time) bool {
+func (s *shard) finishShared(r *row, at time.Time) {
 	call := r.call
 	term := !at.IsZero()
 	keyUp := term && call.Duration < keyUp
@@ -510,30 +510,58 @@ func (s *shard) finishShared(r *row, at time.Time) bool {
 		rec, res = finishRecord(rec, me, name, call.ID, call.LastSeq, last, term, keyUp, mine, now)
 		return rec
 	}); err != nil {
-		slog.Warn("CallTracker: the voice call is saved without the other replicas", "error", err)
-		return false
+		slog.Warn("CallTracker: the voice call is added to its row without the other replicas", "error", err)
+		s.saveParts(r, []voiceDelta{mine})
+		return
 	}
 	switch res.verdict {
 	case finishDelete:
 		r.deleted = true
 		s.t.db.Unscoped().Delete(call)
-		return true
+		return
 	case finishDefer:
 		r.markGiven()
 		r.deferred = true
 		s.waiting[r] = now.Add(partLive)
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
-		return true
+		return
 	case finishDirect:
 		if s.saveParts(r, []voiceDelta{mine}) {
 			r.markGiven()
 		}
-		return true
+		return
 	case finishSave:
 	}
 	r.markGiven()
 	s.saveLoop(r, key, res)
-	return true
+}
+
+func (s *shard) noteDeferred(r *row) {
+	key, _ := r.key.(voiceKey)
+	d := r.delta()
+	d.ID = fmt.Sprintf("%s/%d", s.t.replica, s.t.deltas.Add(1))
+	me, id := s.t.replica, r.call.ID
+	placed := false
+	err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+		placed = false
+		if rec == nil || rec.ID != id {
+			return nil
+		}
+		p := rec.Parts[me]
+		if p == nil {
+			p = &voicePart{Last: d.Last}
+			rec.Parts[me] = p
+		}
+		p.Held = append(p.Held, d)
+		placed = true
+		return rec
+	})
+	if err != nil || !placed {
+		s.saveParts(r, []voiceDelta{d})
+		return
+	}
+	r.markGiven()
+	s.waiting[r] = s.t.clock.Now()
 }
 
 func retryRecord(rec *voiceRecord, me string, id uint, now time.Time) (*voiceRecord, finishResult, bool) {

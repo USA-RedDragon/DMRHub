@@ -73,7 +73,7 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		stream := uint32(9701)
 		for i, r := range replicas {
 			require.NoError(t, old[i].SendGroupVoice(1000001, 1, stream))
-			require.Len(t, mc.Drain(drainWait), 3, "the %s replica takes the old password before the rotation", r.name)
+			require.Len(t, testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](3)), 3, "the %s replica takes the old password before the rotation", r.name)
 			stream++
 		}
 
@@ -98,7 +98,7 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		}
 		for _, r := range replicas {
 			require.NoError(t, client(rotatedPeerPassword, r.addr).SendGroupVoice(1000001, 1, stream))
-			assert.Len(t, mc.Drain(drainWait), 3, "the %s replica must take the new password", r.name)
+			assert.Len(t, testutils.Collect(mc.ReceivedPackets(), deliverWait, gotN[models.Packet](3)), 3, "the %s replica must take the new password", r.name)
 			stream++
 		}
 	})

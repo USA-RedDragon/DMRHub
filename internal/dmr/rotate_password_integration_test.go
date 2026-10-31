@@ -104,7 +104,7 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 			require.NoError(t, mc.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, stream, false)))
 		}
 		call(301)
-		require.NotEmpty(t, old.Drain(drainWait), "the repeater must get the call before the rotation")
+		require.NotEmpty(t, receiveIPSCCall(old, 1), "the repeater must get the call before the rotation")
 		before, err := models.FindRepeaterByID(stack.DB, 200001)
 		require.NoError(t, err)
 
@@ -127,9 +127,9 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			r, err := models.FindRepeaterByID(stack.DB, 200001)
 			return err == nil && r.Connected.After(before.Connected)
-		}, 2*time.Second, 10*time.Millisecond, "the repeater must register anew, not stay registered")
+		}, deliverWait, 10*time.Millisecond, "the repeater must register anew, not stay registered")
 		time.Sleep(settleDuration)
 		call(304)
-		assert.NotEmpty(t, fresh.Drain(drainWait), "the repeater must get calls with the new key")
+		assert.NotEmpty(t, receiveIPSCCall(fresh, 1), "the repeater must get calls with the new key")
 	})
 }

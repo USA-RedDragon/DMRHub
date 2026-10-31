@@ -21,7 +21,6 @@ package dmr_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -53,7 +52,7 @@ func TestHandoffResumesAListeningHotspot(t *testing.T) {
 		defer listener.Close()
 		require.NoError(t, talker.WaitReady(handshakeWait))
 		require.NoError(t, listener.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitRecorded(t, stack, 100001, 100002)
 		listener.PausePings()
 
 		stack.RestartMMDVM(t, testutils.RestartHandoff)

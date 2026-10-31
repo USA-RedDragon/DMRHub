@@ -26,12 +26,15 @@
 package dmr_test
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -103,6 +106,34 @@ func callUntilHeard(t *testing.T, c, to *testutils.MMDVMClient, src, tg, stream 
 	}
 	t.Fatalf("repeater %d got no call to %d within %s", to.RepeaterID, tg, deliverWait)
 	return nil
+}
+
+func waitRecorded(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
+	t.Helper()
+	kv := servers.MakeKVClient(stack.KV)
+	for _, id := range ids {
+		waitFor(t, fmt.Sprintf("the session record of repeater %d", id), func() bool {
+			_, err := kv.GetRepeater(context.Background(), id)
+			return err == nil
+		})
+	}
+}
+
+func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func() {
+	t.Helper()
+	ch := make(chan struct{}, 1)
+	t.Cleanup(on(func(got uint) {
+		if got == id {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+	}))
+	return func() {
+		t.Helper()
+		require.Len(t, testutils.Collect(ch, deliverWait, gotN[struct{}](1)), 1, "the change notice of %d took no effect", id)
+	}
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {

@@ -22,7 +22,6 @@ package dmr_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -76,7 +75,6 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 					assert.Equal(t, uint(100002), p.Repeater)
 				}
 
-				time.Sleep(callHoldTime)
 				require.NoError(t, rpt.SendDMRD(makeGroupVoicePacket(1000001, 1, 7002, false)))
 				require.NoError(t, rpt.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7002, false)))
 				pkts = gw.Receive(deliverWait, callEnds(1))
@@ -88,9 +86,10 @@ func TestSessionPeerLoginAndVoice(t *testing.T) {
 
 				assert.Equal(t, dmrdsession.StateRunning, gw.State())
 				assert.Zero(t, gw.Downs(), "the session should not have ended")
-				rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
-				require.NoError(t, err)
-				assert.NotZero(t, rec.PingsReceived, "the pings of the peer should be recorded")
+				waitFor(t, "the pings of the peer are recorded", func() bool {
+					rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
+					return err == nil && rec.PingsReceived != 0
+				})
 			})
 		})
 	}
@@ -124,7 +123,6 @@ func TestSessionPeerMovesToSecondReplica(t *testing.T) {
 		require.NoError(t, rpt.WaitReady(handshakeWait))
 
 		require.NoError(t, gw.Retarget(second.MMDVMAddr))
-		time.Sleep(settleDuration)
 
 		require.NoError(t, gw.SendDMRD(makeGroupVoicePacket(1000001, 1, 7101, false)))
 		require.NoError(t, gw.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7101, false)))

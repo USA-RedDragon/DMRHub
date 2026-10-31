@@ -12,7 +12,6 @@ sleep	internal/dmr/freedmr_test.go	6	baseline of 2026-10-28, not reviewed: repla
 elapsed	internal/dmr/golden_data_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/golden_data_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/golden_integration_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/handoff_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 pickport	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hblink3_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
@@ -118,7 +117,6 @@ deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, n
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	an Origin header in the allow-list test, not a port the test binds or sends to
 deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	the UDP port of a peer row in the database; the test starts no server and sends nothing to it
-sleep	internal/dmr/session_peer_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 eventually	internal/dmr/stream_loop_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/stream_loop_integration_test.go	6	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/terminate_inbound_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

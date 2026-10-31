@@ -29,6 +29,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,20 +113,17 @@ func waitClaimed(t *testing.T, stack *testutils.IntegrationStack, ids ...uint) {
 	}
 }
 
-func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func() {
+func noticeApplied(t *testing.T, on func(func(uint)) func(), id uint) func(n int) {
 	t.Helper()
-	ch := make(chan struct{}, 1)
+	var count atomic.Int32
 	t.Cleanup(on(func(got uint) {
 		if got == id {
-			select {
-			case ch <- struct{}{}:
-			default:
-			}
+			count.Add(1)
 		}
 	}))
-	return func() {
+	return func(n int) {
 		t.Helper()
-		require.Len(t, testutils.Collect(ch, deliverWait, gotN[struct{}](1)), 1, "the change notice of %d took no effect", id)
+		waitFor(t, fmt.Sprintf("%d change notices of %d take effect", n, id), func() bool { return count.Load() >= int32(n) })
 	}
 }
 

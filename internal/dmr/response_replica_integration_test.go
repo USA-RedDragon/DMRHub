@@ -50,7 +50,7 @@ const (
 	respAdmin    = uint(1000003)
 	respRpt1     = uint(100001)
 	respRpt2     = uint(100002)
-	respWait     = 15 * time.Second
+	respWait     = deliverWait
 )
 
 type responseNet struct {
@@ -91,7 +91,6 @@ func startResponseNet(t *testing.T, stack *testutils.IntegrationStack, split boo
 		return c
 	}
 	n := &responseNet{stack: stack, r1: client(respRpt1, stack.MMDVMAddr), r2: client(respRpt2, second), stream: 9100}
-	time.Sleep(settleDuration)
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
@@ -99,7 +98,10 @@ func startResponseNet(t *testing.T, stack *testutils.IntegrationStack, split boo
 	n.jar = testutils.Login(t, n.router, "admin2")
 
 	n.send(t, n.r2, respAnswerer, respSender, []layer2.RawBurst{respPreamble(t, respAnswerer, respSender)})
-	time.Sleep(settleDuration)
+	waitFor(t, "the record of where the answering radio was heard", func() bool {
+		_, err := stack.KV.Get(context.Background(), fmt.Sprintf("dmrhub:lastheard:%d", respAnswerer))
+		return err == nil
+	})
 	n.r1.Drain(100 * time.Millisecond)
 	n.r2.Drain(100 * time.Millisecond)
 	return n

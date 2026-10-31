@@ -21,7 +21,6 @@ package dmr_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
@@ -47,8 +46,10 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
+		applied := noticeApplied(t, second.Hub.OnPeerChange, peerID)
 		stack.SeedPeer(t, peerID, 1000001, obPassword, "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, peerID, true, 1, 1)
+		applied(2)
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
 		defer mc.Close()
@@ -69,7 +70,6 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		for i, r := range replicas {
 			old[i] = client(obPassword, r.addr)
 		}
-		time.Sleep(settleDuration)
 		stream := uint32(9701)
 		for i, r := range replicas {
 			require.NoError(t, old[i].SendGroupVoice(1000001, 1, stream))
@@ -78,10 +78,10 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		}
 
 		stack.Hub.PeerChanged(peerID)
-		time.Sleep(settleDuration)
+		applied(3)
 		require.NoError(t, models.SetPeerPassword(stack.DB, peerID, rotatedPeerPassword))
 		stack.Hub.PeerChanged(peerID)
-		time.Sleep(settleDuration)
+		applied(4)
 
 		streams := make([]uint32, len(replicas))
 		for i := range replicas {
@@ -121,7 +121,6 @@ func TestOpenBridgeForgetsTheVersionOfARotatedPeer(t *testing.T) {
 		require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", conformPeer).UpdateColumns(map[string]any{"ip": addr.IP.String(), "port": addr.Port}).Error)
 		require.NoError(t, models.SetPeerPassword(stack.DB, conformPeer, rotatedPeerPassword))
 		stack.Hub.PeerChanged(conformPeer)
-		time.Sleep(200 * time.Millisecond)
 
 		const stream = 9712
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))

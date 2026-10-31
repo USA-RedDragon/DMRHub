@@ -53,7 +53,7 @@ func TestRotatedPasswordEndsTheSessionOnEveryReplica(t *testing.T) {
 		stack.Hub.ReloadRepeater(t.Context(), id)
 		stack.Hub.RepeaterSecretChanged(id)
 
-		require.Eventually(t, func() bool { return live.MSTCLs() == 1 }, 2*time.Second, 10*time.Millisecond,
+		require.Eventually(t, func() bool { return live.MSTCLs() == 1 }, deliverWait, 10*time.Millisecond,
 			"the replica that holds the session must end it with MSTCL")
 		require.False(t, live.Ping(time.Second), "the ended session must not answer pings")
 
@@ -96,7 +96,6 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		require.NoError(t, old.Connect(second.IPSCAddr))
 		defer old.Close()
 		require.NoError(t, old.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
 
 		call := func(stream uint) {
 			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(1000001, 1, stream, false)))
@@ -111,7 +110,7 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		require.NoError(t, models.SetRepeaterPassword(stack.DB, 200001, newKey))
 		stack.Hub.ReloadRepeater(t.Context(), 200001)
 		stack.Hub.RepeaterSecretChanged(200001)
-		time.Sleep(settleDuration)
+		waitSubscribed(t, second.Hub, 200001, 200001, false)
 
 		heard := old.Heard()
 		call(302)
@@ -128,7 +127,7 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 			r, err := models.FindRepeaterByID(stack.DB, 200001)
 			return err == nil && r.Connected.After(before.Connected)
 		}, deliverWait, 10*time.Millisecond, "the repeater must register anew, not stay registered")
-		time.Sleep(settleDuration)
+		waitSubscribed(t, second.Hub, 200001, 1, true)
 		call(304)
 		assert.NotEmpty(t, receiveIPSCCall(fresh, 1), "the repeater must get calls with the new key")
 	})

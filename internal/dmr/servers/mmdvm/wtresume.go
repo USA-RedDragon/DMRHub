@@ -233,7 +233,10 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 		return refuse("not resumed")
 	}
 	repeater.IP, repeater.Port = ep.kvAddr()
-	s.records.Do(uint(id), func() { s.kvClient.StoreRepeater(ctx, uint(id), repeater) })
+	if !s.records.Must(uint(id), func() { s.kvClient.StoreRepeater(ctx, uint(id), repeater) }) {
+		s.endStuck(ctx, l)
+		return refuse("busy")
+	}
 	slog.Info("Browser hotspot moved from another replica", "repeaterID", id, "session", addr)
 	return wtResume{Resumed: true}
 }

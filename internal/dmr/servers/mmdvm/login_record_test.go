@@ -22,6 +22,7 @@ package mmdvm
 import (
 	"context"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -74,6 +76,9 @@ type recordRig struct {
 	from endpoint
 	id   uint32
 	done <-chan struct{}
+	ps   pubsub.PubSub
+	peer *net.UDPConn
+	got  chan []byte
 }
 
 func newRecordRig(t *testing.T, id uint32) *recordRig {
@@ -112,14 +117,110 @@ func newRecordRig(t *testing.T, id uint32) *recordRig {
 		s.transports.Store(probeTransport, p)
 		return &s, p
 	}
-	r := &recordRig{t: t, kv: servers.MakeKVClient(kvStore), id: id}
+	r := &recordRig{t: t, kv: servers.MakeKVClient(kvStore), id: id, ps: ps}
 	r.a, r.pa = replica()
 	r.b, r.pb = replica()
 	r.from = endpoint{transport: probeTransport, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}}
 	ctx, cancel := context.WithTimeout(context.Background(), answerWait)
 	t.Cleanup(cancel)
 	r.done = ctx.Done()
+	peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	r.peer, r.got = peer, make(chan []byte, 64)
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, _, err := peer.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			r.got <- append([]byte(nil), buf[:n]...)
+		}
+	}()
+	t.Cleanup(func() { _ = peer.Close() })
 	return r
+}
+
+// hold stops the records queue of the repeater of r on s, then queues
+// jobs until add refuses one, as stores that do not answer fill it. It
+// returns the func that lets the queue run again, which the cleanup of
+// the test also calls.
+func (r *recordRig) hold(s *Server, add func(uint, func()) bool) func() {
+	r.t.Helper()
+	release, running := make(chan struct{}), make(chan struct{})
+	require.True(r.t, s.records.Do(uint(r.id), func() {
+		close(running)
+		<-release
+	}))
+	<-running
+	for add(uint(r.id), func() {}) {
+	}
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	r.t.Cleanup(free)
+	return free
+}
+
+// storeSession stores the KV record of a session of the repeater of r at
+// its UDP peer, as a replica that took its login does.
+func (r *recordRig) storeSession() {
+	r.t.Helper()
+	check, err := secretCheck(testPassword)
+	require.NoError(r.t, err)
+	addr := r.peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+	r.kv.StoreRepeater(context.Background(), uint(r.id), models.Repeater{
+		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(r.id)},
+		Connection:            models.RepeaterStateConnected,
+		IP:                    addr.IP.String(),
+		Port:                  addr.Port,
+		LastPing:              time.Now(),
+		Dialect:               dmrd.DialectMMDVM.String(),
+		SecretCheck:           check,
+	})
+}
+
+// peerGets waits for the UDP peer of r to get a packet of command c and
+// returns it.
+func (r *recordRig) peerGets(c dmrd.Command, what string) []byte {
+	r.t.Helper()
+	for {
+		select {
+		case b := <-r.got:
+			if dmrd.Classify(b, dmrd.DialectMMDVM) == c {
+				return b
+			}
+		case <-r.done:
+			require.FailNow(r.t, "no "+what+" within "+answerWait.String())
+			return nil
+		}
+	}
+}
+
+// callReachesThePeer publishes a private call to the repeater of r and
+// waits for the UDP peer of r to get it.
+func (r *recordRig) callReachesThePeer(stream uint) {
+	r.t.Helper()
+	call := models.Packet{
+		Signature:   string(dmrconst.CommandDMRD),
+		Src:         1000001,
+		Dst:         uint(r.id),
+		Repeater:    100001,
+		FrameType:   dmrconst.FrameVoice,
+		DTypeOrVSeq: dmrconst.VoiceA,
+		StreamID:    stream,
+		BER:         -1,
+		RSSI:        -1,
+	}
+	msg, err := (&models.RawDMRPacket{Data: call.Encode()}).MarshalMsg(nil)
+	require.NoError(r.t, err)
+	require.NoError(r.t, r.ps.Publish("hub:packets:repeater:"+strconv.FormatUint(uint64(r.id), 10), msg))
+	for {
+		got, ok := models.UnpackPacket(r.peerGets(dmrd.CommandDMRD, "call to the repeater"))
+		require.True(r.t, ok)
+		if got.StreamID == stream {
+			return
+		}
+	}
 }
 
 func (r *recordRig) next(p *recordProbe, what string) dmrd.Command {
@@ -186,44 +287,50 @@ func TestARepeaterResumesOnAnotherReplicaFromTheAckOfItsLogin(t *testing.T) {
 	require.Equal(t, dmrd.CommandMSTPONG, r.next(r.pb, "answer of replica b to the ping"))
 }
 
-// TestALoginIsNotAckedWhileItsRecordCannotBeQueued logs a repeater in
-// while the records queue of the repeater is full, so that the KV record
-// of the login cannot be queued. The server must withhold the RPTACK of
-// the config, as the repeater sends its config again, and ack it once the
-// record is stored.
-func TestALoginIsNotAckedWhileItsRecordCannotBeQueued(t *testing.T) {
+// TestAResumeSubscribesWhileTheQueueIsFull resumes the session of a
+// repeater for egress, as after a handoff, while the records queue of the
+// repeater is full of jobs that a slow store holds. The hub must still
+// subscribe the resumed session to its calls once the queue moves.
+func TestAResumeSubscribesWhileTheQueueIsFull(t *testing.T) {
 	t.Parallel()
 	r := newRecordRig(t, 311896)
-	var found atomic.Bool
-	r.pa.atAck = func() {
-		_, ok := r.stored()
-		found.Store(ok)
-	}
-	r.auth()
-
-	release, running := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	free := func() { once.Do(func() { close(release) }) }
-	t.Cleanup(free)
-	require.True(t, r.a.records.Do(uint(r.id), func() {
-		close(running)
-		<-release
-	}))
-	<-running
-	for r.a.records.Do(uint(r.id), func() {}) {
-	}
-	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
-	r.a.lookups.Wait()
-	select {
-	case b := <-r.pa.out:
-		require.FailNow(t, "the server answered the config while the record of the login could not be queued",
-			"answer %v, record stored %v", dmrd.Classify(b, dmrd.DialectMMDVM), found.Load())
-	default:
-	}
-
+	r.storeSession()
+	free := r.hold(r.a, r.a.records.Do)
+	_, ok := r.a.resumeForEgress(context.Background(), uint(r.id))
+	require.True(t, ok)
 	free()
 	r.a.records.Wait()
+	r.callReachesThePeer(76102)
+}
+
+// TestAStuckQueueEndsAResumedSession resumes the session of a repeater
+// for egress while its records queue holds MaxStateJobsPerRepeater jobs,
+// so the queue refuses the subscription of the session. The server must
+// end the session with MSTCL, so that the repeater logs in again, and not
+// keep a session that gets no calls.
+func TestAStuckQueueEndsAResumedSession(t *testing.T) {
+	t.Parallel()
+	r := newRecordRig(t, 311897)
+	r.storeSession()
+	r.hold(r.a, r.a.records.Must)
+	_, ok := r.a.resumeForEgress(context.Background(), uint(r.id))
+	assert.False(t, ok)
+	r.peerGets(dmrd.CommandMSTCL, "MSTCL")
+	_, ok = r.a.connected.Load(uint(r.id))
+	assert.False(t, ok)
+}
+
+// TestAStuckQueueEndsALogin logs a repeater in while its records queue
+// holds MaxStateJobsPerRepeater jobs, so that the queue refuses the KV
+// record and the subscription of the login. The server must end the
+// login with MSTCL and never ack it.
+func TestAStuckQueueEndsALogin(t *testing.T) {
+	t.Parallel()
+	r := newRecordRig(t, 311898)
+	r.auth()
+	r.hold(r.a, r.a.records.Must)
 	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
-	require.Equal(t, dmrd.CommandRPTACK, r.next(r.pa, "RPTACK of the config sent again"))
-	require.True(t, found.Load(), "the KV record of the login was not there at the RPTACK of the config")
+	require.Equal(t, dmrd.CommandMSTCL, r.next(r.pa, "MSTCL"))
+	_, found := r.stored()
+	assert.False(t, found)
 }

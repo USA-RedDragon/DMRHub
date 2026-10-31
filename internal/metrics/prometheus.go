@@ -74,6 +74,11 @@ type Metrics struct {
 	// be converted to the other codec, by the codec of the copy and reason.
 	TranscodeMissedSecondsTotal *prometheus.CounterVec
 
+	// RepeaterJobsDroppedTotal counts the jobs of repeaters that a server
+	// did not queue, by kind: best_effort jobs that a full queue drops, and
+	// state jobs that a queue that does not move refuses.
+	RepeaterJobsDroppedTotal *prometheus.CounterVec
+
 	// TranscodeFramesTotal counts the vocoder frames that the transcoder
 	// decoded, by the codec of the call, what the decoder found in each
 	// frame and what it put out for it.
@@ -125,6 +130,14 @@ const DropReasonClaimWait = "claim_wait"
 // private burst that was dropped because the read of where its target was
 // heard took longer than lookup.Wait.
 const DropReasonLastSeenWait = "last_seen_wait"
+
+// RepeaterJobBestEffort is the RepeaterJobsDroppedTotal kind of a job
+// that a later job does again, such as the refresh of a ping.
+const RepeaterJobBestEffort = "best_effort"
+
+// RepeaterJobState is the RepeaterJobsDroppedTotal kind of a job that
+// changes the state of a session, whose refusal ends the session.
+const RepeaterJobState = "state"
 
 var (
 	metricsOnce     sync.Once //nolint:gochecknoglobals
@@ -203,6 +216,10 @@ func NewMetrics() *Metrics {
 				Name: "dmr_transcode_missed_seconds_total",
 				Help: "The total seconds of call audio that could not be converted to the other codec and went out as silence, by the codec of the copy and reason",
 			}, []string{"to", labelReason}),
+			RepeaterJobsDroppedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dmr_repeater_jobs_dropped_total",
+				Help: "The total number of jobs of repeaters that a server did not queue, by kind: best_effort jobs that a full queue dropped, and state jobs that a queue that did not move refused, which ended the session",
+			}, []string{"kind"}),
 			TranscodeFramesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 				Name: "dmr_transcode_frames_total",
 				Help: "The total number of vocoder frames that the transcoder decoded, by the codec of the call, what the decoder found in the frame (good, lost, erased or invalid) and what it put out (voice, tone, repeat or silence)",
@@ -231,6 +248,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.PubSubDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
 	prometheus.MustRegister(m.TranscodeFramesTotal)
+	prometheus.MustRegister(m.RepeaterJobsDroppedTotal)
 }
 
 // KV Store metrics methods
@@ -302,4 +320,10 @@ func (m *Metrics) AddTranscodeMissed(to, reason string, seconds float64) {
 // its report.
 func (m *Metrics) IncrementTranscodeFrame(from, frame, output string) {
 	m.TranscodeFramesTotal.WithLabelValues(from, frame, output).Inc()
+}
+
+// IncrementRepeaterJobsDropped counts a job of a repeater of kind that a
+// server did not queue.
+func (m *Metrics) IncrementRepeaterJobsDropped(kind string) {
+	m.RepeaterJobsDroppedTotal.WithLabelValues(kind).Inc()
 }

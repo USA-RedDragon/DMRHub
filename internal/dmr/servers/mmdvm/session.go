@@ -590,8 +590,8 @@ func (s *Server) password(repeaterID uint) (string, error) {
 // The KV record of the login is stored, and the hub subscribes a repeater
 // that logs in to its calls, before the RPTACK of its config, since the
 // repeater expects every call from then on and may move to another replica
-// at once. While the records queue of the repeater is full, the RPTACK is
-// withheld, and the repeater sends its config again.
+// at once. The RPTACK waits for the records queue of the repeater, and a
+// queue that does not move ends the session.
 func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	if l.looking {
 		return
@@ -608,13 +608,15 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	go func() {
 		defer s.lookups.Done()
 		repeater, ok := s.takeConfig(id, ep, d, data)
-		stored := ok && s.records.After(uint(id), func() {
+		activate := login && s.hub != nil
+		stored := ok && s.records.MustAfter(uint(id), func() {
 			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
 			s.keepOwnRecord(uint(id), repeater)
+			if activate {
+				s.hub.ActivateRepeaterSince(ctx, uint(id), since)
+			}
 		})
-		active := stored && login && s.hub != nil &&
-			s.records.After(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
-		withhold := ok && (!stored || (login && s.hub != nil && !active))
+		active := stored && activate
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		l.looking = false
@@ -626,8 +628,8 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 			}
 			return
 		}
-		if withhold {
-			slog.Warn("Withholding the RPTACK of a repeater config while the records queue of the repeater is full; the repeater sends it again", "repeaterID", id)
+		if ok && !stored {
+			s.endStuck(ctx, l)
 			return
 		}
 		now := s.now()
@@ -704,8 +706,21 @@ func (s *Server) up(ctx context.Context, l *link, id uint32) {
 		if since.IsZero() {
 			since = s.clock.Now()
 		}
-		s.records.Do(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
+		if !s.records.Must(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) }) {
+			s.endStuck(ctx, l)
+		}
 	}
+}
+
+// endStuck ends the session of l with MSTCL when the records queue of its
+// repeater refuses a job that changes the state of the session, so that
+// the repeater logs in again instead of running unsubscribed or unstored.
+// The caller holds s.mu.
+func (s *Server) endStuck(ctx context.Context, l *link) {
+	now := s.now()
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	s.run(ctx, now, l, l.m.Close(now, buf[:0]))
+	s.forget(l)
 }
 
 // sendBeacon asks the repeater id for a beacon in dialect d when it is
@@ -921,21 +936,24 @@ func (s *Server) resume(ctx context.Context, now time.Duration, l *link, data []
 	}
 	l.moved = moved
 	ip, port := l.ep.kvAddr()
-	s.records.Do(uint(id), func() {
+	if !s.records.Must(uint(id), func() {
 		own := repeater
 		own.IP, own.Port = ip, port
 		s.keepOwnRecord(uint(id), own)
-	})
-	if moved {
-		s.records.Do(uint(id), func() {
-			repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
-			if err != nil {
-				return
-			}
-			repeater.IP, repeater.Port = ip, port
-			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
-			s.keepOwnRecord(uint(id), repeater)
-		})
+	}) {
+		s.endStuck(ctx, l)
+		return
+	}
+	if moved && !s.records.Must(uint(id), func() {
+		repeater, err := s.kvClient.GetRepeater(ctx, uint(id))
+		if err != nil {
+			return
+		}
+		repeater.IP, repeater.Port = ip, port
+		s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+		s.keepOwnRecord(uint(id), repeater)
+	}) {
+		s.endStuck(ctx, l)
 	}
 }
 

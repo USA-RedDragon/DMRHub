@@ -23,7 +23,7 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.3
 	github.com/lmittmann/tint v1.2.1
 	github.com/mavjs/goPwned v0.0.2
 	github.com/mitchellh/hashstructure/v2 v2.0.2

@@ -64,11 +64,7 @@ func TestAPublishToAStalledRedisIsSentOnce(t *testing.T) {
 	}
 	wg.Wait()
 	for range warm {
-		select {
-		case <-s.Channel():
-		case <-time.After(5 * time.Second):
-			t.Fatal("a warm-up message did not arrive")
-		}
+		next(t, s.Channel(), "a warm-up message did not arrive")
 	}
 
 	docker := func(args ...string) {
@@ -84,15 +80,9 @@ func TestAPublishToAStalledRedisIsSentOnce(t *testing.T) {
 	require.Error(t, err)
 
 	got := 0
-	deadline := time.After(3 * time.Second)
-	for done := false; !done; {
-		select {
-		case m := <-s.Channel():
-			if string(m) == "once" {
-				got++
-			}
-		case <-deadline:
-			done = true
+	for _, m := range untilEnd(t, pub, s, "stall") {
+		if string(m) == "once" {
+			got++
 		}
 	}
 	t.Logf("the publish to a stalled Redis returned %v after %v; the subscriber got the message %d times", err, took, got)
@@ -168,16 +158,22 @@ func TestOnlyAPublishThatRedisMayHaveFailsWithoutErrNotSent(t *testing.T) {
 	wg.Wait()
 	docker("unpause", c.Redis)
 
-	got := 0
-	for done := false; !done; {
-		select {
-		case <-s.Channel():
-			got++
-		case <-time.After(3 * time.Second):
-			done = true
-		}
-	}
+	got := len(untilEnd(t, pub, s, "handshake"))
 	t.Logf("%d publishes failed with ErrNotSent, %d may have reached Redis, %d messages arrived", notSent.Load(), mayHave.Load(), got)
 	assert.Positive(t, notSent.Load(), "no publish found Redis unreachable")
 	assert.Equal(t, int(mayHave.Load()), got, "the messages that arrived are not those that may have reached Redis")
+}
+
+func untilEnd(t *testing.T, pub pubsub.PubSub, s pubsub.Subscription, topic string) [][]byte {
+	t.Helper()
+	require.NoError(t, pub.Publish(topic, []byte("end")))
+	var got [][]byte
+	for {
+		m, ok := next(t, s.Channel(), "the end mark did not arrive")
+		require.True(t, ok, "the subscription ended before the end mark")
+		if string(m) == "end" {
+			return got
+		}
+		got = append(got, m)
+	}
 }

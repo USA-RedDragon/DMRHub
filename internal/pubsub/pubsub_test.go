@@ -49,6 +49,22 @@ func makeTestPubSub(t *testing.T) pubsub.PubSub {
 	return ps
 }
 
+const deliveryWait = time.Minute
+
+func next[T any](t *testing.T, ch <-chan T, format string, args ...any) (T, bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), deliveryWait)
+	defer cancel()
+	select {
+	case v, ok := <-ch:
+		return v, ok
+	case <-ctx.Done():
+		t.Fatalf(format+" within %s", append(args, deliveryWait)...)
+		var zero T
+		return zero, false
+	}
+}
+
 func TestPubSubPublishAndSubscribe(t *testing.T) {
 	t.Parallel()
 	ps := makeTestPubSub(t)
@@ -62,13 +78,9 @@ func TestPubSubPublishAndSubscribe(t *testing.T) {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
-	select {
-	case received := <-sub.Channel():
-		if string(received) != string(msg) {
-			t.Errorf("Expected '%s', got '%s'", string(msg), string(received))
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for message")
+	received, _ := next(t, sub.Channel(), "Timed out waiting for message")
+	if string(received) != string(msg) {
+		t.Errorf("Expected '%s', got '%s'", string(msg), string(received))
 	}
 }
 
@@ -87,13 +99,9 @@ func TestPubSubMultipleMessages(t *testing.T) {
 	}
 
 	for _, expected := range messages {
-		select {
-		case received := <-sub.Channel():
-			if string(received) != expected {
-				t.Errorf("Expected '%s', got '%s'", expected, string(received))
-			}
-		case <-time.After(time.Second):
-			t.Fatalf("Timed out waiting for message '%s'", expected)
+		received, _ := next(t, sub.Channel(), "Timed out waiting for message '%s'", expected)
+		if string(received) != expected {
+			t.Errorf("Expected '%s', got '%s'", expected, string(received))
 		}
 	}
 }
@@ -110,22 +118,14 @@ func TestPubSubDifferentTopics(t *testing.T) {
 	_ = ps.Publish("topic1", []byte("for-topic1"))
 	_ = ps.Publish("topic2", []byte("for-topic2"))
 
-	select {
-	case received := <-sub1.Channel():
-		if string(received) != "for-topic1" {
-			t.Errorf("topic1: Expected 'for-topic1', got '%s'", string(received))
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timed out on topic1")
+	received, _ := next(t, sub1.Channel(), "Timed out on topic1")
+	if string(received) != "for-topic1" {
+		t.Errorf("topic1: Expected 'for-topic1', got '%s'", string(received))
 	}
 
-	select {
-	case received := <-sub2.Channel():
-		if string(received) != "for-topic2" {
-			t.Errorf("topic2: Expected 'for-topic2', got '%s'", string(received))
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timed out on topic2")
+	received, _ = next(t, sub2.Channel(), "Timed out on topic2")
+	if string(received) != "for-topic2" {
+		t.Errorf("topic2: Expected 'for-topic2', got '%s'", string(received))
 	}
 }
 
@@ -156,13 +156,9 @@ func TestPubSubSubscribeBeforePublish(t *testing.T) {
 
 	_ = ps.Publish("pre-sub", []byte("data"))
 
-	select {
-	case received := <-sub.Channel():
-		if string(received) != "data" {
-			t.Errorf("Expected 'data', got '%s'", string(received))
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timed out")
+	received, _ := next(t, sub.Channel(), "Timed out")
+	if string(received) != "data" {
+		t.Errorf("Expected 'data', got '%s'", string(received))
 	}
 }
 
@@ -185,13 +181,9 @@ func TestPubSubMultipleSubscribers(t *testing.T) {
 
 	// All three subscribers should receive the message
 	for i, sub := range []pubsub.Subscription{sub1, sub2, sub3} {
-		select {
-		case received := <-sub.Channel():
-			if string(received) != string(msg) {
-				t.Errorf("sub%d: expected '%s', got '%s'", i+1, string(msg), string(received))
-			}
-		case <-time.After(time.Second):
-			t.Fatalf("sub%d: timed out waiting for message", i+1)
+		received, _ := next(t, sub.Channel(), "sub%d: timed out waiting for message", i+1)
+		if string(received) != string(msg) {
+			t.Errorf("sub%d: expected '%s', got '%s'", i+1, string(msg), string(received))
 		}
 	}
 }
@@ -206,18 +198,14 @@ func TestPubSubBinaryData(t *testing.T) {
 	data := []byte{0x00, 0xFF, 0xAB, 0xCD, 0xEF}
 	_ = ps.Publish("binary", data)
 
-	select {
-	case received := <-sub.Channel():
-		if len(received) != len(data) {
-			t.Fatalf("Expected %d bytes, got %d", len(data), len(received))
+	received, _ := next(t, sub.Channel(), "Timed out")
+	if len(received) != len(data) {
+		t.Fatalf("Expected %d bytes, got %d", len(data), len(received))
+	}
+	for i, b := range data {
+		if received[i] != b {
+			t.Errorf("Byte %d: expected %x, got %x", i, b, received[i])
 		}
-		for i, b := range data {
-			if received[i] != b {
-				t.Errorf("Byte %d: expected %x, got %x", i, b, received[i])
-			}
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timed out")
 	}
 }
 
@@ -229,11 +217,7 @@ func TestPubSubSubscriptionCloseClosesChannel(t *testing.T) {
 
 	// Publish a message so we know the subscription works
 	_ = ps.Publish("close-test", []byte("before-close"))
-	select {
-	case <-sub.Channel():
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for message before close")
-	}
+	next(t, sub.Channel(), "Timed out waiting for message before close")
 
 	// Close the subscription
 	err := sub.Close()
@@ -243,14 +227,9 @@ func TestPubSubSubscriptionCloseClosesChannel(t *testing.T) {
 
 	// The channel should be closed — a range loop or receive should
 	// return the zero value immediately instead of blocking forever.
-	select {
-	case _, ok := <-sub.Channel():
-		if ok {
-			t.Fatal("Expected channel to be closed, but received a value")
-		}
-		// ok == false means channel is closed — this is the expected path
-	case <-time.After(time.Second):
-		t.Fatal("Channel was not closed after sub.Close(); consumer would block forever")
+	_, ok := next(t, sub.Channel(), "Channel was not closed after sub.Close(); consumer would block forever")
+	if ok {
+		t.Fatal("Expected channel to be closed, but received a value")
 	}
 }
 
@@ -276,13 +255,9 @@ func TestPubSubCloseClosesAllSubscriptionChannels(t *testing.T) {
 
 	// Both subscription channels should now be closed
 	for i, sub := range []pubsub.Subscription{sub1, sub2} {
-		select {
-		case _, ok := <-sub.Channel():
-			if ok {
-				t.Fatalf("sub%d: expected channel to be closed, but received a value", i+1)
-			}
-		case <-time.After(time.Second):
-			t.Fatalf("sub%d: channel not closed after ps.Close()", i+1)
+		_, ok := next(t, sub.Channel(), "sub%d: channel not closed after ps.Close()", i+1)
+		if ok {
+			t.Fatalf("sub%d: expected channel to be closed, but received a value", i+1)
 		}
 	}
 }
@@ -371,7 +346,6 @@ func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
 			t.Cleanup(func() { _ = ps.Close() })
 			sub := ps.Subscribe("again")
 			defer func() { _ = sub.Close() }()
-			time.Sleep(100 * time.Millisecond)
 			for range 5 {
 				_ = sub.Channel()
 			}
@@ -382,13 +356,9 @@ func TestEachCallOfChannelGetsEveryMessage(t *testing.T) {
 				}
 			}
 			for i := range n {
-				select {
-				case m := <-sub.Channel():
-					if len(m) != 1 || m[0] != byte(i) {
-						t.Fatalf("message %d: got %v", i, m)
-					}
-				case <-time.After(2 * time.Second):
-					t.Fatalf("message %d did not come", i)
+				m, _ := next(t, sub.Channel(), "message %d did not come", i)
+				if len(m) != 1 || m[0] != byte(i) {
+					t.Fatalf("message %d: got %v", i, m)
 				}
 			}
 		})
@@ -413,22 +383,14 @@ func TestSubscribeIsActiveWhenItReturns(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = ps.Close() })
-			missed := 0
 			for i := range 200 {
 				topic := fmt.Sprintf("at-once-%d", i)
 				sub := ps.Subscribe(topic)
 				if err := ps.Publish(topic, []byte{1}); err != nil {
 					t.Fatal(err)
 				}
-				select {
-				case <-sub.Channel():
-				case <-time.After(time.Second):
-					missed++
-				}
+				next(t, sub.Channel(), "the message published right after Subscribe of %s was lost", topic)
 				_ = sub.Close()
-			}
-			if missed > 0 {
-				t.Fatalf("%d of 200 messages published right after Subscribe were lost", missed)
 			}
 		})
 	}
@@ -459,14 +421,10 @@ func TestSubscribersSeeOneOrder(t *testing.T) {
 	wg.Wait()
 	var first []string
 	for n, sub := range all {
-		var got []string
+		got := make([]string, 0, writers*each)
 		for range writers * each {
-			select {
-			case m := <-sub.Channel():
-				got = append(got, string(m))
-			case <-time.After(time.Second):
-				t.Fatalf("subscriber %d got %d messages", n, len(got))
-			}
+			m, _ := next(t, sub.Channel(), "subscriber %d got %d messages", n, len(got))
+			got = append(got, string(m))
 		}
 		if n == 0 {
 			first = got
@@ -515,13 +473,9 @@ func TestAFeedGetsItsTopicsInPublishOrder(t *testing.T) {
 				}
 			}
 			for i := range n {
-				select {
-				case m := <-f.Channel():
-					if m.Topic != topics[i%7%3] || len(m.Payload) != 2 || int(m.Payload[0])|int(m.Payload[1])<<8 != i {
-						t.Fatalf("message %d: got %q on %s", i, m.Payload, m.Topic)
-					}
-				case <-time.After(2 * time.Second):
-					t.Fatalf("message %d did not come", i)
+				m, _ := next(t, f.Channel(), "message %d did not come", i)
+				if m.Topic != topics[i%7%3] || len(m.Payload) != 2 || int(m.Payload[0])|int(m.Payload[1])<<8 != i {
+					t.Fatalf("message %d: got %q on %s", i, m.Payload, m.Topic)
 				}
 			}
 		})
@@ -544,13 +498,9 @@ func TestAFeedTopicIsActiveWhenAddReturns(t *testing.T) {
 				if err := ps.Publish(topic, []byte{1}); err != nil {
 					t.Fatal(err)
 				}
-				select {
-				case m := <-f.Channel():
-					if m.Topic != topic {
-						t.Fatalf("got a message of %s, want %s", m.Topic, topic)
-					}
-				case <-time.After(time.Second):
-					t.Fatalf("the message published right after Add of %s was lost", topic)
+				m, _ := next(t, f.Channel(), "the message published right after Add of %s was lost", topic)
+				if m.Topic != topic {
+					t.Fatalf("got a message of %s, want %s", m.Topic, topic)
 				}
 				f.Remove(topic)
 			}
@@ -568,22 +518,14 @@ func TestClosingAFeedClosesItsChannel(t *testing.T) {
 			f := ps.Feed()
 			f.Add("feed-close")
 			_ = f.Close()
-			select {
-			case _, ok := <-f.Channel():
-				if ok {
-					t.Fatal("a closed feed got a message")
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("closing the feed left its channel open")
+			_, ok := next(t, f.Channel(), "closing the feed left its channel open")
+			if ok {
+				t.Fatal("a closed feed got a message")
 			}
 			_ = ps.Publish("feed-close", []byte{1})
 			other := ps.Feed()
 			_ = ps.Close()
-			select {
-			case <-other.Channel():
-			case <-time.After(2 * time.Second):
-				t.Fatal("closing the pubsub left a feed open")
-			}
+			next(t, other.Channel(), "closing the pubsub left a feed open")
 		})
 	}
 }

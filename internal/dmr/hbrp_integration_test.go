@@ -51,12 +51,15 @@ func TestHBRPLogin(t *testing.T) {
 		require.NoError(t, hb.Connect(stack.MMDVMAddr))
 		defer hb.Close()
 		require.NoError(t, hb.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		var rec models.Repeater
+		waitFor(t, "the server records a ping of the HBRP repeater", func() bool {
+			r, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
+			rec = r
+			return err == nil && r.PingsReceived != 0
+		})
 		assert.Equal(t, dmrdsession.StateRunning, hb.State())
 		assert.Zero(t, hb.Downs())
 
-		rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
-		require.NoError(t, err)
 		assert.Equal(t, "HBRP", rec.Dialect)
 		assert.Equal(t, "H0001HB", rec.Callsign)
 		assert.Equal(t, "Berlin", rec.Location)
@@ -129,7 +132,6 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 			assert.Equal(t, uint(100002), p.Repeater)
 		}
 
-		time.Sleep(callHoldTime)
 		require.NoError(t, mm.SendDMRD(makeGroupVoicePacket(1000001, 1, 7202, false)))
 		require.NoError(t, mm.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7202, false)))
 		pkts = hb.Receive(deliverWait, callEnds(1))
@@ -140,7 +142,6 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 			assert.Equal(t, uint(100001), p.Repeater)
 		}
 
-		time.Sleep(callHoldTime)
 		require.NoError(t, hb.SendDMRD(makePrivateVoicePacket(100002, 7203)))
 		require.NoError(t, hb.SendDMRD(makePrivateVoiceTermPacket(100002, 7203)))
 		pkts = receiveCall(mm, 100002)
@@ -150,7 +151,6 @@ func TestHBRPVoiceBothWays(t *testing.T) {
 			assert.False(t, p.GroupCall)
 		}
 
-		time.Sleep(callHoldTime)
 		require.NoError(t, mm.SendDMRD(makePrivateVoicePacket(100001, 7204)))
 		require.NoError(t, mm.SendDMRD(makePrivateVoiceTermPacket(100001, 7204)))
 		pkts = hb.Receive(deliverWait, callEnds(100001))
@@ -184,18 +184,14 @@ func TestHBRPDataBurstsBothWays(t *testing.T) {
 		} {
 			for i, sent := range dataCall(1000001, tc.dst, uint(8100+j), tc.group) {
 				require.NoError(t, tc.from.SendDMRD(sent))
-				select {
-				case got := <-tc.recv():
-					assert.Equal(t, sent.DMRData, got.DMRData, "%s burst %d octets", tc.name, i)
-					assert.Equal(t, sent.FrameType, got.FrameType, "%s burst %d", tc.name, i)
-					assert.Equal(t, sent.DTypeOrVSeq, got.DTypeOrVSeq, "%s burst %d", tc.name, i)
-					assert.Equal(t, tc.group, got.GroupCall, "%s burst %d", tc.name, i)
-				case <-time.After(drainWait):
-					t.Fatalf("%s burst %d did not arrive", tc.name, i)
-				}
-				time.Sleep(100 * time.Millisecond)
+				arrived := testutils.Collect(tc.recv(), deliverWait, gotN[models.Packet](1))
+				require.Len(t, arrived, 1, "%s burst %d did not arrive before the next was sent", tc.name, i)
+				got := arrived[0]
+				assert.Equal(t, sent.DMRData, got.DMRData, "%s burst %d octets", tc.name, i)
+				assert.Equal(t, sent.FrameType, got.FrameType, "%s burst %d", tc.name, i)
+				assert.Equal(t, sent.DTypeOrVSeq, got.DTypeOrVSeq, "%s burst %d", tc.name, i)
+				assert.Equal(t, tc.group, got.GroupCall, "%s burst %d", tc.name, i)
 			}
-			time.Sleep(callHoldTime)
 		}
 	})
 }
@@ -211,10 +207,8 @@ func TestHBRPRPTOIsIgnored(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, hb.SendRaw(bin))
 		require.NoError(t, hb.SendRaw([]byte("RPTO000186A1TS1=91;")))
-		time.Sleep(settleDuration)
 
 		require.NoError(t, hb.SendDMRD(makeGroupVoicePacket(1000001, 1, 7301, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, hb.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 7301, false)))
 		assert.NotEmpty(t, receiveCall(mm, 1), "calls should pass after the RPTO")
 		assert.Equal(t, dmrdsession.StateRunning, hb.State())
@@ -230,17 +224,14 @@ func TestHBRPReconnectsAfterMSTCL(t *testing.T) {
 		hb, mm := hbrpPair(t, stack)
 		stack.RestartMMDVM(t, testutils.RestartClose)
 
-		deadline := time.Now().Add(handshakeWait)
-		for hb.Ups() < 2 && time.Now().Before(deadline) {
-			time.Sleep(50 * time.Millisecond)
-		}
+		waitFor(t, "the HBRP repeater logs in again", func() bool { return hb.Ups() >= 2 })
 		require.Equal(t, 2, hb.Ups(), "the HBRP repeater should log in again")
 		assert.Equal(t, 1, hb.Downs(), "the MSTCL should end the session once")
 		require.NoError(t, mm.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
-		rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
-		require.NoError(t, err)
-		assert.Equal(t, "HBRP", rec.Dialect)
+		waitFor(t, "the KV store records the HBRP dialect of the new session", func() bool {
+			rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
+			return err == nil && rec.Dialect == "HBRP"
+		})
 	})
 }
 
@@ -267,28 +258,31 @@ func TestHBRPHandoff(t *testing.T) {
 		require.NoError(t, talker.Connect(stack.MMDVMAddr))
 		defer talker.Close()
 		require.NoError(t, talker.WaitReady(handshakeWait))
-		time.Sleep(settleDuration)
+		waitRecorded(t, stack, 100001, 100002)
 		hb.PausePings()
 
 		stack.RestartMMDVM(t, testutils.RestartHandoff)
 
-		start := time.Now()
 		require.NoError(t, talker.SendDMRD(makeBurst(1000001, 1, 9201, true, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader), 0)))
-		select {
-		case got := <-hb.ReceivedPackets():
-			assert.Less(t, time.Since(start), time.Second, "the listening HBRP repeater got the call late")
-			assert.Equal(t, uint(9201), got.StreamID)
-		case <-time.After(3 * time.Second):
-			t.Fatal("the listening HBRP repeater got nothing after the handoff")
-		}
+		got := hb.Receive(deliverWait, gotN[models.Packet](1))
+		require.NotEmpty(t, got, "the listening HBRP repeater got nothing after the handoff")
+		assert.Equal(t, uint(9201), got[0].StreamID)
+		assert.Equal(t, 1, hb.Ups(), "the listening HBRP repeater got the call only after a new login")
 
 		require.NoError(t, hb.Retarget(second.MMDVMAddr))
 		hb.ResumePings()
-		time.Sleep(2 * settleDuration)
+		waitSubscribed(t, second.Hub, 100001, 1, true)
+		pings := func() uint {
+			rec, err := servers.MakeKVClient(stack.KV).GetRepeater(context.Background(), 100001)
+			if err != nil {
+				return 0
+			}
+			return rec.PingsReceived
+		}
+		before := pings()
 		require.NoError(t, hb.SendDMRD(makeGroupVoicePacket(1000001, 1, 9202, false)))
-		time.Sleep(50 * time.Millisecond)
 		require.NoError(t, hb.SendDMRD(makeGroupVoiceTermPacket(1000001, 1, 9202, false)))
-		time.Sleep(settleDuration)
+		waitFor(t, "a ping of the HBRP repeater after its call", func() bool { return pings() > before })
 		assert.Equal(t, dmrdsession.StateRunning, hb.State())
 		assert.Zero(t, hb.Downs(), "no replica should refuse the HBRP session")
 		assert.Equal(t, 1, hb.Ups(), "the HBRP repeater should not log in again")

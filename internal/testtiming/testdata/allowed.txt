@@ -14,9 +14,6 @@ sleep	internal/dmr/golden_integration_test.go	3	replay pace, not a wait: 60 ms b
 eventually	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 pickport	internal/dmr/hblink3_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hblink3_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/dmr/hbrp_integration_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hbrp_integration_test.go	14	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hbrp_integration_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/clockstep_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/fanout_bench_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/dmr/hub/lastseen_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

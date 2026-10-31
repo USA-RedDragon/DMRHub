@@ -587,8 +587,11 @@ func (s *Server) password(repeaterID uint) (string, error) {
 // password, so that the database never holds up the packets of other
 // repeaters, such as when every repeater logs in again at once. Each link
 // takes one config at a time; the session answers a repeated RPTC once.
-// The hub subscribes a repeater that logs in to its calls before the
-// RPTACK of its config, since the repeater expects every call from then on.
+// The KV record of the login is stored, and the hub subscribes a repeater
+// that logs in to its calls, before the RPTACK of its config, since the
+// repeater expects every call from then on and may move to another replica
+// at once. While the records queue of the repeater is full, the RPTACK is
+// withheld, and the repeater sends its config again.
 func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	if l.looking {
 		return
@@ -604,9 +607,14 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	s.lookups.Add(1)
 	go func() {
 		defer s.lookups.Done()
-		ok := s.takeConfig(ctx, id, ep, d, data)
-		active := ok && login && s.hub != nil &&
+		repeater, ok := s.takeConfig(id, ep, d, data)
+		stored := ok && s.records.After(uint(id), func() {
+			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+			s.keepOwnRecord(uint(id), repeater)
+		})
+		active := stored && login && s.hub != nil &&
 			s.records.After(uint(id), func() { s.hub.ActivateRepeaterSince(ctx, uint(id), since) })
+		withhold := ok && (!stored || (login && s.hub != nil && !active))
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		l.looking = false
@@ -616,6 +624,10 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 			if active && s.byID[id] == nil {
 				s.records.Do(uint(id), func() { s.hub.DeactivateRepeater(ctx, uint(id)) })
 			}
+			return
+		}
+		if withhold {
+			slog.Warn("Withholding the RPTACK of a repeater config while the records queue of the repeater is full; the repeater sends it again", "repeaterID", id)
 			return
 		}
 		now := s.now()
@@ -631,14 +643,15 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 	}()
 }
 
-// takeConfig saves the RPTC data in dialect d of the repeater id at ep and
-// reports whether DMRHub accepts it.
-func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.Dialect, data []byte) bool {
+// takeConfig saves the RPTC data in dialect d of the repeater id at ep to
+// the database, and returns the KV record of the login and whether DMRHub
+// accepts it.
+func (s *Server) takeConfig(id uint32, ep endpoint, d dmrd.Dialect, data []byte) (models.Repeater, bool) {
 	repeaterID := uint(id)
 	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
-		return false
+		return models.Repeater{}, false
 	}
 	parse := repeater.ParseConfig
 	if d == dmrd.DialectHBRP {
@@ -646,7 +659,7 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 	}
 	if err := parse(data, s.Version, s.Commit); err != nil {
 		slog.Error("Invalid RPTC packet", "repeaterID", repeaterID, "error", err)
-		return false
+		return models.Repeater{}, false
 	}
 	now := s.clock.Now()
 	repeater.IP, repeater.Port = ep.kvAddr()
@@ -657,26 +670,22 @@ func (s *Server) takeConfig(ctx context.Context, id uint32, ep endpoint, d dmrd.
 	check, err := secretCheck(repeater.Password)
 	if err != nil {
 		slog.Error("Error making the secret check of a session", "repeaterID", repeaterID, "error", err)
-		return false
+		return models.Repeater{}, false
 	}
 	repeater.SecretCheck = check
 
 	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
-		return false
+		return models.Repeater{}, false
 	}
 	dbRepeater.UpdateFrom(repeater)
 	if err := s.DB.Omit(clause.Associations).Save(&dbRepeater).Error; err != nil {
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)
-		return false
+		return models.Repeater{}, false
 	}
-	s.records.Do(repeaterID, func() {
-		s.kvClient.StoreRepeater(ctx, repeaterID, repeater)
-		s.keepOwnRecord(repeaterID, repeater)
-	})
 	slog.Info("Repeater connected", "repeaterID", repeaterID, "callsign", repeater.Callsign)
-	return true
+	return repeater, true
 }
 
 func (s *Server) up(ctx context.Context, l *link, id uint32) {

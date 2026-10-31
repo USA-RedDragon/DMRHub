@@ -209,8 +209,6 @@ sleep	internal/http/api/websocket/messages_test.go	2	baseline of 2026-10-28, not
 timer	internal/http/api/websocket/user_changed_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/http/api/websocket/visibility_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/http/setupwizard_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-elapsed	internal/http/websocket/ws_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/http/websocket/ws_test.go	8	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/ipfilter/ipfilter_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/kv/kv_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/kv/redis_timeout_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port

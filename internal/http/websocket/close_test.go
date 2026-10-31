@@ -22,9 +22,9 @@ package websocket_test
 import (
 	"context"
 	"io"
-	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -39,35 +39,37 @@ import (
 
 func TestUserChangeDuringAWriteStillSendsTheCloseFrame(t *testing.T) {
 	t.Parallel()
-	ps, err := pubsub.MakePubSub(context.Background(), &config.Config{})
-	require.NoError(t, err)
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(sessions.Sessions("sessions", cookie.NewStore([]byte("test-secret"))))
-	router.Use(func(c *gin.Context) { sessions.Default(c).Set("user_id", uint(7)) })
-	ws := newCaptureWebsocket()
-	router.GET("/ws", websocket.WatchUser(ps), websocket.CreateHandler(&config.Config{}, ws))
-	server := httptest.NewServer(router)
-	defer server.Close()
+	synctest.Test(t, func(t *testing.T) {
+		ps, err := pubsub.MakePubSub(context.Background(), &config.Config{})
+		require.NoError(t, err)
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(sessions.Sessions("sessions", cookie.NewStore([]byte("test-secret"))))
+		router.Use(func(c *gin.Context) { sessions.Default(c).Set("user_id", uint(7)) })
+		ws := newCaptureWebsocket()
+		router.GET("/ws", websocket.WatchUser(ps), websocket.CreateHandler(&config.Config{}, ws))
+		server := startPipeServer(t, router)
+		defer server.Close()
 
-	big := []byte(strings.Repeat("x", 16<<20))
-	got := make([]byte, len(big))
-	conn := dialWS(t, server.URL)
-	defer func() { _ = conn.CloseNow() }()
-	conn.SetReadLimit(64 << 20)
-	serverCtx := <-ws.contexts
-	w := <-ws.writers
+		big := []byte(strings.Repeat("x", 16<<20))
+		got := make([]byte, len(big))
+		conn := dialWS(t, server)
+		defer func() { _ = conn.CloseNow() }()
+		conn.SetReadLimit(64 << 20)
+		serverCtx := <-ws.contexts
+		w := <-ws.writers
 
-	w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: big})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_, r, err := conn.Reader(ctx)
-	require.NoError(t, err, "the message starts")
-	require.NoError(t, websocket.PublishUserChanged(ps, 7))
-	<-serverCtx.Done()
+		w.WriteMessage(websocket.Message{Type: int(coderWS.MessageText), Data: big})
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, r, err := conn.Reader(ctx)
+		require.NoError(t, err, "the message starts")
+		require.NoError(t, websocket.PublishUserChanged(ps, 7))
+		<-serverCtx.Done()
 
-	_, err = io.ReadFull(r, got)
-	require.NoError(t, err, "the message being written when the user changed arrives whole")
-	_, _, err = conn.Read(ctx)
-	require.Equal(t, coderWS.StatusPolicyViolation, coderWS.CloseStatus(err), "then the close frame: %v", err)
+		_, err = io.ReadFull(r, got)
+		require.NoError(t, err, "the message being written when the user changed arrives whole")
+		_, _, err = conn.Read(ctx)
+		require.Equal(t, coderWS.StatusPolicyViolation, coderWS.CloseStatus(err), "then the close frame: %v", err)
+	})
 }

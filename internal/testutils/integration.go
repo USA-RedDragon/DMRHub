@@ -64,8 +64,9 @@ type IntegrationStack struct {
 	// the MMDVM server, empty when it is off.
 	WebTransportAddr string
 
-	plugins *Plugins
-	bounded bool
+	plugins    *Plugins
+	hubOptions []hub.Option
+	bounded    bool
 }
 
 type lookupHolder interface {
@@ -177,6 +178,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		CallTracker:      ct,
 		MessageStore:     store,
 		MMDVMServer:      &mmdvmServer,
+		hubOptions:       hubOpts,
 		IPSCServer:       ipscServer,
 		OpenBridgeServer: &obServer,
 	}
@@ -214,9 +216,10 @@ type Replica struct {
 }
 
 // SpawnSecondReplica creates a second Hub with MMDVM, IPSC and OpenBridge
-// servers that share the same DB, pubsub, and KV as the original stack,
-// simulating two replicas of the app. The servers listen on new ports and
-// are started; repeater subscriptions are activated when repeaters connect.
+// servers that share the same DB, pubsub, KV and hub options as the
+// original stack, simulating two replicas of the app. The servers listen on
+// new ports and are started; repeater subscriptions are activated when
+// repeaters connect.
 func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 	r, _ := s.spawnReplica(t, false)
@@ -239,7 +242,7 @@ func (s *IntegrationStack) spawnReplica(t *testing.T, register bool) (Replica, *
 	store2 := messages.NewStore(s.DB, s.KV)
 	store2.SetNotify(messages.NewPusher(s.DB, s.PubSub).Push)
 	ct2.SetDataObserver(store2)
-	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2)
+	hub2 := hub.NewHub(s.DB, s.KV, s.PubSub, ct2, s.hubOptions...)
 	var reg *servers.InstanceRegistry
 	if register {
 		reg = Register(t, hub2, s.KV)

@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -72,6 +73,16 @@ type Backend struct {
 // production. A test of those drops passes it.
 func BoundedWaits() Backend {
 	return Backend{Name: "bounded-waits", Setup: func(*testing.T, *config.Config) {}, BoundedWaits: true}
+}
+
+// ClockOn runs the hubs of an integration stack, and the servers that take
+// the clock of their hub, on c, for SetupIntegrationStack.
+func ClockOn(c clock.Clock) Backend {
+	return Backend{
+		Name:       "clock",
+		Setup:      func(*testing.T, *config.Config) {},
+		HubOptions: []hub.Option{hub.WithClock(c)},
+	}
 }
 
 // SQLiteMemoryBackend returns a backend using in-memory SQLite and in-memory pubsub/KV.

@@ -109,17 +109,19 @@ func Main(m *testing.M) {
 // MainParallel is Main for a package whose tests spend their time waiting
 // on the network and on timers rather than on the CPU: unless
 // -test.parallel is given, it runs up to perCPU parallel tests per CPU at
-// once. A perCPU of 0 keeps the default of go test, one per CPU.
+// once. A perCPU of 0 keeps the default of go test, one per CPU, and so
+// does the race detector, which makes the tests wait on the CPU and use
+// many times the memory.
 func MainParallel(m *testing.M, perCPU int) {
 	sharing.Store(true)
-	if perCPU > 0 {
+	if n := parallelTests(perCPU, runtime.GOMAXPROCS(0), raceDetector); n > 0 {
 		if !flag.Parsed() {
 			flag.Parse()
 		}
 		given := false
 		flag.Visit(func(f *flag.Flag) { given = given || f.Name == "test.parallel" })
 		if !given {
-			_ = flag.Set("test.parallel", strconv.Itoa(perCPU*runtime.GOMAXPROCS(0)))
+			_ = flag.Set("test.parallel", strconv.Itoa(n))
 		}
 	}
 	run := func() int {
@@ -127,6 +129,15 @@ func MainParallel(m *testing.M, perCPU int) {
 		return m.Run()
 	}
 	os.Exit(dockertest.Wrap(context.Background(), run, dockertest.WithTeardown(closeShared)).Run())
+}
+
+// parallelTests returns how many parallel tests MainParallel runs at once
+// with procs CPUs, or 0 for the default of go test.
+func parallelTests(perCPU, procs int, race bool) int {
+	if perCPU <= 0 || race {
+		return 0
+	}
+	return perCPU * procs
 }
 
 // warm starts the shared Postgres server and a group of Redis servers while

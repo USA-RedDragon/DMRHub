@@ -58,3 +58,10 @@ func TestTheTestsOfAProcessShareOneServerOfEachMySQLFamily(t *testing.T) {
 		})
 	}
 }
+
+func TestTheRaceDetectorRunsOneParallelTestPerCPU(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 32, parallelTests(8, 4, false))
+	assert.Zero(t, parallelTests(8, 4, true), "the race detector keeps the default of go test")
+	assert.Zero(t, parallelTests(0, 4, false))
+}

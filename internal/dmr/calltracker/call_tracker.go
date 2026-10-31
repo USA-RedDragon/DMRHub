@@ -22,6 +22,7 @@
 package calltracker
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -656,24 +657,28 @@ type assignment struct {
 func (st *matchState) assign(heardFirst bool) assignment {
 	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
 	at := map[uint]time.Time{}
-	for _, r := range st.Rows {
+	rows := slices.Clone(st.Rows)
+	slices.SortFunc(rows, func(x, y matchRow) int {
+		if c := x.Start.Compare(y.Start); c != 0 {
+			return c
+		}
+		return cmp.Compare(x.ID, y.ID)
+	})
+	for _, r := range rows {
 		a.resp[r.ID] = models.CallResponseNone
 	}
 	for _, ans := range st.Answers {
+		after, _ := slices.BinarySearchFunc(rows, ans.At, func(r matchRow, t time.Time) int {
+			if r.Start.After(t) {
+				return 1
+			}
+			return -1
+		})
 		var best *matchRow
-		for i := range st.Rows {
-			r := &st.Rows[i]
-			if inWindow(r.Start, ans.At) && (best == nil || r.Start.After(best.Start) || (r.Start.Equal(best.Start) && r.ID > best.ID)) {
-				best = r
-			}
-		}
-		if best == nil && heardFirst {
-			for i := range st.Rows {
-				r := &st.Rows[i]
-				if r.Start.After(ans.At) && r.Start.Before(ans.At.Add(responseWindow)) && (best == nil || r.Start.Before(best.Start) || (r.Start.Equal(best.Start) && r.ID < best.ID)) {
-					best = r
-				}
-			}
+		if i := after - 1; i >= 0 && rows[i].Start.After(ans.At.Add(-responseWindow)) {
+			best = &rows[i]
+		} else if heardFirst && after < len(rows) && rows[after].Start.Before(ans.At.Add(responseWindow)) {
+			best = &rows[after]
 		}
 		if best == nil {
 			continue
@@ -683,7 +688,7 @@ func (st *matchState) assign(heardFirst bool) assignment {
 			at[best.ID], a.resp[best.ID] = ans.At, ans.Response
 		}
 	}
-	for _, r := range st.Rows {
+	for _, r := range rows {
 		if !st.knows(r.Start) {
 			a.resp[r.ID] = r.Resp
 		}

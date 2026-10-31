@@ -38,14 +38,17 @@ import (
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	probeTransport = "probe"
 	// answerWait bounds each wait of the test for the server, so that a
-	// missing answer fails the test with what was missing.
-	answerWait = 10 * time.Second
+	// missing answer fails the test with what was missing. A repeater
+	// gives up its login after dmrdsession.LoginTimeoutDefault, so an
+	// answer that takes longer has failed.
+	answerWait = dmrdsession.LoginTimeoutDefault
 )
 
 // loginProbe is a transport that keeps what the server writes, and runs

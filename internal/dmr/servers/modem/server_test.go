@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	waitLink = 5 * time.Second
+	waitLink = modem.TestTimeout
 	testID   = 311860
 )
 

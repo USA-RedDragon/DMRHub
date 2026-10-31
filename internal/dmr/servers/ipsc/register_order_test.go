@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -37,12 +36,15 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
+	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
 	"github.com/stretchr/testify/require"
 )
 
 // registerWait bounds each wait of the test for the server, so that a
-// missing packet fails the test with what was missing.
-const registerWait = 10 * time.Second
+// missing packet fails the test with what was missing. The server drops a
+// peer that it does not hear from in ipscsession.TimeoutDefault, so a
+// packet that takes longer has failed.
+const registerWait = ipscsession.TimeoutDefault
 
 // registerProbe keeps what the server writes, and runs atReply when the
 // server writes its first registration reply.

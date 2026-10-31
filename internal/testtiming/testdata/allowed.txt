@@ -119,7 +119,6 @@ eventually	internal/dmr/rpto_integration_test.go	2	baseline of 2026-10-28, not r
 sleep	internal/dmr/rpto_integration_test.go	9	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
-deadline	internal/dmr/servers/ipsc/register_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/ipsc/server_test.go	2	expectNoUDP: a negative check, where a slow machine can only delay a packet past the 100 ms and hide it, never fail the test; readUDP moves to eventWait in the t5 commits
 timer	internal/dmr/servers/ipsc/server_test.go	1	event wait: await bounds the wait for a reply or a burst by ipscsession.TimeoutDefault, the peer timeout of the server
 elapsed	internal/dmr/servers/manager/drain_test.go	1	a lower bound on a real context timeout in Drain; a slow machine only makes it longer
@@ -128,7 +127,6 @@ pickport	internal/dmr/servers/manager/manager_test.go	4	the tests move a listene
 sleep	internal/dmr/servers/manager/manager_test.go	1	paces the background call stream of the restart leak test; no assertion depends on its timing
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/login_order_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	an Origin header in the allow-list test, not a port the test binds or sends to
 deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port

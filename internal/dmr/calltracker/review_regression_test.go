@@ -488,3 +488,49 @@ func TestAPrunedAnswerLeavesItsRowAsItIs(t *testing.T) {
 		})
 	}
 }
+
+// TestARequestHeardAfterItsAnswerTakesIt sends the answer of a radio check
+// before the check, by a gap within the response window, on one replica
+// and on two. The check must take the answer and the answer must keep no
+// row of its own. (Third review, F4.)
+func TestARequestHeardAfterItsAnswerTakesIt(t *testing.T) {
+	t.Parallel()
+	for _, replicas := range []int{1, 2} {
+		for _, gap := range []time.Duration{time.Millisecond, 50 * time.Millisecond, 500 * time.Millisecond, 9 * time.Second} {
+			t.Run(fmt.Sprintf("%d replicas %v", replicas, gap), func(t *testing.T) {
+				t.Parallel()
+				synctest.Test(t, func(t *testing.T) {
+					database, ps, store := trackerDeps(t)
+					one := calltracker.NewCallTracker(database, ps, store)
+					t.Cleanup(one.Stop)
+					two := one
+					if replicas == 2 {
+						two = calltracker.NewCallTracker(database, ps, store)
+						t.Cleanup(two.Stop)
+					}
+					req, ans := radioCheckBursts(t)
+					back := newSender(t, two, userB, userA, false, 9702)
+					back.repeater = workerApart(repeaterA)
+					back.data(ans)
+					two.Flush()
+					time.Sleep(gap)
+					newSender(t, one, userA, userB, false, 9701).data(req)
+					got := map[uint]models.Call{}
+					bubble.Eventually(t, func() bool {
+						one.Flush()
+						two.Flush()
+						clear(got)
+						for _, c := range rows(t, database) {
+							if c.Active {
+								return false
+							}
+							got[c.StreamID] = c
+						}
+						_, own := got[9702]
+						return !own && got[9701].Response == models.CallResponseACK
+					}, 8*time.Second, 50*time.Millisecond, "the check did not take its answer: %v", got)
+				})
+			})
+		}
+	}
+}

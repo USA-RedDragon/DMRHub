@@ -45,11 +45,15 @@ func radioCheckRows(t *testing.T, heardFirst bool, check func(t *testing.T, bySt
 	answeredRows(t, req, ans, heardFirst, 0, check)
 }
 
+// heardFirstGap is how long before its request a test sends an answer that
+// is heard first.
+const heardFirstGap = 200 * time.Millisecond
+
 // answeredRows runs check in a synctest bubble on the rows by stream, 7062
 // for req and 7063 for ans, after it sends req from userA to userB to one
 // tracker and ans from userB to userA to another that shares its database,
-// pubsub and KV, ans first when heardFirst is set, gap after req
-// otherwise.
+// pubsub and KV, ans heardFirstGap before req when heardFirst is set, and
+// gap after req otherwise.
 func answeredRows(t *testing.T, req, ans pdu.CSBK, heardFirst bool, gap time.Duration, check func(t *testing.T, byStream map[uint]models.Call)) {
 	t.Helper()
 	synctest.Test(t, func(t *testing.T) {
@@ -58,6 +62,7 @@ func answeredRows(t *testing.T, req, ans pdu.CSBK, heardFirst bool, gap time.Dur
 		if heardFirst {
 			newSender(t, two, userB, userA, false, 7063).data(burstOf(t, &ans))
 			two.Flush()
+			time.Sleep(heardFirstGap)
 			newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))
 		} else {
 			newSender(t, one, userA, userB, false, 7062).data(burstOf(t, &req))

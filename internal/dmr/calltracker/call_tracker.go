@@ -582,6 +582,14 @@ func (c *CallTracker) remember(s *shard, r *row) {
 	c.applyStep(s.idx, r.pair, what, res, r.call.ID)
 }
 
+// heardFirst reports whether an answer of kind what can go to a request
+// that the hub hears after it: a radio sends a CSBK answer only to a
+// request, so the hub got the request late, while a data response can
+// also answer an earlier message.
+func heardFirst(what string) bool {
+	return what != answerData
+}
+
 // inWindow reports whether a row that started at start can take an answer
 // that the hub got at at: it started before the answer, within the
 // response window.
@@ -640,9 +648,12 @@ type assignment struct {
 
 // assign gives each answer to the row that started last within its
 // window, the larger ID on a tie, and each row the response of the newest
-// answer it takes, or none. A row that may have lost an answer to the
-// pruning keeps the response that the last step gave it.
-func (st *matchState) assign() assignment {
+// answer it takes, or none. With heardFirst, an answer that no row before
+// it takes goes to the row that started first within the window after
+// it, the smaller ID on a tie, as a CSBK request that the hub hears after
+// its answer. A row that may have lost an answer to the pruning keeps the
+// response that the last step gave it.
+func (st *matchState) assign(heardFirst bool) assignment {
 	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
 	at := map[uint]time.Time{}
 	for _, r := range st.Rows {
@@ -654,6 +665,14 @@ func (st *matchState) assign() assignment {
 			r := &st.Rows[i]
 			if inWindow(r.Start, ans.At) && (best == nil || r.Start.After(best.Start) || (r.Start.Equal(best.Start) && r.ID > best.ID)) {
 				best = r
+			}
+		}
+		if best == nil && heardFirst {
+			for i := range st.Rows {
+				r := &st.Rows[i]
+				if r.Start.After(ans.At) && r.Start.Before(ans.At.Add(responseWindow)) && (best == nil || r.Start.Before(best.Start) || (r.Start.Equal(best.Start) && r.ID < best.ID)) {
+					best = r
+				}
 			}
 		}
 		if best == nil {
@@ -797,9 +816,9 @@ func (c *CallTracker) step(k pair, what string, op matchOp) (stepResult, error) 
 			ref = op.at()
 		}
 		st.prune(ref)
-		before := st.assign()
+		before := st.assign(heardFirst(what))
 		st.add(op)
-		after := st.assign()
+		after := st.assign(heardFirst(what))
 		res = stepResult{changed: map[uint]models.CallResponse{}, after: after.resp}
 		if op.answer != nil {
 			res.winner = after.winner[op.answer.Stream]
@@ -865,7 +884,7 @@ func (c *CallTracker) matched(k pair, what string, id uint) (models.CallResponse
 	if json.Unmarshal(b, &st) != nil {
 		return models.CallResponseNone, false
 	}
-	resp, ok := st.assign().resp[id]
+	resp, ok := st.assign(heardFirst(what)).resp[id]
 	return resp, ok
 }
 

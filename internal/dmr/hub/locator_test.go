@@ -112,6 +112,25 @@ func locatorHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
 	return h, database, srv
 }
 
+const (
+	answerQuiet       = 500 * time.Millisecond
+	registrationQuiet = 3 * time.Second
+	foreignQuiet      = 3500 * time.Millisecond
+	voiceEvery        = 300 * time.Millisecond
+	maxPackets        = 100
+)
+
+func nextFrom(srv *hub.ServerHandle, d time.Duration) (hub.RoutedPacket, bool) {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case rp := <-srv.Packets:
+		return rp, true
+	case <-timer.C:
+		return hub.RoutedPacket{}, false
+	}
+}
+
 func TestDataToTheLocationServerIsAnsweredOnItsRepeater(t *testing.T) {
 	t.Parallel()
 	h, _, srv := locatorHub(t)
@@ -119,16 +138,15 @@ func TestDataToTheLocationServerIsAnsweredOnItsRepeater(t *testing.T) {
 	for _, p := range confirmedReport(t, 1000002, 5057, 100003) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	}
-	select {
-	case rp := <-srv.Packets:
-		assert.Equal(t, uint(100003), rp.RepeaterID, "the answer goes out where the report came in")
-		assert.Equal(t, uint(5057), rp.Packet.Src)
-		assert.Equal(t, uint(1000002), rp.Packet.Dst)
-		assert.False(t, rp.Packet.GroupCall)
-	case <-time.After(3 * time.Second):
-		t.Fatal("the location server did not answer a confirmed report")
+	rp, ok := nextFrom(srv, failAfter)
+	require.True(t, ok, "the location server did not answer a confirmed report")
+	assert.Equal(t, uint(100003), rp.RepeaterID, "the answer goes out where the report came in")
+	assert.Equal(t, uint(5057), rp.Packet.Src)
+	assert.Equal(t, uint(1000002), rp.Packet.Dst)
+	assert.False(t, rp.Packet.GroupCall)
+	if rp, ok := nextFrom(srv, answerQuiet); ok {
+		t.Fatalf("only the answer goes out, but a packet went to %d", rp.RepeaterID)
 	}
-	expectNone(t, srv, "only the answer goes out")
 }
 
 func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
@@ -142,43 +160,31 @@ func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
 	for _, p := range arsRegistration(t, 1000002, 5057, 100003) {
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	}
-	answered := time.After(20 * time.Second)
-	for quiet := time.After(3 * time.Second); quiet != nil; {
-		select {
-		case rp := <-srv.Packets:
-			require.Equal(t, uint(100003), rp.RepeaterID)
-			quiet = time.After(2500 * time.Millisecond)
-		case <-quiet:
-			quiet = nil
-		case <-answered:
-			t.Fatal("the Locator did not stop answering the registration")
+	for n := 0; ; n++ {
+		rp, ok := nextFrom(srv, registrationQuiet)
+		if !ok {
+			break
 		}
+		require.Equal(t, uint(100003), rp.RepeaterID)
+		require.Less(t, n, maxPackets, "the Locator did not stop answering the registration")
 	}
 
 	foreign := makeVoicePacket(1, 70999, true, true)
 	foreign.Src, foreign.Repeater = 1000002, 100004
 	h.RoutePacket(context.Background(), foreign, models.RepeaterTypeMMDVM)
-	expectNone(t, srv, "heard only on another user's hotspot")
-	time.Sleep(2500 * time.Millisecond)
-	expectNone(t, srv, "a sighting on another user's hotspot does not count")
+	if rp, ok := nextFrom(srv, foreignQuiet); ok {
+		t.Fatalf("a sighting on another user's hotspot does not count, but a packet went to %d", rp.RepeaterID)
+	}
 
 	voice := makeVoicePacket(1, 71000, true, true)
 	voice.Src, voice.Repeater = 1000002, 100003
-	stop := time.After(6 * time.Second)
-	tick := time.NewTicker(300 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-			voice.Seq++
-			h.RoutePacket(context.Background(), voice, models.RepeaterTypeMMDVM)
-		case rp := <-srv.Packets:
-			if rp.Packet.Src == 5057 {
-				assert.Equal(t, uint(100003), rp.RepeaterID, "asked again where the radio is heard")
-				return
-			}
-		case <-stop:
-			t.Fatal("a silent tracked radio that is heard was not asked again")
+	for range maxPackets {
+		voice.Seq++
+		h.RoutePacket(context.Background(), voice, models.RepeaterTypeMMDVM)
+		if rp, ok := nextFrom(srv, voiceEvery); ok && rp.Packet.Src == 5057 {
+			assert.Equal(t, uint(100003), rp.RepeaterID, "asked again where the radio is heard")
+			return
 		}
 	}
+	t.Fatal("a silent tracked radio that is heard was not asked again")
 }

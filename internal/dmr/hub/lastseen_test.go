@@ -85,26 +85,14 @@ func lastSeenHubWrappingKV(t *testing.T, wrapKV func(kv.KV) kv.KV) (*hub.Hub, *g
 
 func expectAt(t *testing.T, srv *hub.ServerHandle, repeater uint, what string) {
 	t.Helper()
-	select {
-	case rp := <-srv.Packets:
-		assert.Equal(t, repeater, rp.RepeaterID, what)
-	case <-time.After(deliveryWait):
-		t.Fatalf("%s: nothing delivered", what)
-	}
-	select {
-	case rp := <-srv.Packets:
-		t.Fatalf("%s: extra packet to %d", what, rp.RepeaterID)
-	case <-time.After(200 * time.Millisecond):
-	}
+	rp := bubble.Receive(t, srv.Packets, deliveryWait, "%s: nothing delivered", what)
+	assert.Equal(t, repeater, rp.RepeaterID, what)
+	bubble.None(t, srv.Packets, 200*time.Millisecond, "%s: an extra packet", what)
 }
 
 func expectNone(t *testing.T, srv *hub.ServerHandle, what string) {
 	t.Helper()
-	select {
-	case rp := <-srv.Packets:
-		t.Fatalf("%s: delivered to %d", what, rp.RepeaterID)
-	case <-time.After(500 * time.Millisecond):
-	}
+	bubble.None(t, srv.Packets, 500*time.Millisecond, "%s: delivered", what)
 }
 
 func TestPrivateTrafficFindsRadioHeardOnlyThroughData(t *testing.T) {

@@ -189,20 +189,24 @@ func TestDataTakesTheVoiceSettingsUnlessItHasItsOwn(t *testing.T) {
 	t.Parallel()
 	t.Run("voice reach", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
-		hear(t, h, pcOwner, pcOwnHS, 1)
-		hear(t, h, pcOwner, pcOtherHS, 2)
-		h.RoutePacket(context.Background(), dataHeader(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
-		expectAt(t, srv, pcOtherHS, "data takes the voice reach")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{Reach: config.PrivateReachAnyone}})
+			hear(t, h, pcOwner, pcOwnHS, 1)
+			hear(t, h, pcOwner, pcOtherHS, 2)
+			h.RoutePacket(context.Background(), dataHeader(pcOther, pcOwner, pcThirdHS, 3), models.RepeaterTypeMMDVM)
+			expectAt(t, srv, pcOtherHS, "data takes the voice reach")
+		})
 	})
 	t.Run("own reach", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{Data: config.PrivateData{Reach: config.PrivateReachMembers}})
-		hear(t, h, pcVisitor, pcOtherHS, 1)
-		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-		expectAt(t, srv, pcOtherHS, "voice keeps the hybrid reach")
-		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
-		expectNone(t, srv, "data takes its own members reach")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{Data: config.PrivateData{Reach: config.PrivateReachMembers}})
+			hear(t, h, pcVisitor, pcOtherHS, 1)
+			h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+			expectAt(t, srv, pcOtherHS, "voice keeps the hybrid reach")
+			h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
+			expectNone(t, srv, "data takes its own members reach")
+		})
 	})
 }
 
@@ -211,21 +215,25 @@ func TestDataMaxAgeTakesTheVoiceMaxAgeOrNone(t *testing.T) {
 	voice := config.PrivateRoute{MaxAge: time.Hour}
 	t.Run("voice max age", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{Voice: voice})
-		loadLookups(t, h, nil, []uint{pcVisitor})
-		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-2*time.Hour), true))
-		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-		expectNone(t, srv, "data takes the voice max age")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{Voice: voice})
+			loadLookups(t, h, nil, []uint{pcVisitor})
+			require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-2*time.Hour), true))
+			h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+			expectNone(t, srv, "data takes the voice max age")
+		})
 	})
 	t.Run("no limit", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{Voice: voice, Data: config.PrivateData{MaxAge: -time.Second}})
-		loadLookups(t, h, nil, []uint{pcVisitor})
-		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-2*time.Hour), true))
-		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
-		expectNone(t, srv, "voice keeps its max age")
-		h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
-		expectAt(t, srv, pcOtherHS, "a negative data max age is no limit")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{Voice: voice, Data: config.PrivateData{MaxAge: -time.Second}})
+			loadLookups(t, h, nil, []uint{pcVisitor})
+			require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-2*time.Hour), true))
+			h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 2), models.RepeaterTypeMMDVM)
+			expectNone(t, srv, "voice keeps its max age")
+			h.RoutePacket(context.Background(), dataHeader(pcOwner, pcVisitor, pcOwnHS, 3), models.RepeaterTypeMMDVM)
+			expectAt(t, srv, pcOtherHS, "a negative data max age is no limit")
+		})
 	})
 }
 
@@ -233,19 +241,23 @@ func TestTheLastingRecordLocatesARadioHeardLongAgo(t *testing.T) {
 	t.Parallel()
 	t.Run("no max age", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{})
-		loadLookups(t, h, nil, []uint{pcVisitor})
-		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-48*time.Hour), true))
-		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 1), models.RepeaterTypeMMDVM)
-		expectAt(t, srv, pcOtherHS, "a radio heard two days ago, with no max age")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{})
+			loadLookups(t, h, nil, []uint{pcVisitor})
+			require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-48*time.Hour), true))
+			h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 1), models.RepeaterTypeMMDVM)
+			expectAt(t, srv, pcOtherHS, "a radio heard two days ago, with no max age")
+		})
 	})
 	t.Run("max age of a day", func(t *testing.T) {
 		t.Parallel()
-		h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{MaxAge: 24 * time.Hour}})
-		loadLookups(t, h, nil, []uint{pcVisitor})
-		require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-48*time.Hour), true))
-		h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 1), models.RepeaterTypeMMDVM)
-		expectNone(t, srv, "a radio heard two days ago, with a max age of a day")
+		synctest.Test(t, func(t *testing.T) {
+			h, srv := privateHub(t, config.PrivateCalls{Voice: config.PrivateRoute{MaxAge: 24 * time.Hour}})
+			loadLookups(t, h, nil, []uint{pcVisitor})
+			require.NoError(t, h.StoreSighting(pcVisitor, pcOtherHS, time.Now().Add(-48*time.Hour), true))
+			h.RoutePacket(context.Background(), privateVoice(pcOwner, pcVisitor, pcOwnHS, 1), models.RepeaterTypeMMDVM)
+			expectNone(t, srv, "a radio heard two days ago, with a max age of a day")
+		})
 	})
 }
 

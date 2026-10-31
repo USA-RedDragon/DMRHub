@@ -134,6 +134,7 @@ type sender struct {
 	peer     bool
 	repeater uint
 	slot     bool
+	at       time.Time
 }
 
 func newSender(t *testing.T, ct *calltracker.CallTracker, src, dst uint, group bool, stream uint) *sender {
@@ -169,7 +170,11 @@ func (s *sender) packet(frame dmrconst.FrameType, value uint, burst layer2.RawBu
 
 func (s *sender) send(frame dmrconst.FrameType, value uint, burst layer2.RawBurst) models.Packet {
 	p := s.packet(frame, value, burst)
-	s.ct.Track(context.Background(), p, s.server, s.peer)
+	if s.at.IsZero() {
+		s.ct.Track(context.Background(), p, s.server, s.peer)
+	} else {
+		s.ct.TrackAt(context.Background(), p, s.server, s.peer, s.at)
+	}
 	return p
 }
 

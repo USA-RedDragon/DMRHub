@@ -55,6 +55,9 @@ type Metrics struct {
 
 	// TrackerDroppedTotal counts packets that the call tracker dropped.
 	TrackerDroppedTotal prometheus.Counter
+	// TrackerMatchFailedTotal counts rows and answers that the call
+	// tracker could not match because the KV failed.
+	TrackerMatchFailedTotal prometheus.Counter
 
 	// MessagesDroppedTotal counts data messages that the message store dropped.
 	MessagesDroppedTotal prometheus.Counter
@@ -162,6 +165,10 @@ func NewMetrics() *Metrics {
 				Name: "call_tracker_dropped_packets_total",
 				Help: "The total number of packets that the call tracker did not record because its queue was full",
 			}),
+			TrackerMatchFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "call_tracker_match_failed_total",
+				Help: "The total number of rows and answers that the call tracker could not match with each other because the KV failed, so that an answer was not credited",
+			}),
 			MessagesDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 				Name: "message_store_dropped_total",
 				Help: "The total number of data messages that the message store did not save because its queue was full",
@@ -196,6 +203,7 @@ func (m *Metrics) register() {
 	prometheus.MustRegister(m.PublishRetriesTotal)
 	prometheus.MustRegister(m.PublishUnconfirmedTotal)
 	prometheus.MustRegister(m.TrackerDroppedTotal)
+	prometheus.MustRegister(m.TrackerMatchFailedTotal)
 	prometheus.MustRegister(m.MessagesDroppedTotal)
 	prometheus.MustRegister(m.PubSubDroppedTotal)
 	prometheus.MustRegister(m.TranscodeMissedSecondsTotal)
@@ -234,6 +242,12 @@ func (m *Metrics) IncrementIngressDropped(reason string) {
 // IncrementTrackerDropped counts a packet that the call tracker dropped.
 func (m *Metrics) IncrementTrackerDropped() {
 	m.TrackerDroppedTotal.Inc()
+}
+
+// IncrementTrackerMatchFailed counts a row or an answer that the call
+// tracker could not match.
+func (m *Metrics) IncrementTrackerMatchFailed() {
+	m.TrackerMatchFailedTotal.Inc()
 }
 
 // IncrementMessagesDropped counts a data message that the message store

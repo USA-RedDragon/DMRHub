@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,10 +76,17 @@ const (
 	packetTimingMs  = 60
 	pct             = 100
 	kvTimeout       = time.Second
-	recentKeyPrefix = "dmrhub:calltracker:recent:"
-	answerKeyPrefix = "dmrhub:calltracker:answer:"
+	matchKeyPrefix  = "dmrhub:calltracker:match:"
 	responsesTopic  = "calltracker:responses"
-	dropsTopic      = "calltracker:drops"
+	settleTopic     = "calltracker:settle"
+	// matchLag is how long a worker may lag behind the newest row or
+	// answer of a pair and still find what it needs in the match.
+	matchLag = time.Minute
+	// matchCap bounds the rows and the answers that a match keeps, as a
+	// backstop to the pruning by time.
+	matchCap    = 512
+	settleTries = 16
+	dropsTopic  = "calltracker:drops"
 
 	undeliverableTopic = "calltracker:undeliverable"
 )
@@ -118,12 +126,15 @@ type CallTracker struct {
 	stopped  atomic.Bool
 	wg       sync.WaitGroup
 
-	streams  *xsync.Map[uint, streamRef]
-	sources  *xsync.Map[sourceKey, streamRef]
-	leads    *xsync.Map[leadKey, lead]
-	joined   *xsync.Map[chanKey, lead]
-	recentMu sync.Mutex
-	recent   map[pair][]recentRow
+	streams *xsync.Map[uint, streamRef]
+	sources *xsync.Map[sourceKey, streamRef]
+	leads   *xsync.Map[leadKey, lead]
+	joined  *xsync.Map[chanKey, lead]
+	// held holds the rows of this replica that answers can be set on, and
+	// owned the rows that answers made of their own, while their workers
+	// have them, by ID.
+	held  *xsync.Map[uint, heldRow]
+	owned *xsync.Map[uint, heldRow]
 
 	observer atomic.Pointer[observerBox]
 	plugins  atomic.Pointer[pluginsBox]
@@ -151,13 +162,9 @@ type streamRef struct {
 
 type pair struct{ src, dst uint }
 
-type recentRow struct {
-	shard     int
-	row       *row
-	kind      models.CallKind
-	sub       string
-	confirmed bool
-	at        time.Time
+type heldRow struct {
+	shard int
+	row   *row
 }
 
 // Option sets up a CallTracker in NewCallTracker.
@@ -182,7 +189,8 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option)
 		sources:    xsync.NewMap[sourceKey, streamRef](),
 		leads:      xsync.NewMap[leadKey, lead](),
 		joined:     xsync.NewMap[chanKey, lead](),
-		recent:     map[pair][]recentRow{},
+		held:       xsync.NewMap[uint, heldRow](),
+		owned:      xsync.NewMap[uint, heldRow](),
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),
 	}
@@ -199,6 +207,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option)
 	ct.loadActiveNets()
 	ct.subscribe("net:events", ct.netEvent)
 	ct.subscribe(responsesTopic, ct.remoteResponse)
+	ct.subscribe(settleTopic, ct.remoteSettle)
 	ct.subscribe(dropsTopic, ct.remoteDrop)
 	ct.subscribe(convertedTopic, ct.remoteConverted)
 	ct.subscribe(undeliverableTopic, ct.remoteUndeliverable)
@@ -555,122 +564,376 @@ func (c *CallTracker) remember(s *shard, r *row) {
 	if r.call.GroupCall {
 		return
 	}
-	k := pair{src: r.call.SourceID, dst: r.call.DestinationID}
-	e := recentRow{shard: s.idx, row: r, kind: r.call.Kind, sub: r.call.SubKind, confirmed: r.call.Confirmed, at: c.clock.Now()}
-	c.recentMu.Lock()
-	cut := e.at.Add(-responseWindow)
-	keep := c.recent[k][:0]
-	for _, old := range c.recent[k] {
-		if old.at.After(cut) {
-			keep = append(keep, old)
-		}
-	}
-	c.recent[k] = append(keep, e)
-	c.recentMu.Unlock()
-	what := answerable(e.kind, e.sub, e.confirmed)
+	what := answerable(r.call.Kind, r.call.SubKind, r.call.Confirmed)
 	if what == "" {
 		return
 	}
-	c.share(k, what, sharedRow{ID: r.call.ID, At: e.at})
-	if what == answerData {
+	r.what, r.pair = what, pair{src: r.call.SourceID, dst: r.call.DestinationID}
+	c.held.Store(r.call.ID, heldRow{shard: s.idx, row: r})
+	res, err := c.step(r.pair, what, matchOp{row: &matchRow{ID: r.call.ID, Start: r.call.StartTime}})
+	if err != nil {
+		slog.Error("CallTracker: cannot match a row with the answers to it", "error", err)
+		c.metrics.IncrementTrackerMatchFailed()
 		return
 	}
-	if a := c.takeAnswer(k, what); a != nil {
-		r.call.Response = a.Response
-		c.drop(s.idx, pair{src: k.dst, dst: k.src}, a.RowID)
+	if resp, ok := res.after[r.call.ID]; ok {
+		r.call.Response = resp
 	}
+	c.applyStep(s.idx, r.pair, what, res, r.call.ID)
 }
 
-// pendingAnswer is an answer that found no row to set its response on,
-// kept in the KV for the row heard after it, maybe on another replica.
-// RowID is the row the answer made of its own, which that row replaces.
-type pendingAnswer struct {
-	RowID    uint                `json:"row_id"`
+// inWindow reports whether a row that started at start can take an answer
+// that the hub got at at: it started before the answer, within the
+// response window.
+func inWindow(start, at time.Time) bool {
+	return !start.After(at) && start.After(at.Add(-responseWindow))
+}
+
+// matchRow is a row that answers can be set on, and when it started.
+type matchRow struct {
+	ID    uint      `json:"id"`
+	Start time.Time `json:"start"`
+}
+
+// matchAnswer is an answer of one stream, the time the hub got its newest
+// burst and its response. OwnRow is the row the answer made of its own
+// while no row takes it, which the row that takes it replaces.
+type matchAnswer struct {
+	Stream   uint                `json:"stream"`
+	At       time.Time           `json:"at"`
 	Response models.CallResponse `json:"response"`
+	OwnRow   uint                `json:"own_row,omitempty"`
 }
 
-func answerKey(k pair, what string) string {
-	return fmt.Sprintf("%s%d:%d:%s", answerKeyPrefix, k.src, k.dst, what)
+// matchState is everything a pair of radios sent that answers of one kind
+// can be set on, and their answers, in one KV entry that Update changes in
+// one step.
+type matchState struct {
+	Rows    []matchRow    `json:"rows,omitempty"`
+	Answers []matchAnswer `json:"answers,omitempty"`
 }
 
-// keepAnswer keeps an answer of kind what to the row of k as pending.
-func (c *CallTracker) keepAnswer(k pair, what string, a pendingAnswer) {
-	b, err := json.Marshal(a)
-	if err != nil {
-		slog.Error("CallTracker: cannot marshal a pending answer", "error", err)
+// assignment is what a matchState makes of its answers: the row that each
+// answer stream goes to, and the response of each row.
+type assignment struct {
+	winner map[uint]uint
+	resp   map[uint]models.CallResponse
+}
+
+// assign gives each answer to the row that started last within its
+// window, the larger ID on a tie, and each row the response of the newest
+// answer it takes, or none.
+func (st *matchState) assign() assignment {
+	a := assignment{winner: map[uint]uint{}, resp: map[uint]models.CallResponse{}}
+	at := map[uint]time.Time{}
+	for _, r := range st.Rows {
+		a.resp[r.ID] = models.CallResponseNone
+	}
+	for _, ans := range st.Answers {
+		var best *matchRow
+		for i := range st.Rows {
+			r := &st.Rows[i]
+			if inWindow(r.Start, ans.At) && (best == nil || r.Start.After(best.Start) || (r.Start.Equal(best.Start) && r.ID > best.ID)) {
+				best = r
+			}
+		}
+		if best == nil {
+			continue
+		}
+		a.winner[ans.Stream] = best.ID
+		if t, ok := at[best.ID]; !ok || ans.At.After(t) {
+			at[best.ID], a.resp[best.ID] = ans.At, ans.Response
+		}
+	}
+	return a
+}
+
+func (st *matchState) newest() time.Time {
+	var t time.Time
+	for _, r := range st.Rows {
+		if r.Start.After(t) {
+			t = r.Start
+		}
+	}
+	for _, a := range st.Answers {
+		if a.At.After(t) {
+			t = a.At
+		}
+	}
+	return t
+}
+
+// prune drops the answers more than the window and matchLag older than
+// ref, and the rows that none of the answers it keeps can take.
+func (st *matchState) prune(ref time.Time) {
+	answerCut := ref.Add(-responseWindow - matchLag)
+	rowCut := answerCut.Add(-responseWindow)
+	answers := st.Answers[:0]
+	for _, a := range st.Answers {
+		if a.At.After(answerCut) {
+			answers = append(answers, a)
+		}
+	}
+	st.Answers = answers
+	rows := st.Rows[:0]
+	for _, r := range st.Rows {
+		if r.Start.After(rowCut) {
+			rows = append(rows, r)
+		}
+	}
+	st.Rows = rows
+}
+
+// limit keeps the newest matchCap answers and rows.
+func (st *matchState) limit() {
+	if n := len(st.Answers); n > matchCap {
+		slices.SortFunc(st.Answers, func(a, b matchAnswer) int { return a.At.Compare(b.At) })
+		st.Answers = st.Answers[n-matchCap:]
+	}
+	if n := len(st.Rows); n > matchCap {
+		slices.SortFunc(st.Rows, func(a, b matchRow) int { return a.Start.Compare(b.Start) })
+		st.Rows = st.Rows[n-matchCap:]
+	}
+}
+
+// matchOp is the row or the answer that a step adds. keep keeps an answer
+// that no row takes.
+type matchOp struct {
+	row    *matchRow
+	answer *matchAnswer
+	keep   bool
+}
+
+func (op matchOp) at() time.Time {
+	if op.row != nil {
+		return op.row.Start
+	}
+	return op.answer.At
+}
+
+// stepResult is what a step changed: the response of each row whose
+// response it changed, the response of every row after it, the row that
+// the answer it added goes to, and the rows that answers made of their own
+// that a row now replaces.
+type stepResult struct {
+	changed map[uint]models.CallResponse
+	after   map[uint]models.CallResponse
+	winner  uint
+	drops   []uint
+}
+
+var errNothingToKeep = errors.New("an answer that no row takes and that is not kept")
+
+func (st *matchState) add(op matchOp) {
+	if op.row != nil {
+		if !slices.ContainsFunc(st.Rows, func(r matchRow) bool { return r.ID == op.row.ID }) {
+			st.Rows = append(st.Rows, *op.row)
+		}
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
-	defer cancel()
-	key := answerKey(k, what)
-	if err := c.kv.Set(ctx, key, b); err != nil {
-		slog.Error("CallTracker: cannot keep a pending answer", "error", err)
+	a := *op.answer
+	for i := range st.Answers {
+		old := &st.Answers[i]
+		if old.Stream != a.Stream {
+			continue
+		}
+		if !a.At.Before(old.At) {
+			old.At, old.Response = a.At, a.Response
+		}
+		if a.OwnRow != 0 {
+			old.OwnRow = a.OwnRow
+		}
 		return
 	}
-	if err := c.kv.Expire(ctx, key, responseWindow); err != nil {
-		slog.Error("CallTracker: cannot expire a pending answer", "error", err)
-	}
+	st.Answers = append(st.Answers, a)
 }
 
-// takeAnswer returns and removes the pending answer of kind what to the
-// row of k, or nil when there is none.
-func (c *CallTracker) takeAnswer(k pair, what string) *pendingAnswer {
+func matchKey(k pair, what string) string {
+	return fmt.Sprintf("%s%d:%d:%s", matchKeyPrefix, k.src, k.dst, what)
+}
+
+// step adds the row or the answer of op to the match of k and what and
+// matches the answers again, in one Update of the KV.
+func (c *CallTracker) step(k pair, what string, op matchOp) (stepResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
 	defer cancel()
-	key := answerKey(k, what)
-	b, err := c.kv.Get(ctx, key)
+	var res stepResult
+	err := c.kv.Update(ctx, matchKey(k, what), responseWindow+matchLag, func(old []byte) ([]byte, error) {
+		var st matchState
+		if old != nil && json.Unmarshal(old, &st) != nil {
+			st = matchState{}
+		}
+		ref := st.newest()
+		if op.at().After(ref) {
+			ref = op.at()
+		}
+		st.prune(ref)
+		before := st.assign()
+		st.add(op)
+		after := st.assign()
+		res = stepResult{changed: map[uint]models.CallResponse{}, after: after.resp}
+		if op.answer != nil {
+			res.winner = after.winner[op.answer.Stream]
+			if res.winner == 0 && !op.keep {
+				return nil, errNothingToKeep
+			}
+		}
+		for id, resp := range after.resp {
+			if before.resp[id] != resp {
+				res.changed[id] = resp
+			}
+		}
+		for i := range st.Answers {
+			a := &st.Answers[i]
+			if a.OwnRow == 0 || after.winner[a.Stream] == 0 {
+				continue
+			}
+			if op.answer == nil || a.Stream != op.answer.Stream {
+				res.drops = append(res.drops, a.OwnRow)
+			}
+			a.OwnRow = 0
+		}
+		st.limit()
+		return json.Marshal(st)
+	})
+	if errors.Is(err, errNothingToKeep) {
+		return stepResult{}, nil
+	}
 	if err != nil {
-		return nil
+		return stepResult{}, fmt.Errorf("matching the answers of %d to %d: %w", k.src, k.dst, err)
 	}
-	var a pendingAnswer
-	if err := json.Unmarshal(b, &a); err != nil {
-		return nil
-	}
-	if err := c.kv.Delete(ctx, key); err != nil {
-		slog.Error("CallTracker: cannot delete a pending answer", "error", err)
-	}
-	return &a
+	return res, nil
 }
 
-// dropRequest asks the replica that holds the row ID, of Src to Dst, to
-// delete it.
+// applyStep sets the responses that a step changed on their rows, except
+// on self, which the caller sets, and deletes the rows that answers made
+// of their own that rows now replace. The worker idx calls it.
+func (c *CallTracker) applyStep(idx int, k pair, what string, res stepResult, self uint) {
+	for id := range res.changed {
+		if id != self {
+			c.settle(idx, k, what, id)
+		}
+	}
+	for _, id := range res.drops {
+		c.dropOwn(idx, k, id)
+	}
+}
+
+// matched returns the response that the match of k and what gives the row
+// id, and false when the match or the row is no longer in the KV, so that
+// the row stays as it is.
+func (c *CallTracker) matched(k pair, what string, id uint) (models.CallResponse, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	defer cancel()
+	b, err := c.kv.Get(ctx, matchKey(k, what))
+	if err != nil {
+		return models.CallResponseNone, false
+	}
+	var st matchState
+	if json.Unmarshal(b, &st) != nil {
+		return models.CallResponseNone, false
+	}
+	resp, ok := st.assign().resp[id]
+	return resp, ok
+}
+
+// settleRequest asks the replica whose worker holds the row ID, of Src to
+// Dst, to set its response again from the match of kind What.
+type settleRequest struct {
+	ID   uint   `json:"id"`
+	Src  uint   `json:"src"`
+	Dst  uint   `json:"dst"`
+	What string `json:"what"`
+}
+
+// settle sets the response of the row id of k from the match of kind
+// what: on its worker when a worker here holds it, and otherwise in the
+// database, while it asks the replica whose worker holds it to do the
+// same. The worker idx calls it.
+func (c *CallTracker) settle(idx int, k pair, what string, id uint) {
+	if h, ok := c.held.Load(id); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.settleHeld(h.row) }})
+		return
+	}
+	if msg, err := json.Marshal(settleRequest{ID: id, Src: k.src, Dst: k.dst, What: what}); err == nil {
+		c.publish(idx, settleTopic, msg)
+	}
+	c.settleSaved(idx, k, what, id)
+}
+
+func (s *shard) settleHeld(r *row) {
+	if r.deleted {
+		return
+	}
+	if r.finished {
+		s.t.settleSaved(s.idx, r.pair, r.what, r.call.ID)
+		return
+	}
+	if resp, ok := s.t.matched(r.pair, r.what, r.call.ID); ok {
+		r.call.Response = resp
+	}
+}
+
+// settleSaved sets the response of the saved row id from the match and
+// publishes the row, and does it again while the match changes the
+// response under it, at most settleTries times. Each step that changes the
+// response of a row settles it after the step, so the last write reflects
+// the last step.
+func (c *CallTracker) settleSaved(idx int, k pair, what string, id uint) {
+	for range settleTries {
+		resp, ok := c.matched(k, what, id)
+		if !ok {
+			return
+		}
+		if err := c.db.Model(&models.Call{}).Where("id = ?", id).Update("response", resp).Error; err != nil {
+			slog.Error("CallTracker: error saving response", "error", err)
+			return
+		}
+		var call models.Call
+		if err := c.db.Preload(clause.Associations).First(&call, id).Error; err == nil {
+			c.publishCall(idx, &call)
+		}
+		if again, ok := c.matched(k, what, id); !ok || again == resp {
+			return
+		}
+	}
+	slog.Warn("CallTracker: the response of a row kept changing while it was saved", "id", id)
+}
+
+func (c *CallTracker) remoteSettle(msg []byte) {
+	var q settleRequest
+	if err := json.Unmarshal(msg, &q); err != nil {
+		slog.Error("CallTracker: failed to unmarshal a settle", "error", err)
+		return
+	}
+	if h, ok := c.held.Load(q.ID); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.settleHeld(h.row) }})
+	}
+}
+
+// dropRequest asks the replica whose worker holds the row ID, of Src to
+// Dst, to delete it.
 type dropRequest struct {
 	ID  uint `json:"id"`
 	Src uint `json:"src"`
 	Dst uint `json:"dst"`
 }
 
-// drop deletes the row id of k, here or on the replica that holds it. The
-// worker idx calls it.
-func (c *CallTracker) drop(idx int, k pair, id uint) {
-	if c.dropLocal(k, id) {
+// dropOwn deletes the row id that an answer to the rows of k made of its
+// own: on its worker when a worker here holds it, and otherwise in the
+// database, while it asks the replica whose worker holds it to do the
+// same. The worker idx calls it.
+func (c *CallTracker) dropOwn(idx int, k pair, id uint) {
+	if h, ok := c.owned.Load(id); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.drop(h.row) }})
 		return
 	}
-	msg, err := json.Marshal(dropRequest{ID: id, Src: k.src, Dst: k.dst})
-	if err != nil {
-		slog.Error("CallTracker: cannot marshal a drop", "error", err)
-		return
+	if msg, err := json.Marshal(dropRequest{ID: id, Src: k.dst, Dst: k.src}); err == nil {
+		c.publish(idx, dropsTopic, msg)
 	}
-	c.publish(idx, dropsTopic, msg)
-}
-
-func (c *CallTracker) dropLocal(k pair, id uint) bool {
-	c.recentMu.Lock()
-	var found *recentRow
-	for i := range c.recent[k] {
-		if c.recent[k][i].row.call.ID == id {
-			e := c.recent[k][i]
-			found = &e
-			break
-		}
+	if err := c.db.Unscoped().Delete(&models.Call{ID: id}).Error; err != nil {
+		slog.Error("CallTracker: error deleting a replaced call", "error", err)
 	}
-	c.recentMu.Unlock()
-	if found == nil {
-		return false
-	}
-	r := found.row
-	c.enqueue(found.shard, task{fn: func(s *shard) { s.drop(r) }})
-	return true
 }
 
 func (c *CallTracker) remoteDrop(msg []byte) {
@@ -679,45 +942,18 @@ func (c *CallTracker) remoteDrop(msg []byte) {
 		slog.Error("CallTracker: failed to unmarshal a drop", "error", err)
 		return
 	}
-	c.dropLocal(pair{src: d.Src, dst: d.Dst}, d.ID)
+	if h, ok := c.owned.Load(d.ID); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.drop(h.row) }})
+	}
 }
 
-// sharedRow is the newest row of a pair of radios that an answer of one
-// kind can be set on, in the KV, for the replicas that hear the answer.
-type sharedRow struct {
-	ID uint      `json:"id"`
-	At time.Time `json:"at"`
-}
-
-// remoteAnswer asks the replica that holds the row ID, of Src to Dst, to set
-// Response on it.
+// remoteAnswer asks the replica that holds the row ID, of Src to Dst, to
+// set Response on it. Replicas before the match in the KV send it.
 type remoteAnswer struct {
 	ID       uint                `json:"id"`
 	Src      uint                `json:"src"`
 	Dst      uint                `json:"dst"`
 	Response models.CallResponse `json:"response"`
-}
-
-func recentKey(k pair, what string) string {
-	return fmt.Sprintf("%s%d:%d:%s", recentKeyPrefix, k.src, k.dst, what)
-}
-
-func (c *CallTracker) share(k pair, what string, sr sharedRow) {
-	b, err := json.Marshal(sr)
-	if err != nil {
-		slog.Error("CallTracker: cannot marshal a shared row", "error", err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
-	defer cancel()
-	key := recentKey(k, what)
-	if err := c.kv.Set(ctx, key, b); err != nil {
-		slog.Error("CallTracker: cannot share a row", "error", err)
-		return
-	}
-	if err := c.kv.Expire(ctx, key, responseWindow); err != nil {
-		slog.Error("CallTracker: cannot expire a shared row", "error", err)
-	}
 }
 
 // answerable returns the kind of answer that can be set on a row of kind
@@ -733,64 +969,23 @@ func answerable(kind models.CallKind, sub string, confirmed bool) string {
 	return ""
 }
 
-func (c *CallTracker) pruneRecent() {
-	c.recentMu.Lock()
-	defer c.recentMu.Unlock()
-	cut := c.clock.Now().Add(-responseWindow)
-	for k, rows := range c.recent {
-		if len(rows) == 0 || !rows[len(rows)-1].at.After(cut) {
-			delete(c.recent, k)
-		}
-	}
-}
-
-// answer sets resp on the newest row from dst to src within the response
-// window that an answer of kind what can be set on, and reports whether
-// there is one. The row can be on another replica. The worker idx calls
-// it.
-func (c *CallTracker) answer(idx int, src, dst uint, resp models.CallResponse, what string) bool {
+// answer adds resp, an answer of stream that the hub got at at, from src
+// to dst, to the match of the rows from dst to src that answers of kind
+// what can be set on, and reports whether a row takes it: the row that
+// started last before at, within the response window, here or on another
+// replica, now or once it is made. When no row takes it and keep is set,
+// the answer stays in the match with own, the row it made of its own.
+// The worker idx calls it.
+func (c *CallTracker) answer(idx int, src, dst, stream uint, resp models.CallResponse, what string, at time.Time, own uint, keep bool) bool {
 	k := pair{src: dst, dst: src}
-	if c.answerLocal(k, resp, func(r *recentRow) bool { return answerable(r.kind, r.sub, r.confirmed) == what }) {
-		return true
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
-	defer cancel()
-	b, err := c.kv.Get(ctx, recentKey(k, what))
+	res, err := c.step(k, what, matchOp{answer: &matchAnswer{Stream: stream, At: at, Response: resp, OwnRow: own}, keep: keep})
 	if err != nil {
+		slog.Error("CallTracker: cannot match an answer with its row", "error", err)
+		c.metrics.IncrementTrackerMatchFailed()
 		return false
 	}
-	var sr sharedRow
-	if err := json.Unmarshal(b, &sr); err != nil || c.clock.Since(sr.At) >= responseWindow {
-		return false
-	}
-	msg, err := json.Marshal(remoteAnswer{ID: sr.ID, Src: k.src, Dst: k.dst, Response: resp})
-	if err != nil {
-		slog.Error("CallTracker: cannot marshal an answer", "error", err)
-		return false
-	}
-	c.publish(idx, responsesTopic, msg)
-	return true
-}
-
-func (c *CallTracker) answerLocal(k pair, resp models.CallResponse, match func(*recentRow) bool) bool {
-	c.recentMu.Lock()
-	rows := c.recent[k]
-	cut := c.clock.Now().Add(-responseWindow)
-	var found *recentRow
-	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].at.After(cut) && match(&rows[i]) {
-			e := rows[i]
-			found = &e
-			break
-		}
-	}
-	c.recentMu.Unlock()
-	if found == nil {
-		return false
-	}
-	r := found.row
-	c.enqueue(found.shard, task{fn: func(s *shard) { s.setResponse(r, resp) }})
-	return true
+	c.applyStep(idx, k, what, res, 0)
+	return res.winner != 0
 }
 
 func (c *CallTracker) remoteResponse(msg []byte) {
@@ -799,7 +994,9 @@ func (c *CallTracker) remoteResponse(msg []byte) {
 		slog.Error("CallTracker: failed to unmarshal an answer", "error", err)
 		return
 	}
-	c.answerLocal(pair{src: a.Src, dst: a.Dst}, a.Response, func(r *recentRow) bool { return r.row.call.ID == a.ID })
+	if h, ok := c.held.Load(a.ID); ok {
+		c.enqueue(h.shard, task{fn: func(s *shard) { s.setResponse(h.row, a.Response) }})
+	}
 }
 
 // publishCall publishes call for the web clients. The worker idx calls it.
@@ -902,9 +1099,13 @@ type row struct {
 	deleted    bool
 	delivered  bool
 	remembered bool
-	ns         uint8
-	hasNS      bool
-	converted  map[string]bool
+	// what is the kind of answer that can be set on the row, of the radios
+	// of pair, or "".
+	what      string
+	pair      pair
+	ns        uint8
+	hasNS     bool
+	converted map[string]bool
 }
 
 type channel struct {
@@ -1087,6 +1288,13 @@ func (s *shard) finish(r *row, at time.Time) {
 		s.t.db.Unscoped().Delete(call)
 		return
 	}
+	s.t.owned.Delete(call.ID)
+	if r.what != "" {
+		s.t.held.Delete(call.ID)
+		if resp, ok := s.t.matched(r.pair, r.what, call.ID); ok {
+			call.Response = resp
+		}
+	}
 	if err := s.t.db.Omit(clause.Associations).Save(call).Error; err != nil {
 		slog.Error("CallTracker: error saving call", "error", err)
 		return
@@ -1162,7 +1370,6 @@ func (s *shard) sweep(now time.Time) {
 	}
 	s.pruneSources(now)
 	if s.idx == 0 {
-		s.t.pruneRecent()
 		s.t.sources.Range(func(k sourceKey, ref streamRef) bool {
 			if now.Sub(ref.at) >= streamIdle {
 				s.t.sources.Delete(k)
@@ -1211,6 +1418,8 @@ func (s *shard) drop(r *row) {
 		return
 	}
 	r.deleted = true
+	s.t.owned.Delete(r.call.ID)
+	s.t.held.Delete(r.call.ID)
 	if r.key != nil && s.rows[r.key] == r {
 		delete(s.rows, r.key)
 	}

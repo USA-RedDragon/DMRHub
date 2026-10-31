@@ -328,7 +328,7 @@ func responseOf(r packet.Response) models.CallResponse {
 func (s *shard) single(t *task, ch *channel, cls *class) {
 	p := &t.p
 	if cls.answers != "" {
-		if s.t.answer(s.idx, p.Src, p.Dst, models.CallResponseACK, cls.answers) {
+		if s.t.answer(s.idx, p.Src, p.Dst, p.StreamID, models.CallResponseACK, cls.answers, t.at, 0, false) {
 			return
 		}
 	}
@@ -349,10 +349,8 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 		r.call.FID, r.call.Opcode = cls.fid, cls.opcode
 		s.t.remember(s, r)
 		if cls.answers != "" {
-			k := pair{src: p.Dst, dst: p.Src}
-			s.t.keepAnswer(k, cls.answers, pendingAnswer{RowID: r.call.ID, Response: models.CallResponseACK})
-			if s.t.answer(s.idx, p.Src, p.Dst, models.CallResponseACK, cls.answers) {
-				s.t.takeAnswer(k, cls.answers)
+			s.t.owned.Store(r.call.ID, heldRow{shard: s.idx, row: r})
+			if s.t.answer(s.idx, p.Src, p.Dst, p.StreamID, models.CallResponseACK, cls.answers, t.at, r.call.ID, true) {
 				s.drop(r)
 				return
 			}
@@ -385,7 +383,7 @@ func (s *shard) place(t *task, ch *channel, cls *class) {
 			r.delivered = true
 			if cls.resp != models.CallResponseNone {
 				r.call.Response = cls.resp
-				s.t.answer(s.idx, t.p.Src, t.p.Dst, cls.resp, answerData)
+				s.t.answer(s.idx, t.p.Src, t.p.Dst, t.p.StreamID, cls.resp, answerData, t.at, 0, true)
 			}
 		}
 		if !r.remembered {

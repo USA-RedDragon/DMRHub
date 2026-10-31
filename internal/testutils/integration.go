@@ -346,7 +346,7 @@ func (s *IntegrationStack) StartServers(t *testing.T) {
 	s.WebTransportAddr = addrOf(s.MMDVMServer.WebTransportAddr())
 }
 
-// SeedUser creates a User in the DB.
+// SeedUser creates a User in the DB and tells the hub, as the API does.
 func (s *IntegrationStack) SeedUser(t *testing.T, id uint, callsign string) {
 	t.Helper()
 	err := s.DB.Create(&models.User{
@@ -356,9 +356,11 @@ func (s *IntegrationStack) SeedUser(t *testing.T, id uint, callsign string) {
 		Approved: true,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.UserChanged(id)
 }
 
-// SeedTalkgroup creates a Talkgroup in the DB.
+// SeedTalkgroup creates a Talkgroup in the DB and tells the hub, as the
+// API does.
 func (s *IntegrationStack) SeedTalkgroup(t *testing.T, id uint, name string) {
 	t.Helper()
 	err := s.DB.Create(&models.Talkgroup{
@@ -366,9 +368,11 @@ func (s *IntegrationStack) SeedTalkgroup(t *testing.T, id uint, name string) {
 		Name: name,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.TalkgroupChanged(id)
 }
 
-// SeedMMDVMRepeater creates an MMDVM repeater in the DB.
+// SeedMMDVMRepeater creates an MMDVM repeater in the DB and tells the
+// hub, as the API does.
 func (s *IntegrationStack) SeedMMDVMRepeater(t *testing.T, id uint, ownerID uint, password string) {
 	t.Helper()
 	err := s.DB.Create(&models.Repeater{
@@ -381,9 +385,11 @@ func (s *IntegrationStack) SeedMMDVMRepeater(t *testing.T, id uint, ownerID uint
 		Password: password,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.ReloadRepeater(context.Background(), id)
 }
 
-// SeedIPSCRepeater creates an IPSC repeater in the DB.
+// SeedIPSCRepeater creates an IPSC repeater in the DB and tells the
+// hub, as the API does.
 func (s *IntegrationStack) SeedIPSCRepeater(t *testing.T, id uint, ownerID uint, password string) {
 	t.Helper()
 	err := s.DB.Create(&models.Repeater{
@@ -396,22 +402,27 @@ func (s *IntegrationStack) SeedIPSCRepeater(t *testing.T, id uint, ownerID uint,
 		Password: password,
 	}).Error
 	require.NoError(t, err)
+	s.Hub.ReloadRepeater(context.Background(), id)
 }
 
-// AssignTS1StaticTG adds a talkgroup to a repeater's TS1 static list.
+// AssignTS1StaticTG adds a talkgroup to a repeater's TS1 static list and
+// tells the hub, as the API does.
 func (s *IntegrationStack) AssignTS1StaticTG(t *testing.T, repeaterID, tgID uint) {
 	t.Helper()
 	var rpt models.Repeater
 	require.NoError(t, s.DB.First(&rpt, repeaterID).Error)
 	require.NoError(t, s.DB.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
+	s.Hub.ReloadRepeater(context.Background(), repeaterID)
 }
 
-// AssignTS2StaticTG adds a talkgroup to a repeater's TS2 static list.
+// AssignTS2StaticTG adds a talkgroup to a repeater's TS2 static list and
+// tells the hub, as the API does.
 func (s *IntegrationStack) AssignTS2StaticTG(t *testing.T, repeaterID, tgID uint) {
 	t.Helper()
 	var rpt models.Repeater
 	require.NoError(t, s.DB.First(&rpt, repeaterID).Error)
 	require.NoError(t, s.DB.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
+	s.Hub.ReloadRepeater(context.Background(), repeaterID)
 }
 
 // SeedPeer creates an OpenBridge peer in the DB and tells the hub, as the

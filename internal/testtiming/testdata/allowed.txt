@@ -30,8 +30,7 @@ sleep	internal/dmr/hub/stream_order_test.go	3	baseline of 2026-10-28, not review
 timer	internal/dmr/hub/stream_order_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/dmr/hub/streams_test.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/hub/streams_test.go	3	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-sleep	internal/dmr/hub/subscription_manager_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-timer	internal/dmr/hub/subscription_manager_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
+sleep	internal/dmr/hub/subscription_manager_test.go	2	virtual time: slowSubscribe and slowFeed are made only inside synctest bubbles, so each sleep is the delay of a slow pubsub in virtual time
 timer	internal/dmr/hub/undeliverable_view_test.go	2	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 sleep	internal/dmr/integration_test.go	1	poll step of waitFor, for the unlink of a dynamic talkgroup, which the hub makes off the routing path with no event a test can wait on
 eventually	internal/dmr/iplists_integration_test.go	5	polls the MSTCL count and the closed flag of a client and the registration time in the database, which have no event; bounded by deliverWait

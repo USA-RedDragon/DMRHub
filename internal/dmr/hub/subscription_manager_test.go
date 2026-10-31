@@ -812,14 +812,8 @@ func waitAllReceive(t *testing.T, h *hub.Hub, srv *hub.ServerHandle, tg uint, wa
 	t.Helper()
 	h.RoutePacket(context.Background(), makeVoicePacket(tg, stream, true, false), models.RepeaterTypeMMDVM)
 	seen := map[uint]bool{}
-	timeout := time.After(failAfter)
 	for len(seen) < want {
-		select {
-		case rp := <-srv.Packets:
-			seen[rp.RepeaterID] = true
-		case <-timeout:
-			t.Fatalf("only %d of %d repeaters received the burst", len(seen), want)
-		}
+		seen[bubble.Receive(t, srv.Packets, failAfter, "only %d of %d repeaters received the burst", len(seen), want).RepeaterID] = true
 	}
 }
 
@@ -870,14 +864,8 @@ func (g *lookupGate) waitPassed(t *testing.T, want int) {
 func (g *lookupGate) wait(t *testing.T, ch <-chan uint, want int) {
 	t.Helper()
 	ids := map[uint]bool{}
-	timeout := time.After(failAfter)
 	for len(ids) < want {
-		select {
-		case id := <-ch:
-			ids[id] = true
-		case <-timeout:
-			t.Fatalf("only %d of %d repeater lookups reached the gate", len(ids), want)
-		}
+		ids[bubble.Receive(t, ch, failAfter, "only %d of %d repeater lookups reached the gate", len(ids), want)] = true
 	}
 }
 

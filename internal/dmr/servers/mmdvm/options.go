@@ -40,20 +40,31 @@ import (
 // it does, and 0 unlinks the slot. FreeDMR and DMR+ texts are both read as
 // FreeDMR reads them, since FreeDMR takes the DMR+ keys too. DMRHub has no
 // feature for the other options, so they are logged and ignored, as is a
-// text that cannot be read.
-func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
+// text that cannot be read. ack, when not nil, is the RPTACK of the
+// options. It goes out after the options are applied, since the repeater
+// expects the calls of its new talkgroups from then on.
+func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack []byte) {
+	ep := l.ep
+	sendAck := func() {
+		if ack != nil {
+			s.write(ep, ack)
+		}
+	}
 	if s.byID[o.ID] != l || l.m.ID() != o.ID {
 		slog.Info("Ignoring options that are not from the session of the repeater", "repeaterID", o.ID, "remoteAddr", l.ep.String())
+		sendAck()
 		return
 	}
 	if l.moved {
 		slog.Info("Ignoring options of a session that moved from another replica until it logs in", "repeaterID", o.ID, "remoteAddr", l.ep.String())
+		sendAck()
 		return
 	}
 	text := o.Packet
 	slog.Info("Repeater options", "repeaterID", o.ID, "options", string(text))
 	if len(text) > dmrd.MaxFreeDMROptionsLen {
 		slog.Info("Ignoring repeater options longer than FreeDMR reads", "repeaterID", o.ID, "length", len(text))
+		sendAck()
 		return
 	}
 	id := uint(o.ID)
@@ -63,14 +74,17 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output) {
 	}
 	logIgnoredOptions(id, text, &parsed)
 	text = append([]byte(nil), text...)
-	s.records.Do(id, func() {
+	if !s.records.Do(id, func() {
+		defer sendAck()
 		statics := s.applyStatics(ctx, id, text)
 		dial1 := s.dial(ctx, id, false, parsed.DialTS1)
 		dial2 := s.dial(ctx, id, true, parsed.DialTS2)
 		if !statics && !dial1 && !dial2 {
 			slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
 		}
-	})
+	}) {
+		sendAck()
+	}
 }
 
 // applyStatics saves the static talkgroups that text sets and reloads the

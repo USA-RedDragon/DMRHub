@@ -406,9 +406,15 @@ func (s *Server) write(ep endpoint, p []byte) {
 // run carries out the outputs of a session. DMRHub accepts a config that it
 // can read and refuses the login for any other.
 func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrdsession.Output) {
-	for _, o := range out {
+	for i := 0; i < len(out); i++ {
+		o := out[i]
 		switch o.Kind {
 		case dmrdsession.OutputSend:
+			if i+1 < len(out) && out[i+1].Kind == dmrdsession.OutputOptions {
+				i++
+				s.options(ctx, l, out[i], append([]byte(nil), o.Packet...))
+				continue
+			}
 			s.write(l.ep, o.Packet)
 		case dmrdsession.OutputLogin:
 			s.login(ctx, now, l, o.ID)
@@ -417,7 +423,7 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 		case dmrdsession.OutputDown:
 			s.down(ctx, l, o)
 		case dmrdsession.OutputOptions:
-			s.options(ctx, l, o)
+			s.options(ctx, l, o, nil)
 		case dmrdsession.OutputData:
 			s.data(ctx, o, l.heard)
 		case dmrdsession.OutputMessage:

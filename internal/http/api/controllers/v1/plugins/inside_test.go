@@ -50,6 +50,8 @@ var guests struct { //nolint:gochecknoglobals // built once for all the tests
 
 // guest returns the test plugin testdata/name of the wasm package, built
 // for wasip1.
+const uploadWait = 2 * time.Minute
+
 func guest(t *testing.T, name string) []byte {
 	t.Helper()
 	guests.once.Do(func() {
@@ -95,7 +97,7 @@ func (e *env) upload(jar testutils.CookieJar, path string, file []byte, fields m
 		require.NoError(e.t, w.WriteField(k, v))
 	}
 	require.NoError(e.t, w.Close())
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), uploadWait)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, &body)
 	require.NoError(e.t, err)

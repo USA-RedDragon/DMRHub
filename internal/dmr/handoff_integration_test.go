@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
@@ -58,11 +59,8 @@ func TestHandoffResumesAListeningHotspot(t *testing.T) {
 		stack.RestartMMDVM(t, testutils.RestartHandoff)
 
 		require.NoError(t, talker.SendDMRD(makeBurst(1000001, 1, 9101, true, dmrconst.FrameDataSync, uint(enums.DataTypeVoiceLCHeader), 0)))
-		select {
-		case got := <-listener.ReceivedPackets():
-			assert.Equal(t, uint(9101), got.StreamID)
-		case <-time.After(handshakeWait):
-			t.Fatal("the listening hotspot got nothing after the handoff")
-		}
+		got := testutils.Collect(listener.ReceivedPackets(), deliverWait, gotN[models.Packet](1))
+		require.NotEmpty(t, got, "the listening hotspot got nothing after the handoff")
+		assert.Equal(t, uint(9101), got[0].StreamID)
 	})
 }

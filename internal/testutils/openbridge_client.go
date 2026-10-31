@@ -266,13 +266,11 @@ func (c *OpenBridgeClient) rx() {
 			return
 		default:
 		}
-		_ = c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 		n, from, err := c.conn.ReadFromUDP(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			// timeout — loop back
 			continue
 		}
 		data := make([]byte, n)

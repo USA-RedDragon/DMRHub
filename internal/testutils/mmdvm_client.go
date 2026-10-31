@@ -235,13 +235,11 @@ func (c *MMDVMClient) rx() {
 			return
 		default:
 		}
-		_ = c.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 		n, err := c.conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			// timeout — loop back
 			continue
 		}
 		if n < 4 {

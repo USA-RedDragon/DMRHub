@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -116,12 +117,22 @@ func (r *routed) last() models.Packet {
 // cluster is the database, pubsub and KV store that the replicas of a
 // test share.
 type cluster struct {
-	db *gorm.DB
-	ps pubsub.PubSub
-	kv kv.KV
+	db    *gorm.DB
+	ps    pubsub.PubSub
+	kv    kv.KV
+	clock clock.Clock
+}
+
+func (c *cluster) now() time.Time {
+	return clock.Or(c.clock).Now()
 }
 
 func newCluster(t *testing.T) *cluster {
+	t.Helper()
+	return newClusterOn(t, nil)
+}
+
+func newClusterOn(t *testing.T, c clock.Clock) *cluster {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -130,7 +141,7 @@ func newCluster(t *testing.T) *cluster {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithClock(c))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = ps.Close()
@@ -139,7 +150,7 @@ func newCluster(t *testing.T) *cluster {
 			_ = sqlDB.Close()
 		}
 	})
-	return &cluster{db: database, ps: ps, kv: store}
+	return &cluster{db: database, ps: ps, kv: store, clock: c}
 }
 
 // replica is one DMRHub replica of a cluster, which runs plugins inside.
@@ -162,9 +173,10 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 	done := make(chan struct{})
 	registry.Follow(done)
 	r := &replica{registry: registry, router: &routed{}}
-	r.svc = plugins.NewService(c.db, c.ps, registry, r.router, nil)
+	r.svc = plugins.NewService(c.db, c.ps, registry, r.router, nil, plugins.WithClock(c.clock))
 	r.m = inside.NewManager(inside.Deps{
 		DB: c.db, PubSub: c.ps, KV: c.kv, Instance: name, Version: "v1.3.4", Service: r.svc, Registry: registry, Engine: e, Timing: fast(),
+		Clock: c.clock,
 	})
 	require.NoError(t, r.m.Start(context.Background(), on))
 	t.Cleanup(func() {
@@ -177,7 +189,7 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 func online(t *testing.T, c *cluster, id uint) bool {
 	t.Helper()
 	p, err := models.FindPlugin(c.db, id)
-	return err == nil && p.Online(time.Now())
+	return err == nil && p.Online(c.now())
 }
 
 func builtinOf(t *testing.T, c *cluster, key string) models.Plugin {
@@ -311,63 +323,95 @@ func TestAPluginInsideFollowsItsSwitch(t *testing.T) {
 
 func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
 	r := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
 	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
 	before := r.m.Running()[p.ID]
+	call := func(seq uint) {
+		t.Helper()
+		n := r.router.count()
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 5, Seq: seq}))
+		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond, "the guest echoes burst %d", seq)
+	}
 
-	stop := make(chan struct{})
-	calling := make(chan struct{})
-	go func() {
-		defer close(calling)
-		for i := 0; ; i++ {
-			select {
-			case <-stop:
-				return
-			case <-time.After(60 * time.Millisecond):
-			}
-			assert.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 5, Seq: uint(i % 256)}))
-		}
-	}()
-	require.Eventually(t, func() bool { return r.router.count() >= 3 }, 10*time.Second, 20*time.Millisecond, "the call goes on")
-	_, err := models.SetPluginModule(c.db, p.ID, models.PluginInfo{Name: "Echo", Version: "2.0.0"}, guest(t, "netprobe"), time.Now())
+	call(0)
+	_, err := models.SetPluginModule(c.db, p.ID, models.PluginInfo{Name: "Echo", Version: "2.0.0"}, guest(t, "netprobe"), fake.Now())
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	time.Sleep(2 * time.Second)
-	assert.Equal(t, before, r.m.Running()[p.ID], "the old version stays while a call goes on")
-	close(stop)
-	<-calling
+	timing := fast()
+	for seq := uint(1); time.Duration(seq)*timing.Renew <= 2*timing.Quiet; seq++ {
+		fake.Advance(timing.Renew)
+		call(seq)
+	}
+	assert.Equal(t, before, r.m.Running()[p.ID], "the old version stays while a call goes on, past the quiet time")
+	fake.Advance(timing.Quiet)
 	require.Eventually(t, func() bool {
 		now, ok := r.m.Running()[p.ID]
 		return ok && now != before
 	}, 30*time.Second, 50*time.Millisecond, "the new version takes over after the call")
 }
 
+func stops(t *testing.T, c *cluster, id uint) int {
+	t.Helper()
+	st, _, err := plugins.StateOf(context.Background(), c.kv, id, c.now())
+	require.NoError(t, err)
+	return len(st.Stops)
+}
+
 func TestAPluginThatFailsStartsAgain(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
 	r := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Quit", guest(t, "quit"))
-	require.Eventually(t, func() bool { return r.m.Starts(p.ID) >= 3 }, 60*time.Second, 50*time.Millisecond)
+	timing := fast()
+	for n := 1; n <= 3; n++ {
+		require.Eventually(t, func() bool { return stops(t, c, p.ID) == n }, 60*time.Second, 50*time.Millisecond, "the guest quits")
+		assert.Equal(t, n, r.m.Starts(p.ID), "the plugin waits for its backoff before it starts again")
+		st, _, err := plugins.StateOf(context.Background(), c.kv, p.ID, c.now())
+		require.NoError(t, err)
+		backoff := min(timing.MinBackoff<<(n-1), timing.MaxBackoff)
+		assert.True(t, st.StoppedAt.Add(backoff).Equal(st.RestartAt), "the backoff after stop %d is %v: %v to %v", n, backoff, st.StoppedAt, st.RestartAt)
+		fake.Advance(backoff + timing.Renew)
+	}
 }
 
 func TestAPluginThatStopsTellsTheOtherReplicasWhy(t *testing.T) {
 	t.Parallel()
-	c := newCluster(t)
-	r := c.replica(t, "a", engine, true)
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
+	c.replica(t, "a", engine, true)
 	p := upload(t, c, "Quit", guest(t, "quit"))
-	require.Eventually(t, func() bool { return r.m.Starts(p.ID) >= 3 }, 60*time.Second, 50*time.Millisecond)
-	var st plugins.StopState
-	require.Eventually(t, func() bool {
-		var ok bool
-		var err error
-		st, ok, err = plugins.StateOf(context.Background(), c.kv, p.ID, time.Now())
-		return err == nil && ok && len(st.Stops) >= 2
-	}, 30*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return stops(t, c, p.ID) == 1 }, 60*time.Second, 50*time.Millisecond, "the guest quits")
+	st, ok, err := plugins.StateOf(context.Background(), c.kv, p.ID, c.now())
+	require.NoError(t, err)
+	require.True(t, ok)
 	assert.Equal(t, "It crashed: quitting.", st.Reason)
-	assert.True(t, st.RestartAt.After(st.StoppedAt), "it says when the plugin starts again")
-	assert.WithinDuration(t, time.Now(), st.StoppedAt, 30*time.Second)
+	assert.True(t, fake.Now().Equal(st.StoppedAt), "it says when the plugin stopped: %v", st.StoppedAt)
+	assert.True(t, st.StoppedAt.Add(fast().MinBackoff).Equal(st.RestartAt), "it says when the plugin starts again: %v", st.RestartAt)
+}
+
+func TestAnExpiredLeaseLetsAnotherReplicaRunThePlugin(t *testing.T) {
+	t.Parallel()
+	fake := clock.NewFake(time.Now())
+	c := newClusterOn(t, fake)
+	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
+	timing := fast()
+	ok, err := c.kv.SetNX(context.Background(), inside.LeaseKey(p.ID), "gone", timing.Lease)
+	require.NoError(t, err)
+	require.True(t, ok)
+	b := c.replica(t, "b", engine, true)
+	for step := timing.Renew; step < timing.Lease; step += timing.Renew {
+		fake.Advance(timing.Renew)
+		assert.Empty(t, b.m.Running(), "the lease of a replica that went away holds until it expires")
+	}
+	fake.Advance(2 * timing.Renew)
+	require.Eventually(t, func() bool {
+		_, ok := b.m.Running()[p.ID]
+		return ok && online(t, c, p.ID)
+	}, 60*time.Second, 50*time.Millisecond, "the other replica runs the plugin once the lease expired")
 }
 
 // pong listens on loopback and answers each connection's "ping" with

@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/clockstep"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,7 @@ func TestClockStepForwardDoesNotRetireAPluginInACall(t *testing.T) { //nolint:pa
 	m := &Manager{d: Deps{Timing: Timing{Quiet: time.Minute, MaxWait: 2 * time.Hour}}}
 	r := &run{id: 1, ready: make(chan struct{}), ended: make(chan struct{})}
 	close(r.ready)
-	tr := &tracked{PluginService_ConnectServer: sentStream{}, r: r}
+	tr := &tracked{PluginService_ConnectServer: sentStream{}, r: r, clock: clock.Real()}
 	require.NoError(t, tr.Send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{}}}))
 	clockstep.Step(t, time.Hour)
 	m.retire(r, time.Now())

@@ -33,6 +33,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/monotime"
@@ -89,6 +90,10 @@ type Deps struct {
 	Builtins []builtin.Plugin
 	// Timing is zero for DefaultTiming.
 	Timing Timing
+	// Clock times the leases, the backoffs and the wait of a new version
+	// for the calls to end. Nil is the real clock. The KV store keeps the
+	// TTLs of the leases on a clock of its own.
+	Clock clock.Clock
 }
 
 // Manager runs the plugins inside DMRHub whose leases this replica holds.
@@ -146,6 +151,7 @@ func NewManager(d Deps) *Manager {
 	if d.Timing == (Timing{}) {
 		d.Timing = DefaultTiming()
 	}
+	d.Clock = clock.Or(d.Clock)
 	m := &Manager{
 		d: d, builtins: map[string]builtin.Plugin{}, kick: make(chan struct{}, 1), stopped: make(chan struct{}),
 		runs: map[uint]*run{}, starts: map[uint]int{}, holds: map[uint]bool{},
@@ -201,7 +207,7 @@ func (m *Manager) SetOn(ctx context.Context, on bool) error {
 func (m *Manager) seed() {
 	added := false
 	for _, b := range m.d.Builtins {
-		if _, err := models.EnsureBuiltinPlugin(m.d.DB, b.Key, b.Name, m.d.Version, b.Ranges, time.Now()); err != nil {
+		if _, err := models.EnsureBuiltinPlugin(m.d.DB, b.Key, b.Name, m.d.Version, b.Ranges, m.d.Clock.Now()); err != nil {
 			slog.Warn("Plugins: cannot add a built-in plugin", "plugin", b.Key, "error", err)
 			continue
 		}
@@ -273,7 +279,7 @@ func (m *Manager) Starts(id uint) int {
 }
 
 func (m *Manager) loop(ctx context.Context) {
-	t := time.NewTicker(m.d.Timing.Renew)
+	t := m.d.Clock.NewTicker(m.d.Timing.Renew)
 	defer t.Stop()
 	waits := map[uint]time.Time{}
 	backoffs := map[uint]time.Duration{}
@@ -282,7 +288,7 @@ func (m *Manager) loop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-t.C():
 		case <-m.kick:
 		}
 	}
@@ -356,7 +362,7 @@ func (m *Manager) reconcile(ctx context.Context, waits map[uint]time.Time, backo
 			m.release(ctx, id)
 		}
 	}
-	now := time.Now()
+	now := m.d.Clock.Now()
 	for id, p := range want {
 		if !m.hold(ctx, id) {
 			if r := running[id]; r != nil {
@@ -409,7 +415,7 @@ type stopped struct {
 func (m *Manager) reap(waits map[uint]time.Time, backoffs map[uint]time.Duration) []stopped {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	now := m.d.Clock.Now()
 	var out []stopped
 	for id, r := range m.runs {
 		select {
@@ -474,10 +480,10 @@ var errNoBuiltin = errors.New("this DMRHub has no such built-in plugin")
 // start starts the plugin p in the background, so that a plugin that is
 // slow to compile never holds up the leases.
 func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
-	r := &run{id: p.ID, key: key, since: time.Now(), ready: make(chan struct{}), ended: make(chan struct{})}
+	r := &run{id: p.ID, key: key, since: m.d.Clock.Now(), ready: make(chan struct{}), ended: make(chan struct{})}
 	hosts := allowedOf(p)
 	r.hosts.Store(&hosts)
-	r.last.Store(monotime.Now())
+	r.last.Store(monotime.Of(m.d.Clock.Now()))
 	m.mu.Lock()
 	m.runs[p.ID] = r
 	m.starts[p.ID]++
@@ -497,7 +503,7 @@ func (m *Manager) start(ctx context.Context, p *models.Plugin, key string) {
 			return
 		}
 		slog.Info("Plugins: running a plugin inside DMRHub", "plugin", plugin.Name, "version", plugin.Version)
-		err = m.d.Service.Connect(&tracked{PluginService_ConnectServer: inst.Stream(plugins.InProcess(ctx, plugin.ID)), r: r}) //nolint:contextcheck // the stream carries ctx
+		err = m.d.Service.Connect(&tracked{PluginService_ConnectServer: inst.Stream(plugins.InProcess(ctx, plugin.ID)), r: r, clock: m.d.Clock}) //nolint:contextcheck // the stream carries ctx
 		if err != nil {
 			slog.Info("Plugins: the stream of a plugin inside DMRHub ended", "plugin", plugin.Name, "reason", err)
 		}
@@ -531,13 +537,14 @@ func (m *Manager) launch(ctx context.Context, p *models.Plugin, r *run) (*wasm.I
 // tracked notes when a plugin last sent or got a message.
 type tracked struct {
 	pluginv1.PluginService_ConnectServer
-	r *run
+	r     *run
+	clock clock.Clock
 }
 
 // Send sends m to the plugin.
 func (t *tracked) Send(m *pluginv1.ConnectResponse) error {
 	if m.GetBurst() != nil {
-		t.r.last.Store(monotime.Now())
+		t.r.last.Store(monotime.Of(t.clock.Now()))
 	}
 	return t.PluginService_ConnectServer.Send(m) //nolint:wrapcheck // the stream's error
 }
@@ -546,7 +553,7 @@ func (t *tracked) Send(m *pluginv1.ConnectResponse) error {
 func (t *tracked) Recv() (*pluginv1.ConnectRequest, error) {
 	m, err := t.PluginService_ConnectServer.Recv()
 	if m.GetBurst() != nil {
-		t.r.last.Store(monotime.Now())
+		t.r.last.Store(monotime.Of(t.clock.Now()))
 	}
 	return m, err //nolint:wrapcheck // the stream's error
 }

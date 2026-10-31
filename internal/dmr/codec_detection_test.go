@@ -248,7 +248,6 @@ func TestCodecDetection(t *testing.T) {
 		stack.StartServers(t)
 		c2, listen := c2MMDVM(t, stack, tcC2Rpt), c2MMDVM(t, stack, tcAMBERpt)
 		ob := c2OBPeer(t, stack, tcOB, false)
-		time.Sleep(settleDuration)
 		drainQuiet(500*time.Millisecond, c2, listen, ob)
 
 		stream := uint(0xD0000)

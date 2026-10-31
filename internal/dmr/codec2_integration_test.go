@@ -241,7 +241,6 @@ func newC2Net(t *testing.T, stack *testutils.IntegrationStack) *c2Net {
 	n.ipsc, n.ipscSrc = c2IPSCPeer(t, stack, c2IPSC), c2IPSCPeer(t, stack, c2IPSCSrc)
 	n.ob = c2OBPeer(t, stack, c2OB, false)
 	n.obEnhanced = c2OBPeer(t, stack, c2OBEnhanced, true)
-	time.Sleep(settleDuration)
 	n.drain(500 * time.Millisecond)
 	return n
 }
@@ -579,7 +578,6 @@ func TestCodec2LateEntry(t *testing.T) {
 		sendC2(t, n.talker.SendDMRD, sent[:join])
 		late := c2MMDVM(t, stack, c2LateRpt)
 		lateIPSC := c2IPSCPeer(t, stack, c2IPSCLate)
-		time.Sleep(settleDuration)
 		late.Drain(100 * time.Millisecond)
 		lateIPSC.Drain(100 * time.Millisecond)
 		sendC2(t, n.talker.SendDMRD, sent[join:])

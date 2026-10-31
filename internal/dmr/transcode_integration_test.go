@@ -83,7 +83,6 @@ func newTCNet(t *testing.T, stack *testutils.IntegrationStack) *tcNet {
 	n.obCodec2 = c2OBPeer(t, stack, tcOBCodec2, false)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", tcOBCodec2).Update("codec2", true).Error)
 	stack.Hub.PeerChanged(tcOBCodec2)
-	time.Sleep(settleDuration)
 	n.flush(500 * time.Millisecond)
 	return n
 }
@@ -688,7 +687,6 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		c2 := connect(tcC2Rpt, stack.MMDVMAddr)
 		listen := connect(tcAMBERpt, second.MMDVMAddr)
 		talk := connect(tcAMBETalkRpt, second.MMDVMAddr)
-		time.Sleep(settleDuration)
 		drainQuiet(500*time.Millisecond, c2, listen, talk)
 
 		group := call{group: true, dst: tcTG, src: tcTalker}

@@ -456,6 +456,46 @@ func TestASilentTrackedRadioThatIsHeardIsAskedAgain(t *testing.T) {
 	})
 }
 
+// TestALateHeardCountsFromWhenTheHubHeardTheRadio gives the Locator a
+// Heard that comes 3 seconds after the hub heard the radio, which was
+// before the request was due. The Locator must take the time of the hub,
+// so that the late notice does not spend the one ask of a silent radio.
+func TestALateHeardCountsFromWhenTheHubHeardTheRadio(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 1)
+		heard := time.Now().Add(500 * time.Millisecond).UnixMilli()
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		require.Len(t, waitAnswers(t, o, 2), 2)
+		time.Sleep(3 * time.Second)
+		l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3, At: &heard})
+		time.Sleep(5 * time.Second)
+		require.Len(t, answers(t, o.sent()), 2, "a radio heard before its request was due is not asked again")
+
+		now := time.Now().UnixMilli()
+		l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3, At: &now})
+		got := waitAnswers(t, o, 4)
+		require.Len(t, got, 4)
+		assert.Equal(t, lrrp.DocumentStopRequest, got[2].lrrp.Document, "the silent request is stopped")
+		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
+	})
+}
+
+func TestAHeardFromTheFutureCountsFromWhenItCame(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		track(l, 1)
+		handle(l, radioBursts(t, registration(t, ars.TypeDeviceRegistration), false))
+		ahead := time.Now().Add(time.Hour).UnixMilli()
+		l.Heard(&pluginv1.Heard{Radio: radio, Slot: 2, ColorCode: 3, At: &ahead})
+		require.Len(t, waitAnswers(t, o, 2), 2)
+		time.Sleep(10 * time.Second)
+		assert.Len(t, answers(t, o.sent()), 2, "heard before the request was due, by the clock of the Locator")
+	})
+}
+
 func TestASilentRadioThatIsNotHeardIsNotAskedAgain(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {

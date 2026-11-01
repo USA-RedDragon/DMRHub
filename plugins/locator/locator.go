@@ -297,16 +297,27 @@ func (l *Locator) untrack(id uint32, r *radio) {
 	}
 }
 
-// Heard takes where a tracked radio was heard, so that the Locator can ask
-// it for its position when it has not reported.
+// Heard takes where and when a tracked radio was heard, so that the
+// Locator can ask it for its position when it has not reported. It takes
+// the time that the hub sent, but no later than now, or now when the hub
+// sent no time.
 func (l *Locator) Heard(h *pluginv1.Heard) {
 	l.mu.Lock()
 	defer l.unlock()
 	r := l.radio(h.GetRadio())
-	if now := l.clock.Now(); r.heard.IsZero() || now.Sub(r.heard) > heardExpiry {
-		r.firstHeard = now
+	at := l.clock.Now()
+	if h.At != nil {
+		if sighted := time.UnixMilli(h.GetAt()); sighted.Before(at) {
+			at = sighted
+		}
 	}
-	r.heard, r.slot, r.cc = l.clock.Now(), h.GetSlot(), enums.ColorCode(h.GetColorCode()&0xF) //nolint:gosec // masked to 4 bits
+	if at.Before(r.heard) {
+		return
+	}
+	if r.heard.IsZero() || at.Sub(r.heard) > heardExpiry {
+		r.firstHeard = at
+	}
+	r.heard, r.slot, r.cc = at, h.GetSlot(), enums.ColorCode(h.GetColorCode()&0xF) //nolint:gosec // masked to 4 bits
 }
 
 // Handle takes a burst to one of the Locator's IDs.

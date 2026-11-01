@@ -87,7 +87,8 @@ func ephemeralSweepEvery(ttl time.Duration) time.Duration {
 
 // runEphemeralTalkgroups writes the last calls of the talkgroups that the
 // hub made by itself, and deletes the ones with no call for the ephemeral
-// TTL, until the hub stops.
+// TTL, until the hub stops. It sets the time of the next sweep before a
+// sweep starts, so that a sweep that falls due while one runs follows it.
 func (h *Hub) runEphemeralTalkgroups() {
 	timer := h.clock.NewTimer(ephemeralSweepMin)
 	defer timer.Stop()
@@ -100,11 +101,11 @@ func (h *Hub) runEphemeralTalkgroups() {
 			timer.Stop()
 		}
 		r := h.routingConfig()
+		timer.Reset(ephemeralSweepEvery(r.EphemeralTTL))
 		h.writeTalkgroupCalls()
 		if r.Ephemeral && r.EphemeralTTL > 0 {
 			h.expireTalkgroups(r.EphemeralTTL)
 		}
-		timer.Reset(ephemeralSweepEvery(h.routingConfig().EphemeralTTL))
 	}
 }
 

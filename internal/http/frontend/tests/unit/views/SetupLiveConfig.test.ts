@@ -205,6 +205,88 @@ describe('Setup page with live settings', () => {
     expect(mockAPI.get.mock.calls.length).toBe(before + 1);
   });
 
+  const databasePhase = () => response({
+    disagree: false, replicas: [],
+    settings: { 'database.host': { ...plain, editable: true, start_only: true } },
+    wizard: { phase: 'database', database_error: 'x', database_file: '/app/dmrhub-database.json' },
+  });
+
+  const fixWith = async (answers: Array<() => Promise<unknown>>, health: () => Promise<unknown> = () => Promise.reject(new Error('Network Error'))) => {
+    const { wrapper, toast } = await mountSetup('/setup', databasePhase());
+    const config = mockAPI.get.getMockImplementation();
+    const polls: string[] = [];
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url === '/healthcheck') {
+        return health();
+      }
+      if (url !== '/setupwizard/database-fix') {
+        return config?.(url);
+      }
+      polls.push(url);
+      const next = answers.shift();
+      return next ? next() : Promise.reject(new Error('no more answers'));
+    });
+    mockAPI.put.mockResolvedValue({ status: 202, data: { status: 'pending' } });
+    vi.useFakeTimers();
+    try {
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+      while (vi.getTimerCount() > 0) {
+        await vi.runOnlyPendingTimersAsync();
+        await flushPromises();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    return { wrapper, toast, polls };
+  };
+
+  it('waits for the migration of a database fix and then opens the other settings', async () => {
+    const pending = () => Promise.resolve({ data: { status: 'pending' } });
+    const { toast, polls } = await fixWith([pending, pending, () => Promise.resolve({ data: { status: 'done', phase: 'setup' } })]);
+    expect(polls).toHaveLength(3);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success', detail: 'DMRHub reached its database. Check the other settings and save.' }));
+    expect(mockAPI.get).toHaveBeenLastCalledWith('/config');
+  });
+
+  it('shows the error of a database fix whose migration failed', async () => {
+    const { toast, polls } = await fixWith([() => Promise.resolve({ data: { status: 'failed', error: 'DMRHub cannot migrate this database: x' } })]);
+    expect(polls).toHaveLength(1);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'error', detail: 'Failed to save configuration' }));
+    expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' }));
+  });
+
+  it('goes to DMRHub once the setup wizard stops during a database fix and DMRHub answers', async () => {
+    const { toast, polls } = await fixWith([
+      () => Promise.resolve({ data: { status: 'pending' } }),
+      () => Promise.reject(new Error('Network Error')),
+    ], () => Promise.resolve({ data: { status: 'healthy' } }));
+    expect(polls).toHaveLength(2);
+    expect(mockAPI.get).toHaveBeenCalledWith('/healthcheck');
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success', detail: 'DMRHub reached its database and is starting' }));
+  });
+
+  it('keeps asking, then says so, when neither the setup wizard nor DMRHub answers during a database fix', async () => {
+    const lost = () => Promise.reject(new Error('Network Error'));
+    const { toast, polls } = await fixWith([() => Promise.resolve({ data: { status: 'pending' } }), ...Array(100).fill(lost)]);
+    expect(polls).toHaveLength(61);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
+      severity: 'error',
+      detail: 'DMRHub did not answer after the database fix. Check that DMRHub runs, then reload the page.',
+    }));
+    expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' }));
+  });
+
+  it('follows the fix again when the setup wizard answers after a miss', async () => {
+    const { toast, polls } = await fixWith([
+      () => Promise.reject(new Error('Network Error')),
+      () => Promise.resolve({ data: '<!doctype html>' }),
+      () => Promise.resolve({ data: { status: 'done', phase: 'setup' } }),
+    ], () => Promise.resolve({ status: 503, data: { status: 'not ready' } }));
+    expect(polls).toHaveLength(3);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success', detail: 'DMRHub reached its database. Check the other settings and save.' }));
+  });
+
   it('says why the wizard cannot keep the database setting', async () => {
     const data = response({
       disagree: false, replicas: [],

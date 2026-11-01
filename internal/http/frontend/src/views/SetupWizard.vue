@@ -255,6 +255,20 @@ const localErrors = (config: Record<string, unknown>): SetupErrors | undefined =
 
 type ClosedReason = '' | 'database' | 'settings';
 
+const fixPollInterval = 1000;
+const fixConfirmTries = 60;
+
+type FixAnswer = { status: 'pending' | 'done' | 'failed'; phase?: unknown; error?: unknown };
+
+const fixAnswerOf = (data: unknown): FixAnswer | undefined => {
+  const d = asRecord(data);
+  const status = d?.status;
+  if (status !== 'pending' && status !== 'done' && status !== 'failed') {
+    return undefined;
+  }
+  return { status, phase: d?.phase, error: d?.error };
+};
+
 const closedReasonOf = (data: unknown): ClosedReason => {
   const closed = asRecord(data)?.closed;
   return closed === 'database' || closed === 'settings' ? closed : '';
@@ -319,7 +333,9 @@ export default defineComponent({
       });
   },
   mounted() { },
-  unmounted() { },
+  unmounted() {
+    clearTimeout(this.fixPoll);
+  },
   data: function () {
     return {
       config: createInitialConfig() as SetupConfig,
@@ -331,6 +347,7 @@ export default defineComponent({
       setupState: emptySetupState() as SetupState,
       closed: '' as ClosedReason,
       saves: 0,
+      fixPoll: undefined as ReturnType<typeof setTimeout> | undefined,
       secretStatus: {
         secretSet: false,
         passwordSaltSet: false,
@@ -386,6 +403,53 @@ export default defineComponent({
     },
   },
   methods: {
+    pollDatabaseFix(misses = 0) {
+      API.get('/setupwizard/database-fix')
+        .then((res: AxiosResponse) => {
+          const answer = fixAnswerOf(res.data);
+          if (!answer) {
+            this.confirmStart(misses);
+          } else if (answer.status === 'pending') {
+            this.fixPoll = setTimeout(() => this.pollDatabaseFix(), fixPollInterval);
+          } else if (answer.status === 'failed') {
+            this.saveFailed(answer.error);
+          } else {
+            this.afterDatabase(answer.phase);
+          }
+        })
+        .catch(() => {
+          this.confirmStart(misses);
+        });
+    },
+    confirmStart(misses: number) {
+      API.get('/healthcheck')
+        .then((res: AxiosResponse) => {
+          if (asRecord(res.data)?.status === 'healthy') {
+            this.afterDatabase('done');
+            return;
+          }
+          this.retryDatabaseFix(misses);
+        })
+        .catch(() => {
+          this.retryDatabaseFix(misses);
+        });
+    },
+    retryDatabaseFix(misses: number) {
+      if (misses + 1 >= fixConfirmTries) {
+        this.saveFailed(new Error('neither the setup wizard nor DMRHub answers'), 'DMRHub did not answer after the database fix. Check that DMRHub runs, then reload the page.');
+        return;
+      }
+      this.fixPoll = setTimeout(() => this.pollDatabaseFix(misses + 1), fixPollInterval);
+    },
+    saveFailed(error: unknown, detail = 'Failed to save configuration') {
+      console.log(error);
+      this.$toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail,
+        life: 3000,
+      });
+    },
     afterDatabase(phase: unknown) {
       if (phase === 'done') {
         this.$toast.add({
@@ -515,6 +579,10 @@ export default defineComponent({
         this.applyOK = '';
         this.unanswered = replicasOf(response?.data).filter((r) => !r.self && !r.answered).map((r) => r.id);
         if (this.databasePhase) {
+          if (fixAnswerOf(response?.data)?.status === 'pending') {
+            this.pollDatabaseFix();
+            return;
+          }
           this.afterDatabase(response?.data?.phase);
           return;
         }
@@ -552,13 +620,7 @@ export default defineComponent({
           });
           return;
         }
-        console.log(error);
-        this.$toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to save configuration',
-          life: 3000,
-        });
+        this.saveFailed(error);
       }
     },
   },

@@ -41,9 +41,13 @@ const (
 	saveHold          = 5 * time.Second
 	touchEvery        = voiceHang / 2
 	partLive          = voiceHang + touchEvery + kvTimeout
+	kvBackoff         = 5 * time.Second
 )
 
-var errUnchanged = errors.New("the record stays as it is")
+var (
+	errUnchanged = errors.New("the record stays as it is")
+	errKVDown    = errors.New("the KV store failed a moment ago")
+)
 
 type voiceRecord struct {
 	ID       uint                  `json:"id,omitempty"`
@@ -291,6 +295,10 @@ func savedRecord(rec *voiceRecord, gen uint64, ok bool, saved []voiceDelta, trie
 }
 
 func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRecord) error {
+	if c.now() < time.Duration(c.kvDown.Load()) {
+		c.metrics.IncrementTrackerShareFailed()
+		return errKVDown
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
 	defer cancel()
 	err := c.kv.Update(ctx, voiceRecordKey(key), streamIdle, func(old []byte) ([]byte, error) {
@@ -304,6 +312,7 @@ func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRec
 		return nil
 	}
 	if err != nil {
+		c.kvDown.Store(int64(c.now() + kvBackoff))
 		c.metrics.IncrementTrackerShareFailed()
 		return fmt.Errorf("sharing a voice call: %w", err)
 	}

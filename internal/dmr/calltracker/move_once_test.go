@@ -28,6 +28,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -275,5 +276,63 @@ func TestAStarvedOldReplicaJoinsTheRowLate(t *testing.T) {
 		assert.Equal(t, 1+12+12+6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
 		assert.Equal(t, uint(1+12+12+6+1), c.TotalPackets, "packets")
 		assert.False(t, c.Active)
+	})
+}
+
+type hungKV struct {
+	kv.KV
+	hung atomic.Bool
+}
+
+func (h *hungKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	if h.hung.Load() {
+		<-ctx.Done()
+		return ctx.Err() //nolint:wrapcheck
+	}
+	return h.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
+}
+
+// TestAHungKVDoesNotStallTheTrackingOfCalls runs 24 calls on one worker
+// while every KV Update hangs until its timeout, as a KV store that stops
+// answering does. The worker waits on the store at most once in a while,
+// so it keeps up with the bursts and drops none.
+func TestAHungKVDoesNotStallTheTrackingOfCalls(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		shared := &hungKV{KV: kvStore}
+		ct := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(ct.Stop)
+		worker := calltracker.WorkerOf(models.RepeaterTypeMMDVM, repeaterA, true)
+		var senders []*sender
+		for r := repeaterA; len(senders) < 24; r++ {
+			if calltracker.WorkerOf(models.RepeaterTypeMMDVM, r, true) != worker {
+				continue
+			}
+			s := newSender(t, ct, userA, tgID, true, 9200+uint(len(senders)))
+			s.repeater = r
+			senders = append(senders, s)
+		}
+		for _, s := range senders {
+			s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+		}
+		ct.Flush()
+		shared.hung.Store(true)
+		for range 100 {
+			for _, s := range senders {
+				sendSuperframe(s)
+			}
+			time.Sleep(superframeTime)
+		}
+		for _, s := range senders {
+			s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		}
+		ct.Flush()
+		shared.hung.Store(false)
+
+		assert.Zero(t, ct.Dropped(), "the worker dropped bursts while it waited on the KV store")
+		for _, c := range waitDone(t, ct, database, len(senders)) {
+			assert.Equal(t, 1+600+1, len(c.CallData)/layer2.RawBurstSize, "bursts of the call to %d", c.DestinationID)
+		}
 	})
 }

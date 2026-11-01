@@ -151,6 +151,7 @@ type CallTracker struct {
 	bursts  atomic.Uint64
 	replica string
 	deltas  atomic.Uint64
+	kvDown  atomic.Int64
 }
 
 type observerBox struct{ o DataObserver }

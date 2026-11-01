@@ -20,12 +20,14 @@
 package dmr_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
@@ -42,6 +44,7 @@ const (
 type conformStack struct {
 	mc   *testutils.MMDVMClient
 	peer *testutils.OpenBridgeClient
+	ps   pubsub.PubSub
 }
 
 // startConformStack links a peer, enhanced or not, whose ingress rule
@@ -71,7 +74,7 @@ func startConformStack(t *testing.T, stack *testutils.IntegrationStack, enhanced
 	t.Cleanup(mc.Close)
 	require.NoError(t, mc.Connect(stack.MMDVMAddr))
 	require.NoError(t, mc.WaitReady(handshakeWait))
-	return conformStack{mc: mc, peer: peer}
+	return conformStack{mc: mc, peer: peer, ps: stack.PubSub}
 }
 
 func (s conformStack) receiveQuench(stream uint32) []dmrd.BridgeControl {
@@ -195,21 +198,26 @@ func TestOpenBridgeMovesALinkUpToThePeersVersion(t *testing.T) {
 	})
 }
 
-// moveUp sends the hub a BCVE of version 5 from the peer of s, and then
-// sends calls, from stream on in steps of 1000, until one goes to the peer
-// as DMRE of version 5. The hub takes the BCVE in off the path of the
-// calls, so a call sent right after it can still go out as version 1.
+// moveUp sends the hub a BCVE of version 5 from the peer of s, waits until
+// the hub tells the replicas that the link moved up, and then sends a call
+// with stream, which must go to the peer as DMRE of version 5. The hub
+// takes the BCVE in off the path of the calls, so a call sent before the
+// notice can still go out as version 1.
 func (s conformStack) moveUp(t *testing.T, stream uint) {
 	t.Helper()
+	moved := s.ps.Subscribe("openbridge:version")
+	defer func() { _ = moved.Close() }()
 	require.NoError(t, s.peer.SendControl(dmrd.BridgeControl{Command: dmrd.CommandBCVE, Version: 5}))
-	var got []uint8
-	for range deliverWait / drainWait {
-		if got = s.versionsOf(t, stream); len(got) == 1 && got[0] == 5 {
-			return
+	isMove := func(msg []byte) bool {
+		var v struct {
+			Peer    uint  `json:"peer"`
+			Version uint8 `json:"version"`
 		}
-		stream += 1000
+		return json.Unmarshal(msg, &v) == nil && v.Peer == conformPeer && v.Version == 5
 	}
-	require.Equal(t, []uint8{5}, got, "the hub moved the link up to version 5")
+	notices := testutils.Collect(moved.Channel(), deliverWait, func(got [][]byte) bool { return isMove(got[len(got)-1]) })
+	require.True(t, len(notices) > 0 && isMove(notices[len(notices)-1]), "the hub took the BCVE of version 5")
+	require.Equal(t, []uint8{5}, s.versionsOf(t, stream), "the hub moved the link up to version 5")
 }
 
 // versionsOf sends a call from the repeater of s and returns the version

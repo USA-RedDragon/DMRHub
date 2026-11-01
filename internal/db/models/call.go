@@ -59,28 +59,34 @@ const (
 // are set only when the source and the ingress repeater are registered;
 // SourceID and IngressID always hold the IDs that the packets carried.
 type Call struct {
-	ID             uint           `json:"id" gorm:"primarykey"`
-	CallData       Blob           `json:"-"`
-	StreamID       uint           `json:"-"`
-	StartTime      time.Time      `json:"start_time"`
-	Duration       time.Duration  `json:"duration"`
-	Active         bool           `json:"active"`
-	User           User           `json:"user" gorm:"foreignKey:UserID"`
-	UserID         *uint          `json:"-"`
-	Repeater       Repeater       `json:"repeater" gorm:"foreignKey:RepeaterID"`
-	RepeaterID     *uint          `json:"-"`
-	TimeSlot       bool           `json:"time_slot"`
-	GroupCall      bool           `json:"group_call"`
-	IsToTalkgroup  bool           `json:"is_to_talkgroup"`
-	ToTalkgroupID  *uint          `json:"-"`
-	ToTalkgroup    Talkgroup      `json:"to_talkgroup" gorm:"foreignKey:ToTalkgroupID"`
-	IsToUser       bool           `json:"is_to_user"`
-	ToUserID       *uint          `json:"-"`
-	ToUser         User           `json:"to_user" gorm:"foreignKey:ToUserID"`
-	IsToRepeater   bool           `json:"is_to_repeater"`
-	ToRepeaterID   *uint          `json:"-"`
-	ToRepeater     Repeater       `json:"to_repeater" gorm:"foreignKey:ToRepeaterID"`
-	IsToPlugin     bool           `json:"is_to_plugin" gorm:"not null;default:false"`
+	ID            uint          `json:"id" gorm:"primarykey"`
+	CallData      Blob          `json:"-"`
+	StreamID      uint          `json:"-"`
+	StartTime     time.Time     `json:"start_time"`
+	Duration      time.Duration `json:"duration"`
+	Active        bool          `json:"active"`
+	User          User          `json:"user" gorm:"foreignKey:UserID"`
+	UserID        *uint         `json:"-"`
+	Repeater      Repeater      `json:"repeater" gorm:"foreignKey:RepeaterID"`
+	RepeaterID    *uint         `json:"-"`
+	TimeSlot      bool          `json:"time_slot"`
+	GroupCall     bool          `json:"group_call"`
+	IsToTalkgroup bool          `json:"is_to_talkgroup"`
+	ToTalkgroupID *uint         `json:"-"`
+	ToTalkgroup   Talkgroup     `json:"to_talkgroup" gorm:"foreignKey:ToTalkgroupID"`
+	IsToUser      bool          `json:"is_to_user"`
+	ToUserID      *uint         `json:"-"`
+	ToUser        User          `json:"to_user" gorm:"foreignKey:ToUserID"`
+	IsToRepeater  bool          `json:"is_to_repeater"`
+	ToRepeaterID  *uint         `json:"-"`
+	ToRepeater    Repeater      `json:"to_repeater" gorm:"foreignKey:ToRepeaterID"`
+	IsToPlugin    bool          `json:"is_to_plugin" gorm:"not null;default:false"`
+	// IsToLocalGroup marks a group call to a local talkgroup, which went
+	// to the repeaters of the local group LocalGroupID, named
+	// LocalGroupName when the call was made.
+	IsToLocalGroup bool           `json:"is_to_local_group" gorm:"not null;default:false"`
+	LocalGroupID   *uint          `json:"local_group_id"`
+	LocalGroupName string         `json:"local_group_name" gorm:"size:64"`
 	DestinationID  uint           `json:"destination_id"`
 	TotalPackets   uint           `json:"-"`
 	LostSequences  uint           `json:"-"`
@@ -146,19 +152,19 @@ func (c *Call) BeforeSave(*gorm.DB) error {
 }
 
 // lastHeard picks the calls of the public last heard: those to a
-// talkgroup, and the group calls to an ID that a plugin owns, such as the
-// parrot, which has no talkgroup.
-const lastHeard = "(is_to_talkgroup = ? OR (group_call = ? AND is_to_plugin = ?))"
+// talkgroup or a local group, and the group calls to an ID that a plugin
+// owns, such as the parrot, which has no talkgroup.
+const lastHeard = "(is_to_talkgroup = ? OR is_to_local_group = ? OR (group_call = ? AND is_to_plugin = ?))"
 
 func FindCalls(db *gorm.DB) ([]Call, error) {
 	var calls []Call
-	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where(lastHeard, true, true, true).Order("start_time desc").Find(&calls).Error
+	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").Where(lastHeard, true, true, true, true).Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
 
 func CountCalls(db *gorm.DB) (int, error) {
 	var count int64
-	err := db.Model(&Call{}).Where(lastHeard, true, true, true).Count(&count).Error
+	err := db.Model(&Call{}).Where(lastHeard, true, true, true, true).Count(&count).Error
 	return int(count), err
 }
 

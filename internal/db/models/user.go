@@ -214,10 +214,11 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 }
 
 // DeleteUser deletes the user id and what they own in one transaction.
-// Their repeaters go with the calls through them and their routing rules,
-// their peers with their rules, and the slots open to them close to them.
-// Their co-sysop roles and invites, sessions, app grants, password reset
-// links and tracked positions end. Their other calls, nets and scheduled nets stay without the user.
+// Their repeaters go with the calls through them, their routing rules and
+// their places in local groups, their local groups and their peers with
+// their rules, and the slots open to them close to them. Their co-sysop
+// roles and invites, sessions, app grants, password reset links and tracked
+// positions end. Their other calls, nets and scheduled nets stay without the user.
 // It locks the user and their repeaters first, so that a row that refers
 // to them and that another connection inserts meanwhile waits for the
 // delete and does not stop it.
@@ -248,6 +249,9 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterCosysop{}).Error; err != nil {
 				return fmt.Errorf("could not delete the co-sysops of repeater %d: %w", r.ID, err)
 			}
+			if err := deleteLocalGroupsOf(tx, r.ID); err != nil {
+				return err
+			}
 			if err := tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(r).Error; err != nil {
 				return fmt.Errorf("could not delete repeater %d: %w", r.ID, err)
 			}
@@ -257,6 +261,9 @@ func DeleteUser(db *gorm.DB, id uint) error {
 		}
 		if err := tx.Where("user_id = ?", id).Delete(&RepeaterCosysop{}).Error; err != nil {
 			return fmt.Errorf("could not delete the co-sysop roles: %w", err)
+		}
+		if err := deleteLocalGroupsOwnedBy(tx, id); err != nil {
+			return err
 		}
 		var peers []uint
 		if err := tx.Unscoped().Model(&Peer{}).Where("owner_id = ?", id).Pluck("id", &peers).Error; err != nil {

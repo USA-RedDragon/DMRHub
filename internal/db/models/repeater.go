@@ -146,6 +146,10 @@ type Repeater struct {
 	TS2HeardCodec2Mode int        `json:"ts2_heard_codec2_mode" gorm:"not null;default:0;<-:create" msg:"-"`
 	TS1HeardAt         *time.Time `json:"ts1_heard_at" gorm:"<-:create" msg:"-"`
 	TS2HeardAt         *time.Time `json:"ts2_heard_at" gorm:"<-:create" msg:"-"`
+
+	// LocalGroups are the local groups that the repeater is in, which
+	// FindRepeaterByID reads.
+	LocalGroups []LocalMembership `json:"-" gorm:"-" msg:"-"`
 }
 
 func (p *Repeater) String() string {
@@ -185,9 +189,15 @@ func CountUserRepeaters(db *gorm.DB, id uint) (int, error) {
 	return int(count), err
 }
 
+// FindRepeaterByID returns the repeater id with its owner, its talkgroups
+// and its local groups.
 func FindRepeaterByID(db *gorm.DB, id uint) (Repeater, error) {
 	var repeater Repeater
 	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").First(&repeater, id).Error
+	if err != nil {
+		return repeater, err //nolint:wrapcheck // callers check gorm.ErrRecordNotFound
+	}
+	repeater.LocalGroups, err = RepeaterLocalGroups(db, id)
 	return repeater, err
 }
 
@@ -234,6 +244,9 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 
 		if err := tx.Where("repeater_id = ?", id).Delete(&RoutingRule{}).Error; err != nil {
 			return fmt.Errorf("delete routing rules: %w", err)
+		}
+		if err := deleteLocalGroupsOf(tx, id); err != nil {
+			return err
 		}
 
 		if err := tx.Where("repeater_id = ?", id).Delete(&RepeaterEvent{}).Error; err != nil {

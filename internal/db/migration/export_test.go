@@ -46,3 +46,13 @@ func Rollback(db *gorm.DB, cfg *config.Config, id string) error {
 	}
 	return gorm.ErrRecordNotFound
 }
+
+// ByID returns the migration id of Migrate, or nil.
+func ByID(id string) *gormigrate.Migration {
+	for _, m := range migrations(nil, &config.Config{}) {
+		if m.ID == id {
+			return m
+		}
+	}
+	return nil
+}

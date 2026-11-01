@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -62,10 +63,10 @@ type rulesEnv struct {
 	next uint
 }
 
-func newRulesHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub, kvStore kv.KV) *hub.Hub {
+func newRulesHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub, kvStore kv.KV, opts ...hub.Option) *hub.Hub {
 	t.Helper()
 	ct := calltracker.NewCallTracker(database.WithContext(context.WithValue(context.Background(), trackerQuery{}, true)), ps, kvStore)
-	h := hub.NewHub(database, kvStore, ps, ct)
+	h := hub.NewHub(database, kvStore, ps, ct, opts...)
 	h.LiftSlotRate(true)
 	h.SetConfig(floodConfig())
 	t.Cleanup(func() { h.Stop(context.Background()) })
@@ -269,6 +270,13 @@ func TestATalkgroupAllowlistCarriesOnlyItsTalkgroups(t *testing.T) {
 func TestRoutingRulesReadNoDatabasePerBurst(t *testing.T) {
 	t.Parallel()
 	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		e.hub.Stop(context.Background())
+		e.hub = newRulesHub(t, e.db, e.ps, e.kv, hub.WithClock(clock.NewFake(time.Now())))
+		e.srv = e.hub.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
+		for _, rpt := range []uint{ruleSender, ruleReceiver} {
+			e.hub.ActivateRepeater(context.Background(), rpt)
+		}
+		knowTalkgroups(t, e.hub)
 		e.setRules(t, ruleReceiver, models.SlotRuleKinds(), listedOn(1))
 		e.setRules(t, ruleSender, models.TalkgroupRuleKinds(), blockTG1())
 		assert.True(t, e.carried(t, burst{from: ruleSender, src: listedUser, dst: 2}))

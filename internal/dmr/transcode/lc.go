@@ -113,7 +113,7 @@ func (a *voiceLCAssembler) add(d [4]byte, pos uint) (pdu.LCBytes, bool) {
 	if res.Uncorrectable {
 		return pdu.LCBytes{}, false
 	}
-	l := pdu.LCBytes(lc)
+	l := lc
 	if f := l.FLCO(); f != enums.FLCOGroupVoiceChannelUser && f != enums.FLCOUnitToUnitVoiceChannelUser {
 		return pdu.LCBytes{}, false
 	}

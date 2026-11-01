@@ -232,7 +232,7 @@ func TestAFillIsAVoiceBurstOfTheCall(t *testing.T) {
 	}
 	lc, res := layer2.DecodeEmbeddedLC(f)
 	require.False(t, res.Uncorrectable)
-	assert.Equal(t, voiceLC(t, transcode.Codec2FID), pdu.LCBytes(lc))
+	assert.Equal(t, voiceLC(t, transcode.Codec2FID), lc)
 }
 
 // TestFillsAreCapped loses more bursts in a row than MaxFill. The copy

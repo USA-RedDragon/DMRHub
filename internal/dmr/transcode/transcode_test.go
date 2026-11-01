@@ -253,7 +253,7 @@ func checkCopy(t *testing.T, in []models.Packet, out []layer2.RawBurst, want pdu
 			}
 			lc, res := layer2.DecodeEmbeddedLC(f)
 			require.False(t, res.Uncorrectable, "embedded LC at burst %d", i)
-			require.Equal(t, want, pdu.LCBytes(lc), "embedded LC at burst %d", i)
+			require.Equal(t, want, lc, "embedded LC at burst %d", i)
 		}
 	}
 }
@@ -435,7 +435,7 @@ func TestLateEntryLearnsTheLC(t *testing.T) {
 		}
 		lc, res := layer2.DecodeEmbeddedLC(f)
 		require.False(t, res.Uncorrectable)
-		assert.Equal(t, voiceLC(t, enums.FIDStandardized), pdu.LCBytes(lc), "superframe %d", sf)
+		assert.Equal(t, voiceLC(t, enums.FIDStandardized), lc, "superframe %d", sf)
 	}
 }
 
@@ -660,7 +660,7 @@ func TestEmbeddedLCThatDiffersFromTheHeader(t *testing.T) {
 		}
 		lc, res := layer2.DecodeEmbeddedLC(f)
 		require.False(t, res.Uncorrectable)
-		assert.Equal(t, want, pdu.LCBytes(lc), "superframe %d", sf)
+		assert.Equal(t, want, lc, "superframe %d", sf)
 	}
 }
 

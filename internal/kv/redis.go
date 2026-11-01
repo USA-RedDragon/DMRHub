@@ -48,7 +48,7 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 	})
 	client.AddHook(callTimeoutHook{timeout: consts.RedisCallTimeout})
 
-	if _, err := client.Ping(ctx).Result(); err != nil {
+	if err := pingUntil(ctx, func(ctx context.Context) error { return client.Ping(ctx).Err() }); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
@@ -67,6 +67,34 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 // callTimeoutHook gives each call a deadline that its retries share. go-redis
 // retries a read that timed out, so ReadTimeout alone lets a call to a hung
 // Redis run for MaxRetries+1 read timeouts.
+const (
+	firstPingWait = 100 * time.Millisecond
+	maxPingWait   = 2 * time.Second
+)
+
+func pingUntil(ctx context.Context, ping func(context.Context) error) error {
+	deadline := time.Now().Add(consts.RedisConnectWait)
+	wait := firstPingWait
+	for {
+		err := ping(ctx)
+		if err == nil {
+			return nil
+		}
+		left := time.Until(deadline)
+		if left <= 0 {
+			return err
+		}
+		timer := time.NewTimer(min(wait, left))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+		wait = min(2*wait, maxPingWait)
+	}
+}
+
 type callTimeoutHook struct {
 	timeout time.Duration
 }

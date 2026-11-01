@@ -35,3 +35,8 @@ const RedisCallTimeout = time.Second
 
 // RedisDialTimeout bounds a new connection to Redis.
 const RedisDialTimeout = 2 * time.Second
+
+// RedisConnectWait is how long DMRHub tries to reach Redis at startup
+// before it fails, so that a Redis that restarts or is slow for some
+// seconds does not stop DMRHub from starting.
+const RedisConnectWait = 30 * time.Second

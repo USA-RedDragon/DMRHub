@@ -72,3 +72,7 @@ func ExpiryOf(ctx context.Context, store KV, key string) (time.Time, error) {
 
 // UpdateTries is how many times Update tries on Redis.
 const UpdateTries = updateTries
+
+func PingUntil(ctx context.Context, ping func(context.Context) error) error {
+	return pingUntil(ctx, ping)
+}

@@ -21,6 +21,7 @@ package hub_test
 
 import (
 	"context"
+	"encoding/binary"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -160,20 +161,37 @@ func TestAHeardRadioIsToldToThePlugins(t *testing.T) {
 		h.SetPlugins(newFakePlugins(nil))
 		sub := ps.Subscribe(plugins.HeardTopic)
 		t.Cleanup(func() { _ = sub.Close() })
+		subAt := ps.Subscribe(plugins.HeardAtTopic)
+		t.Cleanup(func() { _ = subAt.Close() })
 		loadLookups(t, h, nil, []uint{1000002})
 		p := dataHeader(1000002, 1, 100003, 1)
 		p.Slot = true
+		heardAt := time.Now()
 		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
-		select {
-		case b := <-sub.Channel():
-			radio, repeater, slot, cc, ok := plugins.DecodeHeard(b)
-			require.True(t, ok)
-			assert.Equal(t, []uint{1000002, 100003}, []uint{radio, repeater})
-			assert.Equal(t, []uint8{2, 7}, []uint8{slot, cc})
-		case <-time.After(deliveryWait):
-			t.Fatal("the plugins were not told where the radio was heard")
-		}
+		b := bubble.Receive(t, subAt.Channel(), deliveryWait, "the plugins were not told when the radio was heard")
+		radio, repeater, slot, cc, at, ok := plugins.DecodeHeard(plugins.HeardAtTopic, b)
+		require.True(t, ok)
+		assert.Equal(t, []uint{1000002, 100003}, []uint{radio, repeater})
+		assert.Equal(t, []uint8{2, 7}, []uint8{slot, cc})
+		assert.Equal(t, heardAt.UnixMilli(), at.UnixMilli())
+
+		old := bubble.Receive(t, sub.Channel(), deliveryWait, "a replica older than the time was not told where the radio was heard")
+		got, ok := oldDecodeHeard(old)
+		require.True(t, ok, "a replica older than the time takes the message")
+		assert.Equal(t, oldHeard{radio: 1000002, repeater: 100003, slot: 2, cc: 7}, got)
 	})
+}
+
+type oldHeard struct {
+	radio, repeater uint32
+	slot, cc        uint8
+}
+
+func oldDecodeHeard(b []byte) (oldHeard, bool) {
+	if len(b) != 10 {
+		return oldHeard{}, false
+	}
+	return oldHeard{radio: binary.BigEndian.Uint32(b[0:]), repeater: binary.BigEndian.Uint32(b[4:]), slot: b[8], cc: b[9]}, true
 }
 
 func TestAPluginsCallStaysOnThisHub(t *testing.T) {

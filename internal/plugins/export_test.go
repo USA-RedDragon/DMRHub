@@ -21,3 +21,5 @@ package plugins
 
 // HeartbeatEvery is heartbeatEvery for the tests.
 const HeartbeatEvery = heartbeatEvery
+
+const TwinWait = twinWait

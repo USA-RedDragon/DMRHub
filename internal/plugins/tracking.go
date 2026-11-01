@@ -35,11 +35,18 @@ import (
 const (
 	// TrackingTopic is the pubsub topic that says that the owner of a radio changed its tracking.
 	TrackingTopic = "plugins:tracking"
-	// HeardTopic is the pubsub topic that says where a radio was heard.
+	// HeardTopic is the pubsub topic that says where a radio was heard,
+	// with no time. Replicas older than HeardAtTopic read only it.
 	HeardTopic = "plugins:heard"
+	// HeardAtTopic is the pubsub topic that says where and when a radio was
+	// heard. A replica that publishes on it publishes the same sighting on
+	// HeardTopic after it, until no replica older than HeardAtTopic runs.
+	HeardAtTopic = "plugins:heard:2"
 	// heardSize is the size of a message on HeardTopic: the radio, the
 	// repeater, the slot and the color code.
-	heardSize = 10
+	heardSize   = 10
+	heardAtSize = heardSize + 8
+	twinWait    = 10 * time.Second
 )
 
 // PublishTracking tells the plugins on every replica that the owner of
@@ -51,37 +58,74 @@ func PublishTracking(ps pubsub.PubSub, radio uint) error {
 	return nil
 }
 
-// heard is where a radio was heard.
-type heard struct {
+type heardKey struct {
 	radio, repeater uint32
 	slot, cc        uint8
 }
 
+// heard is where and when a radio was heard. at is in Unix milliseconds,
+// and 0 when the message held no time.
+type heard struct {
+	heardKey
+	at int64
+}
+
+func (h heardKey) append(b []byte) []byte {
+	b = binary.BigEndian.AppendUint32(b, h.radio)
+	b = binary.BigEndian.AppendUint32(b, h.repeater)
+	return append(b, h.slot, h.cc)
+}
+
+func keyOf(radio, repeater uint, slot, cc uint8) heardKey {
+	return heardKey{radio: uint32(radio), repeater: uint32(repeater), slot: slot, cc: cc} //nolint:gosec // DMR IDs are 24 bits, repeater IDs at most 9 digits
+}
+
 // PublishHeard tells the plugins on every replica that radio was heard on
-// repeater, on slot 1 or 2, whose color code is cc.
+// repeater, on slot 1 or 2, whose color code is cc, with no time.
 func PublishHeard(ps pubsub.PubSub, radio, repeater uint, slot, cc uint8) error {
-	var b [heardSize]byte
-	binary.BigEndian.PutUint32(b[0:], uint32(radio))    //nolint:gosec // DMR IDs are 24 bits
-	binary.BigEndian.PutUint32(b[4:], uint32(repeater)) //nolint:gosec // repeater IDs are at most 9 digits
-	b[8], b[9] = slot, cc
-	if err := ps.Publish(HeardTopic, b[:]); err != nil {
+	if err := ps.Publish(HeardTopic, keyOf(radio, repeater, slot, cc).append(make([]byte, 0, heardSize))); err != nil {
 		return fmt.Errorf("could not publish where a radio was heard: %w", err)
 	}
 	return nil
 }
 
-// DecodeHeard returns the radio, repeater, slot and color code of a
-// message on HeardTopic, and false when it is not one.
-func DecodeHeard(b []byte) (radio, repeater uint, slot, cc uint8, ok bool) {
-	h, ok := decodeHeard(b)
-	return uint(h.radio), uint(h.repeater), h.slot, h.cc, ok
+// PublishHeardAt tells the plugins on the replicas that read HeardAtTopic
+// that radio was heard on repeater, on slot 1 or 2, whose color code is
+// cc, at the time at. Publish the same sighting with PublishHeard right
+// after it.
+func PublishHeardAt(ps pubsub.PubSub, radio, repeater uint, slot, cc uint8, at time.Time) error {
+	b := keyOf(radio, repeater, slot, cc).append(make([]byte, 0, heardAtSize))
+	b = binary.BigEndian.AppendUint64(b, uint64(at.UnixMilli())) //nolint:gosec // a time after 1970
+	if err := ps.Publish(HeardAtTopic, b); err != nil {
+		return fmt.Errorf("could not publish when a radio was heard: %w", err)
+	}
+	return nil
 }
 
-func decodeHeard(b []byte) (heard, bool) {
-	if len(b) != heardSize {
+// DecodeHeard returns the radio, repeater, slot, color code and time of a
+// message on topic, HeardTopic or HeardAtTopic, and false when it is not
+// one. The time is zero for a message on HeardTopic.
+func DecodeHeard(topic string, b []byte) (radio, repeater uint, slot, cc uint8, at time.Time, ok bool) {
+	h, ok := decodeHeard(topic, b)
+	if ok && h.at != 0 {
+		at = time.UnixMilli(h.at)
+	}
+	return uint(h.radio), uint(h.repeater), h.slot, h.cc, at, ok
+}
+
+func decodeHeard(topic string, b []byte) (heard, bool) {
+	size := heardSize
+	if topic == HeardAtTopic {
+		size = heardAtSize
+	}
+	if len(b) != size || (topic != HeardTopic && topic != HeardAtTopic) {
 		return heard{}, false
 	}
-	return heard{radio: binary.BigEndian.Uint32(b[0:]), repeater: binary.BigEndian.Uint32(b[4:]), slot: b[8], cc: b[9]}, true
+	h := heard{heardKey: heardKey{radio: binary.BigEndian.Uint32(b[0:]), repeater: binary.BigEndian.Uint32(b[4:]), slot: b[8], cc: b[9]}}
+	if size == heardAtSize {
+		h.at = int64(binary.BigEndian.Uint64(b[heardSize:])) //nolint:gosec // written from an int64
+	}
+	return h, true
 }
 
 // trackingOf returns the tracking of the radio in s.

@@ -396,7 +396,8 @@ type watcher struct {
 	positions chan *pluginv1.Position
 
 	tracking pubsub.Subscription
-	heard    pubsub.Subscription
+	heard    pubsub.Feed
+	twins    map[heardKey][]time.Time
 	// heardOn is the repeater where each radio with tracking on was heard
 	// last, when the plugin subscribed to tracking.
 	heardOn map[uint32]uint
@@ -414,7 +415,8 @@ func (w *watcher) watch(ctx context.Context) {
 	defer heartbeat.Stop()
 	var handoff <-chan time.Time
 	for {
-		var tracking, heard <-chan []byte
+		var tracking <-chan []byte
+		var heard <-chan pubsub.Message
 		if w.tracking != nil {
 			tracking, heard = w.tracking.Channel(), w.heard.Channel()
 		}
@@ -460,11 +462,11 @@ func (w *watcher) watch(ctx context.Context) {
 				return
 			}
 			w.trackingChanged(b)
-		case b, ok := <-heard:
+		case m, ok := <-heard:
 			if !ok {
 				return
 			}
-			w.radioHeard(b)
+			w.radioHeard(m)
 		case _, ok := <-w.changed.Channel():
 			if !ok {
 				return
@@ -506,7 +508,9 @@ func (w *watcher) setTracking(on bool) {
 	}
 	if w.tracking == nil {
 		w.tracking = w.s.pubsub.Subscribe(TrackingTopic)
-		w.heard = w.s.pubsub.Subscribe(HeardTopic)
+		w.heard = w.s.pubsub.Feed()
+		w.heard.Add(HeardTopic)
+		w.heard.Add(HeardAtTopic)
 	}
 	radios, err := tracked(w.s.db)
 	if err != nil {
@@ -529,6 +533,7 @@ func (w *watcher) unsubscribe() {
 	_ = w.heard.Close()
 	w.tracking, w.heard = nil, nil
 	w.heardOn = map[uint32]uint{}
+	w.twins = nil
 }
 
 // trackingChanged sends the tracking of the radio named in b.
@@ -550,17 +555,66 @@ func (w *watcher) trackingChanged(b []byte) {
 	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Tracking{Tracking: trackingOf(&s)}})
 }
 
-// radioHeard tells the plugin where a radio with tracking on was heard.
-func (w *watcher) radioHeard(b []byte) {
-	h, ok := decodeHeard(b)
+// radioHeard tells the plugin where and when a radio with tracking on was
+// heard, once for each sighting: a message on HeardTopic is the copy of
+// the oldest message with its key on HeardAtTopic in the last twinWait
+// that has no copy yet, if there is one.
+func (w *watcher) radioHeard(m pubsub.Message) {
+	h, ok := decodeHeard(m.Topic, m.Payload)
 	if !ok {
+		return
+	}
+	if !w.twin(m.Topic, h.heardKey) {
 		return
 	}
 	if _, tracked := w.heardOn[h.radio]; !tracked {
 		return
 	}
 	w.heardOn[h.radio] = uint(h.repeater)
-	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Heard{Heard: &pluginv1.Heard{Radio: h.radio, Slot: uint32(h.slot), ColorCode: uint32(h.cc)}}})
+	msg := &pluginv1.Heard{Radio: h.radio, Slot: uint32(h.slot), ColorCode: uint32(h.cc)}
+	if h.at != 0 {
+		msg.At = &h.at
+	}
+	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Heard{Heard: msg}})
+}
+
+func (w *watcher) twin(topic string, k heardKey) bool {
+	now := w.s.clock.Now()
+	if w.twins == nil {
+		w.twins = map[heardKey][]time.Time{}
+	}
+	if topic == HeardAtTopic {
+		if len(w.twins) >= maxSentFrom {
+			w.expireTwins(now)
+		}
+		w.twins[k] = append(w.twins[k], now)
+		return true
+	}
+	waiting := w.twins[k]
+	for len(waiting) > 0 && now.Sub(waiting[0]) > twinWait {
+		waiting = waiting[1:]
+	}
+	if len(waiting) == 0 {
+		delete(w.twins, k)
+		return true
+	}
+	if len(waiting) == 1 {
+		delete(w.twins, k)
+	} else {
+		w.twins[k] = waiting[1:]
+	}
+	return false
+}
+
+func (w *watcher) expireTwins(now time.Time) {
+	for k, waiting := range w.twins {
+		if now.Sub(waiting[len(waiting)-1]) > twinWait {
+			delete(w.twins, k)
+		}
+	}
+	if len(w.twins) >= maxSentFrom {
+		clear(w.twins)
+	}
 }
 
 // sent notes the repeater of a burst that goes to the plugin, the repeater

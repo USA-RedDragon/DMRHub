@@ -269,8 +269,8 @@ func (h *Hub) radioOwner(id uint) (uint, error) {
 	return owner, nil
 }
 
-// tellHeard tells the plugins that the radio of s was heard on rpt, when
-// plugins can connect.
+// tellHeard tells the plugins that the radio of s was heard on rpt at the
+// time of s, when plugins can connect.
 func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 	if h.plugins.Load() == nil || h.pubsub == nil {
 		return
@@ -280,6 +280,10 @@ func (h *Hub) tellHeard(s sighting, rpt *models.Repeater) {
 		slot = 2
 	}
 	repeater, cc := rpt.ID, rpt.ColorCode&0xF
+	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
+		Topic: plugins.HeardAtTopic,
+		Send:  func() error { return plugins.PublishHeardAt(h.pubsub, s.src, repeater, slot, cc, s.at) },
+	})
 	h.later.Add(laterKey{what: sightingsWork, id: s.src}, outbox.Job{
 		Topic: plugins.HeardTopic,
 		Send:  func() error { return plugins.PublishHeard(h.pubsub, s.src, repeater, slot, cc) },

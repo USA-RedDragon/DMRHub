@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -228,24 +229,28 @@ func TestStopEndsAPluginThatWaitsForTheHub(t *testing.T) {
 func TestAPluginThatSpinsIsStopped(t *testing.T) {
 	t.Parallel()
 	eachCompiler(t, func(t *testing.T, compiler string) {
+		fake := clock.NewFake(time.Now())
 		l := wasm.DefaultLimits()
+		l.Clock = fake
 		l.CPUWindow = time.Second
 		inst, _ := newRig(t).run(t, engine.Limited(l), "Spin", guestOf(t, compiler, "spin"), nil)
 		limit := time.Duration(float64(l.CPUWindow) * l.CPUShare)
-		windows := time.NewTicker(l.CPUWindow)
-		defer windows.Stop()
-		for n := 0; ; n++ {
-			select {
-			case <-inst.Done():
-				require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
-				return
-			case <-windows.C:
+		check := l.CPUWindow / 10
+		if _, ok := wasm.MeteredCPU(inst); ok {
+			for cpu, _ := wasm.MeteredCPU(inst); cpu <= limit; cpu, _ = wasm.MeteredCPU(inst) {
+				runtime.Gosched()
 			}
-			cpu, ok := wasm.GuestCPU(inst)
-			if ok && cpu > limit*time.Duration(n+3) {
-				t.Fatalf("the plugin used %v of CPU in %d windows of %v, more than its %v in each, and still spins", cpu, n+1, l.CPUWindow, limit)
-			}
+		} else {
+			check += limit
 		}
+		select {
+		case <-inst.Done():
+			t.Fatalf("the plugin was stopped before a check of its CPU: %v", inst.Err())
+		default:
+		}
+		fake.Advance(check)
+		<-inst.Done()
+		require.ErrorIs(t, inst.Err(), wasm.ErrCPU)
 	})
 }
 

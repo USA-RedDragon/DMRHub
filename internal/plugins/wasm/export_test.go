@@ -62,3 +62,17 @@ func GuestCPU(i *Instance) (time.Duration, bool) {
 	}
 	return threadCPU(tid)
 }
+
+// MeteredCPU returns the CPU time that the thread of the plugin of i used
+// since the meter of i began its window, and false when the kernel does not
+// tell it.
+func MeteredCPU(i *Instance) (time.Duration, bool) {
+	i.meter.mu.Lock()
+	tid, base := i.meter.tid, i.meter.cpu
+	i.meter.mu.Unlock()
+	if tid == 0 {
+		return 0, false
+	}
+	cpu, ok := threadCPU(tid)
+	return cpu - base, ok
+}

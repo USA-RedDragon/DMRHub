@@ -42,12 +42,13 @@ import (
 type callEvents struct {
 	mu   sync.Mutex
 	last map[uint]models.Call
+	ends map[uint]int
 }
 
 func watchCalls(t *testing.T, ps pubsub.PubSub) *callEvents {
 	t.Helper()
 	sub := ps.Subscribe("calls")
-	ev := &callEvents{last: map[uint]models.Call{}}
+	ev := &callEvents{last: map[uint]models.Call{}, ends: map[uint]int{}}
 	done := make(chan struct{})
 	go func() {
 		for {
@@ -57,6 +58,9 @@ func watchCalls(t *testing.T, ps pubsub.PubSub) *callEvents {
 				if json.Unmarshal(msg, &c) == nil {
 					ev.mu.Lock()
 					ev.last[c.ID] = c
+					if !c.Active {
+						ev.ends[c.ID]++
+					}
 					ev.mu.Unlock()
 				}
 			case <-done:

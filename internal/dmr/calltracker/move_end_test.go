@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -205,5 +206,74 @@ func TestALateNoteOfASavedPartKeepsTheMergedRow(t *testing.T) {
 		}
 		c := oneRow(t, one, rows(t, database))
 		assert.ElementsMatch(t, []string{"X", "Y"}, c.Undeliverable)
+	})
+}
+
+type stallKV struct {
+	kv.KV
+	arm     atomic.Bool
+	held    chan struct{}
+	release chan struct{}
+}
+
+func newStallKV(store kv.KV) *stallKV {
+	return &stallKV{KV: store, held: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (f *stallKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	if f.arm.CompareAndSwap(true, false) {
+		close(f.held)
+		<-f.release
+		return f.KV.Update(context.WithoutCancel(ctx), key, ttl, fn) //nolint:wrapcheck
+	}
+	return f.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
+}
+
+// TestASaveThatRunsTwicePublishesTheEndOnce stalls the worker that saved
+// the merged row of a moved call for 6 s before the KV Update that ends
+// the save, so the other replica saves the parts again. That save stores
+// nothing new, and the row has one end event.
+func TestASaveThatRunsTwicePublishesTheEndOnce(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		ev := watchCalls(t, ps)
+		shared := newStallKV(kvStore)
+		go func() {
+			<-shared.held
+			time.Sleep(6 * time.Second)
+			close(shared.release)
+		}()
+		one := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(one.Stop)
+		two := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(two.Stop)
+		var saves atomic.Int32
+		require.NoError(t, database.Callback().Update().After("gorm:update").Register("test:arm", func(d *gorm.DB) {
+			if isMergedSave(d) && saves.Add(1) == 1 {
+				shared.arm.Store(true)
+			}
+		}))
+
+		s := newSender(t, one, userA, tgID, true, 9360)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		for range 20 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+
+		c := oneRow(t, one, rows(t, database))
+		assert.Equal(t, uint(14), c.TotalPackets, "packets")
+		synctest.Wait()
+		ev.mu.Lock()
+		defer ev.mu.Unlock()
+		assert.Equal(t, 1, ev.ends[c.ID], "end events of the row")
 	})
 }

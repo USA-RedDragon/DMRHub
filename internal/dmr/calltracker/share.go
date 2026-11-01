@@ -719,7 +719,7 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 }
 
 func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
-	out, ok := s.saveMerged(r.call, parts)
+	out, changed, ok := s.saveMerged(r.call, parts)
 	if !ok {
 		return false
 	}
@@ -729,6 +729,9 @@ func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
 		saved[p.ID] = true
 	}
 	r.pending = slices.DeleteFunc(r.pending, func(d voiceDelta) bool { return saved[d.ID] })
+	if !changed {
+		return true
+	}
 	s.t.publishCall(s.idx, &out)
 	s.t.publishNetCheckIn(s.idx, &out)
 	slog.Info("Transmission ended", "kind", out.Kind, "sub", out.SubKind, "streamID", out.StreamID, "src", out.SourceID, "dst", out.DestinationID, "repeater", out.IngressID, "duration", out.Duration, "loss", out.Loss*pct, "ber", out.BER*pct, "rssi", out.RSSI, "jitter", out.Jitter)
@@ -780,8 +783,9 @@ func (s *shard) touchShared(now time.Time) {
 	}
 }
 
-func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool) {
+func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool, bool) {
 	var out models.Call
+	changed := false
 	err := s.t.db.Transaction(func(tx *gorm.DB) error {
 		var base models.Call
 		if err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
@@ -800,6 +804,7 @@ func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, 
 		if len(fresh) == 0 {
 			return nil
 		}
+		changed = true
 		if err := tx.Model(&models.Call{}).Where("id = ?", out.ID).
 			Select("*").Omit("id", "created_at", "deleted_at", clause.Associations).Updates(&out).Error; err != nil {
 			return fmt.Errorf("saving the call: %w", err)
@@ -815,9 +820,9 @@ func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, 
 	})
 	if err != nil {
 		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", err)
-		return out, false
+		return out, false, false
 	}
-	return out, true
+	return out, changed, true
 }
 
 func (s *shard) adoptMerged(r *row, out *models.Call) {

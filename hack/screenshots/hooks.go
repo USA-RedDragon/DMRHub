@@ -71,6 +71,7 @@ func hooks() map[string]hook {
 		"tokens":        makeTokens,
 		"cosysops":      inviteCosysops,
 		"wrong-login":   wrongLogin,
+		"offline-alert": offlineAlert,
 		"open-call":     openCall,
 		"end-call":      endCall,
 	}
@@ -495,8 +496,6 @@ func repeaterRules(ctx context.Context, r *runner) error {
 	}, nil)
 }
 
-// inviteCosysops makes N1CALL a co-sysop of hotspot 300000101 and leaves
-// an invite of N2CALL open.
 func inviteCosysops(ctx context.Context, r *runner) error {
 	owner := r.api("n0call")
 	for _, user := range []string{"N1CALL", "N2CALL"} {
@@ -507,8 +506,6 @@ func inviteCosysops(ctx context.Context, r *runner) error {
 	return r.api("n1call").do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/cosysop-invite/accept", nil, nil)
 }
 
-// wrongLogin tries to log hotspot 300000101 in three times with a wrong
-// password, for the connection log.
 func wrongLogin(_ context.Context, _ *runner) error {
 	for range 3 {
 		p, err := dialPeer(fmt.Sprintf("127.0.0.1:%d", mmdvmPort), 300000101, "wrong-password", site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
@@ -518,6 +515,18 @@ func wrongLogin(_ context.Context, _ *runner) error {
 		}
 	}
 	return nil
+}
+
+func offlineAlert(ctx context.Context, r *runner) error {
+	db, closeDB, err := demoDB(r)
+	if err != nil {
+		return err
+	}
+	defer closeDB()
+	if err := db.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", "n1call@example.com", true, 3000002).Error; err != nil {
+		return fmt.Errorf("could not verify the email address of N1CALL: %w", err)
+	}
+	return r.api("n1call").do(ctx, http.MethodPut, "/api/v1/repeaters/300000201/alert", map[string]any{"enabled": true, "delay_minutes": 10, "back": true}, nil)
 }
 
 func openCall(_ context.Context, r *runner) error {

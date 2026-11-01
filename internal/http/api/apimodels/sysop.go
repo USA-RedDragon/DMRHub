@@ -40,3 +40,25 @@ type OnAirCall struct {
 type DropCallPost struct {
 	CallID uint `json:"call_id" binding:"required"`
 }
+
+// OfflineAlert is the offline alert of the user who asked for a repeater.
+// SMTP reports whether the network sends email, EmailVerified whether
+// the user has a verified address, and Email that address with most of
+// its local part hidden.
+type OfflineAlert struct {
+	SMTP          bool   `json:"smtp"`
+	EmailVerified bool   `json:"email_verified"`
+	Email         string `json:"email"`
+	Enabled       bool   `json:"enabled"`
+	DelayMinutes  uint   `json:"delay_minutes"`
+	Back          bool   `json:"back"`
+	Delays        []uint `json:"delays"`
+}
+
+// OfflineAlertPut turns the offline alert of the user for a repeater on
+// or off.
+type OfflineAlertPut struct {
+	Enabled      bool `json:"enabled"`
+	DelayMinutes uint `json:"delay_minutes"`
+	Back         bool `json:"back"`
+}

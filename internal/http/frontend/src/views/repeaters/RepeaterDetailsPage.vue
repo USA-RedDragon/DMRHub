@@ -159,6 +159,12 @@
         :device="repeater.type === 'ipsc' ? 'repeater' : 'hotspot'"
       />
 
+      <OfflineAlertCard
+        v-if="canEditCodec"
+        :repeater-id="repeater.id"
+        :device="repeater.type === 'ipsc' ? 'repeater' : 'hotspot'"
+      />
+
       <CosysopsCard
         v-if="cosysops"
         :repeater-id="repeater.id"
@@ -389,6 +395,7 @@ import RepeaterRulesCard from '@/components/RepeaterRulesCard.vue';
 import CosysopsCard from '@/components/CosysopsCard.vue';
 import ConnectionLogCard from '@/components/ConnectionLogCard.vue';
 import OnAirCard from '@/components/OnAirCard.vue';
+import OfflineAlertCard from '@/components/OfflineAlertCard.vue';
 import { resetText, type OnAirCall } from '@/lib/sysop';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
@@ -496,6 +503,7 @@ export default {
     CosysopsCard,
     ConnectionLogCard,
     OnAirCard,
+    OfflineAlertCard,
     ShadDialog,
     DialogContent,
     DialogDescription,

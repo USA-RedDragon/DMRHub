@@ -401,3 +401,10 @@ shots:
     steps: ["run open-call", "wait Drop call"]
     clip: card On the air
     after: ["run end-call"]
+  - name: repeater-offline-alert.png
+    phase: main
+    as: n1call
+    needs: [seed, offline-alert]
+    route: /repeaters/300000201
+    wait: Emails go to
+    clip: card Offline alert

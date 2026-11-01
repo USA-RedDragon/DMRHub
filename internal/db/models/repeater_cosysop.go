@@ -124,13 +124,22 @@ func AnswerCosysopInvite(db *gorm.DB, repeaterID, userID uint, accept bool, now 
 }
 
 // RemoveCosysop removes the user from the co-sysops of the repeater, or
-// takes back an invite, and reports whether there was one.
+// takes back an invite, and reports whether there was one. The offline
+// alert of the user for the repeater ends with the role.
 func RemoveCosysop(db *gorm.DB, repeaterID, userID uint) (bool, error) {
-	res := db.Where("repeater_id = ? AND user_id = ?", repeaterID, userID).Delete(&RepeaterCosysop{})
-	if res.Error != nil {
-		return false, fmt.Errorf("could not remove a co-sysop of repeater %d: %w", repeaterID, res.Error)
+	removed := false
+	err := db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("repeater_id = ? AND user_id = ?", repeaterID, userID).Delete(&RepeaterCosysop{})
+		if res.Error != nil {
+			return res.Error
+		}
+		removed = res.RowsAffected > 0
+		return tx.Where("repeater_id = ? AND user_id = ?", repeaterID, userID).Delete(&OfflineAlert{}).Error
+	})
+	if err != nil {
+		return false, fmt.Errorf("could not remove a co-sysop of repeater %d: %w", repeaterID, err)
 	}
-	return res.RowsAffected > 0, nil
+	return removed, nil
 }
 
 // ListCosysops returns the co-sysops of the repeater, oldest first, and

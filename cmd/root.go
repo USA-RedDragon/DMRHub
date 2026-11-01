@@ -47,6 +47,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
+	"github.com/USA-RedDragon/DMRHub/internal/offlinealert"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/inside"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
@@ -386,6 +387,7 @@ type serverManager struct {
 	messageStore *messages.Store
 	purger       *retention.Purger
 	drift        *radioiddrift.Checker
+	offline      *offlinealert.Checker
 	aprs         *positions.Gateway
 	plugins      *plugins.Server
 	inside       *inside.Manager
@@ -493,6 +495,9 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	if sm.drift != nil {
 		sm.drift.Stop()
 	}
+	if sm.offline != nil {
+		sm.offline.Stop()
+	}
 	sm.httpServer.Stop(ctx)
 	if sm.pubsub != nil {
 		if err := sm.pubsub.Close(); err != nil {
@@ -558,6 +563,8 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 	sm.purger.Start(ctx)
 	sm.drift = radioiddrift.NewChecker(current, database, kvStore)
 	sm.drift.Start(ctx)
+	sm.offline = offlinealert.NewChecker(current, database, kvStore)
+	sm.offline.Start(ctx)
 	sm.aprs = positions.NewGateway(database, current, kvStore, pubsubClient, version)
 	sm.aprs.Start(ctx)
 	positionPusher := positions.NewPusher(database, pubsubClient)

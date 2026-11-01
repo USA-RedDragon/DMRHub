@@ -56,10 +56,42 @@ While the hotspot or repeater is online, click **Reset connection** in the top c
 
 A reset helps when a hotspot stays logged in but does not seem to pass traffic, or after a change to its settings that it reads only at login.
 
+## Offline alert email
+
+When the network sends email, the **Offline alert** card lets you get an email when the hotspot or repeater stops talking to DMRHub. Each user who looks after a repeater (the owner, a co-sysop or an admin) turns it on for themselves.
+
+![The Offline alert card with the alert on, a delay of 10 minutes and the back email on](../Screenshots/repeater-offline-alert.png)
+
+1. Add an email address under **Settings** and verify it with the link that DMRHub sends. Until then, the switch on the card is off and the card links to Settings.
+2. Turn on **Email me when it is offline**.
+3. In **After**, pick how long the hotspot must be offline before the email: 5, 10, 30 or 60 minutes.
+4. To get an email when it is back too, check **Also email me when it is back**.
+
+DMRHub saves each change at once. The card shows the address that the emails go to, with most of it hidden.
+
+DMRHub sends one email for each outage. An outage starts at the last ping of the hotspot, so a hotspot that is offline when you turn the alert on gets no email until it is back and goes offline again. The email names the last problem of the [connection log](#connection-log), when there is one:
+
+```text
+Subject: Hotspot KP4DJT 319186801 is offline
+
+Your hotspot KP4DJT 319186801 has been offline on DMRHub Demo since Nov 1, 14:41 UTC (10 minutes).
+
+Last problem: Connection lost: no ping for 60 seconds. Check the internet connection of the hotspot.
+
+Open the connection log: https://dmrhub.example.org/repeaters/319186801
+
+To stop these emails, turn off "Email me when it is offline" on the same page.
+```
+
+A hotspot that pings again within the delay, for example after a restart, sends no email. A move of the hotspot to another replica of DMRHub does not stop its pings, so it sends no email either. When a co-sysop stops being one, their alert for that repeater ends.
+
+To turn the emails off, turn off **Email me when it is offline** on the card.
+
 ## API
 
 - `GET /api/v1/repeaters/<id>/on-air` lists the voice calls that the repeater carries now: `call_id`, `slot`, `direction` (`from` or `to`), `source_id`, `callsign`, `destination_id`, `group_call` and `start_time`.
 - `POST /api/v1/repeaters/<id>/drop-call` with `{"call_id": <id>}` drops a call that `on-air` lists.
 - `POST /api/v1/repeaters/<id>/reset` resets the connection.
 - `POST /api/v1/repeaters/<id>/unlink/dynamic/<slot>/<talkgroup>` drops the dynamic talkgroup of a timeslot.
+- `GET` and `PUT /api/v1/repeaters/<id>/alert` read and set your offline alert for the repeater: `enabled`, `delay_minutes` (5, 10, 30 or 60) and `back`.
 - `GET /api/v1/repeaters/<id>/events` returns the entries of the connection log of the last 24 hours, newest first: `kind`, `address`, `detail`, `count`, `first_at` and `last_at`.

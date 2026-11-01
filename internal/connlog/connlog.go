@@ -180,3 +180,31 @@ func (l *Log) Close() {
 	l.mu.Unlock()
 	l.wg.Wait()
 }
+
+// Sentence returns the plain sentence of an event of kind with detail on
+// a device, a hotspot or a repeater, and for a problem what to change, as
+// the repeater page shows them.
+func Sentence(kind, detail, device string) string {
+	switch kind {
+	case WrongPassword:
+		return "Login refused: wrong password. The password in the " + device + " does not match."
+	case IPBlocked:
+		return "Login refused: the address is blocked. Ask an admin of the network."
+	case BadConfig:
+		return "Login refused: bad configuration packet. Check the callsign, frequencies and location in the settings of the " + device + "."
+	case PushedOff:
+		return "Pushed off by another login with the same ID. Give each device its own ID."
+	case Timeout:
+		if detail != "" {
+			return "Connection lost: no ping for " + detail + " seconds. Check the internet connection of the " + device + "."
+		}
+		return "Connection lost. Check the internet connection of the " + device + "."
+	case BadOptions:
+		return "The options of the " + device + " have a value that is not valid. Check its Options line."
+	case UnknownTalkgroup:
+		return "Talkgroup " + detail + " in the " + device + " options does not exist."
+	case OptionsBusy:
+		return "The options waited: the network was busy."
+	}
+	return ""
+}

@@ -231,12 +231,18 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterEvent{}).Error; err != nil {
 				return fmt.Errorf("delete the connection log of repeater %d: %w", r.ID, err)
 			}
+			if err := tx.Where("repeater_id = ?", r.ID).Delete(&OfflineAlert{}).Error; err != nil {
+				return fmt.Errorf("delete the offline alerts of repeater %d: %w", r.ID, err)
+			}
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterCosysop{}).Error; err != nil {
 				return fmt.Errorf("could not delete the co-sysops of repeater %d: %w", r.ID, err)
 			}
 			if err := tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(r).Error; err != nil {
 				return fmt.Errorf("could not delete repeater %d: %w", r.ID, err)
 			}
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&OfflineAlert{}).Error; err != nil {
+			return fmt.Errorf("could not delete the offline alerts: %w", err)
 		}
 		if err := tx.Where("user_id = ?", id).Delete(&RepeaterCosysop{}).Error; err != nil {
 			return fmt.Errorf("could not delete the co-sysop roles: %w", err)

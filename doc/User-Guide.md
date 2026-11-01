@@ -16,7 +16,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 - [Use Codec2 radios](guides/voice-codec.md)
 - [Set the rules of your repeater](guides/repeater-rules.md): slot lock and talkgroup lists
 - [Share a repeater with co-sysops](guides/co-sysops.md): invite other users to look after it
-- [Look after your hotspot or repeater](guides/sysop-tools.md): the connection log and the sysop actions
+- [Look after your hotspot or repeater](guides/sysop-tools.md): the connection log, the sysop actions and the offline alert email
 
 ## On the air
 

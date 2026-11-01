@@ -92,6 +92,10 @@ type Server struct {
 	// resumed for egress.
 	egressMu    sync.Mutex
 	egressWaits map[uint][]models.Packet
+	// configuring holds, for each repeater whose login config the server
+	// checks, the bursts that the hub routed to it meanwhile, which go out
+	// after the RPTACK.
+	configuring map[uint][]heldEgress
 	egressWG    sync.WaitGroup
 	stopped     atomic.Bool
 	wg          sync.WaitGroup
@@ -496,6 +500,13 @@ func (s *Server) deliver(ctx context.Context, repeaterID uint, packet models.Pac
 	}
 	ep, ok := s.connected.Load(repeaterID)
 	if !ok {
+		if held, configuring := s.configuring[repeaterID]; configuring {
+			if len(held) < maxHeldPerAddress {
+				s.configuring[repeaterID] = append(held, heldEgress{pkt: packet, at: s.clock.Now()})
+			}
+			s.egressMu.Unlock()
+			return
+		}
 		if !s.mayResumeForEgress(repeaterID) {
 			s.egressMu.Unlock()
 			return

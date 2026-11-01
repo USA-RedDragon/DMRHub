@@ -76,15 +76,15 @@ func (sc *streamCodec) touch(now time.Time) {
 	sc.mu.Unlock()
 }
 
-// idle reports whether the stream has had no burst for streamIdle, or
+// idle reports whether the stream has had no burst for StreamIdle, or
 // for an ended stream for kept.
 func (sc *streamCodec) idle(now time.Time, kept time.Duration) bool {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	if sc.over {
-		return now.Sub(sc.last) > max(streamIdle, kept)
+		return now.Sub(sc.last) > max(StreamIdle, kept)
 	}
-	return now.Sub(sc.last) > streamIdle
+	return now.Sub(sc.last) > StreamIdle
 }
 
 func (sc *streamCodec) end() {

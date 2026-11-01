@@ -84,11 +84,11 @@ func TestLateBurstsKeepTheCodecOfTheCall(t *testing.T) {
 		}
 		h.endCodecStream(lateStream)
 
-		prune(streamIdle + time.Millisecond)
+		prune(StreamIdle + time.Millisecond)
 		assert.Equal(t, uint8(transcode.CodecCodec2), observe(term), "a repeated terminator after the prune lost the codec of the call")
 		assert.Equal(t, uint8(transcode.CodecCodec2), observe(voice), "a late voice burst after the prune lost the codec of the call")
 
-		prune(streamIdle + streamClaimHold + streamClaimRecheck + 2*time.Millisecond)
+		prune(StreamIdle + streamClaimHold + streamClaimRecheck + 2*time.Millisecond)
 		_, known := h.codecStreams.Load(lateStream)
 		require.False(t, known, "the hub kept an ended stream past its claim")
 		assert.Equal(t, uint8(transcode.CodecCodec2), observe(term), "a terminator of a forgotten stream did not take the codec of its LC")

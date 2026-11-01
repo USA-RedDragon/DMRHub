@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
@@ -600,45 +601,124 @@ func (s *Server) configLater(ctx context.Context, l *link, data []byte) {
 		since = s.clock.Now()
 	}
 	data = append([]byte(nil), data...)
+	held := login && s.hub != nil && s.holdEgress(uint(id))
 	s.lookups.Add(1)
 	go func() {
 		defer s.lookups.Done()
-		repeater, ok := s.takeConfig(id, ep, d, data)
-		activate := login && s.hub != nil
-		stored := ok && s.records.MustAfter(uint(id), func() {
-			s.kvClient.StoreRepeater(ctx, uint(id), repeater)
-			s.keepOwnRecord(uint(id), repeater)
-			if activate {
-				s.hub.ActivateRepeaterSince(ctx, uint(id), since)
-			}
-		})
-		active := stored && activate
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		l.looking = false
-		st := l.m.State()
-		if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id ||
-			(st != dmrdsession.StateConfig && st != dmrdsession.StateRunning) {
-			if stored && s.byID[id] == nil {
-				s.records.Always(uint(id), func() { s.undoConfig(ctx, uint(id), ep, repeater, active) })
-			}
-			return
+		accepted := s.checkConfig(ctx, l, id, ep, d, data, login, since)
+		if held {
+			s.releaseEgress(uint(id), accepted)
 		}
-		if ok && !stored {
-			s.endStuck(ctx, l)
-			return
-		}
-		now := s.now()
-		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
-		if ok {
-			l.active = active
-			s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
-			l.active = false
-		} else {
-			s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
-		}
-		s.forget(l)
 	}()
+}
+
+// checkConfig checks the config data of the login of the repeater id at
+// ep in dialect d off the listener, as configLater does, and reports
+// whether the session of l took it.
+func (s *Server) checkConfig(ctx context.Context, l *link, id uint32, ep endpoint, d dmrd.Dialect, data []byte, login bool, since time.Time) bool {
+	repeater, ok := s.takeConfig(id, ep, d, data)
+	activate := login && s.hub != nil
+	stored := ok && s.records.MustAfter(uint(id), func() {
+		s.kvClient.StoreRepeater(ctx, uint(id), repeater)
+		s.keepOwnRecord(uint(id), repeater)
+		if activate {
+			s.hub.ActivateRepeaterSince(ctx, uint(id), since)
+		}
+	})
+	active := stored && activate
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l.looking = false
+	st := l.m.State()
+	if s.stopped.Load() || s.links[l.key] != l || l.m.ID() != id ||
+		(st != dmrdsession.StateConfig && st != dmrdsession.StateRunning) {
+		if stored && s.byID[id] == nil {
+			s.records.Always(uint(id), func() { s.undoConfig(ctx, uint(id), ep, repeater, active) })
+		}
+		return false
+	}
+	if ok && !stored {
+		s.endStuck(ctx, l)
+		return false
+	}
+	now := s.now()
+	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
+	if !ok {
+		s.run(ctx, now, l, l.m.Refuse(now, buf[:0]))
+		s.forget(l)
+		return false
+	}
+	l.active = active
+	s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
+	l.active = false
+	s.forget(l)
+	return s.byID[id] == l
+}
+
+// heldEgress is a burst that the hub routed to a repeater while the server
+// checked the config of its login, and at is when it came.
+type heldEgress struct {
+	pkt models.Packet
+	at  time.Time
+}
+
+// holdEgress makes deliver hold the bursts to the repeater id, which has no
+// session here, until releaseEgress, and reports whether it did: the hub
+// takes a repeater before the RPTACK of its config, so that the repeater
+// gets every call from then on. It holds none when a hold of id is on.
+func (s *Server) holdEgress(id uint) bool {
+	s.egressMu.Lock()
+	defer s.egressMu.Unlock()
+	if _, on := s.configuring[id]; on {
+		return false
+	}
+	if s.configuring == nil {
+		s.configuring = map[uint][]heldEgress{}
+	}
+	s.configuring[id] = nil
+	return true
+}
+
+// releaseEgress ends the hold of the bursts to the repeater id. When the
+// session took the config, it sends them to the repeater first, in order,
+// and drops those of a call whose last burst came hub.StreamIdle or more
+// ago, which has ended. Otherwise it drops them.
+func (s *Server) releaseEgress(id uint, send bool) {
+	for {
+		s.egressMu.Lock()
+		held := s.configuring[id]
+		ep, connected := s.connected.Load(id)
+		if !send || !connected || len(held) == 0 {
+			delete(s.configuring, id)
+			s.egressMu.Unlock()
+			return
+		}
+		s.configuring[id] = nil
+		s.egressMu.Unlock()
+		for _, p := range liveBursts(held, s.clock.Now()) {
+			s.send(ep, id, p)
+		}
+	}
+}
+
+// liveBursts returns the bursts of held whose stream had a burst less
+// than hub.StreamIdle before now, in order.
+func liveBursts(held []heldEgress, now time.Time) []models.Packet {
+	type stream struct {
+		slot bool
+		id   uint
+	}
+	last := make(map[stream]time.Time, 2)
+	for _, h := range held {
+		last[stream{h.pkt.Slot, h.pkt.StreamID}] = h.at
+	}
+	out := make([]models.Packet, 0, len(held))
+	for _, h := range held {
+		if now.Sub(last[stream{h.pkt.Slot, h.pkt.StreamID}]) < hub.StreamIdle {
+			out = append(out, h.pkt)
+		}
+	}
+	return out
 }
 
 // undoConfig deletes rec, the KV record that a config of the repeater id

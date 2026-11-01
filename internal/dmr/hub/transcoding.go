@@ -459,7 +459,7 @@ func (t *transcoder) stop() {
 	t.once.Do(func() { close(t.quit) })
 }
 
-// idleEnd ends the transcoder after streamIdle without a burst, unless a
+// idleEnd ends the transcoder after StreamIdle without a burst, unless a
 // burst is on its way.
 func (t *transcoder) idleEnd() bool {
 	t.mu.Lock()
@@ -502,7 +502,7 @@ func (t *transcoder) exit(ctx context.Context) {
 
 func (t *transcoder) run(ctx context.Context) {
 	defer t.exit(ctx)
-	idle := t.h.clock.NewTimer(streamIdle)
+	idle := t.h.clock.NewTimer(StreamIdle)
 	defer idle.Stop()
 	for {
 		select {
@@ -512,10 +512,10 @@ func (t *transcoder) run(ctx context.Context) {
 			if t.idleEnd() {
 				return
 			}
-			idle.Reset(streamIdle)
+			idle.Reset(StreamIdle)
 		case job := <-t.in:
 			t.convert(ctx, &job)
-			idle.Reset(streamIdle)
+			idle.Reset(StreamIdle)
 		case <-t.quit:
 			for {
 				job, ok := t.next()

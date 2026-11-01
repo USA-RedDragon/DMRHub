@@ -36,9 +36,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 )
 
-// streamIdle is the time after the last packet of a stream at which the
+// StreamIdle is the time after the last packet of a stream at which the
 // stream counts as ended, for a stream that ends with no terminator.
-const streamIdle = 2 * time.Second
+const StreamIdle = 2 * time.Second
 
 // streamClaimHold is how long a stream stays with its source after the
 // last burst from it, so that copies looping back after the terminator are
@@ -96,17 +96,17 @@ type activeStream struct {
 }
 
 // streamActive counts the stream of a routed packet as in progress until
-// streamIdle passes with no packet of it, or streamEnded.
+// StreamIdle passes with no packet of it, or streamEnded.
 func (h *Hub) streamActive(stream uint) {
 	h.streamsMu.Lock()
 	defer h.streamsMu.Unlock()
 	if s, ok := h.activeStreams[stream]; ok {
-		s.timer.Reset(streamIdle)
+		s.timer.Reset(StreamIdle)
 		return
 	}
 	h.calls.Add()
 	s := &activeStream{}
-	s.timer = h.clock.AfterFunc(streamIdle, func() { h.endStream(stream, s) })
+	s.timer = h.clock.AfterFunc(StreamIdle, func() { h.endStream(stream, s) })
 	h.activeStreams[stream] = s
 }
 

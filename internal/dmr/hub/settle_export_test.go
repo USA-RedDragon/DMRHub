@@ -54,9 +54,6 @@ func (h *Hub) KnowTalkgroups() error {
 // RepeaterCacheTTL is repeaterCacheTTL.
 const RepeaterCacheTTL = repeaterCacheTTL
 
-// StreamIdle is streamIdle.
-const StreamIdle = streamIdle
-
 // KnowPeers waits until the hub has the peers that it sends bursts to from
 // the database, so that a burst does not wait on the database.
 func (h *Hub) KnowPeers() error {

@@ -45,7 +45,7 @@ type slotStream struct {
 
 // holdsSlot reports whether the group burst packet may go to the timeslot
 // slot of the repeater. Under the first contention setting, the first call
-// holds the timeslot until its terminator, or until streamIdle passes with
+// holds the timeslot until its terminator, or until StreamIdle passes with
 // no burst of it; the other group calls to the timeslot are dropped
 // meanwhile, to their end.
 func (h *Hub) holdsSlot(repeaterID uint, slot bool, packet models.Packet) bool {
@@ -63,7 +63,7 @@ func (h *Hub) holdsSlot(repeaterID uint, slot bool, packet models.Packet) bool {
 	held, logIt := true, false
 	var holder slotHolder
 	h.slotHolders.Compute(key, func(cur slotHolder, loaded bool) (slotHolder, xsync.ComputeOp) {
-		if loaded && (cur.stream != packet.StreamID || cur.src != packet.Src) && now.Sub(cur.last) < streamIdle {
+		if loaded && (cur.stream != packet.StreamID || cur.src != packet.Src) && now.Sub(cur.last) < StreamIdle {
 			held, holder = false, cur
 			logIt = true
 			return cur, xsync.CancelOp

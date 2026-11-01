@@ -135,3 +135,37 @@ func TestAMovedEndThatFailsOnTheKVAndTheDatabaseIsSavedLater(t *testing.T) {
 		assert.False(t, c.Active, "the row stays active")
 	})
 }
+
+// TestAnUnrelatedKVFailureDoesNotSplitAMovedCall fails one KV Update of
+// another call on the new replica of a call 1 s before the call moves
+// there. The failure says nothing of the store for the moved call, which
+// stays one row.
+func TestAnUnrelatedKVFailureDoesNotSplitAMovedCall(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, shared := armedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9330)
+		s.voiceCall(1, false)
+		one.Flush()
+		other := newSender(t, two, userB, tgID, true, 9331)
+		other.repeater = repeaterA + 7
+		shared.failNext.Store(1)
+		other.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+		two.Flush()
+		time.Sleep(time.Second)
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		other.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+		var moved []uint
+		for _, c := range waitDone(t, two, database, 2) {
+			if c.StreamID == 9330 {
+				moved = append(moved, c.ID)
+			}
+		}
+		assert.Len(t, moved, 1, "rows of the moved call")
+	})
+}

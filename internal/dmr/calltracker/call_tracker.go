@@ -152,6 +152,8 @@ type CallTracker struct {
 	replica string
 	deltas  atomic.Uint64
 	kvDown  atomic.Int64
+	kvFails atomic.Int64
+	keyDown *xsync.Map[voiceKey, time.Duration]
 }
 
 type observerBox struct{ o DataObserver }
@@ -204,6 +206,7 @@ func NewCallTracker(db *gorm.DB, pubsub pubsub.PubSub, kv kv.KV, opts ...Option)
 		joined:     xsync.NewMap[chanKey, lead](),
 		held:       xsync.NewMap[uint, heldRow](),
 		owned:      xsync.NewMap[uint, heldRow](),
+		keyDown:    xsync.NewMap[voiceKey, time.Duration](),
 		homes:      xsync.NewMap[uint, homeRow](),
 		done:       make(chan struct{}),
 		metrics:    metrics.NewMetrics(),

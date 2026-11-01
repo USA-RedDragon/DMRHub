@@ -42,6 +42,7 @@ const (
 	touchEvery        = voiceHang / 2
 	partLive          = voiceHang + touchEvery + kvTimeout
 	kvBackoff         = 5 * time.Second
+	kvTrips           = 3
 )
 
 var (
@@ -295,7 +296,12 @@ func savedRecord(rec *voiceRecord, gen uint64, ok bool, saved []voiceDelta, trie
 }
 
 func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRecord) error {
-	if c.now() < time.Duration(c.kvDown.Load()) {
+	now := c.now()
+	if c.kvFails.Load() >= kvTrips && now < time.Duration(c.kvDown.Load()) {
+		c.metrics.IncrementTrackerShareFailed()
+		return errKVDown
+	}
+	if until, ok := c.keyDown.Load(key); ok && now < until {
 		c.metrics.IncrementTrackerShareFailed()
 		return errKVDown
 	}
@@ -309,14 +315,20 @@ func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRec
 		return json.Marshal(rec)
 	})
 	if errors.Is(err, errUnchanged) {
+		err = nil
+	}
+	if err == nil {
+		c.kvFails.Store(0)
+		c.keyDown.Delete(key)
 		return nil
 	}
-	if err != nil {
-		c.kvDown.Store(int64(c.now() + kvBackoff))
-		c.metrics.IncrementTrackerShareFailed()
-		return fmt.Errorf("sharing a voice call: %w", err)
+	c.keyDown.Store(key, now+kvBackoff)
+	if c.kvFails.Add(1) >= kvTrips || ctx.Err() != nil {
+		c.kvFails.Store(kvTrips)
+		c.kvDown.Store(int64(now + kvBackoff))
 	}
-	return nil
+	c.metrics.IncrementTrackerShareFailed()
+	return fmt.Errorf("sharing a voice call: %w", err)
 }
 
 func (s *shard) claimVoice(t *task, ch *channel, key voiceKey, e *row) (*row, bool) {
@@ -729,7 +741,20 @@ func touchRecord(rec *voiceRecord, me, ch string, id uint, start time.Time, seq 
 	return rec
 }
 
+func (s *shard) pruneKeyDown() {
+	now := s.t.now()
+	s.t.keyDown.Range(func(k voiceKey, until time.Duration) bool {
+		if now >= until {
+			s.t.keyDown.Delete(k)
+		}
+		return true
+	})
+}
+
 func (s *shard) touchShared(now time.Time) {
+	if s.idx == 0 {
+		s.pruneKeyDown()
+	}
 	for k, r := range s.rows {
 		key, ok := k.(voiceKey)
 		if !ok || !r.shared || r.finished || now.Sub(r.touched) < touchEvery {

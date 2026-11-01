@@ -34,11 +34,13 @@ export function setupwizardRoutes(): DMRRoute[] {
       path: '/setup',
       name: 'SetupWizard',
       component: () => import('@/views/SetupWizard.vue'),
+      meta: { bare: true },
     },
     {
       path: '/setup/user',
       name: 'SetupUser',
       component: () => import('@/views/setup/InitialUserPage.vue'),
+      meta: { bare: true },
     },
     {
       path: '/:pathMatch(.*)*',

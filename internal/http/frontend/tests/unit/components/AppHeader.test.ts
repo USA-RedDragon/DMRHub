@@ -16,11 +16,22 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
+vi.mock('@/services/API', () => ({
+  default: {
+    get: vi.fn(() => Promise.resolve({ data: 'DMRHub' })),
+    post: vi.fn(),
+    put: vi.fn(),
+  },
+}));
+
+import AppHeader from '@/components/AppHeader.vue';
 import source from '@/components/AppHeader.vue?raw';
-import { routes } from '@/router/routes';
+import { routes, setupwizardRoutes } from '@/router/routes';
 
 describe('AppHeader', () => {
   it('links only to pages that exist', () => {
@@ -73,6 +84,20 @@ describe('AppHeader', () => {
     expect(at).toHaveLength(2);
     for (const i of at) {
       expect(source.slice(i - 160, i)).toContain('v-if="adminStore.unassignedRepeaters > 0"');
+    }
+  });
+
+  it('shows only the name of the network on the pages of the setup wizard', async () => {
+    for (const path of ['/setup', '/setup/user']) {
+      const router = createRouter({ history: createMemoryHistory(), routes: setupwizardRoutes() });
+      await router.push(path);
+      await router.isReady();
+      const wrapper = mount(AppHeader, { global: { plugins: [router, createPinia()] } });
+      await flushPromises();
+      expect(wrapper.text().trim()).toBe('DMRHub');
+      expect(wrapper.findAll('nav')).toHaveLength(0);
+      expect(wrapper.find('button').exists()).toBe(false);
+      wrapper.unmount();
     }
   });
 });

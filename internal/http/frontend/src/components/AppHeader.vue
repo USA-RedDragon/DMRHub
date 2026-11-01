@@ -26,7 +26,7 @@
   >
     <div class="flex h-14 items-center px-2">
       <!-- Mobile hamburger -->
-      <Sheet v-model:open="mobileOpen">
+      <Sheet v-if="!bare" v-model:open="mobileOpen">
         <SheetTrigger as-child>
           <ShadButton variant="ghost" size="icon" class="mr-2 md:hidden">
             <Menu class="h-5 w-5" />
@@ -344,7 +344,7 @@
       </a>
 
       <!-- Desktop navigation -->
-      <nav class="hidden md:flex items-center gap-1">
+      <nav v-if="!bare" class="hidden md:flex items-center gap-1">
         <router-link
           to="/lastheard"
           class="desktop-nav-link"
@@ -606,7 +606,7 @@
       </nav>
 
       <!-- Right side: auth -->
-      <div class="ml-auto hidden md:flex items-center gap-2">
+      <div v-if="!bare" class="ml-auto hidden md:flex items-center gap-2">
         <a href="/" class="desktop-nav-link">Docs</a>
         <template v-if="!userStore.loggedIn">
           <router-link v-if="settingsStore.registration !== 'closed'" to="/register" class="desktop-nav-link">
@@ -638,7 +638,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   DropdownMenuContent,
@@ -686,6 +686,7 @@ const adminStore = useAdminStore();
 const route = useRoute();
 const router = useRouter();
 
+const bare = computed(() => route.meta.bare === true);
 const title = ref(localStorage.getItem('title') || 'DMRHub');
 const openTalkgroupsMenu = ref(false);
 const openAdminMenu = ref(false);

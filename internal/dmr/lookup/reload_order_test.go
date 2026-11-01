@@ -92,3 +92,28 @@ func TestALoadBeforeAReloadIsNotKept(t *testing.T) {
 		assert.Equal(t, int64(1), v, "a load that began before a reload kept the old answer")
 	})
 }
+
+// TestAReadAfterAReloadDoesNotTakeALoadBeforeIt changes the answer of a key
+// while the first read of it loads it, and reloads the key for the change.
+// A read after the reload must get the new answer, not the answer of the
+// load that began before the change and still runs.
+func TestAReadAfterAReloadDoesNotTakeALoadBeforeIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		src := &slowSource{release: make(chan struct{})}
+		c := lookup.New(clock.Real(), "test", time.Minute, src.load)
+		src.held.Store(true)
+		go func() { _, _ = c.Get(1) }()
+		synctest.Wait()
+		src.version.Store(1)
+		c.Reload(1)
+		got := make(chan int64, 1)
+		go func() {
+			v, _ := c.Get(1)
+			got <- v
+		}()
+		synctest.Wait()
+		close(src.release)
+		assert.Equal(t, int64(1), <-got, "a read after a reload got the answer of a load that began before it")
+	})
+}

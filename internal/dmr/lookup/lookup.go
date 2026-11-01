@@ -57,7 +57,7 @@ type Cache[K comparable, V any] struct {
 	ttl     time.Duration
 	load    func(K) (V, error)
 	entries *xsync.Map[K, *entry[V]]
-	flights *Flights[K, V]
+	flights *Flights[flightKey[K], V]
 	// marks holds, by key, the mark of the last Reload, Refresh, Put or
 	// Drop. A load keeps its answer only when no such call came after it
 	// began, since it may have read the database before the change.
@@ -142,6 +142,14 @@ func (f *Flights[K, V]) start(key K, load func() (V, error)) *flight[V] {
 	return fl
 }
 
+// flightKey is a key and the mark it had when its load began, so that a
+// read after a Reload, Refresh, Put or Drop does not take the answer of a
+// load that may have read the database before the change.
+type flightKey[K comparable] struct {
+	key  K
+	mark uint64
+}
+
 type entry[V any] struct {
 	val        V
 	at         time.Time
@@ -153,7 +161,7 @@ type entry[V any] struct {
 // for ttl on the time of c. name names the cache in logs.
 func New[K comparable, V any](c clock.Clock, name string, ttl time.Duration, load func(K) (V, error)) *Cache[K, V] {
 	c = clock.Or(c)
-	return &Cache[K, V]{clock: c, name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V](c), marks: xsync.NewMap[K, uint64]()}
+	return &Cache[K, V]{clock: c, name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[flightKey[K], V](c), marks: xsync.NewMap[K, uint64]()}
 }
 
 // Get returns the answer for key. It calls load only when it has no
@@ -169,7 +177,7 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 		return e.val, nil
 	}
 	mark := c.markOf(key)
-	return c.flights.Do(key, func() (V, error) {
+	return c.flights.Do(flightKey[K]{key: key, mark: mark}, func() (V, error) {
 		v, err := c.load(key)
 		if err == nil {
 			c.keep(key, mark, v, false)
@@ -286,10 +294,14 @@ func (c *Cache[K, V]) Prune(now time.Time) {
 		}
 		return true
 	})
+	loading := map[K]bool{}
+	c.flights.m.Range(func(k flightKey[K], _ *flight[V]) bool {
+		loading[k.key] = true
+		return true
+	})
 	c.marks.Range(func(key K, _ uint64) bool {
 		_, held := c.entries.Load(key)
-		_, loading := c.flights.m.Load(key)
-		if !held && !loading {
+		if !held && !loading[key] {
 			c.marks.Delete(key)
 		}
 		return true

@@ -55,7 +55,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(memdb.DSN()))
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}))
+	require.NoError(t, db.AutoMigrate(&models.OAuthGrant{}, &models.OAuthCode{}, &models.OAuthRefreshToken{}, &models.PersonalToken{}))
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()

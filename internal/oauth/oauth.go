@@ -464,13 +464,14 @@ func (s *Server) RemoveGrant(userID uint, id string) error {
 	return s.revokeGrant(s.db, id)
 }
 
-// RevokeUserGrants ends every grant of the user userID, so that no app
-// keeps access after a password reset.
+// RevokeUserGrants ends every grant and deletes every personal token of
+// the user userID, so that no app or script keeps access after a password
+// reset.
 func (s *Server) RevokeUserGrants(userID uint) error {
 	if err := s.db.Model(&models.OAuthGrant{}).Where("user_id = ? AND revoked_at IS NULL", userID).Update("revoked_at", s.Now()).Error; err != nil {
 		return fmt.Errorf("failed to revoke the grants of user %d: %w", userID, err)
 	}
-	return nil
+	return s.removeUserPersonal(userID)
 }
 
 func (s *Server) revokeGrant(db *gorm.DB, id string) error {

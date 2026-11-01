@@ -36,6 +36,9 @@ type OAuthGrant struct {
 	CreatedAt  time.Time
 	LastUsedAt time.Time
 	RevokedAt  *time.Time `gorm:"index"`
+	// Full is true for a personal token with full account access. It is
+	// never stored with a grant of an app.
+	Full bool `gorm:"-"`
 }
 
 // OAuthCode is an authorization code that a web app trades once, with the
@@ -65,5 +68,34 @@ type OAuthRefreshToken struct {
 
 // Allows reports whether the grant includes the scope.
 func (g OAuthGrant) Allows(scope string) bool {
-	return slices.Contains(strings.Fields(g.Scopes), scope)
+	return g.Full || slices.Contains(strings.Fields(g.Scopes), scope)
+}
+
+// PersonalToken is an API token that a user made for their own scripts.
+// It has either Scopes, the same scopes as an app, or Full account
+// access. DMRHub keeps only the SHA-256 of its secret, and Prefix, the
+// start of the secret, so that the user can tell their tokens apart.
+type PersonalToken struct {
+	ID     string `gorm:"primaryKey"`
+	UserID uint   `gorm:"index"`
+	Name   string
+	Prefix string
+	Hash   string `gorm:"size:64;uniqueIndex"`
+	Scopes string
+	Full   bool
+	// Days is how long the token works from when it was made or rotated,
+	// or 0 for no expiry.
+	Days       int
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
+}
+
+// PersonalGrantPrefix starts the grant ID of a personal token, so that it
+// never matches the grant ID of an app.
+const PersonalGrantPrefix = "pat:"
+
+// Grant returns the access of the token as the grant of a request.
+func (t PersonalToken) Grant() OAuthGrant {
+	return OAuthGrant{ID: PersonalGrantPrefix + t.ID, UserID: t.UserID, Scopes: t.Scopes, Full: t.Full, CreatedAt: t.CreatedAt}
 }

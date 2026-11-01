@@ -1171,6 +1171,7 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			require.NoError(t, database.Create(&models.OAuthGrant{ID: "grant", UserID: user.DMRId, ClientID: "app", CreatedAt: now, LastUsedAt: now}).Error)
 			require.NoError(t, database.Create(&models.OAuthRefreshToken{Hash: "refresh", GrantID: "grant", ExpiresAt: now.Add(time.Hour)}).Error)
 			require.NoError(t, database.Create(&models.OAuthCode{Hash: "code", UserID: user.DMRId, ClientID: "app", ExpiresAt: now.Add(time.Minute)}).Error)
+			require.NoError(t, database.Create(&models.PersonalToken{ID: "token", UserID: user.DMRId, Name: "script", Hash: "hash", Full: true, CreatedAt: now}).Error)
 			_, err = models.CreatePasswordReset(database, user.DMRId, now)
 			require.NoError(t, err)
 			require.NoError(t, models.SetPositionTracking(database, user.DMRId, user.DMRId, true, now.Add(-time.Minute)))
@@ -1190,7 +1191,7 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			resp, w := testutils.DeleteUser(t, router, user.DMRId, adminJar)
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 
-			for _, table := range []string{"sessions", "o_auth_grants", "o_auth_codes", "password_resets", "position_settings"} {
+			for _, table := range []string{"sessions", "o_auth_grants", "o_auth_codes", "personal_tokens", "password_resets", "position_settings"} {
 				assert.Zero(t, count("SELECT COUNT(*) FROM "+table+" WHERE user_id = ?", user.DMRId), table)
 			}
 			assert.Zero(t, count("SELECT COUNT(*) FROM o_auth_refresh_tokens WHERE grant_id = ?", "grant"))

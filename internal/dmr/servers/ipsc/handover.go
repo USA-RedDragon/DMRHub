@@ -113,6 +113,9 @@ type handoverReport struct {
 	Hangs   []handedHang    `json:"hangs,omitempty"`
 	// Lost holds the packets, in msgp, that the peer did not get.
 	Lost [][]byte `json:"lost"`
+	// IngressReleased tells that the bursts that the old replica took
+	// from the peer went out before it sent the full report.
+	IngressReleased bool `json:"ingressReleased,omitempty"`
 }
 
 // sentPacket is a packet that the pacer sent to a peer.
@@ -203,7 +206,9 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	s.hub.StopFor(models.RepeaterTypeIPSC, id)
 	_, lost, report.Hangs = s.pacer.handOver(peer, since)
 	report.Lost = marshalPackets(report.Lost, append(lost, s.takeHeld(peer)...))
+	s.stopIngress(peer)
 	report.Ingress = s.ingressOf(peer)
+	report.IngressReleased = s.hub.ReleaseIngress(models.RepeaterTypeIPSC, id, servers.DrainLimit(s.cfg))
 	b, err := json.Marshal(report)
 	if err != nil {
 		slog.Error("Error encoding an IPSC handover", "peerID", id, "error", err)
@@ -211,6 +216,32 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	}
 	s.hub.HandOver(models.RepeaterTypeIPSC, id, b)
 	slog.Info("IPSC peer moved to another replica", "peerID", id, "calls", len(report.Calls))
+}
+
+func (s *IPSCServer) decided(peer uint32, route bool) {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	held := s.deciding[peer]
+	delete(s.deciding, peer)
+	if m := s.moving[peer]; m != nil && !m.early && !m.done {
+		m.ingress = append(held, m.ingress...)
+		return
+	}
+	if !route {
+		return
+	}
+	for _, h := range held {
+		s.routeIngress(h.ctx, h.op, h.data, h.at)
+	}
+}
+
+func (s *IPSCServer) stopIngress(peer uint32) {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	if s.left == nil {
+		s.left = map[uint32]struct{}{}
+	}
+	s.left[peer] = struct{}{}
 }
 
 // takeHeld returns the packets that the server holds for the peer until
@@ -234,8 +265,13 @@ func (s *IPSCServer) holdIngress(ctx context.Context, op byte, data []byte, at t
 		return false
 	}
 	peer := binary.BigEndian.Uint32(data[1:5])
-	s.movingMu.Lock()
-	defer s.movingMu.Unlock()
+	if _, gone := s.left[peer]; gone {
+		return true
+	}
+	if held, ok := s.deciding[peer]; ok {
+		s.deciding[peer] = append(held, heldIngress{ctx: ctx, op: op, data: slices.Clone(data), at: at})
+		return true
+	}
 	m := s.moving[peer]
 	if m == nil || m.early || m.done {
 		return false
@@ -279,8 +315,9 @@ func unmarshalPackets(raws [][]byte) []models.Packet {
 	return out
 }
 
-// awaitHandover holds the packets to the peer id, which moves here, until
-// the reports of the replica that served it come or handoverWait passes.
+// awaitHandover holds the packets to the peer id, which moves here, and
+// the bursts from it, until the reports of the replica that served it come
+// or handoverWait passes.
 // since is when the packet of the peer that moved it here came. Call it
 // before the claim of the peer.
 func (s *IPSCServer) awaitHandover(ctx context.Context, id uint32, since time.Time) {
@@ -305,6 +342,7 @@ func (s *IPSCServer) awaitHandover(ctx context.Context, id uint32, since time.Ti
 	}
 	s.moving[id] = newMoving()
 	s.movingMu.Unlock()
+	release := s.hub.HoldIngress(ctx, models.RepeaterTypeIPSC, uint(id), handoverWait, servers.DrainLimit(s.cfg))
 	expired, stop := s.hub.HandOverWait(ctx, uint(id), handoverWait, servers.DrainLimit(s.cfg))
 	go func() {
 		defer func() { _ = sub.Close() }()
@@ -331,7 +369,11 @@ func (s *IPSCServer) awaitHandover(ctx context.Context, id uint32, since time.Ti
 					report = &r
 				}
 			}
+			if report != nil && !report.IngressReleased {
+				slog.Warn("The bursts of an IPSC peer that moved here go out without waiting for those of the replica that served it", "peerID", id)
+			}
 			s.finishHandover(id, since, report)
+			release()
 			return
 		}
 	}()

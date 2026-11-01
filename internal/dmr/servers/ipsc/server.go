@@ -104,6 +104,8 @@ type IPSCServer struct {
 
 	movingMu   sync.Mutex
 	moving     map[uint32]*moving
+	left       map[uint32]struct{}
+	deciding   map[uint32][]heldIngress
 	stopClaims func()
 	// stopIPLists stops the calls of dropRefused.
 	stopIPLists func()
@@ -573,6 +575,15 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 	p := &peerState{lastClaim: s.clock.Now()}
 	s.peers[o.ID] = p
 	s.updateRepeaterDBTimes(p, uint(o.ID), true)
+	s.movingMu.Lock()
+	delete(s.left, o.ID)
+	if s.hub != nil {
+		if s.deciding == nil {
+			s.deciding = map[uint32][]heldIngress{}
+		}
+		s.deciding[o.ID] = nil
+	}
+	s.movingMu.Unlock()
 	if s.hub == nil {
 		return
 	}
@@ -593,6 +604,7 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 		if s.hub.OwnerLeaving(ctx, id) {
 			s.awaitHandover(ctx, peer, since)
 		}
+		s.decided(peer, true)
 		s.hub.ActivateRepeaterSince(ctx, id, since)
 		if reply != nil {
 			s.sendJoined(j, to, reply, true)
@@ -604,6 +616,7 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 	if reply != nil {
 		delete(s.joining, to)
 	}
+	s.decided(peer, false)
 	if out, ok := s.m.Drop(peer, nil); ok {
 		s.apply(ctx, out)
 	}
@@ -672,6 +685,8 @@ func (s *IPSCServer) peerBursts(ctx context.Context) func(byte, []byte, *net.UDP
 // peer sent and which came at at, and starts the call hang that its calls
 // give the peer.
 func (s *IPSCServer) fromPeer(ctx context.Context, packetType byte, data []byte, at time.Time) {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
 	if s.holdIngress(ctx, packetType, data, at) {
 		return
 	}

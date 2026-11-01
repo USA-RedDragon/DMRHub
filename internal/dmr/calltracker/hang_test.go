@@ -233,3 +233,28 @@ func TestANewCallOnAReusedStreamIDHasItsOwnRow(t *testing.T) {
 		waitDone(t, ct, database, 3)
 	})
 }
+
+// TestALateEntryOnAReusedStreamIDAfterALongGapHasItsOwnRow ends a call on
+// the hang and starts a new call 14.6 s later on the same stream ID, late,
+// without a voice header and with sequence numbers from zero, where a
+// stream that went on through the gap would be. The new call has its own
+// row: a gap in the sequence numbers of a stream is not taken as a call
+// that went on.
+func TestALateEntryOnAReusedStreamIDAfterALongGapHasItsOwnRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+		s := newSender(t, ct, userA, tgID, true, 7099)
+		s.voiceCall(2, false)
+		ct.Flush()
+		time.Sleep(14640 * time.Millisecond)
+		s.seq = 0
+		for v := uint(1); v <= 5; v++ {
+			s.send(dmrconst.FrameVoice, v, layer2.RawBurst{})
+		}
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+		waitDone(t, ct, database, 2)
+	})
+}

@@ -53,13 +53,21 @@ type cachedRepeater struct {
 
 type repeaterCache struct {
 	entries *xsync.Map[uint, cachedRepeater]
-	flights *lookup.Flights[uint, *models.Repeater]
+	flights *lookup.Flights[repeaterLoad, *models.Repeater]
 	mu      sync.Mutex
 	gen     uint64
 }
 
+// repeaterLoad is a repeater and the generation of the cache when its load
+// began, so that a read after a reload or a drop does not take the answer
+// of a load that may have read the database before the change.
+type repeaterLoad struct {
+	id  uint
+	gen uint64
+}
+
 func newRepeaterCache(c clock.Clock) *repeaterCache {
-	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater](), flights: lookup.NewFlights[uint, *models.Repeater](c)}
+	return &repeaterCache{entries: xsync.NewMap[uint, cachedRepeater](), flights: lookup.NewFlights[repeaterLoad, *models.Repeater](c)}
 }
 
 func (c *repeaterCache) generation() uint64 {
@@ -128,7 +136,7 @@ func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 	if wait {
 		do = h.repeaters.flights.DoWait
 	}
-	rpt, err := do(id, load)
+	rpt, err := do(repeaterLoad{id: id, gen: gen}, load)
 	if err != nil {
 		return nil, fmt.Errorf("looking up repeater %d: %w", id, err)
 	}

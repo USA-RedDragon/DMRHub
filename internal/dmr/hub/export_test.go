@@ -45,6 +45,17 @@ func (h *Hub) ForgetCachedRepeater(id uint) {
 	h.repeaters.drop(id)
 }
 
+// RoutingRepeater returns the repeater id as the delivery path reads it.
+func (h *Hub) RoutingRepeater(id uint) (*models.Repeater, error) {
+	return h.routingRepeater(id)
+}
+
+// ReloadCachedRepeater reads the repeater id again into the cache, as
+// after a change of it.
+func (h *Hub) ReloadCachedRepeater(id uint) {
+	h.reloadRepeater(id)
+}
+
 // AdmitStream reports whether the hub takes packet in, waiting for the
 // answer of admitStream.
 func (h *Hub) AdmitStream(ctx context.Context, packet models.Packet, sourceName string) bool {

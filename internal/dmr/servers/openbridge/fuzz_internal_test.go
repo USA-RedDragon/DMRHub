@@ -83,7 +83,11 @@ func startFuzzServer(t *testing.T) fuzzServer {
 }
 
 // deliver runs the packet handler of the server on data, as the read loop
-// does for a datagram, and returns when the handler does.
+// does for a datagram, and returns when the handler does. The read loop
+// runs the handler on the ingress lane of the packet, which only orders
+// the packets of a lane; the fuzz target sends one packet at a time, so
+// calling the handler directly adds no wait and no order that the read
+// loop does not have.
 func (s fuzzServer) deliver(t *testing.T, data []byte) {
 	t.Helper()
 	from, ok := s.Server.Server.LocalAddr().(*net.UDPAddr)

@@ -169,29 +169,49 @@ func MakeDB(config *configPkg.Config) (*gorm.DB, error) {
 }
 
 // MakeDBContext connects to the database of a config and migrates it. It
-// returns the error of ctx once ctx ends, and closes the database when it
-// returns an error.
+// returns the error of ctx when ctx ends before the migration starts, and
+// closes the database when it returns an error. The end of ctx does not
+// stop a migration that started; see Connection.Migrate.
 func MakeDBContext(ctx context.Context, config *configPkg.Config) (*gorm.DB, error) {
+	c, err := Connect(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	return c.Migrate(ctx)
+}
+
+// Connection is a database whose migration lock is held, so that it can
+// migrate.
+type Connection struct {
+	db     *gorm.DB
+	pool   *sql.DB
+	config *configPkg.Config
+	unlock func() error
+}
+
+// Connect connects to the database of a config and takes the lock that
+// lets one replica migrate at a time. It returns the error of ctx once ctx
+// ends, and closes the database when it returns an error.
+func Connect(ctx context.Context, config *configPkg.Config) (*Connection, error) {
 	db, err := gorm.Open(getDialect(config), &gorm.Config{Logger: gormLogger(), DisableAutomaticPing: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	if err := prepareDB(ctx, db, config); err != nil {
-		if sqlDB, derr := db.DB(); derr == nil {
-			_ = sqlDB.Close()
-		}
+	c, err := connect(ctx, db, config)
+	if err != nil {
+		closeDB(db)
 		return nil, err
 	}
-	return db, nil
+	return c, nil
 }
 
-func prepareDB(ctx context.Context, db *gorm.DB, config *configPkg.Config) error {
+func connect(ctx context.Context, db *gorm.DB, config *configPkg.Config) (*Connection, error) {
 	pool, ok := db.ConnPool.(*sql.DB)
 	if !ok {
-		return fmt.Errorf("failed to open database: unexpected connection pool %T", db.ConnPool)
+		return nil, fmt.Errorf("failed to open database: unexpected connection pool %T", db.ConnPool)
 	}
 	if err := pool.PingContext(ctx); err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	if sqliteWritesInTurn(config) {
 		writers := newSQLiteWriters(pool)
@@ -200,26 +220,40 @@ func prepareDB(ctx context.Context, db *gorm.DB, config *configPkg.Config) error
 
 	if config.Metrics.OTLPEndpoint != "" {
 		if err := db.Use(otelgorm.NewPlugin()); err != nil {
-			return fmt.Errorf("failed to trace database: %w", err)
+			return nil, fmt.Errorf("failed to trace database: %w", err)
 		}
 	}
 
 	unlock, err := lockMigrations(ctx, db, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = migrate(db.WithContext(ctx), config)
-	if unlockErr := unlock(); err == nil {
+	return &Connection{db: db, pool: pool, config: config, unlock: unlock}, nil
+}
+
+// Migrate migrates the database, releases the migration lock and returns
+// the database. The end of ctx does not stop it, since a migration that
+// stops halfway can leave a database that no version of DMRHub reads. It
+// closes the database when it returns an error.
+func (c *Connection) Migrate(ctx context.Context) (*gorm.DB, error) {
+	err := migrate(c.db.WithContext(context.WithoutCancel(ctx)), c.config)
+	if unlockErr := c.unlock(); err == nil {
 		err = unlockErr
 	}
 	if err != nil {
-		return err
+		closeDB(c.db)
+		return nil, err
 	}
+	c.pool.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	c.pool.SetMaxIdleConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	c.pool.SetConnMaxIdleTime(consts.MaxIdleTime)
+	return c.db, nil
+}
 
-	pool.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
-	pool.SetMaxIdleConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
-	pool.SetConnMaxIdleTime(consts.MaxIdleTime)
-	return nil
+func closeDB(db *gorm.DB) {
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
 }
 
 const (
@@ -288,7 +322,7 @@ func lockMigrations(ctx context.Context, db *gorm.DB, config *configPkg.Config) 
 		return nil, fmt.Errorf("failed to take the migration lock: %w", err)
 	}
 	return func() error {
-		err := unlock(ctx, conn)
+		err := unlock(context.WithoutCancel(ctx), conn)
 		closeErr := conn.Close()
 		if err != nil {
 			return fmt.Errorf("failed to release the migration lock: %w", err)

@@ -53,3 +53,6 @@ func Migrate(db *gorm.DB, config *configPkg.Config) error {
 
 // LockWait is how long one GET_LOCK call of the MySQL migration lock waits.
 const LockWait = mysqlLockWait * time.Second
+
+// MigrationLockName is migrationLockName.
+const MigrationLockName = migrationLockName

@@ -21,6 +21,7 @@ package db_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -80,4 +81,44 @@ func TestMakeDBGivesUpWhenItsContextEnds(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMigrateRunsOnAfterItsContextEnds connects to each database, ends the
+// context, then migrates. The migration runs to its end, and the
+// migration lock is free after it.
+func TestMigrateRunsOnAfterItsContextEnds(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{sqliteFile(), testutils.MySQLBackend(), testutils.PostgresRedisBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			require.NoError(t, err)
+			be.Setup(t, &cfg)
+			ctx, cancel := context.WithCancel(t.Context())
+			c, err := db.Connect(ctx, &cfg)
+			require.NoError(t, err)
+			cancel()
+			gdb, err := c.Migrate(ctx)
+			require.NoError(t, err, "the end of the context stopped the migration")
+			t.Cleanup(func() { closeDB(t, gdb) })
+			require.NoError(t, db.Migrate(gdb.WithContext(t.Context()), &cfg), "the migration did not end")
+
+			var held int64
+			switch cfg.Database.Driver {
+			case config.DatabaseDriverMySQL:
+				require.NoError(t, gdb.Raw("SELECT 1 - IS_FREE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))", db.MigrationLockName).Scan(&held).Error)
+			case config.DatabaseDriverPostgres:
+				require.NoError(t, gdb.Raw("SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())").Scan(&held).Error)
+			case config.DatabaseDriverSQLite:
+			}
+			assert.Zero(t, held, "the migration lock is still held")
+		})
+	}
+}
+
+func sqliteFile() testutils.Backend {
+	return testutils.Backend{Name: "sqlite", Setup: func(t *testing.T, cfg *config.Config) {
+		t.Helper()
+		cfg.Database.Database = filepath.Join(t.TempDir(), "DMRHub.db")
+	}}
 }

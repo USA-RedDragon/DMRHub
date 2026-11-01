@@ -163,43 +163,63 @@ func sqliteWritesInTurn(config *configPkg.Config) bool {
 	return slices.Contains(params, "_txlock=immediate") || slices.Contains(params, "cache=shared")
 }
 
-func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
-	db, err = gorm.Open(getDialect(config), &gorm.Config{Logger: gormLogger()})
+// MakeDB connects to the database of a config and migrates it.
+func MakeDB(config *configPkg.Config) (*gorm.DB, error) {
+	return MakeDBContext(context.Background(), config)
+}
+
+// MakeDBContext connects to the database of a config and migrates it. It
+// returns the error of ctx once ctx ends, and closes the database when it
+// returns an error.
+func MakeDBContext(ctx context.Context, config *configPkg.Config) (*gorm.DB, error) {
+	db, err := gorm.Open(getDialect(config), &gorm.Config{Logger: gormLogger(), DisableAutomaticPing: true})
 	if err != nil {
-		return db, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	if pool, ok := db.ConnPool.(*sql.DB); ok && sqliteWritesInTurn(config) {
+	if err := prepareDB(ctx, db, config); err != nil {
+		if sqlDB, derr := db.DB(); derr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, err
+	}
+	return db, nil
+}
+
+func prepareDB(ctx context.Context, db *gorm.DB, config *configPkg.Config) error {
+	pool, ok := db.ConnPool.(*sql.DB)
+	if !ok {
+		return fmt.Errorf("failed to open database: unexpected connection pool %T", db.ConnPool)
+	}
+	if err := pool.PingContext(ctx); err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	if sqliteWritesInTurn(config) {
 		writers := newSQLiteWriters(pool)
 		db.ConnPool, db.Statement.ConnPool = writers, writers
 	}
 
 	if config.Metrics.OTLPEndpoint != "" {
-		if err = db.Use(otelgorm.NewPlugin()); err != nil {
-			return db, fmt.Errorf("failed to trace database: %w", err)
+		if err := db.Use(otelgorm.NewPlugin()); err != nil {
+			return fmt.Errorf("failed to trace database: %w", err)
 		}
 	}
 
-	unlock, err := lockMigrations(db, config)
+	unlock, err := lockMigrations(ctx, db, config)
 	if err != nil {
-		return db, err
+		return err
 	}
-	err = migrate(db, config)
+	err = migrate(db.WithContext(ctx), config)
 	if unlockErr := unlock(); err == nil {
 		err = unlockErr
 	}
 	if err != nil {
-		return db, err
+		return err
 	}
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		return db, fmt.Errorf("failed to open database: %w", err)
-	}
-	sqlDB.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
-	sqlDB.SetMaxIdleConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
-	sqlDB.SetConnMaxIdleTime(consts.MaxIdleTime)
-
-	return
+	pool.SetMaxOpenConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	pool.SetMaxIdleConns(runtime.GOMAXPROCS(0) * consts.ConnsPerCPU)
+	pool.SetConnMaxIdleTime(consts.MaxIdleTime)
+	return nil
 }
 
 const (
@@ -213,7 +233,7 @@ var errMigrationLock = errors.New("the database refused the migration lock")
 // lockMigrations takes a lock that the replicas share on the database, so
 // that one replica migrates at a time. It holds a connection of its own for
 // the lock, since both locks belong to the session that took them.
-func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error) {
+func lockMigrations(ctx context.Context, db *gorm.DB, config *configPkg.Config) (func() error, error) {
 	var lock, unlock func(ctx context.Context, conn *sql.Conn) error
 	switch config.Database.Driver {
 	case configPkg.DatabaseDriverPostgres:
@@ -259,7 +279,6 @@ func lockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	ctx := context.Background()
 	conn, err := sqlDB.Conn(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to take a connection for the migration lock: %w", err)

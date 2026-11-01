@@ -20,6 +20,7 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	configPkg "github.com/USA-RedDragon/DMRHub/internal/config"
@@ -37,7 +38,7 @@ func SetGormLogWriter(w logger.Writer) func() {
 
 // LockMigrations is lockMigrations.
 func LockMigrations(db *gorm.DB, config *configPkg.Config) (func() error, error) {
-	return lockMigrations(db, config)
+	return lockMigrations(context.Background(), db, config)
 }
 
 // Dialect is getDialect.

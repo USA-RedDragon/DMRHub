@@ -430,3 +430,26 @@ func TestAHubStartsWithTheRulesInMemory(t *testing.T) {
 		assert.True(t, fresh.carried(t, burst{from: ruleSender, src: listedUser, dst: 1}))
 	})
 }
+
+func TestARepeaterChangeWatcherSeesTheSubscriptionsOfADynamicLink(t *testing.T) {
+	t.Parallel()
+	forRuleBackends(t, func(t *testing.T, e *rulesEnv) {
+		seedTalkgroup(t, e.db, 5, "TG5")
+		knowTalkgroups(t, e.hub)
+		seen := make(chan bool, 8)
+		t.Cleanup(e.hub.OnRepeaterChange(func(id uint) {
+			if id == ruleReceiver {
+				seen <- e.hub.Subscribes(ruleReceiver, 5)
+			}
+		}))
+		e.hub.SwitchDynamicTalkgroup(context.Background(), models.Packet{Repeater: ruleReceiver, Dst: 5, Slot: true, GroupCall: true})
+		got := testutils.Collect(seen, failAfter, func([]bool) bool { return true })
+		require.Len(t, got, 1, "the link sent no change notice")
+		assert.True(t, got[0], "the watcher ran before the repeater took the linked talkgroup")
+
+		e.hub.UnlinkDynamicTalkgroup(context.Background(), ruleReceiver, true)
+		got = testutils.Collect(seen, failAfter, func([]bool) bool { return true })
+		require.Len(t, got, 1, "the unlink sent no change notice")
+		assert.False(t, got[0], "the watcher ran before the repeater dropped the unlinked talkgroup")
+	})
+}

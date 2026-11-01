@@ -175,6 +175,13 @@ func (h *Hub) reloadRepeater(id uint) {
 // replicas to reload theirs and its subscriptions.
 func (h *Hub) repeaterChanged(id uint) {
 	h.reloadRepeater(id)
+	h.announceRepeaterChange(id)
+}
+
+// announceRepeaterChange calls the repeater change watchers and tells the
+// other replicas. Call it after the subscriptions of the repeater follow
+// the change.
+func (h *Hub) announceRepeaterChange(id uint) {
 	h.watchers.call(repeaterChangedTopic, id)
 	if h.pubsub == nil {
 		return

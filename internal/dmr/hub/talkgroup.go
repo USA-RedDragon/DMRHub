@@ -106,8 +106,9 @@ func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool) {
 		if err != nil {
 			slog.Error("Error deleting dynamic talkgroup association", "association", assocName, "error", err)
 		}
-		h.repeaterChanged(repeater.ID)
+		h.reloadRepeater(repeater.ID)
 		h.unsubscribeTalkgroup(repeater.ID, oldTGID, ts)
+		h.announceRepeaterChange(repeater.ID)
 	}
 }
 
@@ -160,8 +161,9 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 		return
 	}
 	h.noteDynamicUse(repeaterID, slot, talkgroupID)
-	h.repeaterChanged(repeater.ID)
+	h.reloadRepeater(repeater.ID)
 	h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
+	h.announceRepeaterChange(repeater.ID)
 }
 
 // loadTalkgroups reads the IDs of all talkgroups from the database. When

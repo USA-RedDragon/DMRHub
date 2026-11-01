@@ -341,8 +341,14 @@ func (s *shard) claimVoice(t *task, ch *channel, key voiceKey, e *row) (*row, bo
 	var verdict claimVerdict
 	var id uint
 	var start time.Time
+	term := isVoiceTerminator(p)
 	if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
-		rec, verdict = claimRecord(rec, me, name, p.Seq, isVoiceHeader(p), t.at)
+		next, v := claimRecord(rec, me, name, p.Seq, isVoiceHeader(p), t.at)
+		if v == claimNew && term {
+			verdict = claimDrop
+			return nil
+		}
+		rec, verdict = next, v
 		id, start = rec.ID, rec.Start
 		return rec
 	}); err != nil {

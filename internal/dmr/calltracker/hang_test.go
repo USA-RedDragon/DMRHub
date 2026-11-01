@@ -22,6 +22,7 @@ package calltracker_test
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestACallThatStopsPastItsHangStaysOneRow stops a call without a
@@ -256,5 +258,34 @@ func TestALateEntryOnAReusedStreamIDAfterALongGapHasItsOwnRow(t *testing.T) {
 		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 
 		waitDone(t, ct, database, 2)
+	})
+}
+
+// TestLoneTerminatorsMakeNoRow sends the 10 Terminators with LC that an
+// AnyTone sends after an SMS, with no voice before them. A terminator alone
+// is no call longer than a key-up, so the tracker writes no row for it, and
+// does not make and delete one for each.
+func TestLoneTerminatorsMakeNoRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ct, database, _ := newTracker(t)
+		var writes atomic.Int64
+		count := func(tx *gorm.DB) {
+			if tx.Statement.Table == "calls" {
+				writes.Add(1)
+			}
+		}
+		require.NoError(t, database.Callback().Create().After("gorm:create").Register("test:count_create", count))
+		require.NoError(t, database.Callback().Delete().After("gorm:delete").Register("test:count_delete", count))
+
+		s := newSender(t, ct, userA, userB, false, 7064)
+		for range 10 {
+			s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		}
+		ct.Flush()
+		time.Sleep(calltracker.VoiceHang + time.Second)
+		ct.Flush()
+		assert.Zero(t, writes.Load(), "row writes for lone terminators")
+		assert.Empty(t, rows(t, database))
 	})
 }

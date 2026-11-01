@@ -93,6 +93,9 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 			s.resume(key, r)
 		}
 	}
+	if !ok && isVoiceTerminator(p) {
+		return
+	}
 	if !ok {
 		r = s.open(t, ch, key, models.CallKindVoice, "", voiceHang)
 		if r == nil {
@@ -111,6 +114,10 @@ func (s *shard) voice(t *task, ch *channel, h *layer2.Hint, encrypted bool) {
 	if p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		s.finish(r, t.at)
 	}
+}
+
+func isVoiceTerminator(p *models.Packet) bool {
+	return p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm
 }
 
 func isVoiceHeader(p *models.Packet) bool {

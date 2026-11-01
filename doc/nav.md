@@ -18,7 +18,7 @@ This page lists the pages of the docs site in reading order, by section. The sit
   - [Run or join a net](guides/nets.md)
   - [See who is on the air](guides/last-heard.md)
   - [Use Codec2 radios](guides/voice-codec.md)
-  - [Use the Browser Radio](guides/browser-radio.md)
+  - [Use DMRHub Radio](guides/browser-radio.md)
   - [Manage your account](guides/account.md)
 - Admin guides
   - [Set up a server](setup.md)

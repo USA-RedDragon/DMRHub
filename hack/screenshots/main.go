@@ -83,7 +83,7 @@ func main() {
 	flag.StringVar(&o.root, "root", ".", "root of the repository, for the check phase")
 	flag.StringVar(&o.only, "only", "", "take only the shots whose names contain this text")
 	flag.StringVar(&o.ext, "ext", "", "directory of the external programs that hack/external/setup.sh builds")
-	flag.StringVar(&o.radio, "radio", "", "directory of a built dmr-web, for the Browser Radio shots")
+	flag.StringVar(&o.radio, "radio", "", "directory of a built dmr-web, for the DMRHub Radio shots")
 	flag.Parse()
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

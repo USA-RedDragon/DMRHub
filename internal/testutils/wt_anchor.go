@@ -41,8 +41,8 @@ type slotAnchor struct {
 	ahead        map[uint8]bool
 }
 
-// anchors are the anchors of a browser hotspot on its two slots, as the
-// Browser Radio keeps them.
+// anchors are the anchors of a browser hotspot on its two slots, as
+// DMRHub Radio keeps them.
 type anchors struct {
 	slots [2]*slotAnchor
 }

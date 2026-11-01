@@ -121,6 +121,9 @@ type Server struct {
 	// resumeKey signs the tokens that let a browser hotspot move to another
 	// replica.
 	resumeKey []byte
+	// anchorsOf asks the browser hotspot of a WebTransport session for its
+	// anchors, and reports false when it does not answer.
+	anchorsOf func(wtAddr) ([]wtAnchor, bool)
 
 	ownMu      sync.Mutex
 	ownRecords map[uint]models.Repeater
@@ -358,6 +361,7 @@ func (s *Server) Start(ctx context.Context) error {
 		s.wt.onResume.Store(&resume)
 		clk := s.clock
 		s.wt.udp.clock.Store(&clk)
+		s.anchorsOf = s.wt.askAnchors
 		moved := s.resendMoved
 		s.wt.onPathMoved.Store(&moved)
 		ipList := s.webTransportIPList

@@ -70,7 +70,7 @@ const (
 // with the dmrgo session Peer over WebTransport datagrams, and when its
 // replica drains, it opens a session to another replica, resumes its
 // login there with the token of the drain notice and its anchors, and
-// moves to it without a gap.
+// moves to it without a gap. It answers the anchor question of a replica.
 type WebTransportPeer struct {
 	ID uint32
 
@@ -160,7 +160,7 @@ func (p *WebTransportPeer) dial(ctx context.Context) (*webtransport.Session, err
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // a test client of a test hub
 		QUICConfig:      &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true},
 	}
-	rsp, sess, err := d.Dial(ctx, "https://"+p.addr+wtcert.Path, nil)
+	rsp, sess, err := d.Dial(ctx, "https://"+p.addr+wtcert.Path+"?anchor=1", nil)
 	if err != nil {
 		_ = d.Close()
 		return nil, fmt.Errorf("dialing WebTransport: %w", err)
@@ -191,9 +191,21 @@ func (p *WebTransportPeer) Connect(addr string) error {
 	return nil
 }
 
-// serve reads the datagrams and the drain notices of sess.
+// serve reads the datagrams and the drain notices of sess, and answers
+// the anchor questions on it.
 func (p *WebTransportPeer) serve(sess *webtransport.Session) {
-	p.wg.Add(2)
+	p.wg.Add(3)
+	go func() {
+		defer p.wg.Done()
+		for {
+			str, err := sess.AcceptStream(sess.Context())
+			if err != nil {
+				return
+			}
+			p.wg.Add(1)
+			go p.answer(str)
+		}
+	}()
 	go func() {
 		defer p.wg.Done()
 		for {
@@ -276,6 +288,27 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 		}
 		time.Sleep(moveRetry)
 	}
+}
+
+// answer answers the question of a replica on str: an anchor question
+// with the anchors of the peer.
+func (p *WebTransportPeer) answer(str *webtransport.Stream) {
+	defer p.wg.Done()
+	defer func() { _ = str.Close() }()
+	line, _ := bufio.NewReader(io.LimitReader(str, 1024)).ReadBytes('\n')
+	var q struct {
+		Ask string `json:"ask"`
+	}
+	if json.Unmarshal(line, &q) != nil || q.Ask != "anchor" {
+		return
+	}
+	p.mu.Lock()
+	b, err := json.Marshal(map[string][]Anchor{"anchor": p.anchors.list()})
+	p.mu.Unlock()
+	if err != nil {
+		return
+	}
+	_, _ = str.Write(append(b, '\n'))
 }
 
 func (p *WebTransportPeer) resume(ctx context.Context, sess *webtransport.Session, token string) bool {

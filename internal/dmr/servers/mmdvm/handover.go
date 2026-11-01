@@ -374,11 +374,13 @@ func (s *Server) wait(d time.Duration) bool {
 }
 
 // resendMoved sends again to the browser hotspot at the WebTransport
-// session addr what left for it from hub.MoveSlack before at, wtHandoverGap
-// apart, when the load balancer moved the QUIC connection of the session
-// to another path then. The load balancer drops what this replica sends
-// on the old path until it learns of the new one, as at a move of the
-// hotspot, and the hotspot drops what it got already.
+// session addr, wtHandoverGap apart, what the load balancer may have lost
+// when it moved the QUIC connection of the session to another path at at:
+// it drops what this replica sends on the old path until it learns of the
+// new one, as at a move of the hotspot. A hotspot that answers the anchor
+// question gets every packet that left after its anchors; any other gets
+// those that left from hub.MoveSlack before at, and drops what it got
+// already.
 func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 	ep := endpoint{transport: webTransportName, addr: addr}
 	var id uint
@@ -392,12 +394,18 @@ func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 	if !found {
 		return
 	}
-	pkts := s.leftSince(id, at.Add(-ruleFor(ep).slack))
-	if len(pkts) == 0 {
-		return
-	}
-	slog.Debug("Sending again what the load balancer may have lost at a path move", "repeaterID", id, "session", addr, "packets", len(pkts))
 	go func() {
+		var pkts []models.Packet
+		anchors, ok := s.askAnchorsOf(addr)
+		if ok {
+			pkts = afterAnchors(s.leftSince(id, time.Time{}), anchors)
+		} else {
+			pkts = s.leftSince(id, at.Add(-ruleFor(ep).slack))
+		}
+		if len(pkts) == 0 {
+			return
+		}
+		slog.Debug("Sending again what the load balancer may have lost at a path move", "repeaterID", id, "session", addr, "packets", len(pkts), "anchored", ok)
 		for i, p := range pkts {
 			if i > 0 && !s.wait(wtHandoverGap) {
 				return
@@ -412,6 +420,15 @@ func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 			}
 		}
 	}()
+}
+
+// askAnchorsOf asks the browser hotspot at addr for its anchors with
+// anchorsOf, and reports false without it.
+func (s *Server) askAnchorsOf(addr wtAddr) ([]wtAnchor, bool) {
+	if s.anchorsOf == nil {
+		return nil, false
+	}
+	return s.anchorsOf(addr)
 }
 
 // leftSince returns the packets to the repeater id that left at or after

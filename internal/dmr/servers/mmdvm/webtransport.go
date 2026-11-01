@@ -75,6 +75,9 @@ type webTransport struct {
 	ln       *quic.EarlyListener
 	srv      *webtransport.Server
 	sessions *xsync.Map[string, *webtransport.Session]
+	// anchored holds the QUIC connection of each session whose browser
+	// answers anchor questions, the version 1 of them.
+	anchored *xsync.Map[string, *quic.Conn]
 	in       chan wtDatagram
 	done     chan struct{}
 	once     sync.Once
@@ -126,6 +129,7 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []by
 		udp:      udp,
 		tr:       tr,
 		sessions: xsync.NewMap[string, *webtransport.Session](),
+		anchored: xsync.NewMap[string, *quic.Conn](),
 		in:       make(chan wtDatagram, channelBufferSize),
 		done:     make(chan struct{}),
 	}
@@ -143,6 +147,9 @@ func listenWebTransport(bind string, port int, certs *wtcert.Source, secret []by
 		Handler:    mux,
 		TLSConfig:  http3.ConfigureTLSConfig(&tls.Config{GetCertificate: certs.GetCertificate, MinVersion: tls.VersionTLS13}),
 		QUICConfig: &quic.Config{EnableDatagrams: true, EnableStreamResetPartialDelivery: true, InitialPacketSize: 1200},
+	}
+	h3.ConnContext = func(ctx context.Context, c *quic.Conn) context.Context {
+		return context.WithValue(ctx, quicConnKey{}, c)
 	}
 	webtransport.ConfigureHTTP3Server(h3)
 	t.srv = &webtransport.Server{H3: h3, CheckOrigin: func(*http.Request) bool { return true }}
@@ -231,6 +238,9 @@ func (t *webTransport) accept(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(id[:])
 	addr := wtAddr(hex.EncodeToString(id[:]))
 	t.sessions.Store(string(addr), sess)
+	if c, ok := r.Context().Value(quicConnKey{}).(*quic.Conn); ok && r.URL.Query().Get(anchorParam) == anchorVersion {
+		t.anchored.Store(string(addr), c)
+	}
 	slog.Debug("WebTransport session opened", "session", addr, "remoteAddr", r.RemoteAddr)
 	go t.read(sess.Context(), addr, sess)    //nolint:contextcheck // the request context ends when this handler returns, the session lives on
 	go t.control(sess.Context(), addr, sess) //nolint:contextcheck // the request context ends when this handler returns, the session lives on
@@ -346,6 +356,7 @@ func (t *webTransport) notify(ctx context.Context, addr wtAddr, msg any) error {
 }
 
 func (t *webTransport) read(ctx context.Context, addr wtAddr, sess *webtransport.Session) {
+	defer t.anchored.Delete(string(addr))
 	defer t.sessions.Delete(string(addr))
 	for {
 		b, err := sess.ReceiveDatagram(ctx)

@@ -19,7 +19,44 @@
 
 package mmdvm
 
-import "github.com/USA-RedDragon/DMRHub/internal/db/models"
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/quic-go/quic-go"
+)
+
+const (
+	// anchorParam is the query parameter of the URL of a session whose
+	// browser answers the anchor question, with the version that it
+	// answers, anchorVersion.
+	anchorParam   = "anchor"
+	anchorVersion = "1"
+	// maxAckDelay is the max_ack_delay of QUIC that the browsers keep
+	// (RFC 9000, section 18.2).
+	maxAckDelay = 25 * time.Millisecond
+)
+
+// quicConnKey is the key of the QUIC connection of a request in its
+// context.
+type quicConnKey struct{}
+
+// wtAsk is the question that a replica asks a browser hotspot on a stream
+// that it opens: Ask "anchor" asks for its anchors.
+type wtAsk struct {
+	Ask string `json:"ask"`
+}
+
+// wtAnchors is the answer of a browser hotspot to an anchor question.
+type wtAnchors struct {
+	Anchor []wtAnchor `json:"anchor"`
+}
 
 // wtAnchor is the anchor of a browser hotspot on one slot: the last burst
 // of the slot that it took with no burst of its stream missing before it.
@@ -64,4 +101,56 @@ func afterAnchors(sent []models.Packet, anchors []wtAnchor) []models.Packet {
 		}
 	}
 	return out
+}
+
+// anchorWait returns how long a replica waits for the anchors of a browser
+// on the QUIC connection c: three probe timeouts of the connection (RFC
+// 9002, section 6.2.1), so that a lost packet of the question or the
+// answer is sent again in time, but at least hub.MoveSlack, the time
+// window that the replica sends again without anchors, and at most
+// controlWait.
+func anchorWait(c *quic.Conn) time.Duration {
+	st := c.ConnectionStats()
+	pto := st.SmoothedRTT + max(4*st.MeanDeviation, time.Millisecond) + maxAckDelay
+	return min(controlWait, max(hub.MoveSlack, 3*pto))
+}
+
+// askAnchors asks the browser hotspot of the session at addr for its
+// anchors, and reports false when its URL did not say that it answers, or
+// it did not answer in anchorWait.
+func (t *webTransport) askAnchors(addr wtAddr) ([]wtAnchor, bool) {
+	c, ok := t.anchored.Load(string(addr))
+	if !ok {
+		return nil, false
+	}
+	sess, ok := t.sessions.Load(string(addr))
+	if !ok {
+		return nil, false
+	}
+	wait := anchorWait(c)
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	str, err := sess.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, false
+	}
+	defer str.CancelRead(0)
+	_ = str.SetDeadline(time.Now().Add(wait))
+	b, err := json.Marshal(wtAsk{Ask: anchorParam})
+	if err != nil {
+		return nil, false
+	}
+	if _, err := str.Write(append(b, '\n')); err != nil {
+		return nil, false
+	}
+	_ = str.Close()
+	line, err := bufio.NewReader(io.LimitReader(str, maxControl)).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, false
+	}
+	var a wtAnchors
+	if json.Unmarshal(line, &a) != nil || a.Anchor == nil {
+		return nil, false
+	}
+	return a.Anchor, true
 }

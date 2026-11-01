@@ -182,3 +182,58 @@ func TestAnAnchoredHandoverFromAnOlderReplica(t *testing.T) {
 		assert.Equal(t, oneCall(20)[11:], burstsOf(old.lost([]wtAnchor{{Slot: 1, Stream: 7, Seq: 10}})))
 	})
 }
+
+// TestAPathMoveSendsAgainWhatCameAfterTheAnchor moves the QUIC path of a
+// browser hotspot that answers the anchor question, after the load
+// balancer lost more than hub.MoveSlack of bursts. The replica must send
+// again, in order, each burst after the anchor, and none before.
+func TestAPathMoveSendsAgainWhatCameAfterTheAnchor(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		var asked []wtAddr
+		s.anchorsOf = func(a wtAddr) ([]wtAnchor, bool) {
+			asked = append(asked, a)
+			return []wtAnchor{{Slot: 1, Stream: 7, Seq: 2}}, true
+		}
+		sendBrowserBursts(s, oneCall(30), 0, time.Sleep)
+		s.resendMoved(wtAddr("a"), time.Now())
+		synctest.Wait()
+		var got []browserBurst
+		for len(s.outgoingChan) > 0 {
+			p, ok := models.UnpackPacket((<-s.outgoingChan).raw.Data)
+			require.True(t, ok)
+			got = append(got, browserBurst{slot2: p.Slot, stream: p.StreamID, seq: p.Seq})
+			time.Sleep(wtHandoverGap)
+			synctest.Wait()
+		}
+		assert.Equal(t, []wtAddr{"a"}, asked)
+		assert.Equal(t, oneCall(30)[3:], got)
+	})
+}
+
+// TestAPathMoveWithoutAnAnswerSendsAgainTheTimeWindow moves the QUIC path
+// of a browser hotspot that does not answer the anchor question, as an
+// older browser. The replica must send again what left in hub.MoveSlack
+// before the move, as before anchors.
+func TestAPathMoveWithoutAnAnswerSendsAgainTheTimeWindow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		s.anchorsOf = func(wtAddr) ([]wtAnchor, bool) { return nil, false }
+		sendBrowserBursts(s, oneCall(30), 0, time.Sleep)
+		s.resendMoved(wtAddr("a"), time.Now())
+		synctest.Wait()
+		var got []browserBurst
+		for len(s.outgoingChan) > 0 {
+			p, ok := models.UnpackPacket((<-s.outgoingChan).raw.Data)
+			require.True(t, ok)
+			got = append(got, browserBurst{slot2: p.Slot, stream: p.StreamID, seq: p.Seq})
+			time.Sleep(wtHandoverGap)
+			synctest.Wait()
+		}
+		assert.Equal(t, oneCall(30)[22:], got)
+	})
+}

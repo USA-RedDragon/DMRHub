@@ -11,7 +11,7 @@ Throughout this document, `<siteurl>` is a placeholder for the URL of your DMRHu
 - Each WebTransport session is one MMDVM peer: one hotspot, with one repeater ID. To connect two hotspots, open two sessions.
 - Each WebTransport datagram is one packet of the MMDVM network protocol, the same octets that an MMDVM hotspot sends in one UDP packet. There is no other framing.
 - DMRHub also accepts the HBRP dialect in the datagrams, as it does on the UDP port. HBRP is a different protocol from the MMDVM network protocol. This page covers only the MMDVM network protocol, which the Browser Radio speaks.
-- Streams of the session carry a small number of JSON control messages. They exist only for the move to another replica when a replica of DMRHub stops. See [Control streams](#control-streams).
+- Streams of the session carry a small number of JSON control messages. They exist only for the move to another replica when a replica of DMRHub stops, and for what a load balancer lost. See [Control streams](#control-streams).
 
 ## Turn it on
 
@@ -97,11 +97,12 @@ const hashes = info.certificate_hashes.map((h) => ({
   algorithm: h.algorithm,
   value: Uint8Array.from(atob(h.value), (c) => c.charCodeAt(0)),
 }));
-const wt = new WebTransport(`https://<host>:${info.port}${info.path}`, hashes.length ? { serverCertificateHashes: hashes } : undefined);
+const wt = new WebTransport(`https://<host>:${info.port}${info.path}?anchor=1`, hashes.length ? { serverCertificateHashes: hashes } : undefined);
 await wt.ready;
 ```
 
 - The listener accepts TLS 1.3 only. QUIC uses TLS 1.3, so a browser always does.
+- Add `?anchor=1` to the URL when the client keeps [anchors](#anchors) and answers the [anchor question](#anchor-question). `1` is the version of the anchor messages that the client speaks. DMRHub asks the anchor question only on a session with this parameter. A DMRHub before anchors ignores the parameter.
 - When `allowed-origins` is empty, DMRHub does not check the `Origin` of the request, and any page can open a session. Then the login with the hotspot password is the only access check.
 - When `allowed-origins` has entries, DMRHub opens a session only for a request whose `Origin` is one of them, and answers `403` to any other request, also to one without an `Origin`. Write each entry as `scheme://host` or `scheme://host:port`, with `http` or `https` and no path. DMRHub compares the scheme and the host without regard to case, and treats port 443 of `https` and port 80 of `http` as no port. DMRHub refuses a config with an entry that is not such an origin.
 - DMRHub answers the request to open a session with:
@@ -205,6 +206,22 @@ DMRHub opens a unidirectional stream to the client, writes one line, and closes 
 
 Read every unidirectional stream that DMRHub opens, and ignore a message that you do not know.
 
+### Anchor question
+
+On a session whose URL has `?anchor=1`, DMRHub opens a bidirectional stream to the client, writes one line, and closes its side of the stream:
+
+```json
+{"ask":"anchor"}
+```
+
+The client answers with one line, the list of its [anchors](#anchors) at that time, and closes the stream:
+
+```json
+{"anchor":[{"slot":1,"stream":8201,"seq":2},{"slot":2,"stream":9001,"seq":40}]}
+```
+
+DMRHub waits for the answer for three QUIC probe timeouts of the connection (RFC 9002, section 6.2.1), at least 500 ms and at most 5 seconds. When no answer comes in that time, it does what it does for a client without anchors. Answer a question that you do not know with nothing, and close the stream.
+
 ## When a replica stops
 
 A DMRHub with several replicas behind a load balancer moves browser hotspots off a replica that stops, without a new login and without a gap in a call. This happens only when other replicas run. A DMRHub that stops while no other replica serves sends `MSTCL` and closes each session with the reason `server stopping`; then the client connects again later. When other replicas serve, the stopping replica sends no `MSTCL`.
@@ -224,7 +241,7 @@ The new replica sends the hotspot the bursts that the old replica sent to it aft
 - While the move goes on, keep the `DMRD` packets of the old session aside. Drop them when the new session resumes. Use them when the move fails.
 - Drop a `DMRD` packet that came before. The Browser Radio and the Go test client remember each burst for 2 seconds by its slot, its stream ID and its sequence number.
 
-A load balancer can also move the QUIC connection of a session to another path while the replica stays up. Then DMRHub sends again the bursts of the last 500 ms, 2 ms apart, on the same session. The same check for copies drops them.
+A load balancer can also move the QUIC connection of a session to another path while the replica stays up, such as when it ends its session to that replica and the next packet of the client reaches another one, which passes the connection on. The load balancer drops what the replica sent on the old path. When the replica learns of the new path, it asks the [anchor question](#anchor-question) and sends again, 2 ms apart on the same session, each burst after the anchors. Without an answer, it sends again the bursts of the last 500 ms. The same check for copies drops the bursts that came already.
 
 DMRHub keeps the last 64 bursts to each hotspot, and all of the drain timeout plus 500 ms while its replica drains (25.5 seconds by default). It cannot send again a burst that it no longer keeps.
 
@@ -237,6 +254,7 @@ DMRHub keeps the last 64 bursts to each hotspot, and all of the drain timeout pl
 | Wait for a control stream              | 5 seconds to open, read or write a control stream                        |
 | Drain notices                          | Sent within 2 seconds                                                    |
 | Resume token                           | Good for 1 minute and for one takeover                                   |
+| Wait for an anchor answer              | 3 QUIC probe timeouts of the connection, at least 500 ms and at most 5 seconds |
 | Bursts kept to send again              | The last 64, and all of the drain timeout plus 500 ms while the replica drains |
 | Size of a QUIC packet at the start     | 1200 octets                                                              |
 
@@ -247,5 +265,5 @@ DMRHub keeps the last 64 bursts to each hotspot, and all of the drain timeout pl
 - Log in with the hotspot password, not with an OAuth token.
 - Read the unidirectional streams, and move to another replica on a drain notice.
 - Drop copies of `DMRD` packets.
-- Keep [anchors](#anchors), and send them in each resume request.
+- Keep [anchors](#anchors), send them in each resume request, open the session with `?anchor=1`, and answer the [anchor question](#anchor-question).
 - When the session closes without a drain notice, connect again with a growing wait. The Browser Radio waits 1 second, then twice as long each time, up to 30 seconds.

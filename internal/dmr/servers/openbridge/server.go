@@ -102,10 +102,13 @@ type Server struct {
 	refusals ipfilter.RefusalLog
 
 	hubHandle *hub.ServerHandle
-	ingress   *streamorder.Queue[ingressLane]
-	wg        sync.WaitGroup
-	done      chan struct{}
-	stopOnce  sync.Once
+	// hubDrained is closed once consumeHubPackets sent every packet of
+	// the hub.
+	hubDrained chan struct{}
+	ingress    *streamorder.Queue[ingressLane]
+	wg         sync.WaitGroup
+	done       chan struct{}
+	stopOnce   sync.Once
 
 	bridgesMu sync.Mutex
 	bridges   map[uint]*bridge
@@ -317,6 +320,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		Tracer:        otel.Tracer("dmr-openbridge-server"),
 		serverID:      config.DMR.OpenBridge.ServerID,
 		done:          make(chan struct{}),
+		hubDrained:    make(chan struct{}),
 		epoch:         hub.Clock().Now(),
 		quenched:      xsync.NewMap[quench, time.Time](),
 		versions:      xsync.NewMap[uint, peerVersion](),
@@ -409,12 +413,15 @@ func (s *Server) Stop(ctx context.Context) error {
 		if servers.IsGracefulHandoff(ctx) {
 			s.handOver(ctx)
 		}
+		s.hub.UnregisterServer("openbridge")
+		if s.hubHandle != nil {
+			<-s.hubDrained
+		}
 		close(s.done)
 		if s.unwatch != nil {
 			s.unwatch()
 		}
 		s.releaseLease(ctx)
-		s.hub.UnregisterServer("openbridge")
 
 		if err := s.Server.Close(); err != nil {
 			slog.Error("Error closing OpenBridge UDP socket", "error", err)
@@ -425,24 +432,19 @@ func (s *Server) Stop(ctx context.Context) error {
 	return nil
 }
 
-// consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.
+// consumeHubPackets reads routed packets from the hub and sends them to
+// OpenBridge peers, until the hub closes the channel at the stop of the
+// server, so that a stop sends what the hub queued before it.
 func (s *Server) consumeHubPackets(ctx context.Context) {
 	defer s.wg.Done()
-	for {
-		select {
-		case <-s.done:
-			return
-		case rp, ok := <-s.hubHandle.Packets:
-			if !ok {
-				return
-			}
-			if rp.Barrier != nil {
-				s.settleEgress(ctx, rp.Barrier)
-				continue
-			}
-			// rp.RepeaterID is the peer ID for peer-role servers
-			s.sendPacketToPeer(rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec
+	defer close(s.hubDrained)
+	for rp := range s.hubHandle.Packets {
+		if rp.Barrier != nil {
+			s.settleEgress(ctx, rp.Barrier)
+			continue
 		}
+		// rp.RepeaterID is the peer ID for peer-role servers
+		s.sendPacketToPeer(rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec
 	}
 }
 

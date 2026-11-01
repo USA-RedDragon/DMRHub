@@ -69,3 +69,32 @@ func TestTrackVoiceCodec(t *testing.T) {
 		}, 5*time.Second, 20*time.Millisecond, "a target after the end of the call is saved")
 	})
 }
+
+// TestTrackCodec2ModeAfterTheEnd records the Codec2 mode of a voice call
+// that the hub found only after the call ended, as a starved hub worker
+// does after the tracker took the terminator. The row already has the
+// codec, so the mode must still reach it.
+func TestTrackCodec2ModeAfterTheEnd(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, _, database := newReplicas(t)
+
+		s := newSender(t, one, userA, tgID, true, 7102)
+		head := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+		one.VoiceCodec(t.Context(), head, models.CodecCodec2, 0)
+		burst := s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+		c := waitDone(t, one, database, 1)[0]
+		assert.Equal(t, models.CodecCodec2, c.Codec)
+		assert.Zero(t, c.Codec2Mode)
+
+		one.VoiceCodec(t.Context(), burst, models.CodecCodec2, 2400)
+		bubble.Eventually(t, func() bool {
+			one.Flush()
+			var got models.Call
+			return database.First(&got, c.ID).Error == nil && got.Codec2Mode == 2400
+		}, 5*time.Second, 20*time.Millisecond, "the Codec2 mode found after the end of the call is saved")
+	})
+}

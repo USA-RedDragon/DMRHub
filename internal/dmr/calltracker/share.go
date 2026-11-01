@@ -500,8 +500,11 @@ func mergeVoice(tmpl *models.Call, base *models.Call, start time.Time, parts []v
 		if d.SubKind != "" {
 			out.SubKind = d.SubKind
 		}
-		if out.Codec == "" && d.Codec != "" {
+		switch {
+		case out.Codec == "" && d.Codec != "":
 			out.Codec, out.Codec2Mode = d.Codec, d.Mode
+		case out.Codec == d.Codec && out.Codec2Mode == 0:
+			out.Codec2Mode = d.Mode
 		}
 		for _, u := range d.Undeliverable {
 			if !slices.Contains(out.Undeliverable, u) {

@@ -368,9 +368,12 @@ func ofCall(got []models.Packet, src, dst uint) []models.Packet {
 
 func sendPackets(t *testing.T, send func(models.Packet) error, pkts []models.Packet) {
 	t.Helper()
-	for _, p := range pkts {
+	voice := slices.ContainsFunc(pkts, isVoice)
+	for i, p := range pkts {
+		if voice && i > 0 && i == len(pkts)-1 {
+			time.Sleep(callHoldTime)
+		}
 		require.NoError(t, send(p))
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 

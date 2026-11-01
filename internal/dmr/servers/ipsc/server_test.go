@@ -661,14 +661,14 @@ func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 			t.Error("the registration waited on the database")
 		}
 	}
+	s, srv := newHubServer(t, dbConn)
+	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
 	if err := dbConn.Callback().Query().Before("gorm:query").Register("test:slow_query", slow); err != nil {
 		t.Fatalf("callback: %v", err)
 	}
 	if err := dbConn.Callback().Update().Before("gorm:update").Register("test:slow_update", slow); err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	s, srv := newHubServer(t, dbConn)
-	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
 	client, addr := dialServer(t, srv)
 
 	before := time.Now()

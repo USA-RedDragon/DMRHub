@@ -331,4 +331,9 @@ describe('setup menu of the setup wizard', () => {
     expect(out).not.toHaveProperty('redis');
     expect(allPayload(original, original)).toEqual(original);
   });
+
+  it('marks no database setting read at start while the setup wizard can change it', () => {
+    expect(sourceChips({ ...plain, start_only: true }).map((c) => c.kind)).toEqual(['default']);
+    expect(sourceChips(boot).map((c) => c.kind)).toEqual(['default', 'boot']);
+  });
 });

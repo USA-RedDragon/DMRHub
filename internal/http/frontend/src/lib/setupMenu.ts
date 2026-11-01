@@ -1102,7 +1102,7 @@ export const sourceChips = (s: Setting | undefined): Chip[] => {
     default:
       out.push({ kind: 'default', text: 'Default' });
   }
-  if (s.start_only && !s.locked && s.source !== 'generated' && s.source !== 'wizard') {
+  if (s.start_only && !s.editable && !s.locked && s.source !== 'generated' && s.source !== 'wizard') {
     out.push({ kind: 'boot', text: 'Read at start' });
   }
   if (s.disagree) {

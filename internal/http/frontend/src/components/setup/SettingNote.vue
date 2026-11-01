@@ -92,7 +92,7 @@ export default defineComponent({
           line += ` A value saved in Setup, ${formatValue(s.saved)}, comes back if the deployment stops setting it.`;
         }
         out.push(line);
-      } else if (s.start_only) {
+      } else if (s.start_only && !s.editable) {
         out.push('DMRHub reads this at start. Set it in the config file or the environment of the deployment, then restart DMRHub.');
       } else if (s.source === 'setup' && s.default !== undefined && !this.menu) {
         out.push(`Saved in Setup. Set it back to the default, ${formatValue(s.default)}, to follow the default.`);

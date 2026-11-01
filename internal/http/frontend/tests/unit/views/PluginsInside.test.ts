@@ -44,7 +44,6 @@ import API from '@/services/API';
 import PluginsPage from '@/views/admin/PluginsPage.vue';
 import PluginPage from '@/views/admin/PluginPage.vue';
 import UploadPluginPage from '@/views/admin/UploadPluginPage.vue';
-import PluginsSettings from '@/components/setup/DMR/PluginsSettings.vue';
 import { formatIDs, parseIDs, runsLabel, status, stopNote, type AdminPlugin } from '@/services/plugins';
 import { shortTime } from '@/lib/codec';
 
@@ -182,28 +181,6 @@ describe('PluginsPage with the states of plugins inside DMRHub', () => {
     expect(wrapper.find('[data-test="plugin-6"]').text()).toContain('Off');
     expect(wrapper.text()).not.toContain('Not running');
     wrapper.unmount();
-  });
-});
-
-describe('PluginsSettings with plugins inside DMRHub', () => {
-  it('runs the plugins inside DMRHub unless turned off', async () => {
-    const on = mount(PluginsSettings, { props: { modelValue: {} } });
-    expect(on.text()).toContain('Plugins answer the calls to their IDs. Give them their IDs on the Plugins page under Admin.');
-    expect(on.text()).toContain('Run plugins inside DMRHub');
-    expect(on.find('[data-test="in-process-on"]').text()).toBe(
-      'The parrot, the location server and the plugins you upload run as part of DMRHub, with nothing else to install.',
-    );
-    expect(on.find('[data-test="in-process-off"]').exists()).toBe(false);
-    expect(on.text()).toContain('Accept plugins that run as their own programs');
-    expect(on.find('[data-test="plugins-fields"]').exists()).toBe(false);
-    await on.find('#plugins-in-process').trigger('click');
-    expect(on.emitted('update:modelValue')!.at(-1)).toEqual([{ 'in-process': false }]);
-
-    const off = mount(PluginsSettings, { props: { modelValue: { 'in-process': false } } });
-    expect(off.find('[data-test="in-process-off"]').text()).toBe(
-      'Turn this off only if you run every plugin as its own program, such as dmrhub-parrot and dmrhub-locator.',
-    );
-    expect(off.text()).not.toMatch(/in-process|cert-file|dmr\.plugins/);
   });
 });
 

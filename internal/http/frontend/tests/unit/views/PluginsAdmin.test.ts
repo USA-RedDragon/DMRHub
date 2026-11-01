@@ -43,7 +43,6 @@ vi.mock('vue-router', () => ({
 import API from '@/services/API';
 import PluginsPage from '@/views/admin/PluginsPage.vue';
 import PluginPage from '@/views/admin/PluginPage.vue';
-import PluginsSettings from '@/components/setup/DMR/PluginsSettings.vue';
 import { formatRanges, formatSpan, status, type AdminPlugin } from '@/services/plugins';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock; put: Mock; delete: Mock };
@@ -210,22 +209,5 @@ describe('PluginPage', () => {
     await flushPromises();
     expect(wrapper.find('[data-test="plugin-missing"]').exists()).toBe(true);
     wrapper.unmount();
-  });
-});
-
-describe('PluginsSettings', () => {
-  it('shows the fields only when plugins are accepted, with no config keys', async () => {
-    const off = mount(PluginsSettings, { props: { modelValue: {} } });
-    expect(off.find('[data-test="plugins-fields"]').exists()).toBe(false);
-    expect(off.text()).toContain('Accept plugins');
-    const on = mount(PluginsSettings, { props: { modelValue: { enabled: true } } });
-    expect((on.find('#plugins-port').element as HTMLInputElement).value).toBe('3006');
-    expect(on.find('[data-test="plugins-own-cert"]').exists()).toBe(true);
-    expect(on.text()).not.toMatch(/cert-file|key-file|dmr\.plugins/);
-    await on.find('#plugins-port').setValue('3007');
-    expect(on.emitted('update:modelValue')!.at(-1)).toEqual([{ enabled: true, port: 3007 }]);
-    const withErrors = mount(PluginsSettings, { props: { modelValue: { enabled: true }, errors: { port: 'bad port', 'key-file': 'set both' } } });
-    expect(withErrors.text()).toContain('bad port');
-    expect(withErrors.text()).toContain('set both');
   });
 });

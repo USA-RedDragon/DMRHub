@@ -102,12 +102,6 @@ export const setupStateOf = (data: unknown): SetupState => {
   };
 };
 
-/** Whether Setup cannot change the setting at path. */
-export const settingLocked = (state: SetupState | null | undefined, path: string): boolean => {
-  const s = state?.settings[path];
-  return s !== undefined && !s.editable;
-};
-
 /** The short name of a replica, as Setup shows it. */
 export const replicaName = (id: string): string => id.slice(0, 4);
 

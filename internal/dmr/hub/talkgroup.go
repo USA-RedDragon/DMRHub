@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -114,11 +115,11 @@ func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool) {
 
 // switchDynamicTalkgroup updates the dynamic talkgroup assignment for a repeater
 // when it transmits a group call on a talkgroup it isn't currently linked to.
-func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) {
+func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet, at time.Time) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.switchDynamicTalkgroup")
 	defer span.End()
 
-	h.LinkDynamicTalkgroup(ctx, packet.Repeater, packet.Dst, packet.Slot)
+	h.linkDynamic(ctx, packet.Repeater, packet.Dst, packet.Slot, at)
 }
 
 // LinkDynamicTalkgroup links the talkgroup as the dynamic talkgroup of a
@@ -126,6 +127,12 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet) 
 // timeslot does, and restarts its timeout. slot true is TS2. It links
 // nothing while dynamic links are off.
 func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool) {
+	h.linkDynamic(ctx, repeaterID, talkgroupID, slot, h.clock.Now())
+}
+
+// linkDynamic is LinkDynamicTalkgroup for a call that the hub routed at at,
+// which restarts the timeout from at.
+func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool, at time.Time) {
 	if h.routingConfig().DisableDynamicLinks {
 		slog.Debug("Not linking a dynamic talkgroup, since dynamic links are off", "repeaterID", repeaterID, "talkgroupID", talkgroupID)
 		return
@@ -141,7 +148,7 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
 	}
 	if currentDynTGID != nil && *currentDynTGID == talkgroupID {
-		h.noteDynamicUse(repeaterID, slot, talkgroupID)
+		h.noteDynamicUse(repeaterID, slot, talkgroupID, at)
 		return
 	}
 	if !h.mayLink(repeaterID, talkgroupID) {
@@ -160,7 +167,7 @@ func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgro
 		slog.Error("Error saving repeater", "error", err)
 		return
 	}
-	h.noteDynamicUse(repeaterID, slot, talkgroupID)
+	h.noteDynamicUse(repeaterID, slot, talkgroupID, at)
 	h.reloadRepeater(repeater.ID)
 	h.subscribeTalkgroup(ctx, repeater.ID, talkgroupID)
 	h.announceRepeaterChange(repeater.ID)

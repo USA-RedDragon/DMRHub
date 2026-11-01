@@ -36,7 +36,7 @@ func (h *Hub) HoldSource(packet models.Packet, sourceName string) (release func(
 }
 
 func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) {
-	h.switchDynamicTalkgroup(ctx, packet)
+	h.switchDynamicTalkgroup(ctx, packet, h.clock.Now())
 }
 
 // ForgetCachedRepeater drops the cached repeater, so that the next delivery

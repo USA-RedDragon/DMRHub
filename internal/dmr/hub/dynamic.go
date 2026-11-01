@@ -57,9 +57,9 @@ func (h *Hub) routingConfig() config.Routing {
 }
 
 // noteDynamicUse restarts the timeout of the dynamic talkgroup tg of a
-// timeslot.
-func (h *Hub) noteDynamicUse(repeater uint, slot bool, tg uint) {
-	h.dynamicUses.Store(repeaterSlot{repeater: repeater, slot: slot}, dynamicUse{tg: tg, at: h.clock.Now()})
+// timeslot from the time at.
+func (h *Hub) noteDynamicUse(repeater uint, slot bool, tg uint, at time.Time) {
+	h.dynamicUses.Store(repeaterSlot{repeater: repeater, slot: slot}, dynamicUse{tg: tg, at: at})
 }
 
 func dynamicSweepEvery(timeout time.Duration) time.Duration {

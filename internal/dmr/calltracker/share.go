@@ -31,6 +31,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -687,20 +688,40 @@ func (s *shard) touchShared(now time.Time) {
 }
 
 func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool) {
-	var base models.Call
-	if err := s.t.db.Unscoped().Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
-		slog.Error("CallTracker: error reading a call to merge into", "error", err)
-		return models.Call{}, false
-	}
-	out := mergeVoice(call, &base, base.StartTime, parts)
-	res := s.t.db.Model(&models.Call{}).Where("id = ? AND duration <= ?", out.ID, out.Duration).
-		Select("*").Omit("id", "created_at", "deleted_at", clause.Associations).Updates(&out)
-	if res.Error != nil {
-		slog.Error("CallTracker: error saving call", "error", res.Error)
-		return out, false
-	}
-	if res.RowsAffected == 0 {
-		slog.Warn("CallTracker: a newer save of the call is already stored", "id", out.ID)
+	var out models.Call
+	err := s.t.db.Transaction(func(tx *gorm.DB) error {
+		var base models.Call
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
+			return fmt.Errorf("reading the call: %w", err)
+		}
+		ids := make([]string, 0, len(parts))
+		for _, d := range parts {
+			ids = append(ids, d.ID)
+		}
+		var stored []string
+		if err := tx.Model(&models.CallPart{}).Where("call_id = ? AND part_id IN ?", call.ID, ids).Pluck("part_id", &stored).Error; err != nil {
+			return fmt.Errorf("reading the parts of the call: %w", err)
+		}
+		fresh := slices.DeleteFunc(slices.Clone(parts), func(d voiceDelta) bool { return slices.Contains(stored, d.ID) })
+		out = mergeVoice(call, &base, base.StartTime, fresh)
+		if len(fresh) == 0 {
+			return nil
+		}
+		if err := tx.Model(&models.Call{}).Where("id = ?", out.ID).
+			Select("*").Omit("id", "created_at", "deleted_at", clause.Associations).Updates(&out).Error; err != nil {
+			return fmt.Errorf("saving the call: %w", err)
+		}
+		added := make([]models.CallPart, 0, len(fresh))
+		for _, d := range fresh {
+			added = append(added, models.CallPart{CallID: call.ID, PartID: d.ID})
+		}
+		if err := tx.Create(&added).Error; err != nil {
+			return fmt.Errorf("storing the parts of the call: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", err)
 		return out, false
 	}
 	return out, true

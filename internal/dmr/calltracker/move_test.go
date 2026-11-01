@@ -20,6 +20,7 @@
 package calltracker_test
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
@@ -168,6 +170,21 @@ func TestAMovedCallEndsOnTheOldReplicaLast(t *testing.T) {
 	})
 }
 
+type holdKV struct {
+	kv.KV
+	armed atomic.Bool
+	held  chan struct{}
+	gate  chan struct{}
+}
+
+func (h *holdKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	if h.armed.CompareAndSwap(true, false) {
+		close(h.held)
+		<-h.gate
+	}
+	return h.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
+}
+
 // TestAMovedCallThatEndsWhileTheOldReplicaSavesIsFolded ends a moved call
 // on the new replica while the old replica is between its save of the row
 // and the end of that save in the KV store. The old replica saves the row
@@ -175,29 +192,32 @@ func TestAMovedCallEndsOnTheOldReplicaLast(t *testing.T) {
 func TestAMovedCallThatEndsWhileTheOldReplicaSavesIsFolded(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		one, two, database, sub := newSharedReplicas(t)
-		var armed atomic.Bool
-		gate := make(chan struct{})
-		held := make(chan struct{})
-		require.NoError(t, database.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:hold", func(db *gorm.DB) {
-			if db.Statement.Table == "calls" && armed.CompareAndSwap(true, false) {
-				close(held)
-				<-gate
+		database, ps, kvStore := trackerDeps(t)
+		sub := watchCalls(t, ps)
+		shared := &holdKV{KV: kvStore, held: make(chan struct{}), gate: make(chan struct{})}
+		one := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(one.Stop)
+		two := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(two.Stop)
+		var arm atomic.Bool
+		require.NoError(t, database.Callback().Update().After("gorm:update").Register("test:arm", func(db *gorm.DB) {
+			if isMergedSave(db) && arm.CompareAndSwap(true, false) {
+				shared.armed.Store(true)
 			}
 		}))
 
 		s := newSender(t, one, userA, tgID, true, 7072)
 		s.voiceCall(2, false)
 		one.Flush()
-		armed.Store(true)
-		<-held
+		arm.Store(true)
+		<-shared.held
 
 		s.ct = two
 		sendSuperframe(s)
 		time.Sleep(150 * time.Millisecond)
 		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 		two.Flush()
-		gate <- struct{}{}
+		shared.gate <- struct{}{}
 
 		c := waitDone(t, one, database, 1)[0]
 		assert.Zero(t, c.Loss)

@@ -97,5 +97,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_login_failures_migration_202610272100(db, cfg),
 		add_invites_migration_202610272110(db, cfg),
 		add_message_accesses_migration_202610272120(db, cfg),
+		add_call_parts_migration_202610311900(db, cfg),
 	}
 }

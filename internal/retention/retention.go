@@ -231,6 +231,9 @@ func purgeTransmissions(db *gorm.DB, cut time.Time) (int, error) {
 			if err := tx.Model(&models.Message{}).Where("transmission_id IN ?", ids).UpdateColumn("transmission_id", gorm.Expr("NULL")).Error; err != nil {
 				return fmt.Errorf("cannot unlink messages: %w", err)
 			}
+			if err := tx.Where("call_id IN ?", ids).Delete(&models.CallPart{}).Error; err != nil {
+				return fmt.Errorf("cannot delete the parts of old transmissions: %w", err)
+			}
 			if err := tx.Unscoped().Where("id IN ?", ids).Delete(&models.Call{}).Error; err != nil {
 				return fmt.Errorf("cannot delete old transmissions: %w", err)
 			}

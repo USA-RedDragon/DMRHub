@@ -473,6 +473,26 @@ func TestStoreDoesNotGiveALateResponseToTheNextMessage(t *testing.T) {
 	assert.Equal(t, models.CallResponseNone, msgs[1].Response)
 }
 
+// TestStoreGivesAResponseToTheMessageItFollowsWhenThatMessageComesLate
+// has the tracker hand the store the ACK of a message before the message,
+// as two channel workers of the tracker can. An earlier message that is
+// still waiting must not take the ACK.
+func TestStoreGivesAResponseToTheMessageItFollowsWhenThatMessageComesLate(t *testing.T) {
+	t.Parallel()
+	store, database := storeOnly(t)
+	now := time.Now()
+	h2, two := confirmed(t, "two", 2)
+	h3, three := confirmed(t, "three", 3)
+	store.DataPacket(&models.Call{ID: 1}, delivered(h2, two, false), now)
+	store.DataResponse(responseRow(4), responseEvent(packet.ResponseACK), now.Add(2300*time.Millisecond))
+	store.DataPacket(&models.Call{ID: 3}, delivered(h3, three, false), now.Add(2*time.Second))
+	msgs := all(t, store, database)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, "two", *msgs[0].Text)
+	assert.Equal(t, models.CallResponseNone, msgs[0].Response, "the earlier message took the ACK of the later one")
+	assert.Equal(t, models.CallResponseACK, msgs[1].Response, "the message that the ACK follows has no ACK")
+}
+
 func TestStoreGivesNoResponseToAnUnconfirmedMessage(t *testing.T) {
 	t.Parallel()
 	store, database := storeOnly(t)

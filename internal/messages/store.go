@@ -117,9 +117,17 @@ type recent struct {
 	at       time.Time
 }
 
+// pendingResponse is the last response from one user to another. Until a
+// message takes it, Answered is 0. Once a message takes it, Answered is the
+// ID of that message, AnsweredAt when it came and Prev its response before,
+// so that a later message that the tracker hands over after the response
+// can take the response back.
 type pendingResponse struct {
-	Response models.CallResponse `json:"response"`
-	At       time.Time           `json:"at"`
+	Response   models.CallResponse `json:"response"`
+	At         time.Time           `json:"at"`
+	Answered   uint                `json:"answered,omitempty"`
+	AnsweredAt time.Time           `json:"answered_at,omitzero"`
+	Prev       models.CallResponse `json:"prev,omitempty"`
 }
 
 // NewStore starts a Store that writes to db and keeps the responses that
@@ -396,32 +404,34 @@ func (s *Store) response(j *job) {
 		return
 	}
 	src, dst := j.rowDst, j.rowSrc
-	s.setPending(src, dst, pendingResponse{Response: resp, At: j.at})
-	if s.answer(j, src, dst, resp) {
-		s.deletePending(src, dst)
+	p := pendingResponse{Response: resp, At: j.at}
+	if row, prev, ok := s.answer(j, src, dst, resp); ok {
+		p.Answered, p.AnsweredAt, p.Prev = row.ID, row.ReceivedAt, prev
 	}
+	s.setPending(src, dst, p)
 }
 
-func (s *Store) answer(j *job, src, dst uint, resp models.CallResponse) bool {
+func (s *Store) answer(j *job, src, dst uint, resp models.CallResponse) (models.Message, models.CallResponse, bool) {
 	var row models.Message
 	err := s.db.Where("source_id = ? AND destination_id = ? AND is_group = ? AND confirmed = ?", src, dst, false, true).
 		Where("received_at <= ? AND received_at > ?", j.at.UTC(), j.at.Add(-responseWindow).UTC()).
 		Where("response <> ?", models.CallResponseACK).
 		Order("received_at DESC").Order("id DESC").First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false
+		return row, models.CallResponseNone, false
 	}
 	if err != nil {
 		slog.Error("Message store: cannot find the message of a response", "src", src, "dst", dst, "error", err)
-		return false
+		return row, models.CallResponseNone, false
 	}
+	prev := row.Response
 	if err := s.db.Model(&models.Message{}).Where("id = ?", row.ID).Update("response", resp).Error; err != nil {
 		slog.Error("Message store: cannot set a response", "id", row.ID, "error", err)
-		return true
+		return row, prev, false
 	}
 	row.Response = resp
 	s.changed(&row)
-	return true
+	return row, prev, true
 }
 
 func pendingKey(src, dst uint) string {
@@ -468,8 +478,31 @@ func (s *Store) takePending(msg *models.Message) *pendingResponse {
 	if err := json.Unmarshal(b, &p); err != nil || p.At.Before(msg.ReceivedAt) || p.At.Sub(msg.ReceivedAt) >= responseWindow {
 		return nil
 	}
+	if p.Answered != 0 {
+		if !msg.ReceivedAt.After(p.AnsweredAt) || !s.takeBack(&p) {
+			return nil
+		}
+	}
 	s.deletePending(msg.SourceID, msg.DestinationID)
 	return &p
+}
+
+// takeBack gives the message that took the response p its response from
+// before, when it still has p's, so that a later message can take p.
+func (s *Store) takeBack(p *pendingResponse) bool {
+	res := s.db.Model(&models.Message{}).Where("id = ? AND response = ?", p.Answered, p.Response).Update("response", p.Prev)
+	if res.Error != nil {
+		slog.Error("Message store: cannot take a response back", "id", p.Answered, "error", res.Error)
+		return false
+	}
+	if res.RowsAffected == 0 {
+		return false
+	}
+	var row models.Message
+	if err := s.db.First(&row, p.Answered).Error; err == nil {
+		s.changed(&row)
+	}
+	return true
 }
 
 func (s *Store) changed(msg *models.Message) {

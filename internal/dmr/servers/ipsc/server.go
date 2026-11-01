@@ -814,17 +814,20 @@ func (s *IPSCServer) sendTo(repeaterID uint32, pkt models.Packet) {
 func (s *IPSCServer) sendToDue(repeaterID uint32, pkt models.Packet, due time.Time) {
 	k := slotKey{peer: repeaterID, slot: pkt.Slot}
 	t := s.egressTranslator(repeaterID)
+	var before streamSnapshot
+	if pkt.StreamID <= math.MaxUint32 {
+		before = t.snapshot(uint32(pkt.StreamID))
+	}
 	frames := t.TranslateToIPSC(pkt)
 	if len(frames) == 0 {
 		return
 	}
-	var state *streamSnapshot
+	var state *packetState
 	if pkt.StreamID <= math.MaxUint32 {
-		st := t.snapshot(uint32(pkt.StreamID))
-		state = &st
+		state = &packetState{before: before, after: t.snapshot(uint32(pkt.StreamID))}
 	}
 	for i, frame := range frames {
-		var last *streamSnapshot
+		var last *packetState
 		if i == len(frames)-1 {
 			last = state
 		}

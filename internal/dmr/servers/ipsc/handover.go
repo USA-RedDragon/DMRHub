@@ -120,9 +120,16 @@ type handoverReport struct {
 
 // sentPacket is a packet that the pacer sent to a peer.
 type sentPacket struct {
-	at    time.Time
-	pkt   models.Packet
-	state streamSnapshot
+	at     time.Time
+	pkt    models.Packet
+	before streamSnapshot
+	state  streamSnapshot
+}
+
+// packetState is the state of the translator of a call before and after
+// a packet.
+type packetState struct {
+	before, after streamSnapshot
 }
 
 type packetKey struct {

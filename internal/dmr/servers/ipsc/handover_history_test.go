@@ -54,7 +54,7 @@ func TestHandOverEveryBurstOfASlowPeerMove(t *testing.T) {
 		time.Sleep(hub.MoveSlack + time.Millisecond)
 		const bursts = 100
 		for i := range bursts {
-			p.enqueue(k, 7, []byte{1}, i == bursts-1, models.Packet{StreamID: 7, Seq: uint(i)}, &streamSnapshot{}, time.Time{})
+			p.enqueue(k, 7, []byte{1}, i == bursts-1, models.Packet{StreamID: 7, Seq: uint(i)}, &packetState{}, time.Time{})
 		}
 		for range bursts {
 			<-log.got

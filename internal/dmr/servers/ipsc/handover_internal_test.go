@@ -78,6 +78,34 @@ func TestHandOverNoPacketSentWellBeforeTheClaim(t *testing.T) {
 	assert.Equal(t, uint(1), calls[0].Seq)
 }
 
+// TestHandOverACallSentOnlyJustBeforeTheClaim sends a peer the first
+// packets of a call from this replica only just before the packet of the
+// peer reached the other replica, as when this replica sends what an
+// earlier handover gave it late. The handover holds them all, and the
+// call must go on from the state before the first of them, so that the
+// other replica sends them again with the same RTP sequence numbers and
+// not as a new call.
+func TestHandOverACallSentOnlyJustBeforeTheClaim(t *testing.T) {
+	t.Parallel()
+	since := time.Now()
+	p := newPacer(clock.Real(), func(slotKey, []byte) {}, nil)
+	q := &slotQueue{discarded: map[uint]time.Time{}, wake: make(chan struct{}, 1)}
+	for i := range 3 {
+		q.sent = append(q.sent, sentPacket{
+			at:     since.Add(-100 * time.Millisecond),
+			pkt:    models.Packet{StreamID: 7, Seq: uint(36 + i)},
+			before: streamSnapshot{CallControl: 5, RTPSeq: uint16(40 + i)},
+			state:  streamSnapshot{CallControl: 5, RTPSeq: uint16(41 + i)},
+		})
+	}
+	p.slots[slotKey{peer: 1}] = q
+	calls, lost, _ := p.handOver(1, since)
+	require.Len(t, lost, 3)
+	require.Len(t, calls, 1, "the handover holds no state of the call, so the other replica starts it again")
+	assert.Equal(t, uint(35), calls[0].Seq)
+	assert.Equal(t, streamSnapshot{CallControl: 5, RTPSeq: 40}, calls[0].State)
+}
+
 func handedVoice(seq int) models.Packet {
 	return models.Packet{
 		Signature:   string(dmrconst.CommandDMRD),

@@ -56,9 +56,9 @@ type slotKey struct {
 type queuedFrame struct {
 	frame []byte
 	pkt   models.Packet
-	// state is the state of the translator after the packet, on the last
-	// frame of the packet.
-	state *streamSnapshot
+	// state is the state of the translator before and after the packet,
+	// on the last frame of the packet.
+	state *packetState
 	// due is when the frame was due on the grid of the replica that
 	// handed it over, or zero.
 	due time.Time
@@ -298,7 +298,7 @@ func newPacer(c clock.Clock, send func(slotKey, []byte), discard func(models.Pac
 // due, when set, is when the frame was due on the grid of the replica that
 // handed it over. On an idle slot the grid then starts at due, and the
 // frame goes as late as it is, so the frames after it keep their time.
-func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *streamSnapshot, due time.Time) {
+func (p *pacer) enqueue(k slotKey, stream uint, frame []byte, end bool, pkt models.Packet, state *packetState, due time.Time) {
 	b := decodeDataBurst(pkt)
 	var discarded []models.Packet
 	defer func() { p.report(discarded) }()
@@ -633,7 +633,7 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 		return
 	}
 	now := p.clock.Now()
-	q.sent = append(p.trimSent(q.sent, now), sentPacket{at: now, pkt: f.pkt, state: *f.state})
+	q.sent = append(p.trimSent(q.sent, now), sentPacket{at: now, pkt: f.pkt, before: f.state.before, state: f.state.after})
 }
 
 // trimSent drops the oldest packets of sent, which went to one peer slot,
@@ -686,24 +686,31 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 		if left := until.Sub(now); left > 0 {
 			hangs = append(hangs, handedHang{Slot: slot, Left: left})
 		}
-		last := map[uint]sentPacket{}
+		last := map[uint]handedCall{}
 		var order []uint
+		note := func(stream uint, c handedCall, ok bool) {
+			if _, seen := last[stream]; !seen {
+				order = append(order, stream)
+			} else if !ok {
+				return
+			}
+			last[stream] = c
+		}
+		lostFrom := func(pkt models.Packet, st *packetState) {
+			lost = append(lost, pkt)
+			if _, seen := last[pkt.StreamID]; !seen && !st.before.Ended {
+				note(pkt.StreamID, handedCall{Slot: slot, Stream: pkt.StreamID, Seq: pkt.Seq - 1, State: st.before}, false)
+			}
+		}
 		for _, s := range q.sent {
 			if !s.at.Before(since) {
-				lost = append(lost, s.pkt)
+				lostFrom(s.pkt, &packetState{before: s.before, after: s.state})
 				continue
 			}
-			if _, seen := last[s.pkt.StreamID]; !seen {
-				order = append(order, s.pkt.StreamID)
-			}
-			last[s.pkt.StreamID] = s
-		}
-		for _, stream := range order {
-			s := last[stream]
-			calls = append(calls, handedCall{Slot: slot, Stream: stream, Seq: s.pkt.Seq, State: s.state})
+			note(s.pkt.StreamID, handedCall{Slot: slot, Stream: s.pkt.StreamID, Seq: s.pkt.Seq, State: s.state}, true)
 		}
 		if q.sending != nil && q.sending.state != nil {
-			lost = append(lost, q.sending.pkt)
+			lostFrom(q.sending.pkt, q.sending.state)
 		}
 		q.sending = nil
 		for _, c := range append([]*queuedCall{q.active}, q.pending...) {
@@ -712,12 +719,15 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 			}
 			for _, f := range c.frames {
 				if f.state != nil {
-					lost = append(lost, f.pkt)
+					lostFrom(f.pkt, f.state)
 				}
 			}
 			c.frames = nil
 			c.ended = true
 			c.needsEnd = false
+		}
+		for _, stream := range order {
+			calls = append(calls, last[stream])
 		}
 		q.sent = nil
 	}

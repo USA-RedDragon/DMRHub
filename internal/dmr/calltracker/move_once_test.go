@@ -133,3 +133,147 @@ func TestAStalledSaverCountsThePartsOnce(t *testing.T) {
 		assert.Equal(t, uint(14), c.TotalPackets, "packets")
 	})
 }
+
+// TestAWaitingPartOutlivesALongKVOutage ends a moved call while the KV
+// store is down for longer than its records live. The part of the old
+// replica, which waited in the shared record, still reaches the row.
+func TestAWaitingPartOutlivesALongKVOutage(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, shared := armedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9103)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		for range 12 {
+			sendSuperframe(s)
+			time.Sleep(superframeTime)
+		}
+		one.Flush()
+		shared.down.Store(true)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		for range 70 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+		shared.down.Store(false)
+		for range 10 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+
+		c := oneRow(t, one, rows(t, database))
+		assert.Equal(t, 7+12*6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		assert.False(t, c.Active)
+	})
+}
+
+// TestAWaitingPartOutlivesAShortKVOutage ends a moved call while the KV
+// store is down for 10 s. Both parts reach the row.
+func TestAWaitingPartOutlivesAShortKVOutage(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, shared := armedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9104)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		for range 12 {
+			sendSuperframe(s)
+			time.Sleep(superframeTime)
+		}
+		one.Flush()
+		shared.down.Store(true)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		for range 10 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+		shared.down.Store(false)
+		for range 10 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+
+		c := oneRow(t, one, rows(t, database))
+		assert.Equal(t, 7+12*6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		assert.False(t, c.Active)
+	})
+}
+
+// TestAKVBlipAtTheEndOfALongPartKeepsEveryPart ends a long second part of
+// a moved call while the KV store is down for 1.5 s. Both parts reach the
+// row.
+func TestAKVBlipAtTheEndOfALongPartKeepsEveryPart(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, shared := armedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9106)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		for range 200 {
+			sendSuperframe(s)
+			time.Sleep(superframeTime)
+		}
+		one.Flush()
+		shared.down.Store(true)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		time.Sleep(1500 * time.Millisecond)
+		shared.down.Store(false)
+		for range 15 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+
+		c := oneRow(t, one, rows(t, database))
+		assert.Equal(t, 7+200*6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		assert.False(t, c.Active)
+	})
+}
+
+// TestAStarvedOldReplicaJoinsTheRowLate holds the worker of the old
+// replica of a moved call for longer than a part counts as active, so the
+// new replica saves the row first. Once the old worker runs again, its
+// part joins the row, and the row counts every burst once.
+func TestAStarvedOldReplicaJoinsTheRowLate(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, _ := armedReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9105)
+		s.voiceCall(2, false)
+		one.Flush()
+		release := calltracker.HoldWorker(one, s.server, s.repeater, s.slot)
+		t.Cleanup(release)
+		for range 2 {
+			sendSuperframe(s)
+			time.Sleep(superframeTime)
+		}
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+		time.Sleep(8 * time.Second)
+		two.Flush()
+		release()
+		for range 15 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+
+		c := oneRow(t, one, rows(t, database))
+		assert.Equal(t, 1+12+12+6+1, len(c.CallData)/layer2.RawBurstSize, "bursts")
+		assert.Equal(t, uint(1+12+12+6+1), c.TotalPackets, "packets")
+		assert.False(t, c.Active)
+	})
+}

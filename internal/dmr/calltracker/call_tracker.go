@@ -1193,6 +1193,8 @@ type row struct {
 	deferred  bool
 	given     given
 	touched   time.Time
+	pending   []voiceDelta
+	waitSince time.Time
 }
 
 type channel struct {

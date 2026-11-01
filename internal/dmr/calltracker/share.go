@@ -514,7 +514,8 @@ func (s *shard) finishShared(r *row, at time.Time) {
 		return rec
 	}); err != nil {
 		slog.Warn("CallTracker: the voice call is added to its row without the other replicas", "error", err)
-		s.saveParts(r, []voiceDelta{mine})
+		s.keep(r, mine)
+		s.wait(r, now.Add(touchEvery))
 		return
 	}
 	switch res.verdict {
@@ -523,20 +524,35 @@ func (s *shard) finishShared(r *row, at time.Time) {
 		s.t.db.Unscoped().Delete(call)
 		return
 	case finishDefer:
+		r.pending = append(r.pending, mine)
 		r.markGiven()
-		r.deferred = true
-		s.waiting[r] = now.Add(partLive)
+		s.wait(r, now.Add(partLive))
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
 		return
 	case finishDirect:
-		if s.saveParts(r, []voiceDelta{mine}) {
-			r.markGiven()
-		}
+		s.keep(r, mine)
 		return
 	case finishSave:
 	}
+	r.pending = append(r.pending, mine)
 	r.markGiven()
 	s.saveLoop(r, key, res)
+}
+
+func (s *shard) keep(r *row, d voiceDelta) {
+	r.pending = append(r.pending, d)
+	r.markGiven()
+	if !s.saveParts(r, slices.Clone(r.pending)) {
+		s.wait(r, s.t.clock.Now().Add(touchEvery))
+	}
+}
+
+func (s *shard) wait(r *row, next time.Time) {
+	if _, ok := s.waiting[r]; !ok {
+		r.waitSince = s.t.clock.Now()
+	}
+	r.deferred = true
+	s.waiting[r] = next
 }
 
 func (s *shard) noteDeferred(r *row) {
@@ -560,30 +576,41 @@ func (s *shard) noteDeferred(r *row) {
 		return rec
 	})
 	if err != nil || !placed {
-		s.saveParts(r, []voiceDelta{d})
+		s.keep(r, d)
 		return
 	}
+	r.pending = append(r.pending, d)
 	r.markGiven()
-	s.waiting[r] = s.t.clock.Now()
+	s.wait(r, s.t.clock.Now())
 }
 
-func retryRecord(rec *voiceRecord, me string, id uint, now time.Time) (*voiceRecord, finishResult, bool) {
+type retryVerdict int
+
+const (
+	retryWait retryVerdict = iota
+	retrySave
+	retryDone
+	retryGone
+)
+
+func retryRecord(rec *voiceRecord, me string, id uint, ended bool, now time.Time) (*voiceRecord, retryVerdict, finishResult) {
 	if rec == nil || rec.ID != id {
-		return nil, finishResult{}, true
+		return nil, retryGone, finishResult{}
 	}
-	held := false
-	for _, p := range rec.Parts {
-		held = held || len(p.Held) > 0
+	if p := rec.Parts[me]; p != nil && ended && p.Active {
+		p.Active = false
+		return rec, retryWait, finishResult{}
 	}
-	if !held {
-		return nil, finishResult{}, true
+	held := rec.allHeld()
+	if len(held) == 0 {
+		return nil, retryDone, finishResult{}
 	}
 	if rec.anyActive(me, now) || rec.saving(now) {
-		return nil, finishResult{verdict: finishDefer}, false
+		return nil, retryWait, finishResult{}
 	}
 	rec.Gen++
 	rec.Saving, rec.SavingAt = rec.Gen, now
-	return rec, finishResult{verdict: finishSave, gen: rec.Gen, held: rec.allHeld()}, true
+	return rec, retrySave, finishResult{verdict: finishSave, gen: rec.Gen, held: held}
 }
 
 func (s *shard) retryWaiting(now time.Time) {
@@ -591,28 +618,43 @@ func (s *shard) retryWaiting(now time.Time) {
 		if now.Before(next) {
 			continue
 		}
-		key, _ := r.key.(voiceKey)
-		if !r.deferred || r.deleted || now.Sub(r.last) >= streamIdle {
+		if r.deleted {
 			delete(s.waiting, r)
 			continue
 		}
+		key, _ := r.key.(voiceKey)
+		var verdict retryVerdict
 		var res finishResult
-		var done bool
 		me, id := s.t.replica, r.call.ID
 		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
-			rec, res, done = retryRecord(rec, me, id, now)
+			rec, verdict, res = retryRecord(rec, me, id, r.finished, now)
 			return rec
 		}); err != nil {
+			if len(r.pending) > 0 && now.Sub(r.waitSince) >= partLive {
+				s.saveParts(r, slices.Clone(r.pending))
+			}
+			if len(r.pending) == 0 && now.Sub(r.waitSince) >= streamIdle {
+				delete(s.waiting, r)
+				continue
+			}
 			s.waiting[r] = now.Add(touchEvery)
 			continue
 		}
-		if !done {
+		switch verdict {
+		case retryWait:
 			s.waiting[r] = now.Add(touchEvery)
-			continue
-		}
-		delete(s.waiting, r)
-		if res.verdict == finishSave {
+		case retrySave:
+			s.waiting[r] = now.Add(touchEvery)
 			s.saveLoop(r, key, res)
+		case retryDone:
+			r.pending = nil
+			delete(s.waiting, r)
+		case retryGone:
+			if len(r.pending) > 0 && !s.saveParts(r, slices.Clone(r.pending)) {
+				s.waiting[r] = now.Add(touchEvery)
+				continue
+			}
+			delete(s.waiting, r)
 		}
 	}
 }
@@ -630,8 +672,7 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 			slog.Warn("CallTracker: the end of a save of a voice call did not reach the other replicas", "error", err)
 		}
 		if !ok {
-			r.deferred = true
-			s.waiting[r] = s.t.clock.Now().Add(touchEvery)
+			s.wait(r, s.t.clock.Now().Add(touchEvery))
 		}
 		if after.active {
 			s.markActive(call.ID)
@@ -649,6 +690,11 @@ func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
 		return false
 	}
 	s.adoptMerged(r, &out)
+	saved := make(map[string]bool, len(parts))
+	for _, p := range parts {
+		saved[p.ID] = true
+	}
+	r.pending = slices.DeleteFunc(r.pending, func(d voiceDelta) bool { return saved[d.ID] })
 	s.t.publishCall(s.idx, &out)
 	s.t.publishNetCheckIn(s.idx, &out)
 	slog.Info("Transmission ended", "kind", out.Kind, "sub", out.SubKind, "streamID", out.StreamID, "src", out.SourceID, "dst", out.DestinationID, "repeater", out.IngressID, "duration", out.Duration, "loss", out.Loss*pct, "ber", out.BER*pct, "rssi", out.RSSI, "jitter", out.Jitter)

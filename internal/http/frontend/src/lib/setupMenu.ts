@@ -194,6 +194,8 @@ const visibility: Option[] = [
   { value: 'login', label: 'Nothing' },
 ];
 
+const serverDatabase = (read: Read) => read('database.driver') !== 'sqlite';
+
 const checksOn = (read: Read) => read('dmr.disable-radio-id-validation') !== true;
 
 /** Nanoseconds in an hour and in a day, the units of a duration field. */
@@ -284,6 +286,7 @@ export const TABS: TabDef[] = [
           {
             path: 'http.canonical-host', label: 'Site URL', kind: 'text', placeholder: 'https://dmrhub.example.org',
             help: 'The URL that people use to reach this site.',
+            check: (v) => (String(v ?? '').trim() === '' ? 'Required.' : undefined),
           },
           {
             path: 'http.robots-txt.mode', label: 'robots.txt', kind: 'select',
@@ -330,10 +333,14 @@ export const TABS: TabDef[] = [
             ],
           },
           { path: 'database.database', label: 'Database', kind: 'text', help: 'The name of the database, or the path of the SQLite file.' },
-          { path: 'database.host', label: 'Host', kind: 'text' },
-          { path: 'database.port', label: 'Port', kind: 'number' },
-          { path: 'database.username', label: 'Username', kind: 'text' },
-          { path: 'database.password', label: 'Password', kind: 'secret' },
+          {
+            grid: [
+              { path: 'database.host', label: 'Host', kind: 'text', show: serverDatabase },
+              { path: 'database.port', label: 'Port', kind: 'number', show: serverDatabase },
+              { path: 'database.username', label: 'Username', kind: 'text', show: serverDatabase },
+              { path: 'database.password', label: 'Password', kind: 'secret', show: serverDatabase },
+            ],
+          },
           { path: 'database.extra-parameters', label: 'Extra parameters', kind: 'list', help: 'Added to the connection, one for each line.' },
         ],
       },
@@ -941,6 +948,15 @@ export const tabCheckErrors = (tab: TabDef, read: Read): Record<string, string> 
 export const visibleTabs = (state: SetupState): TabDef[] =>
   TABS.filter((t) => !t.optional || tabPaths(t).some((p) => p in state.settings));
 
+/** The tabs of the setup wizard: Database first, then the menu. */
+export const wizardTabs = (state: SetupState): TabDef[] => {
+  const tabs = visibleTabs(state);
+  return [...tabs.filter((t) => t.id === 'database'), ...tabs.filter((t) => t.id !== 'database')];
+};
+
+/** The tab that holds the setting at path. */
+export const tabOfPath = (path: string): TabDef | undefined => TABS.find((t) => tabPaths(t).includes(path));
+
 /** The tab of a URL hash, such as #ipsc; the first tab for any other. */
 export const tabOfHash = (hash: string, tabs: TabDef[]): TabDef => {
   const id = hash.replace(/^#/, '');
@@ -1019,6 +1035,20 @@ export const tabPayload = (tab: TabDef, original: Values, edited: Values): Value
       continue;
     }
     setAt(out, p, valueFor(tab, p, edited));
+  }
+  return out;
+};
+
+/**
+ * The config to save for every tab at once: the saved config, with the
+ * values of the page for the settings of each tab that has changes.
+ */
+export const allPayload = (original: Values, edited: Values): Values => {
+  let out = clone(original);
+  for (const t of TABS) {
+    if (tabDirty(t, original, edited)) {
+      out = tabPayload(t, out, edited);
+    }
   }
   return out;
 };

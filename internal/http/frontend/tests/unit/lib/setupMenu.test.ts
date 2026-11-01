@@ -19,8 +19,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  TABS, defaultNote, fromInput, inputValue, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload, tabReadOnly,
-  tabStartOnly, visibleTabs, type FieldDef, type TabDef,
+  TABS, allPayload, defaultNote, fromInput, inputValue, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabOfPath, tabPaths,
+  tabPayload, tabReadOnly, tabStartOnly, visibleTabs, wizardTabs, type FieldDef, type TabDef,
 } from '@/lib/setupMenu';
 import { emptySetupState, type Setting, type SetupState } from '@/lib/setupState';
 
@@ -285,5 +285,50 @@ describe('setup menu browser radios', () => {
     const f = field('dmr.mmdvm.webtransport.enabled');
     expect(f.help).toContain('DMRHub Radio');
     expect(f.links).toEqual([{ text: 'Open DMRHub Radio.', href: 'https://radio.dmrhub.net' }]);
+  });
+});
+
+describe('setup menu of the setup wizard', () => {
+  it('puts Database first and keeps every other tab in the order of the menu', () => {
+    const ids = wizardTabs(stateWith({})).map((t) => t.id);
+    expect(ids[0]).toBe('database');
+    expect(ids.slice(1)).toEqual(visibleTabs(stateWith({})).map((t) => t.id).filter((id) => id !== 'database'));
+  });
+
+  it('hides the server fields of the database while SQLite is picked', () => {
+    const shown = (driver: string) => tabFields(tab('database'))
+      .filter((f) => !f.show || f.show((p) => (p === 'database.driver' ? driver : undefined)))
+      .map((f) => f.path);
+    expect(shown('sqlite')).toEqual(['database.driver', 'database.database', 'database.extra-parameters']);
+    expect(shown('postgres')).toEqual([
+      'database.driver', 'database.database', 'database.host', 'database.port', 'database.username', 'database.password', 'database.extra-parameters',
+    ]);
+  });
+
+  it('needs a Site URL', () => {
+    const errors = (url: string) => tabCheckErrors(tab('http'), (p) => (p === 'http.canonical-host' ? url : undefined));
+    expect(errors('')).toEqual({ 'http.canonical-host': 'Required.' });
+    expect(errors('  ')).toEqual({ 'http.canonical-host': 'Required.' });
+    expect(errors('https://dmrhub.example.org')).toEqual({});
+  });
+
+  it('finds the tab of a setting', () => {
+    expect(tabOfPath('http.canonical-host')?.id).toBe('http');
+    expect(tabOfPath('dmr.transcoding.ambe-servers')?.id).toBe('transcoding');
+    expect(tabOfPath('no.such.setting')).toBeUndefined();
+  });
+
+  it('saves the changes of every tab at once and leaves the rest as the hub sent it', () => {
+    const original = {
+      'network-name': 'Old', secret: '', http: { 'canonical-host': '', 'trusted-proxies': null }, smtp: { password: '' },
+    };
+    const edited = {
+      'network-name': 'New', secret: '', http: { 'canonical-host': 'https://hub.example', 'trusted-proxies': null }, smtp: { password: '' },
+    };
+    const out = allPayload(original, edited);
+    expect(out).toMatchObject({ 'network-name': 'New', secret: '', http: { 'canonical-host': 'https://hub.example', 'trusted-proxies': [] } });
+    expect(out.smtp).toEqual({ password: '' });
+    expect(out).not.toHaveProperty('redis');
+    expect(allPayload(original, original)).toEqual(original);
   });
 });

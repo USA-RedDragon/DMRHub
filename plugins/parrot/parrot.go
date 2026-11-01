@@ -127,7 +127,7 @@ func (p *Parrot) Handle(b *pluginv1.Burst) {
 	rec.last = now
 	if len(rec.bursts) < maxRecording {
 		d := plugin.DataOf(b)
-		d.Source, d.Destination, d.Private = b.GetDestination(), b.GetSource(), true
+		d.Source, d.Destination, d.Group = b.GetDestination(), b.GetSource(), false
 		rec.bursts = append(rec.bursts, d)
 	}
 	if !end {

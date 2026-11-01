@@ -64,7 +64,7 @@ func capturedCall(t *testing.T) []*pluginv1.Burst {
 		if err != nil {
 			t.Fatalf("%x does not decode: %v", p, err)
 		}
-		d.Private = true
+		d.Group = false
 		out = append(out, plugin.BurstOf(&d))
 	}
 	if len(out) != 8 {
@@ -269,8 +269,8 @@ func TestParrotIgnoresLateBurstsOfAnEndedCall(t *testing.T) {
 func TestAReplyWithoutVoiceIsANewStream(t *testing.T) {
 	t.Parallel()
 	rec := []dmrd.Data{
-		{Source: 9990, Destination: 1000001, Private: true, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeVoiceLCHeader), Stream: 8888},
-		{Source: 9990, Destination: 1000001, Private: true, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeTerminatorWithLC), Stream: 8888, Seq: 5},
+		{Source: 9990, Destination: 1000001, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeVoiceLCHeader), Stream: 8888},
+		{Source: 9990, Destination: 1000001, Frame: dmrd.FrameDataSync, Value: uint8(enums.DataTypeTerminatorWithLC), Stream: 8888, Seq: 5},
 	}
 	reply := Reply(rec, 42)
 	require.Len(t, reply, 2)

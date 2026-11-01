@@ -24,7 +24,7 @@ func DataOf(b *pluginv1.Burst) dmrd.Data {
 		Destination: b.GetDestination(),
 		Repeater:    b.GetRepeater(),
 		Slot:        enums.Slot1,
-		Private:     !b.GetGroupCall(),
+		Group:       b.GetGroupCall(),
 		Value:       uint8(b.GetDataTypeOrVoiceSequence()), //nolint:gosec // 4 bits
 		Stream:      b.GetStreamId(),
 	}
@@ -46,7 +46,7 @@ func DataOf(b *pluginv1.Burst) dmrd.Data {
 // BurstOf returns the DMRD packet d as a burst.
 func BurstOf(d *dmrd.Data) *pluginv1.Burst {
 	b := &pluginv1.Burst{
-		Source: d.Source, Destination: d.Destination, GroupCall: !d.Private, Slot: 1, StreamId: d.Stream,
+		Source: d.Source, Destination: d.Destination, GroupCall: d.Group, Slot: 1, StreamId: d.Stream,
 		DataTypeOrVoiceSequence: uint32(d.Value), Sequence: uint32(d.Seq), Payload: append([]byte(nil), d.Burst[:]...),
 		Repeater: d.Repeater, FrameType: pluginv1.FrameType_FRAME_TYPE_VOICE,
 	}

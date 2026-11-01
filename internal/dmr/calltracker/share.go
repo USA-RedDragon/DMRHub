@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"time"
 
@@ -128,6 +129,7 @@ func loadRecord(old []byte) *voiceRecord {
 	if rec.Parts == nil {
 		rec.Parts = map[string]*voicePart{}
 	}
+	maps.DeleteFunc(rec.Parts, func(_ string, p *voicePart) bool { return p == nil })
 	return &rec
 }
 

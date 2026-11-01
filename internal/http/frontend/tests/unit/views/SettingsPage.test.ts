@@ -60,6 +60,9 @@ function serve(smsStorage: boolean, ids = [accountID, addedID]) {
     if (url === '/oauth/apps') {
       return Promise.resolve({ data: [] });
     }
+    if (url === '/users/me/tokens') {
+      return Promise.resolve({ data: { tokens: [], scopes: [], expiries: [30, 90, 365, 0] } });
+    }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
 }
@@ -84,6 +87,7 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-test="sms-storage-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="apps-card"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="tokens-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-card"]').exists()).toBe(false);
   });
 
@@ -100,6 +104,14 @@ describe('SettingsPage', () => {
     serve(false);
     const wrapper = await mountPage();
     expect(wrapper.find('[data-test="apps-card"]').text()).toContain('No apps can use your account.');
+  });
+
+  it('shows the API tokens after the apps', async () => {
+    serve(false);
+    const wrapper = await mountPage();
+    const cards = wrapper.findAll('[data-test$="-card"]').map((c) => c.attributes('data-test'));
+    expect(cards.indexOf('tokens-card')).toBe(cards.indexOf('apps-card') + 1);
+    expect(wrapper.find('[data-test="tokens-card"]').text()).toContain('No tokens yet.');
   });
 
   it('shows SMS Storage off with the privacy text and no dates or config keys', async () => {

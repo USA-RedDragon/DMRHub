@@ -160,6 +160,8 @@ type Hub struct {
 	// calls continue until they finish naturally;
 	// Kubernetes endpoint removal prevents new traffic from arriving.
 	stopping atomic.Bool
+	// leaving is set when the replica drains; see MarkLeaving.
+	leaving atomic.Bool
 
 	// calls tracks all in-flight activity that must complete before
 	// shutdown: incoming streams of every kind.
@@ -469,6 +471,29 @@ func (h *Hub) hasPeerServers() bool {
 		}
 	}
 	return false
+}
+
+// MarkLeaving records that the replica of the hub drains, so that its
+// servers keep what they sent to each repeater for as long as a handover
+// may ask for it; see HandoverHistory.
+func (h *Hub) MarkLeaving() {
+	h.leaving.Store(true)
+}
+
+// Leaving reports whether MarkLeaving was called.
+func (h *Hub) Leaving() bool {
+	return h.leaving.Load()
+}
+
+// HandoverHistory returns how long a server of a replica that drains for
+// at most drainLimit keeps what it sent to a repeater, and the most bursts
+// that one slot carries in that time. A repeater moves away while the
+// replica drains, and the replica hands over what it sent from up to
+// MoveSlack before the move, when the move reaches it, which a starved
+// machine may delay by up to drainLimit.
+func HandoverHistory(drainLimit time.Duration) (time.Duration, int) {
+	keep := drainLimit + MoveSlack
+	return keep, int(keep/burstPeriod) + 1
 }
 
 func (h *Hub) StartDraining() {

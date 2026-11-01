@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -65,7 +66,8 @@ const (
 	// late.
 	handedGrace = time.Second
 	// sentKeep is how many packets per peer and slot the pacer remembers
-	// that it sent.
+	// that it sent while its replica serves. While it drains, it keeps
+	// those of hub.HandoverHistory instead.
 	sentKeep = 64
 )
 
@@ -455,4 +457,9 @@ func (s *IPSCServer) route(rp hub.RoutedPacket) {
 	}
 	s.movingMu.Unlock()
 	s.sendTo(id, rp.Packet)
+}
+
+// handoverHistory is hub.HandoverHistory for the drain timeout of cfg.
+func handoverHistory(cfg *config.Config) (time.Duration, int) {
+	return hub.HandoverHistory(servers.DrainLimit(cfg))
 }

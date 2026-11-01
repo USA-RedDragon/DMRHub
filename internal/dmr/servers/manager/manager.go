@@ -236,6 +236,7 @@ func (m *Manager) Drain(ctx context.Context, reg Registry, timeout time.Duration
 		return 0
 	}
 	reg.MarkDraining(ctx)
+	m.deps.Hub.MarkLeaving()
 	if s, ok := m.Server(MMDVM).(*mmdvm.Server); ok {
 		s.DrainWebTransport(ctx)
 	}

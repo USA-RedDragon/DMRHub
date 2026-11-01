@@ -275,10 +275,14 @@ type pacer struct {
 	clock    clock.Clock
 	callHold time.Duration
 	dataHold time.Duration
-	mu       sync.Mutex
-	slots    map[slotKey]*slotQueue
-	done     chan struct{}
-	wg       sync.WaitGroup
+	// history, when set, returns how long the pacer keeps what it sent to
+	// a peer slot, the most packets that it keeps, and whether it does so
+	// instead of keeping the last sentKeep; see hub.HandoverHistory.
+	history func() (time.Duration, int, bool)
+	mu      sync.Mutex
+	slots   map[slotKey]*slotQueue
+	done    chan struct{}
+	wg      sync.WaitGroup
 }
 
 func newPacer(c clock.Clock, send func(slotKey, []byte), discard func(models.Packet)) *pacer {
@@ -628,10 +632,33 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 	if f.state == nil {
 		return
 	}
-	if len(q.sent) == sentKeep {
-		q.sent = q.sent[1:]
+	now := p.clock.Now()
+	q.sent = append(p.trimSent(q.sent, now), sentPacket{at: now, pkt: f.pkt, state: *f.state})
+}
+
+// trimSent drops the oldest packets of sent, which went to one peer slot,
+// to make room for one more. Without a history of the replica that drains,
+// sent keeps the last sentKeep packets; with one, every packet that left
+// within its time, at most its count: with the default drain timeout of
+// 25 s, 425 packets of a slot, about 85 KB per peer slot that carries a
+// call the whole drain. The caller holds p.mu.
+func (p *pacer) trimSent(sent []sentPacket, now time.Time) []sentPacket {
+	keep, limit, draining := time.Duration(0), sentKeep, false
+	if p.history != nil {
+		keep, limit, draining = p.history()
 	}
-	q.sent = append(q.sent, sentPacket{at: p.clock.Now(), pkt: f.pkt, state: *f.state})
+	if !draining {
+		if len(sent) >= sentKeep {
+			return sent[len(sent)-sentKeep+1:]
+		}
+		return sent
+	}
+	limit = max(limit, sentKeep)
+	from := now.Add(-keep)
+	for len(sent) > 0 && (len(sent) >= limit || (len(sent) >= sentKeep && sent[0].at.Before(from))) {
+		sent = sent[1:]
+	}
+	return sent
 }
 
 // handOver returns, for each call that the pacer sent to the peer, the

@@ -181,6 +181,10 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 	})
 	s.pacer.callHold = cfg.DMR.IPSC.CallHangHold
 	s.pacer.dataHold = cfg.DMR.IPSC.DataHangHold
+	keep, perSlot := handoverHistory(cfg)
+	s.pacer.history = func() (time.Duration, int, bool) {
+		return keep, perSlot, s.hub != nil && s.hub.Leaving()
+	}
 	s.pacer.end = func(k slotKey, last queuedFrame) []byte {
 		return s.egressTranslator(k.peer).endCall(last.pkt, last.frame)
 	}

@@ -46,7 +46,8 @@ const (
 	// late.
 	handedGrace = time.Second
 	// sentKeep is how many of the last packets to each repeater the
-	// server remembers.
+	// server remembers while its replica serves. While it drains, it keeps
+	// those of hub.HandoverHistory instead.
 	sentKeep = 64
 	// wtHandoverGap is the time between two packets of a handover to a
 	// browser hotspot. Its WebTransport session holds only a few datagrams
@@ -125,13 +126,35 @@ func (s *Server) remember(id uint, pkt models.Packet) *sentPacket {
 	if s.sent == nil {
 		s.sent = map[uint][]*sentPacket{}
 	}
-	list := s.sent[id]
-	if len(list) == sentKeep {
-		list = list[1:]
-	}
+	list := s.trimSent(s.sent[id])
 	p := &sentPacket{pkt: pkt}
 	s.sent[id] = append(list, p)
 	return p
+}
+
+// trimSent drops the oldest packets of list, which went to one repeater,
+// to make room for one more. While the replica serves, list keeps the last
+// sentKeep packets. While it drains, a repeater moves away and the move
+// may reach this replica late, so list keeps every packet that left within
+// the time of hub.HandoverHistory, at most the bursts of two slots in that
+// time: with the default drain timeout of 25 s, 851 packets, about 160 KB
+// per repeater that gets two calls the whole drain. The caller holds
+// s.sentMu.
+func (s *Server) trimSent(list []*sentPacket) []*sentPacket {
+	if s.hub == nil || !s.hub.Leaving() {
+		if len(list) >= sentKeep {
+			return list[len(list)-sentKeep+1:]
+		}
+		return list
+	}
+	keep, perSlot := hub.HandoverHistory(servers.DrainLimit(s.config))
+	limit := max(sentKeep, 2*perSlot)
+	from := s.clock.Now().Add(-keep)
+	for len(list) > 0 && (len(list) >= limit ||
+		(len(list) >= sentKeep && !list[0].at.IsZero() && list[0].at.Before(from))) {
+		list = list[1:]
+	}
+	return list
 }
 
 // forgetPacket forgets p, which never went to the repeater id.

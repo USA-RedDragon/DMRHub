@@ -16,7 +16,7 @@ pickport	internal/dmr/hblink3_test.go	1	the config of the external HBlink3 proce
 sleep	internal/dmr/hblink3_test.go	2	the GROUP_HANGTIME of 5 s of the external HBlink3 process, which holds its slots after its start and after a call with no event: the wait after the logins and before the SMS from the hub
 sleep	internal/dmr/hub/clockstep_test.go	1	real clock: the test steps the wall clock of a VM back and then sleeps past undeliverableLogEvery on the monotonic clock; a late wake only adds time
 timer	internal/dmr/hub/fanout_bench_test.go	1	benchmark: burst also runs in BenchmarkGroupBurstFanout, which measures real time outside a bubble; the timeout only ends a hung benchmark
-timer	internal/dmr/hub/locator_test.go	1	real plugin over TCP: the plugin SDK has no dialer for an in-memory listener, so no bubble; nextFrom bounds each wait, positive waits by counts of packets or failAfter, quiet windows can only miss a packet
+timer	internal/dmr/hub/locator_test.go	1	real plugin over TCP: the plugin SDK has no dialer for an in-memory listener, so no bubble; nextOr bounds each wait for an event with failAfter, and the one quiet window, answerQuiet, can only miss a packet
 timer	internal/dmr/hub/rules_test.go	3	real servers: the rules tests run on Postgres, MySQL, MariaDB and Redis, which a bubble cannot hold; each wait is for an event, and failAfter only ends a hung test
 sleep	internal/dmr/hub/slow_claim_test.go	1	virtual time as of HEAD: slowKV.wait; every slowKV is made inside a synctest bubble
 elapsed	internal/dmr/hub/slow_db_test.go	1	virtual time as of HEAD: worstDelay; every caller runs inside a synctest bubble

@@ -26,6 +26,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -69,9 +70,9 @@ func lastSeenHubWithPubSub(t *testing.T) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hu
 	return lastSeenHubWrappingKV(t, func(k kv.KV) kv.KV { return k })
 }
 
-func lastSeenHubWrappingKV(t *testing.T, wrapKV func(kv.KV) kv.KV) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
+func lastSeenHubWrappingKV(t *testing.T, wrapKV func(kv.KV) kv.KV, on ...clock.Clock) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
 	t.Helper()
-	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, wrapKV)
+	h, database, ps := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, wrapKV, on...)
 	seedUser(t, database, 1000001, "OTHER")
 	seedUser(t, database, 1000002, "TARGET")
 	seedRepeater(t, database, 100003, 1000002)

@@ -21,15 +21,20 @@ package hub_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
+	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
@@ -112,22 +117,23 @@ func locatorHub(t *testing.T) (*hub.Hub, *gorm.DB, *hub.ServerHandle) {
 	return h, database, srv
 }
 
-const (
-	answerQuiet       = 500 * time.Millisecond
-	registrationQuiet = 3 * time.Second
-	foreignQuiet      = 3500 * time.Millisecond
-	voiceEvery        = 300 * time.Millisecond
-	maxPackets        = 100
-)
+const answerQuiet = 500 * time.Millisecond
 
 func nextFrom(srv *hub.ServerHandle, d time.Duration) (hub.RoutedPacket, bool) {
+	rp, got, _ := nextOr(srv, nil, d)
+	return rp, got
+}
+
+func nextOr(srv *hub.ServerHandle, changed <-chan struct{}, d time.Duration) (rp hub.RoutedPacket, got, ok bool) {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case rp := <-srv.Packets:
-		return rp, true
+		return rp, true, true
+	case <-changed:
+		return hub.RoutedPacket{}, false, true
 	case <-timer.C:
-		return hub.RoutedPacket{}, false
+		return hub.RoutedPacket{}, false, false
 	}
 }
 
@@ -149,42 +155,219 @@ func TestDataToTheLocationServerIsAnsweredOnItsRepeater(t *testing.T) {
 	}
 }
 
-func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
-	t.Parallel()
-	h, database, ps, srv := lastSeenHubWithPubSub(t)
-	require.NoError(t, models.SetPositionTracking(database, 1000002, 1000002, true, time.Now()))
-	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", 1000002).Update("interval_seconds", 1).Error)
-	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
-	listener.Run(t, "Location", []models.PluginRange{{First: 5050, Last: 5059}}, locator.Serve)
+type locatorClock struct {
+	*clock.Fake
+	mu      sync.Mutex
+	armed   map[*locatorTimer]time.Time
+	changed chan struct{}
+}
 
-	for _, p := range arsRegistration(t, 1000002, 5057, 100003) {
-		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+type locatorTimer struct {
+	c     *locatorClock
+	inner clock.Timer
+}
+
+func newLocatorClock() *locatorClock {
+	return &locatorClock{Fake: clock.NewFake(time.Now()), armed: map[*locatorTimer]time.Time{}, changed: make(chan struct{}, 1)}
+}
+
+func (c *locatorClock) notify() {
+	select {
+	case c.changed <- struct{}{}:
+	default:
 	}
-	for n := 0; ; n++ {
-		rp, ok := nextFrom(srv, registrationQuiet)
-		if !ok {
-			break
+}
+
+func (c *locatorClock) AfterFunc(d time.Duration, f func()) clock.Timer {
+	t := &locatorTimer{c: c}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t.inner = c.Fake.AfterFunc(d, func() {
+		c.mu.Lock()
+		delete(c.armed, t)
+		c.mu.Unlock()
+		f()
+	})
+	t.note(d)
+	return t
+}
+
+func (t *locatorTimer) note(d time.Duration) {
+	if d > 0 {
+		t.c.armed[t] = t.c.Now().Add(d)
+	} else {
+		delete(t.c.armed, t)
+	}
+	t.c.notify()
+}
+
+func (t *locatorTimer) C() <-chan time.Time { return t.inner.C() }
+
+func (t *locatorTimer) Stop() bool {
+	t.c.mu.Lock()
+	defer t.c.mu.Unlock()
+	t.note(0)
+	return t.inner.Stop()
+}
+
+func (t *locatorTimer) Reset(d time.Duration) bool {
+	t.c.mu.Lock()
+	defer t.c.mu.Unlock()
+	was := t.inner.Reset(d)
+	t.note(d)
+	return was
+}
+
+func (c *locatorClock) next() (time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var at time.Time
+	ok := false
+	for _, t := range c.armed {
+		if !ok || t.Before(at) {
+			at, ok = t, true
 		}
-		require.Equal(t, uint(100003), rp.RepeaterID)
-		require.Less(t, n, maxPackets, "the Locator did not stop answering the registration")
 	}
+	return at, ok
+}
 
-	foreign := makeVoicePacket(1, 70999, true, true)
-	foreign.Src, foreign.Repeater = 1000002, 100004
-	h.RoutePacket(context.Background(), foreign, models.RepeaterTypeMMDVM)
-	if rp, ok := nextFrom(srv, foreignQuiet); ok {
-		t.Fatalf("a sighting on another user's hotspot does not count, but a packet went to %d", rp.RepeaterID)
-	}
+const locatorStep = time.Second
 
-	voice := makeVoicePacket(1, 71000, true, true)
-	voice.Src, voice.Repeater = 1000002, 100003
-	for range maxPackets {
-		voice.Seq++
-		h.RoutePacket(context.Background(), voice, models.RepeaterTypeMMDVM)
-		if rp, ok := nextFrom(srv, voiceEvery); ok && rp.Packet.Src == 5057 {
-			assert.Equal(t, uint(100003), rp.RepeaterID, "asked again where the radio is heard")
+func (c *locatorClock) drive(t *testing.T, srv *hub.ServerHandle, take func(hub.RoutedPacket) bool) {
+	t.Helper()
+	for {
+		if at, ok := c.next(); ok && !at.After(c.Now().Add(locatorStep)) {
+			c.Advance(c.Until(at))
+		}
+		rp, got, ok := nextOr(srv, c.changed, failAfter)
+		require.True(t, ok, "the Locator did not send all that the test waits for")
+		if got && take(rp) {
 			return
 		}
 	}
-	t.Fatal("a silent tracked radio that is heard was not asked again")
+}
+
+type radioMessages struct {
+	rx     *data.Receiver
+	n      int
+	events []data.Event
+	got    []answerOf
+}
+
+type answerOf struct {
+	port     ip.Port
+	ars      bool
+	document lrrp.DocumentID
+}
+
+func newRadioMessages(t *testing.T) *radioMessages {
+	t.Helper()
+	rx, err := data.NewReceiver(&data.ReceiverConfig{Address: 1000002, Lost: -1})
+	require.NoError(t, err)
+	return &radioMessages{rx: rx}
+}
+
+func (m *radioMessages) take(t *testing.T, rp hub.RoutedPacket) {
+	t.Helper()
+	require.Equal(t, uint(100003), rp.RepeaterID, "the Locator's data goes where the radio is heard")
+	require.Equal(t, uint(1000002), rp.Packet.Dst)
+	raw := layer2.RawBurst(rp.Packet.DMRData)
+	m.events = m.rx.Burst(time.Duration(m.n)*60*time.Millisecond, &raw, layer2.Hint{Kind: layer2.KindData}, m.events[:0])
+	m.n++
+	for _, e := range m.events {
+		if e.Kind != data.EventDelivered && e.Kind != data.EventReassembled {
+			continue
+		}
+		sap, ok := e.Message.Header.SAP()
+		require.True(t, ok)
+		d, err := ip.Decode(sap, e.Message.Payload)
+		require.NoError(t, err)
+		a := answerOf{port: d.DestinationPort}
+		switch d.DestinationPort { //nolint:exhaustive
+		case ip.PortARS:
+			_, err := ars.DecodeMessage(d.Payload)
+			require.NoError(t, err)
+			a.ars = true
+		case ip.PortLRRP:
+			var l lrrp.Message
+			require.NoError(t, lrrp.DecodeMessageInto(&l, d.Payload))
+			a.document = l.Document
+		}
+		m.got = append(m.got, a)
+	}
+}
+
+func nextHeard(t *testing.T, sub pubsub.Subscription) (repeater uint, at time.Time) {
+	t.Helper()
+	for {
+		b := bubble.Receive(t, sub.Channel(), failAfter, "the hub did not tell the plugins where the radio was heard")
+		radio, repeater, _, _, at, ok := plugins.DecodeHeard(plugins.HeardAtTopic, b)
+		require.True(t, ok)
+		if radio == 1000002 {
+			return repeater, at
+		}
+	}
+}
+
+// TestASilentTrackedRadioIsAskedAgainWhereItIsHeard moves the time only
+// while nothing is on its way to the Locator that a timer could cut short.
+// The Locator sends the first burst of its answer to the registration
+// without a timer, once it has all of the registration. The radio
+// registers before its owner turns tracking on, so that no ask of a heard
+// radio is due before then.
+func TestASilentTrackedRadioIsAskedAgainWhereItIsHeard(t *testing.T) {
+	t.Parallel()
+	c := newLocatorClock()
+	h, database, ps, srv := lastSeenHubWrappingKV(t, keepKV, c.Fake)
+	heard := ps.Subscribe(plugins.HeardAtTopic)
+	t.Cleanup(func() { _ = heard.Close() })
+	listener := testutils.StartPlugins(t, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
+	listener.Run(t, "Location", []models.PluginRange{{First: 5050, Last: 5059}}, func(ctx context.Context, conn *plugin.Conn) error {
+		return locator.Serve(clock.NewContext(ctx, c), conn)
+	})
+
+	registeredAt := c.Now()
+	for _, p := range arsRegistration(t, 1000002, 5057, 100003) {
+		h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+	}
+	repeater, at := nextHeard(t, heard)
+	assert.Equal(t, uint(100003), repeater)
+	assert.Equal(t, registeredAt.UnixMilli(), at.UnixMilli(), "the time the hub heard the registration")
+	msgs := newRadioMessages(t)
+	msgs.take(t, bubble.Receive(t, srv.Packets, failAfter, "the Locator did not answer the registration"))
+	c.drive(t, srv, func(rp hub.RoutedPacket) bool {
+		msgs.take(t, rp)
+		return len(msgs.got) >= 1
+	})
+	require.NoError(t, models.SetPositionTracking(database, 1000002, 1000002, true, time.Now()))
+	require.NoError(t, database.Model(&models.PositionSetting{}).Where("radio_id = ?", 1000002).Update("interval_seconds", 1).Error)
+	require.NoError(t, plugins.PublishTracking(ps, 1000002))
+	c.drive(t, srv, func(rp hub.RoutedPacket) bool {
+		msgs.take(t, rp)
+		return len(msgs.got) >= 2
+	})
+	require.Equal(t, []answerOf{{port: ip.PortARS, ars: true}, {port: ip.PortLRRP, document: lrrp.DocumentTriggeredRequest}}, msgs.got,
+		"the registration is acknowledged, then the radio is asked for its position once its owner turns tracking on")
+
+	c.Advance(3*time.Second + locatorStep)
+	silentAt := c.Now()
+	foreign := makeVoicePacket(1, 70999, true, true)
+	foreign.Src, foreign.Repeater = 1000002, 100004
+	h.RoutePacket(context.Background(), foreign, models.RepeaterTypeMMDVM)
+	voice := makeVoicePacket(1, 71000, true, true)
+	voice.Src, voice.Repeater = 1000002, 100003
+	h.RoutePacket(context.Background(), voice, models.RepeaterTypeMMDVM)
+	repeater, at = nextHeard(t, heard)
+	assert.Equal(t, uint(100003), repeater, "a sighting on another user's hotspot is not told to the plugins")
+	assert.Equal(t, silentAt.UnixMilli(), at.UnixMilli())
+
+	c.drive(t, srv, func(rp hub.RoutedPacket) bool {
+		if rp.Packet.Src != 5057 {
+			return false
+		}
+		msgs.take(t, rp)
+		return len(msgs.got) >= 4
+	})
+	assert.Equal(t, []answerOf{{port: ip.PortLRRP, document: lrrp.DocumentStopRequest}, {port: ip.PortLRRP, document: lrrp.DocumentTriggeredRequest}}, msgs.got[2:],
+		"the silent request is stopped and the radio asked again where it is heard")
 }

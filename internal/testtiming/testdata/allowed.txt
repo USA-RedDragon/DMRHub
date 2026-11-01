@@ -75,10 +75,7 @@ eventually	internal/dmr/servers/manager/manager_test.go	1	waits for the goroutin
 pickport	internal/dmr/servers/manager/manager_test.go	4	the tests move a listener to a new configured port, or force a restart by a new port, so they need a known free port
 sleep	internal/dmr/servers/manager/manager_test.go	1	paces the background call stream of the restart leak test; no assertion depends on its timing
 eventually	internal/dmr/servers/mmdvm/arrival_test.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/login_flood_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
-deadline	internal/dmr/servers/mmdvm/oversize_test.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/mmdvm/webtransport_test.go	2	an Origin header in the allow-list test, not a port the test binds or sends to
-deadline	internal/dmr/servers/modem/probe_linux_test.go	1	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 fixedport	internal/dmr/servers/openbridge/version_internal_test.go	1	the UDP port of a peer row in the database; the test starts no server and sends nothing to it
 sleep	internal/dmr/stream_loop_integration_test.go	4	the 60 ms pace of the bursts of the two tests, as a radio sends a call, and the windows of the negative checks that no looped copy arrives after each receiver got the call: a copy that the hub drops leaves no state of its stream, and the drop counter is shared by the whole process
 elapsed	internal/dmr/terminate_inbound_integration_test.go	1	the time.Until of that pace; not a wait for an event
@@ -162,7 +159,6 @@ elapsed	internal/testutils/session_peer.go	3	session clock, not a wait: the dmrd
 timer	internal/testutils/session_peer.go	2	the 20 ms tick that drives the dmrdsession Peer, and the WaitReady bound that the caller sets
 timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
 timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails
-deadline	internal/testutils/wt_peer.go	2	baseline of 2026-10-31, not reviewed: replace with an event, a test clock or a :0 port
 elapsed	internal/testutils/wt_peer.go	4	session clock and duplicate window, not a wait: the dmrdsession Peer takes the time since the start and has no clock option (a dmrgo finding)
 sleep	internal/testutils/wt_peer.go	1	pause between failed move tries, not a wait for an event; the count of tries and the life of the old session bound the move
 timer	internal/testutils/wt_peer.go	3	the 20 ms tick that drives the dmrdsession Peer, the overlap a moved browser keeps its old session, and the WaitReady bound that the caller sets

@@ -208,3 +208,28 @@ func TestRetentionPurgesTheMessageAccessLogWithTheMessages(t *testing.T) {
 		})
 	}
 }
+
+// TestRetentionPurgesThePartsWithTheirTransmissions purges an old
+// transmission that two parts were merged into, as a call that moved
+// between replicas is, and keeps a new one with its part.
+func TestRetentionPurgesThePartsWithTheirTransmissions(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, database, kvStore := setup(t, be)
+			now := time.Now()
+			old := models.Call{StartTime: now.Add(-50 * daySpan), Kind: models.CallKindVoice}
+			kept := models.Call{StartTime: now.Add(-daySpan), Kind: models.CallKindVoice}
+			require.NoError(t, database.Create(&old).Error)
+			require.NoError(t, database.Create(&kept).Error)
+			require.NoError(t, database.Create(&[]models.CallPart{{CallID: old.ID, PartID: "a/1"}, {CallID: old.ID, PartID: "b/1"}, {CallID: kept.ID, PartID: "a/2"}}).Error)
+			cfg.DMR.Retention = config.Retention{Transmissions: 30}
+
+			_, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+			require.NoError(t, err)
+			assert.Equal(t, int64(0), count(t, database, &models.CallPart{}, "call_id = ?", old.ID))
+			assert.Equal(t, int64(1), count(t, database, &models.CallPart{}, "call_id = ?", kept.ID))
+		})
+	}
+}

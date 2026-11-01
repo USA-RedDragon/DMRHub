@@ -261,15 +261,6 @@ func TestABurstThatTheOwnerLookupTimedOutOnIsCountedAsALookupWait(t *testing.T) 
 	})
 }
 
-func lookupWaitOf(t *testing.T, route func()) float64 {
-	t.Helper()
-	before := dropped(metrics.DropReasonLookupWait)
-	route()
-	time.Sleep(2 * lookup.Wait)
-	synctest.Wait()
-	return dropped(metrics.DropReasonLookupWait) - before
-}
-
 func TestAGroupBurstToATalkgroupThatTheLookupGaveUpOnIsCountedAsALookupWait(t *testing.T) { //nolint:paralleltest
 	synctest.Test(t, func(t *testing.T) {
 		h, database := makeTestHub(t)
@@ -278,9 +269,11 @@ func TestAGroupBurstToATalkgroupThatTheLookupGaveUpOnIsCountedAsALookupWait(t *t
 		held := holdQueries(t, database, "talkgroups")
 		seedTalkgroup(t, database, 77, "TG77")
 		held.armed.Store(true)
-		got := lookupWaitOf(t, func() {
-			h.RoutePacket(context.Background(), makeVoicePacket(77, 63006, true, false), models.RepeaterTypeMMDVM)
-		})
+		before := dropped(metrics.DropReasonLookupWait)
+		h.RoutePacket(context.Background(), makeVoicePacket(77, 63006, true, false), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		got := dropped(metrics.DropReasonLookupWait) - before
 		assert.InDelta(t, 1, got, 0, "the group burst that the talkgroup lookup gave up on")
 		held.release()
 	})
@@ -295,9 +288,11 @@ func TestAPrivateBurstToARepeaterThatTheLookupGaveUpOnIsCountedAsALookupWait(t *
 		require.NoError(t, h.KnowRepeater(testRepeaterID))
 		held := holdQueries(t, database, "repeaters")
 		held.armed.Store(true)
-		got := lookupWaitOf(t, func() {
-			h.RoutePacket(context.Background(), makeVoicePacket(100009, 63007, false, false), models.RepeaterTypeMMDVM)
-		})
+		before := dropped(metrics.DropReasonLookupWait)
+		h.RoutePacket(context.Background(), makeVoicePacket(100009, 63007, false, false), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		got := dropped(metrics.DropReasonLookupWait) - before
 		assert.InDelta(t, 1, got, 0, "the private burst to a repeater that the repeater lookup gave up on")
 		held.release()
 	})
@@ -316,9 +311,11 @@ func TestAPrivateBurstToARadioHeardOnARepeaterThatTheLookupGaveUpOnIsCountedAsAL
 		held := holdQueries(t, database, "repeaters")
 		held.armed.Store(true)
 		lastSeenWait := dropped(metrics.DropReasonLastSeenWait)
-		got := lookupWaitOf(t, func() {
-			h.RoutePacket(context.Background(), makeVoicePacket(1000002, 63008, false, false), models.RepeaterTypeMMDVM)
-		})
+		before := dropped(metrics.DropReasonLookupWait)
+		h.RoutePacket(context.Background(), makeVoicePacket(1000002, 63008, false, false), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		got := dropped(metrics.DropReasonLookupWait) - before
 		assert.InDelta(t, 1, got, 0, "the private burst whose target's repeater lookup gave up")
 		assert.InDelta(t, 0, dropped(metrics.DropReasonLastSeenWait)-lastSeenWait, 0, "the last-seen read answered")
 		held.release()
@@ -345,9 +342,11 @@ func TestABurstToThePeersThatThePeerLookupGaveUpOnIsCountedAsALookupWait(t *test
 		h.PeerChanged(3100100)
 		failing.Store(false)
 		held.armed.Store(true)
-		got := lookupWaitOf(t, func() {
-			h.RoutePacket(context.Background(), makeVoicePacket(1, 63009, true, false), models.RepeaterTypeMMDVM)
-		})
+		before := dropped(metrics.DropReasonLookupWait)
+		h.RoutePacket(context.Background(), makeVoicePacket(1, 63009, true, false), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		got := dropped(metrics.DropReasonLookupWait) - before
 		assert.InDelta(t, 1, got, 0, "the burst that the peer lookup gave up on")
 		held.release()
 	})
@@ -381,9 +380,11 @@ func TestAGroupBurstToARepeaterThatTheLookupGaveUpOnIsCountedAsALookupWait(t *te
 		h.CodecChanged(100002)
 		failing.Store(false)
 		held.armed.Store(true)
-		got := lookupWaitOf(t, func() {
-			h.RoutePacket(context.Background(), makeVoicePacket(1, 64001, true, false), models.RepeaterTypeMMDVM)
-		})
+		before := dropped(metrics.DropReasonLookupWait)
+		h.RoutePacket(context.Background(), makeVoicePacket(1, 64001, true, false), models.RepeaterTypeMMDVM)
+		time.Sleep(2 * lookup.Wait)
+		synctest.Wait()
+		got := dropped(metrics.DropReasonLookupWait) - before
 		assert.InDelta(t, 1, got, 0, "the group burst that the lookup of a repeater that takes it gave up on")
 		held.release()
 	})

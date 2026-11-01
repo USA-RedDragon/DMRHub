@@ -55,6 +55,7 @@ type MMDVMClient struct {
 	pongs     atomic.Uint64
 	noPings   atomic.Bool
 	mstcls    atomic.Uint64
+	closed    chan struct{}
 }
 
 const (
@@ -76,6 +77,7 @@ func NewMMDVMClient(repeaterID uint32, callsign, password string) *MMDVMClient {
 		ready:      make(chan struct{}),
 		done:       make(chan struct{}),
 		packets:    make(chan models.Packet, clientBuffer),
+		closed:     make(chan struct{}, 1),
 	}
 }
 
@@ -230,6 +232,12 @@ func (c *MMDVMClient) MSTCLs() uint64 {
 	return c.mstcls.Load()
 }
 
+// MSTCLEvents returns a channel that gets a value at an MSTCL after the
+// login, unless a value waits in it already.
+func (c *MMDVMClient) MSTCLEvents() <-chan struct{} {
+	return c.closed
+}
+
 // Close shuts down the client.
 func (c *MMDVMClient) Close() {
 	c.stopOnce.Do(func() {
@@ -315,6 +323,10 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 		}
 		if command == dmrd.CommandMSTCL {
 			c.mstcls.Add(1)
+			select {
+			case c.closed <- struct{}{}:
+			default:
+			}
 		}
 		if command == dmrd.CommandDMRD {
 			pkt, ok := models.UnpackPacket(data)

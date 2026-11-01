@@ -75,6 +75,7 @@ type Server struct {
 	hubHandle    *hub.ServerHandle
 	stopClaims   func()
 	stopSecrets  func()
+	stopResets   func()
 	stopIPLists  func()
 	refusals     ipfilter.RefusalLog
 	sentMu       sync.Mutex
@@ -233,6 +234,9 @@ func (s *Server) Stop(ctx context.Context) error {
 		if s.stopClaims != nil {
 			s.stopClaims()
 		}
+		if s.stopResets != nil {
+			s.stopResets()
+		}
 		if s.stopSecrets != nil {
 			s.stopSecrets()
 		}
@@ -337,6 +341,7 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.dropMoved)
 	s.stopSecrets = s.hub.OnRepeaterSecretChange(func(id uint) { s.endSessions(ctx, id, connlog.PasswordRotated) })
+	s.stopResets = s.hub.OnRepeaterReset(func(id uint) { s.endSessions(ctx, id, "") })
 	s.stopIPLists = s.hub.OnIPListsChange(func() { s.endRefused(ctx) })
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())

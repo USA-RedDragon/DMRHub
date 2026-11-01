@@ -22,7 +22,7 @@ A co-sysop can:
 - change the talkgroups of the repeater, link and unlink talkgroups, and set the voice codec
 - set the [rules of the repeater](repeater-rules.md)
 - see the Last Heard of the repeater
-- see the [connection log](sysop-tools.md#connection-log)
+- see the [connection log](sysop-tools.md#connection-log) and use the [sysop actions](sysop-tools.md#sysop-actions): drop a call, drop a dynamic talkgroup, reset the connection
 
 A co-sysop cannot see or rotate the password of the repeater, delete the repeater, or invite or remove other co-sysops. The repeater shows on the **Repeaters** page of the co-sysop, with the callsign of the owner and a **Co-sysop** badge.
 

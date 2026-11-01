@@ -70,10 +70,33 @@
               <ShadButton v-if="canConnect" as-child variant="outline" size="sm" data-test="connect">
                 <RouterLink :to="`/repeaters/${repeater.id}/connect`" class="no-underline">Connect</RouterLink>
               </ShadButton>
+              <ShadButton
+                v-if="canEditCodec && isOnline"
+                variant="outline"
+                size="sm"
+                data-test="reset-connection"
+                @click="resetOpen = true"
+              >Reset connection</ShadButton>
             </div>
           </div>
         </CardHeader>
       </Card>
+
+      <ShadDialog :open="resetOpen" @update:open="resetOpen = $event">
+        <DialogContent data-test="reset-dialog">
+          <DialogTitle>Reset the connection of {{ repeater.callsign || 'Repeater' }} — {{ repeater.id }}?</DialogTitle>
+          <DialogDescription>{{ resetDescription }}</DialogDescription>
+          <p v-if="resetMessage" class="text-sm text-destructive" data-test="reset-message">{{ resetMessage }}</p>
+          <div class="flex flex-wrap justify-end gap-2">
+            <ShadButton variant="outline" type="button" data-test="reset-cancel" @click="resetOpen = false">Cancel</ShadButton>
+            <ShadButton type="button" :disabled="resetting" data-test="reset-confirm" @click="resetConnection">
+              Reset connection
+            </ShadButton>
+          </div>
+        </DialogContent>
+      </ShadDialog>
+
+      <OnAirCard v-if="canEditCodec" :repeater-id="repeater.id" @calls="onAir = $event" />
 
       <Card v-if="repeater.type !== 'ipsc'" data-test="voice-codec">
         <CardHeader>
@@ -275,6 +298,13 @@
                     <span class="text-xs text-muted-foreground w-16">Dynamic:</span>
                     <Talkgroup v-if="repeater.ts1_dynamic_talkgroup && repeater.ts1_dynamic_talkgroup.id"
                       :talkgroup="repeater.ts1_dynamic_talkgroup" />
+                    <ShadButton
+                      v-if="canEditCodec && repeater.ts1_dynamic_talkgroup && repeater.ts1_dynamic_talkgroup.id"
+                      variant="outline"
+                      size="sm"
+                      data-test="drop-dynamic-ts1"
+                      @click="dropDynamic(1)"
+                    >Drop</ShadButton>
                     <span v-else class="text-sm text-muted-foreground">None</span>
                   </div>
                 </div>
@@ -295,6 +325,13 @@
                     <span class="text-xs text-muted-foreground w-16">Dynamic:</span>
                     <Talkgroup v-if="repeater.ts2_dynamic_talkgroup && repeater.ts2_dynamic_talkgroup.id"
                       :talkgroup="repeater.ts2_dynamic_talkgroup" />
+                    <ShadButton
+                      v-if="canEditCodec && repeater.ts2_dynamic_talkgroup && repeater.ts2_dynamic_talkgroup.id"
+                      variant="outline"
+                      size="sm"
+                      data-test="drop-dynamic-ts2"
+                      @click="dropDynamic(2)"
+                    >Drop</ShadButton>
                     <span v-else class="text-sm text-muted-foreground">None</span>
                   </div>
                 </div>
@@ -342,6 +379,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Dialog as ShadDialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/ui/data-table';
@@ -350,6 +388,8 @@ import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import RepeaterRulesCard from '@/components/RepeaterRulesCard.vue';
 import CosysopsCard from '@/components/CosysopsCard.vue';
 import ConnectionLogCard from '@/components/ConnectionLogCard.vue';
+import OnAirCard from '@/components/OnAirCard.vue';
+import { resetText, type OnAirCall } from '@/lib/sysop';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
@@ -455,6 +495,11 @@ export default {
     RepeaterRulesCard,
     CosysopsCard,
     ConnectionLogCard,
+    OnAirCard,
+    ShadDialog,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
     Talkgroup,
     User,
   },
@@ -502,6 +547,10 @@ export default {
       codecMessage: '',
       codecFailed: false,
       cosysops: null as Cosysops | null,
+      onAir: [] as OnAirCall[],
+      resetOpen: false,
+      resetting: false,
+      resetMessage: '',
     };
   },
   watch: {
@@ -521,6 +570,9 @@ export default {
     protocol(): string {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';
       return this.repeater.dialect === 'HBRP' ? 'HBRP' : 'MMDVM';
+    },
+    resetDescription(): string {
+      return resetText(this.repeater?.type === 'ipsc' ? 'repeater' : 'hotspot', this.onAir);
     },
     role(): Role | null {
       return this.cosysops ? this.cosysops.role : null;
@@ -575,8 +627,8 @@ export default {
       const mhz = hz / 1000000;
       return `${mhz.toFixed(4)} MHz`;
     },
-    fetchRepeater() {
-      this.loading = true;
+    fetchRepeater(quiet = false) {
+      this.loading = !quiet;
       API.get(`/repeaters/${this.repeaterID}`)
         .then((res) => {
           this.repeater = res.data;
@@ -587,6 +639,33 @@ export default {
           console.error(err);
           this.error = 'Failed to load repeater details. You may not have permission to view this repeater.';
           this.loading = false;
+        });
+    },
+    resetConnection() {
+      this.resetting = true;
+      this.resetMessage = '';
+      API.post(`/repeaters/${this.repeaterID}/reset`)
+        .then(() => {
+          this.resetOpen = false;
+          const log = this.$refs.connectionLog as { load?: () => void } | undefined;
+          log?.load?.();
+        })
+        .catch((err) => {
+          this.resetMessage = errorText(err, 'Could not reset the connection. Try again.');
+        })
+        .finally(() => {
+          this.resetting = false;
+        });
+    },
+    dropDynamic(ts: 1 | 2) {
+      const tg = ts === 1 ? this.repeater?.ts1_dynamic_talkgroup : this.repeater?.ts2_dynamic_talkgroup;
+      if (!tg || !tg.id) return;
+      API.post(`/repeaters/${this.repeaterID}/unlink/dynamic/${ts}/${tg.id}`, {})
+        .then(() => {
+          this.fetchRepeater(true);
+        })
+        .catch((err) => {
+          console.error(err);
         });
     },
     fetchCosysops() {

@@ -71,6 +71,8 @@ func hooks() map[string]hook {
 		"tokens":        makeTokens,
 		"cosysops":      inviteCosysops,
 		"wrong-login":   wrongLogin,
+		"open-call":     openCall,
+		"end-call":      endCall,
 	}
 }
 
@@ -516,6 +518,31 @@ func wrongLogin(_ context.Context, _ *runner) error {
 		}
 	}
 	return nil
+}
+
+func openCall(_ context.Context, r *runner) error {
+	bursts, err := voiceCall(true, 3100, 3000002, 12)
+	if err != nil {
+		return err
+	}
+	p, ok := r.peers[300000201]
+	if !ok {
+		return errors.New("repeater 300000201 is not connected")
+	}
+	r.stream++
+	return p.play(transmission{src: 3000002, dst: 3100, group: true, slot2: true, bursts: bursts[:len(bursts)-1]}, r.stream, nil)
+}
+
+func endCall(_ context.Context, r *runner) error {
+	bursts, err := voiceCall(true, 3100, 3000002, 1)
+	if err != nil {
+		return err
+	}
+	p, ok := r.peers[300000201]
+	if !ok {
+		return errors.New("repeater 300000201 is not connected")
+	}
+	return p.play(transmission{src: 3000002, dst: 3100, group: true, slot2: true, bursts: bursts[len(bursts)-1:]}, r.stream, nil)
 }
 
 func setEmail(ctx context.Context, r *runner) error {

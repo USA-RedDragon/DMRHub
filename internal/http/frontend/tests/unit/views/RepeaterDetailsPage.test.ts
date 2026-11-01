@@ -22,7 +22,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/services/API', () => ({
-  default: { get: vi.fn(), patch: vi.fn() },
+  default: { get: vi.fn(), patch: vi.fn(), post: vi.fn() },
 }));
 vi.mock('@/services/ws', () => ({
   default: { connect: vi.fn(() => ({ close: vi.fn() })) },
@@ -32,7 +32,7 @@ import API from '@/services/API';
 import RepeaterDetailsPage from '@/views/repeaters/RepeaterDetailsPage.vue';
 import { useUserStore } from '@/store';
 
-const mockAPI = API as unknown as { get: Mock };
+const mockAPI = API as unknown as { get: Mock; post: Mock };
 
 async function badge(lastPing: string, extra: Record<string, unknown> = {}) {
   mockAPI.get.mockImplementation((url: string) => {
@@ -99,7 +99,7 @@ describe('RepeaterDetailsPage details', () => {
   });
 });
 
-async function asRole(role: string | null, userID: number) {
+async function asRole(role: string | null, userID: number, extra: Record<string, unknown> = {}) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url.startsWith('/lastheard')) {
       return Promise.resolve({ data: { calls: [], total: 0 } });
@@ -115,6 +115,7 @@ async function asRole(role: string | null, userID: number) {
         ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
         latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
         owner: { id: 3000001, callsign: 'N0DEMO' },
+        ...extra,
       },
     });
   });
@@ -160,6 +161,42 @@ describe('RepeaterDetailsPage roles', () => {
     expect(w.find('[data-test="codec-save"]').exists()).toBe(false);
     expect(w.find('[data-test="connect"]').exists()).toBe(false);
     expect(w.find('[data-test="cosysops"]').exists()).toBe(false);
+    w.unmount();
+  });
+});
+
+describe('RepeaterDetailsPage sysop actions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('resets the connection of an online hotspot after a confirm', async () => {
+    mockAPI.post.mockResolvedValue({ data: {} });
+    const w = await asRole('cosysop', 3000002);
+    await w.find('[data-test="reset-connection"]').trigger('click');
+    await flushPromises();
+    const dialog = document.querySelector('[data-test="reset-dialog"]');
+    expect(dialog?.textContent).toContain('The hotspot logs in again by itself.');
+    (document.querySelector('[data-test="reset-confirm"]') as HTMLElement).click();
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/310000101/reset');
+    w.unmount();
+  });
+
+  it('drops the dynamic talkgroup of a timeslot', async () => {
+    mockAPI.post.mockResolvedValue({ data: {} });
+    const w = await asRole('owner', 3000001, { ts2_dynamic_talkgroup: { id: 3148, name: 'Texas' } });
+    expect(w.find('[data-test="drop-dynamic-ts1"]').exists()).toBe(false);
+    await w.find('[data-test="drop-dynamic-ts2"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/310000101/unlink/dynamic/2/3148', {});
+    w.unmount();
+  });
+
+  it('shows no sysop actions to another user', async () => {
+    const w = await asRole(null, 3000003);
+    expect(w.find('[data-test="reset-connection"]').exists()).toBe(false);
+    expect(mockAPI.get).not.toHaveBeenCalledWith('/repeaters/310000101/on-air');
     w.unmount();
   });
 });

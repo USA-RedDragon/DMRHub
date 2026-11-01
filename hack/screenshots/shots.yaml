@@ -385,3 +385,19 @@ shots:
     route: /repeaters/300000101
     wait: "Login refused: wrong password."
     clip: card Connection log
+  - name: repeater-reset.png
+    phase: main
+    as: n0call
+    route: /repeaters/300000101
+    wait: Reset connection
+    steps: ["click Reset connection", "wait The hotspot logs in again by itself."]
+    clip: dialog
+  - name: repeater-on-air.png
+    phase: main
+    as: n1call
+    frozen: true
+    route: /repeaters/300000201
+    wait: Connection log
+    steps: ["run open-call", "wait Drop call"]
+    clip: card On the air
+    after: ["run end-call"]

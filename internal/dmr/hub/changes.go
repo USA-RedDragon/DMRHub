@@ -186,6 +186,8 @@ func (h *Hub) applyChange(topic string, id uint) {
 		h.watchers.call(rulesChangedTopic, id)
 	case repeaterRekeyTopic:
 		h.watchers.call(repeaterRekeyTopic, id)
+	case repeaterResetTopic:
+		h.watchers.call(repeaterResetTopic, id)
 	}
 }
 

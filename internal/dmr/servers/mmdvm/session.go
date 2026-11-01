@@ -1202,7 +1202,7 @@ func (s *Server) endMoved(id uint32, l *link) {
 // after a change of its password, so that it must log in again with the
 // new one. It also ends a login that is still going on, which may have
 // read the old password. Each session that ran goes into the connection
-// log as kind.
+// log as kind, unless kind is empty.
 func (s *Server) endSessions(ctx context.Context, id uint, kind string) {
 	if id > math.MaxUint32 {
 		return
@@ -1222,7 +1222,7 @@ func (s *Server) endSessions(ctx context.Context, id uint, kind string) {
 			continue
 		}
 		slog.Info("Ending the session of a repeater", "repeaterID", id, "remoteAddr", l.ep.String(), "why", kind)
-		if l.m.State() == dmrdsession.StateRunning {
+		if kind != "" && l.m.State() == dmrdsession.StateRunning {
 			s.note(uint32(id), kind, l.ep, "")
 		}
 		var buf [dmrdsession.MaxOutputs]dmrdsession.Output

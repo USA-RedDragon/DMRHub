@@ -147,8 +147,7 @@ type Hub struct {
 	kv          kv.KV
 	pubsub      pubsub.PubSub
 	callTracker *calltracker.CallTracker
-	// events writes the connection logs of the repeaters.
-	events *connlog.Log
+	events      *connlog.Log
 
 	mu      sync.RWMutex
 	servers map[string]*serverEntry
@@ -221,6 +220,7 @@ type Hub struct {
 	dynamicSet        chan struct{}
 	dynamicUses       *xsync.Map[repeaterSlot, dynamicUse]
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
+	drops             *xsync.Map[repeaterSlot, dropRecord]
 	slotRefused       *xsync.Map[slotStream, time.Time]
 	streamPolicies    *xsync.Map[claimKey, streamPolicy]
 	autoTalkgroups    *xsync.Map[uint, struct{}]
@@ -323,6 +323,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
 	h.dynamicUses = xsync.NewMap[repeaterSlot, dynamicUse]()
 	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
+	h.drops = xsync.NewMap[repeaterSlot, dropRecord]()
 	h.slotRefused = xsync.NewMap[slotStream, time.Time]()
 	h.streamPolicies = xsync.NewMap[claimKey, streamPolicy]()
 	h.transcoder = transcode.NewService(kvStore, h.clock)
@@ -351,9 +352,10 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	if ps != nil {
 		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
 		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
-		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic} {
+		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic, repeaterResetTopic} {
 			go h.listenChanges(topic, ps.Subscribe(topic))
 		}
+		go h.listenDrops(ps.Subscribe(callDropTopic))
 	}
 	go h.resyncRepeaters()
 	if ct != nil {

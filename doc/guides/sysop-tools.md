@@ -29,6 +29,37 @@ DMRHub runs on more than one replica in some networks. When a replica restarts, 
 
 The Connection log of an IPSC repeater shows its registrations, the ends of its registrations, and packets with a wrong auth key. A modem on a serial port of the server has no log.
 
+## Sysop actions
+
+The repeater page gives the owner, the co-sysops and admins three actions. Each one shows only while it applies.
+
+### Drop a call
+
+While a call is on the air on the repeater, the **On the air** card shows it: the timeslot, who talks, the talkgroup or radio that the call goes to, and how long it has run. The card shows calls in both directions: calls from a radio on the repeater, and calls that the network sends to it.
+
+![The On the air card with a call of N1CALL to TG 3100 on TS2 and its Drop call button](../Screenshots/repeater-on-air.png)
+
+Click **Drop call** to stop the call on this repeater. DMRHub sends the radios on the repeater the end of the call, so that they unmute at once, and carries nothing more of that call to or from this repeater until it ends. The next call goes through as usual. The drop applies to this repeater only:
+
+- A call from the network that you drop still reaches the other repeaters.
+- A call from a radio on this repeater that you drop ends for every listener on the network.
+
+### Drop a dynamic talkgroup
+
+On the **Talkgroup Subscriptions** card, click **Drop** next to the dynamic talkgroup of a timeslot to unlink it.
+
+### Reset the connection
+
+While the hotspot or repeater is online, click **Reset connection** in the top card, and then **Reset connection** in the dialog. DMRHub ends the session of the hotspot, on whichever DMRHub replica holds it. A call on the air ends. The hotspot logs in again by itself. The connection log shows the reset with the callsign of the sysop.
+
+![The dialog to reset the connection of a hotspot](../Screenshots/repeater-reset.png)
+
+A reset helps when a hotspot stays logged in but does not seem to pass traffic, or after a change to its settings that it reads only at login.
+
 ## API
 
+- `GET /api/v1/repeaters/<id>/on-air` lists the voice calls that the repeater carries now: `call_id`, `slot`, `direction` (`from` or `to`), `source_id`, `callsign`, `destination_id`, `group_call` and `start_time`.
+- `POST /api/v1/repeaters/<id>/drop-call` with `{"call_id": <id>}` drops a call that `on-air` lists.
+- `POST /api/v1/repeaters/<id>/reset` resets the connection.
+- `POST /api/v1/repeaters/<id>/unlink/dynamic/<slot>/<talkgroup>` drops the dynamic talkgroup of a timeslot.
 - `GET /api/v1/repeaters/<id>/events` returns the entries of the connection log of the last 24 hours, newest first: `kind`, `address`, `detail`, `count`, `first_at` and `last_at`.

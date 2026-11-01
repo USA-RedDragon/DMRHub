@@ -706,6 +706,10 @@ func (m *subscriptionManager) deliverPrivate(ctx context.Context, sub *subscript
 	if !wantsVersion(&packet, p.SlotCodec(packet.Slot)) {
 		return
 	}
+	packet, carry := m.hub.dropped(repeaterID, packet.Slot, packet)
+	if !carry {
+		return
+	}
 	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
 	m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
 }
@@ -750,6 +754,10 @@ func (m *subscriptionManager) deliverGroup(ctx context.Context, sub *subscriptio
 	packet.Repeater = p.ID
 	packet.Slot = slot
 	if !wantsVersion(&packet, p.SlotCodec(slot)) {
+		return
+	}
+	packet, carry := m.hub.dropped(repeaterID, slot, packet)
+	if !carry {
 		return
 	}
 	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})

@@ -72,7 +72,8 @@ type IPSCServer struct {
 	keys    *lookup.Cache[uint32, peerAuthKey]
 	unwatch func()
 	// unwatchKeys stops the calls of rekey.
-	unwatchKeys func()
+	unwatchKeys   func()
+	unwatchResets func()
 
 	burstHandler func(packetType byte, data []byte, addr *net.UDPAddr, at time.Time)
 	bursts       []burst
@@ -269,6 +270,7 @@ func (s *IPSCServer) Start(ctx context.Context) error {
 	})
 	s.unwatch = s.hub.OnRepeaterChange(func(id uint) { s.keys.Reload(uint32(id)) }) //nolint:gosec // repeater IDs fit in 32 bits
 	s.unwatchKeys = s.hub.OnRepeaterSecretChange(s.rekey)
+	s.unwatchResets = s.hub.OnRepeaterReset(s.reset)
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.handOverPeer)
 	s.stopIPLists = s.hub.OnIPListsChange(s.dropRefused)
 
@@ -306,6 +308,9 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		if s.unwatch != nil {
 			s.unwatch()
 		}
+		if s.unwatchResets != nil {
+			s.unwatchResets()
+		}
 		if s.unwatchKeys != nil {
 			s.unwatchKeys()
 		}
@@ -340,8 +345,18 @@ func (s *IPSCServer) rekey(id uint) {
 	if id > math.MaxUint32 || s.m == nil {
 		return
 	}
-	peer := uint32(id)
-	s.keys.Reload(peer)
+	s.keys.Reload(uint32(id))
+	s.drop(uint32(id), connlog.PasswordRotated, "Dropping an IPSC peer whose auth key changed")
+}
+
+func (s *IPSCServer) reset(id uint) {
+	if id > math.MaxUint32 || s.m == nil {
+		return
+	}
+	s.drop(uint32(id), "", "Dropping an IPSC peer that a sysop reset")
+}
+
+func (s *IPSCServer) drop(peer uint32, kind, why string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped.Load() {
@@ -351,8 +366,10 @@ func (s *IPSCServer) rekey(id uint) {
 	if !ok {
 		return
 	}
-	slog.Info("Dropping an IPSC peer whose auth key changed", "peerID", peer, "reason", ipscsession.ReasonDropped)
-	s.notePeer(peer, connlog.PasswordRotated, "")
+	slog.Info(why, "peerID", peer, "reason", ipscsession.ReasonDropped)
+	if kind != "" {
+		s.notePeer(peer, kind, "")
+	}
 	s.apply(context.Background(), out)
 }
 
@@ -566,8 +583,6 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 	}
 }
 
-// note adds an event of kind from addr with detail to the connection log
-// of the peer id.
 func (s *IPSCServer) note(id uint32, kind string, addr ipscsession.Addr, detail string) {
 	if s.hub == nil {
 		return
@@ -579,8 +594,6 @@ func (s *IPSCServer) note(id uint32, kind string, addr ipscsession.Addr, detail 
 	s.hub.NoteRepeaterEvent(uint(id), kind, address, detail)
 }
 
-// notePeer adds an event of kind with detail to the connection log of the
-// registered peer id, from its address. The caller holds s.mu.
 func (s *IPSCServer) notePeer(id uint32, kind, detail string) {
 	info, ok := s.m.Peer(id)
 	if !ok {
@@ -589,9 +602,6 @@ func (s *IPSCServer) notePeer(id uint32, kind, detail string) {
 	s.note(id, kind, info.Addr, detail)
 }
 
-// noteDown adds the end of the registration of o to the connection log of
-// its peer: a timeout or a de-registration of the peer. A peer that moved
-// to another replica is not here any more, and the caller skips it.
 func (s *IPSCServer) noteDown(o ipscsession.Output) {
 	switch o.Reason { //nolint:exhaustive
 	case ipscsession.ReasonTimeout:

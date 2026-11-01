@@ -211,7 +211,11 @@ describe('Setup page with live settings', () => {
     wizard: { phase: 'database', database_error: 'x', database_file: '/app/dmrhub-database.json' },
   });
 
-  const fixWith = async (answers: Array<() => Promise<unknown>>, health: () => Promise<unknown> = () => Promise.reject(new Error('Network Error'))) => {
+  const fixWith = async (
+    answers: Array<() => Promise<unknown>>,
+    health: () => Promise<unknown> = () => Promise.reject(new Error('Network Error')),
+    maxTimers = Infinity,
+  ) => {
     const { wrapper, toast } = await mountSetup('/setup', databasePhase());
     const config = mockAPI.get.getMockImplementation();
     const polls: string[] = [];
@@ -231,7 +235,7 @@ describe('Setup page with live settings', () => {
     try {
       await wrapper.find('form').trigger('submit');
       await flushPromises();
-      while (vi.getTimerCount() > 0) {
+      for (let i = 0; i < maxTimers + 61 && vi.getTimerCount() > 0; i++) {
         await vi.runOnlyPendingTimersAsync();
         await flushPromises();
       }
@@ -268,13 +272,23 @@ describe('Setup page with live settings', () => {
 
   it('keeps asking, then says so, when neither the setup wizard nor DMRHub answers during a database fix', async () => {
     const lost = () => Promise.reject(new Error('Network Error'));
-    const { toast, polls } = await fixWith([() => Promise.resolve({ data: { status: 'pending' } }), ...Array(100).fill(lost)]);
+    const health = vi.fn(lost);
+    const { wrapper, toast, polls } = await fixWith([() => Promise.resolve({ data: { status: 'pending' } }), ...Array(100).fill(lost)], health, 10);
     expect(polls).toHaveLength(61);
-    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({
-      severity: 'error',
-      detail: 'DMRHub did not answer after the database fix. Check that DMRHub runs, then reload the page.',
-    }));
+    expect(health.mock.calls.length).toBeGreaterThan(60);
+    expect(wrapper.find('[data-test="fix-lost"]').text()).toContain('DMRHub did not answer after the database fix.');
     expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' }));
+  });
+
+  it('goes to DMRHub when it answers after the page said it did not', async () => {
+    const lost = () => Promise.reject(new Error('Network Error'));
+    let asks = 0;
+    const health = () => (++asks > 63 ? Promise.resolve({ data: { status: 'healthy' } }) : lost());
+    const { wrapper, toast, polls } = await fixWith([() => Promise.resolve({ data: { status: 'pending' } }), ...Array(100).fill(lost)], health);
+    expect(polls).toHaveLength(61);
+    expect(asks).toBe(64);
+    expect(wrapper.find('[data-test="fix-lost"]').exists()).toBe(false);
+    expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success', detail: 'DMRHub reached its database and is starting' }));
   });
 
   it('follows the fix again when the setup wizard answers after a miss', async () => {

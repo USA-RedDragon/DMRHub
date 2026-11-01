@@ -33,6 +33,15 @@
     </div>
     <template v-else>
       <div
+        v-if="fixLost"
+        role="alert"
+        class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
+        data-test="fix-lost"
+      >
+        <b class="font-semibold">DMRHub did not answer after the database fix.</b>
+        <p>Check that DMRHub runs. This page goes on to DMRHub once it answers.</p>
+      </div>
+      <div
         v-if="databasePhase"
         role="alert"
         class="my-4 flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm"
@@ -257,6 +266,7 @@ type ClosedReason = '' | 'database' | 'settings';
 
 const fixPollInterval = 1000;
 const fixConfirmTries = 60;
+const fixLostInterval = 5000;
 
 type FixAnswer = { status: 'pending' | 'done' | 'failed'; phase?: unknown; error?: unknown };
 
@@ -348,6 +358,7 @@ export default defineComponent({
       closed: '' as ClosedReason,
       saves: 0,
       fixPoll: undefined as ReturnType<typeof setTimeout> | undefined,
+      fixLost: false,
       secretStatus: {
         secretSet: false,
         passwordSaltSet: false,
@@ -425,6 +436,7 @@ export default defineComponent({
       API.get('/healthcheck')
         .then((res: AxiosResponse) => {
           if (asRecord(res.data)?.status === 'healthy') {
+            this.fixLost = false;
             this.afterDatabase('done');
             return;
           }
@@ -436,17 +448,18 @@ export default defineComponent({
     },
     retryDatabaseFix(misses: number) {
       if (misses + 1 >= fixConfirmTries) {
-        this.saveFailed(new Error('neither the setup wizard nor DMRHub answers'), 'DMRHub did not answer after the database fix. Check that DMRHub runs, then reload the page.');
+        this.fixLost = true;
+        this.fixPoll = setTimeout(() => this.confirmStart(misses + 1), fixLostInterval);
         return;
       }
       this.fixPoll = setTimeout(() => this.pollDatabaseFix(misses + 1), fixPollInterval);
     },
-    saveFailed(error: unknown, detail = 'Failed to save configuration') {
+    saveFailed(error: unknown) {
       console.log(error);
       this.$toast.add({
         severity: 'error',
         summary: 'Error',
-        detail,
+        detail: 'Failed to save configuration',
         life: 3000,
       });
     },

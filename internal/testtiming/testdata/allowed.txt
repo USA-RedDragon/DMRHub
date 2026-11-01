@@ -44,7 +44,7 @@ sleep	internal/dmr/mmdvm_slow_redis_integration_test.go	1	pace, not a wait: one 
 sleep	internal/dmr/modem_integration_test.go	2	pace, not a wait: one burst each 60 ms, as a radio and a network repeater send a call
 elapsed	internal/dmr/move_integration_test.go	1	the time.Until of the pace of the call; not a wait for an event
 sleep	internal/dmr/move_integration_test.go	1	pace of the call, one burst each rotationInterval as a radio sends it
-timer	internal/dmr/move_integration_test.go	1	the step of the test clock of the IPSC move test, one rotationInterval as the bursts go, and the failure bound of its waits for a burst; the check of the burst at the move holds the test clock and has no time bound
+timer	internal/dmr/move_integration_test.go	1	the step of the test clock of the IPSC move test, one rotationInterval as the bursts go, and the failure bound of its waits for a burst, deliverWait; the check of the burst at the move holds the test clock, so its bound is not a time that the product may take
 sleep	internal/dmr/net_integration_test.go	2	minimum, not a wait: callHoldTime keeps each call past the 100 ms key-up threshold of the call tracker, which drops shorter calls; starvation only lengthens it
 elapsed	internal/dmr/openbridge_conform_integration_test.go	1	bound, not a wait: the probe of the second replica stops at 3 egress lease TTLs, the product constant that a lease outlives
 sleep	internal/dmr/openbridge_live_test.go	1	pace, not a wait: one burst each 60 ms, as a radio sends a call; a starved machine only spreads them
@@ -65,7 +65,7 @@ sleep	internal/dmr/rotate_password_integration_test.go	1	minimum, not a wait: th
 elapsed	internal/dmr/rotation_integration_test.go	4	the time.Until of the pace of the calls, and the times of the rotation steps that the test logs; not waits
 sleep	internal/dmr/rotation_integration_test.go	2	the scenario, not a wait: the pace of the calls, one burst each rotationInterval, and the 1.5 s into the calls at which the rotation starts, so that it comes mid-call
 sleep	internal/dmr/routing_settings_integration_test.go	3	windows of negative checks where no state can be checked: that a call and a dial link nothing with dynamic links off, on this replica and on another (a refused link leaves no state and no event), and that a timeout of 0 unlinks nothing after the test clock moved 3 s (a sweep that unlinks nothing leaves no state)
-eventually	internal/dmr/rpto_integration_test.go	2	polls the static and dynamic talkgroups of a repeater in the database, which the options write with no event; bounded by deliverWait
+eventually	internal/dmr/rpto_integration_test.go	2	polls the static and dynamic talkgroups of a repeater in the database, which the options write with no event; bounded by handshakeWait, the login timeout, since the RPTACK of the options goes out after they are applied
 elapsed	internal/dmr/servers/ipsc/dataend_test.go	1	virtual time: assertBackToBack compares the send times of a bubbleClock, in the synctest bubbles of its callers
 sleep	internal/dmr/servers/ipsc/hang_test.go	1	virtual time: bubbleClock.advance runs only in the synctest bubbles of these tests
 deadline	internal/dmr/servers/ipsc/server_test.go	1	expectNoUDP: a negative check, where a slow machine can only delay a packet past the 100 ms and hide it, never fail the test

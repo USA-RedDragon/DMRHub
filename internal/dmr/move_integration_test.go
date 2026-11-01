@@ -171,7 +171,7 @@ func exchange(t *testing.T, addr string, p []byte) []byte {
 	defer func() { _ = conn.Close() }()
 	_, err = conn.Write(p)
 	require.NoError(t, err)
-	require.NoError(t, conn.SetReadDeadline(time.Now().Add(drainWait)))
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(deliverWait)))
 	buf := make([]byte, 512)
 	n, err := conn.Read(buf)
 	require.NoError(t, err)
@@ -467,7 +467,7 @@ func checkIPSCMoveKeepsEachBurstInItsSlot(t *testing.T, clk *clock.Fake, stack *
 	next := time.Now()
 	for i := range bursts {
 		if i == moveAt {
-			require.True(t, waitFor(moveAt-1, drainWait, true), "the peer got the burst before the move")
+			require.True(t, waitFor(moveAt-1, deliverWait, true), "the peer got the burst before the move")
 			first.MarkDraining(t.Context())
 			front.Drain(stack.IPSCAddr)
 			require.NoError(t, peer.SendAlive())
@@ -484,7 +484,7 @@ func checkIPSCMoveKeepsEachBurstInItsSlot(t *testing.T, clk *clock.Fake, stack *
 		}
 		require.NoError(t, talker.SendDMRD(p))
 		if i == moveAt {
-			atMove = waitFor(moveAt, drainWait, false)
+			atMove = waitFor(moveAt, deliverWait, false)
 			close(held.release)
 			next = time.Now()
 		}

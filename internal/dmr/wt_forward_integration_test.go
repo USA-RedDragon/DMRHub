@@ -96,6 +96,7 @@ func TestWebTransportSessionLivesOnThroughAnotherReplica(t *testing.T) {
 		front.Drain(stack.WebTransportAddr)
 		const bursts = 100
 		sendCall(t, talker.SendDMRD, 1000001, 1, 8301, bursts)
+		awaitBursts(browser.Heard, bursts, 8301)
 		browser.Drain(drainWait)
 		heard := browser.Heard()
 		windows := windowsAt(front.Ends(), hub.MoveSlack)

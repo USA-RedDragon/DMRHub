@@ -150,13 +150,21 @@ func waitSubscribed(t *testing.T, h *hub.Hub, repeaterID, tg uint, want bool) {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
+	if !until(cond) {
+		t.Fatalf("%s did not happen within %s", what, deliverWait)
+	}
+}
+
+// until reports whether cond held within deliverWait.
+func until(cond func() bool) bool {
 	deadline := time.Now().Add(deliverWait)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("%s did not happen within %s", what, deliverWait)
+			return false
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	return true
 }
 
 // allBackends returns the list of backends to test against. MySQL and

@@ -98,6 +98,21 @@ func windowsAt(ended []time.Time, slack time.Duration) []moveWindow {
 	return out
 }
 
+// awaitBursts waits until heard holds each of the first n packets of each
+// of streams, or for deliverWait. The checks of the arrivals then name the
+// packets that a client lost.
+func awaitBursts(heard func() []testutils.Heard, n int, streams ...uint) {
+	until(func() bool {
+		got := heard()
+		for _, stream := range streams {
+			if len(firstArrivalsOf(got, stream)) < n {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 // arrival is a packet of a call that a client got: its place in the call
 // and when it came.
 type arrival struct {
@@ -368,17 +383,10 @@ func TestRotationMidCall(t *testing.T) {
 		b.Terminate(t, regB, fronts, rotationDrain)
 		t.Logf("%s: the second replica stopped", time.Since(start).Round(time.Millisecond))
 		calls.Wait()
-		heardAll := func(what string, heard func() []testutils.Heard, streams ...uint) {
-			for _, stream := range streams {
-				waitFor(t, fmt.Sprintf("%s hears every burst of stream %d", what, stream), func() bool {
-					return len(firstArrivalsOf(heard(), stream)) >= rotationBursts
-				})
-			}
-		}
-		heardAll("repeater 100001", talkerA.Heard, one.stream)
-		heardAll("repeater 100002", talkerB.Heard, two.stream)
-		heardAll("repeater 100003", slow.Heard, one.stream, two.stream)
-		heardAll("the browser hotspot", browser.Heard, one.stream, two.stream)
+		awaitBursts(talkerA.Heard, rotationBursts, one.stream)
+		awaitBursts(talkerB.Heard, rotationBursts, two.stream)
+		awaitBursts(slow.Heard, rotationBursts, one.stream, two.stream)
+		awaitBursts(browser.Heard, rotationBursts, one.stream, two.stream)
 
 		for _, p := range []struct {
 			name string

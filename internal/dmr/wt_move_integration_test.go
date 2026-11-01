@@ -96,6 +96,8 @@ func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 // front moved the path of its QUIC connection.
 func checkMovedBrowser(t *testing.T, browser *testutils.WebTransportPeer, front *testutils.UDPFront, drained time.Time, stream uint, n int) {
 	t.Helper()
+	waitFor(t, "the browser hotspot moves", func() bool { return browser.Moves() >= 1 })
+	awaitBursts(browser.Heard, n, stream)
 	browser.Drain(drainWait)
 	moved := browser.Moved()
 	require.Len(t, moved, 1, "the browser hotspot did not move")

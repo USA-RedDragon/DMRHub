@@ -182,8 +182,12 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 		return asIs(rec, stream)
 	}
 	total, last := len(slots), slots[len(slots)-1]
+	slot := rec[0].Slot
+	if slot != enums.Slot2 {
+		slot = enums.Slot1
+	}
 	tx, err := voice.NewTransmitter(&voice.TransmitterConfig{
-		ColorCode: colorCode(rec), Source: layer2.SyncSourceBS, Silence: vocoder.AMBESilenceSlot(), Timeout: -1,
+		ColorCode: colorCode(rec), Source: layer2.SyncSourceBS, Slot: slot, Silence: vocoder.AMBESilenceSlot(), Timeout: -1,
 	})
 	if err != nil {
 		slog.Error("Parrot: cannot make a voice transmitter", "error", err)
@@ -199,6 +203,7 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 	reply := make([]dmrd.Data, 0, len(rec)+len(slots)/layer2.VoiceSlotsPerBurst+6)
 	outputs := make([]voice.Output, 0, voice.MaxOutputs)
 	stopped, sent := false, 0
+	var now time.Duration
 	for {
 		for len(slots) > 0 && tx.Room() > 0 {
 			if err := tx.VocoderSlot(slots[0]); err != nil {
@@ -208,13 +213,14 @@ func Reply(rec []dmrd.Data, stream uint32) []dmrd.Data {
 			slots = slots[1:]
 		}
 		if len(slots) == 0 && !stopped {
-			tx.Stop()
+			tx.Stop(now)
 			stopped = true
 		}
 		at, ok := tx.Deadline()
 		if !ok {
 			return reply
 		}
+		now = at
 		outputs = tx.Tick(at, outputs[:0])
 		for i := range outputs {
 			out := &outputs[i]

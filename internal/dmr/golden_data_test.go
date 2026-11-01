@@ -22,6 +22,7 @@ package dmr_test
 import (
 	"encoding/hex"
 	"math"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -106,6 +107,30 @@ func (n *goldenNet) drain(done func([][]models.Packet) bool) (map[uint32][]model
 	return map[uint32][]models.Packet{anyTone: got[0], otherRadio: got[1]}, got[2]
 }
 
+func (n *goldenNet) reached(toRadio map[uint32][][]models.Packet, toOB [][]models.Packet) func([][]models.Packet) bool {
+	return func(out [][]models.Packet) bool {
+		for radio, calls := range toRadio {
+			i := map[uint32]int{anyTone: 0, otherRadio: 1}[radio]
+			for _, sent := range calls {
+				if !gotLast(out[i], sent) {
+					return false
+				}
+			}
+		}
+		for _, sent := range toOB {
+			if !gotLast(out[2], sent) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func gotLast(got, sent []models.Packet) bool {
+	last := sent[len(sent)-1]
+	return slices.ContainsFunc(ofStream(got, last.StreamID), func(p models.Packet) bool { return p.Seq&0xFF == last.Seq&0xFF })
+}
+
 func (n *goldenNet) sendAir(t *testing.T, txs []transmission, firstStream uint) [][]models.Packet {
 	t.Helper()
 	sent := make([][]models.Packet, 0, len(txs))
@@ -156,12 +181,14 @@ func TestGoldenAirCaptures(t *testing.T) {
 				txs := splitTransmissions(t, readAirCapture(t, "testdata/"+g.name+".txt"), g.slot2)
 				sent := n.sendAir(t, txs, 0xB000)
 				var routed [][]models.Packet
+				toRadio := map[uint32][][]models.Packet{}
 				for i, tx := range txs {
 					if !isDropped(g.dropped, tx.dst) {
 						routed = append(routed, sent[i])
+						toRadio[tx.dst] = append(toRadio[tx.dst], sent[i])
 					}
 				}
-				got, ob := n.drain(callsArrived(routed...))
+				got, ob := n.drain(n.reached(toRadio, routed))
 
 				t.Run("repeaters", func(t *testing.T) {
 					t.Parallel()
@@ -463,7 +490,7 @@ func TestGoldenAppCaptures(t *testing.T) {
 				tx := transmission{call: c, slot2: true, bursts: append(preambles(t, c, 5, len(blocks)), blocks...)}
 				tx.at = make([]float64, len(tx.bursts))
 				sent := n.sendAir(t, []transmission{tx}, 0xC000)
-				got, _ := n.drain(callsArrived(sent...))
+				got, _ := n.drain(n.reached(map[uint32][][]models.Packet{otherRadio: sent}, nil))
 
 				t.Run("repeaters", func(t *testing.T) {
 					needs(t, needRoute()...)

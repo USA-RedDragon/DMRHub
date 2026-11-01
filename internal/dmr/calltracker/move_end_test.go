@@ -20,6 +20,7 @@
 package calltracker_test
 
 import (
+	"context"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -167,5 +168,42 @@ func TestAnUnrelatedKVFailureDoesNotSplitAMovedCall(t *testing.T) {
 			}
 		}
 		assert.Len(t, moved, 1, "rows of the moved call")
+	})
+}
+
+// TestALateNoteOfASavedPartKeepsTheMergedRow marks a burst of the part of
+// the old replica of a moved call undeliverable to Y after the new replica
+// merged its part, which a burst undeliverable to X is in, into the row.
+// The note adds Y to the row and keeps X.
+func TestALateNoteOfASavedPartKeepsTheMergedRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database := newReplicas(t)
+		s := newSender(t, one, userA, tgID, true, 9350)
+		s.voiceCall(2, false)
+		pa := s.packet(dmrconst.FrameVoice, 1, layer2.RawBurst{})
+		pa.TrackID = one.Track(context.Background(), pa, s.server, s.peer)
+		time.Sleep(calltracker.VoiceHang + time.Second)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		pb := s.packet(dmrconst.FrameVoice, 2, layer2.RawBurst{})
+		pb.TrackID = two.Track(context.Background(), pb, s.server, s.peer)
+		two.Flush()
+		two.Undeliverable(pb, "X")
+		two.Flush()
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		waitDone(t, two, database, 1)
+
+		one.Undeliverable(pa, "Y")
+		one.Flush()
+		for range 3 {
+			time.Sleep(time.Second)
+			one.Flush()
+			two.Flush()
+		}
+		c := oneRow(t, one, rows(t, database))
+		assert.ElementsMatch(t, []string{"X", "Y"}, c.Undeliverable)
 	})
 }

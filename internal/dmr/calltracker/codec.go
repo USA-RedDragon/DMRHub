@@ -144,8 +144,8 @@ func (s *shard) codecNote(n codecNote) {
 	if !changed || !r.finished {
 		return
 	}
-	if r.deferred {
-		s.noteDeferred(r)
+	if r.shared {
+		s.notePart(r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).

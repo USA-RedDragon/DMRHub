@@ -1577,8 +1577,8 @@ func (s *shard) undeliverable(stream uint, id uint64, target string) {
 	if !r.finished {
 		return
 	}
-	if r.deferred {
-		s.noteDeferred(r)
+	if r.shared {
+		s.notePart(r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Select("undeliverable").Updates(&models.Call{Undeliverable: r.call.Undeliverable}).Error; err != nil {

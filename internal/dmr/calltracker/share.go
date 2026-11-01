@@ -576,6 +576,16 @@ func (s *shard) wait(r *row, next time.Time) {
 	s.waiting[r] = next
 }
 
+func (s *shard) notePart(r *row) {
+	if r.deferred {
+		s.noteDeferred(r)
+		return
+	}
+	d := r.delta()
+	d.ID = fmt.Sprintf("%s/%d", s.t.replica, s.t.deltas.Add(1))
+	s.keep(r, d)
+}
+
 func (s *shard) noteDeferred(r *row) {
 	key, _ := r.key.(voiceKey)
 	d := r.delta()

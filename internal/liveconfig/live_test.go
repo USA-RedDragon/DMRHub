@@ -470,7 +470,7 @@ func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	fresh := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, errors.New("down"))
+	fresh := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDBContext, errors.New("down"))
 	assert.False(t, fresh.Closed())
 	assert.False(t, fresh.Problem().Saved)
 
@@ -478,7 +478,7 @@ func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 	saved.Database = filepath.Join(t.TempDir(), "gone", "DMRHub.db")
 	require.NoError(t, store.Save(saved))
 	base.Database = saved
-	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDB, errors.New("down"))
+	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDBContext, errors.New("down"))
 	assert.True(t, fix.Closed())
 	assert.True(t, fix.Problem().Saved)
 
@@ -494,7 +494,7 @@ func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, saved.Database, kept.Database)
 
-	locked := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store, db.MakeDB, errors.New("down"))
+	locked := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store, db.MakeDBContext, errors.New("down"))
 	assert.False(t, locked.Closed(), "the deployment, not the state file, sets a locked database")
 }
 

@@ -190,12 +190,12 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 		}
 	}()
 	var fixed *liveconfig.Fixed
-	database, err := db.MakeDB(base) //nolint:contextcheck // MakeDB takes no context; it connects and migrates once at start
+	database, err := db.MakeDBContext(ctx, base)
 	if errors.Is(err, migration.ErrUsernameClash) {
 		return booted{}, false, fmt.Errorf("an admin must fix the users first: %w", err)
 	}
 	if err != nil {
-		fix := liveconfig.NewDatabaseFix(base, locks, state, db.MakeDB, err)
+		fix := liveconfig.NewDatabaseFix(base, locks, state, db.MakeDBContext, err)
 		switch {
 		case liveconfig.DatabaseLocked(locks):
 			slog.Error("DMRHub cannot reach its database; fix it in the config file, the environment or the flags and restart DMRHub", "error", err)

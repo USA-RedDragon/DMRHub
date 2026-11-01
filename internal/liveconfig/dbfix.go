@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"gorm.io/gorm"
@@ -43,8 +44,9 @@ type DatabaseFix struct {
 	Base  *config.Config
 	Locks Locks
 	State DatabaseState
-	// Open connects to the database of a config, as db.MakeDB does.
-	Open func(*config.Config) (*gorm.DB, error)
+	// Open connects to the database of a config, as db.MakeDBContext does,
+	// and returns the error of its context once the context ends.
+	Open func(context.Context, *config.Config) (*gorm.DB, error)
 	// Err is why DMRHub cannot reach its database.
 	Err error
 
@@ -81,7 +83,7 @@ const (
 
 // NewDatabaseFix returns a DatabaseFix for a base config whose database
 // DMRHub cannot reach because of err.
-func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(*config.Config) (*gorm.DB, error), err error) *DatabaseFix {
+func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(context.Context, *config.Config) (*gorm.DB, error), err error) *DatabaseFix {
 	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database)}
 }
 
@@ -154,10 +156,16 @@ func (f *DatabaseFix) Check(next *config.Config) []config.ValidationError {
 	return next.Database.ValidateWithFields()
 }
 
+// FixTimeout bounds a Fix: the connection to the database, its migration
+// and the hand-off of the database to the start of DMRHub.
+const FixTimeout = time.Minute
+
 // Fix connects to the database of next. When that works, it keeps next in
 // the DatabaseState, hands the database to the start of DMRHub and returns
-// the phase that comes next.
+// the phase that comes next. It gives up when ctx ends or after FixTimeout.
 func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, FixTimeout)
+	defer cancel()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.done {
@@ -174,14 +182,12 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, er
 	}
 	cfg := *f.Base
 	cfg.Database = next
-	database, err := f.Open(&cfg)
+	database, err := f.Open(ctx, &cfg)
 	if err != nil {
 		return "", fmt.Errorf("DMRHub cannot reach this database: %w", err)
 	}
 	if err := f.State.Save(next); err != nil {
-		if sqlDB, derr := database.DB(); derr == nil {
-			_ = sqlDB.Close()
-		}
+		closeDB(database)
 		return "", fmt.Errorf("DMRHub reached the database but cannot keep the setting, so set it in the config file or the environment of the deployment: %w", err)
 	}
 	f.done = true
@@ -189,6 +195,7 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, er
 	select {
 	case f.fixed <- Fixed{DB: database, Config: &cfg, ack: ack}:
 	case <-ctx.Done():
+		closeDB(database)
 		return "", fmt.Errorf("the start of DMRHub did not take the database: %w", ctx.Err())
 	}
 	select {
@@ -196,5 +203,11 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, er
 		return phase, nil
 	case <-ctx.Done():
 		return PhaseSetup, nil
+	}
+}
+
+func closeDB(database *gorm.DB) {
+	if sqlDB, err := database.DB(); err == nil {
+		_ = sqlDB.Close()
 	}
 }

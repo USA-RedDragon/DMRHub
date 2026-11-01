@@ -102,17 +102,34 @@ func TestAFailedEndOfASaveCountsThePartsOnce(t *testing.T) {
 }
 
 // TestAStalledSaverCountsThePartsOnce stalls the worker that saved the
-// merged row of a moved call for longer than the save lock, right after
-// the save, so the other replica saves the parts again. The database
-// stores each part once, so the row counts each burst once.
+// merged row of a moved call for longer than the save lock, after the
+// save committed and before the KV Update that ends it, so the other
+// replica saves the parts again. The database stores each part once, so
+// the row counts each burst once.
 func TestAStalledSaverCountsThePartsOnce(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		one, two, database, _ := armedReplicas(t)
+		database, ps, kvStore := trackerDeps(t)
+		shared := newStallKV(kvStore)
+		go func() {
+			<-shared.held
+			time.Sleep(6 * time.Second)
+			close(shared.release)
+		}()
+		one := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(one.Stop)
+		two := calltracker.NewCallTracker(database, ps, shared)
+		t.Cleanup(two.Stop)
 		var saves atomic.Int32
-		require.NoError(t, database.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:stall", func(db *gorm.DB) {
+		require.NoError(t, database.Callback().Update().After("gorm:update").Register("test:arm", func(db *gorm.DB) {
 			if isMergedSave(db) && saves.Add(1) == 1 {
-				time.Sleep(6 * time.Second)
+				shared.arm.Store(true)
+			}
+		}))
+		var merges atomic.Int32
+		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:merges", func(db *gorm.DB) {
+			if _, ok := db.Statement.Clauses["FOR"]; ok && db.Statement.Table == "calls" {
+				merges.Add(1)
 			}
 		}))
 		s := newSender(t, one, userA, tgID, true, 9102)
@@ -132,6 +149,7 @@ func TestAStalledSaverCountsThePartsOnce(t *testing.T) {
 		c := oneRow(t, one, rows(t, database))
 		assert.Equal(t, 14, len(c.CallData)/layer2.RawBurstSize, "bursts")
 		assert.Equal(t, uint(14), c.TotalPackets, "packets")
+		assert.Greater(t, merges.Load(), int32(1), "no second save ran")
 	})
 }
 

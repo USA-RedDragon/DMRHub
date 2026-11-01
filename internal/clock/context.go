@@ -74,3 +74,16 @@ func (c *timeoutCtx) Err() error {
 	defer c.mu.Unlock()
 	return c.err
 }
+
+type contextKey struct{}
+
+// NewContext returns a copy of parent that carries c.
+func NewContext(parent context.Context, c Clock) context.Context {
+	return context.WithValue(parent, contextKey{}, c)
+}
+
+// FromContext returns the clock that ctx carries, or the real clock.
+func FromContext(ctx context.Context) Clock {
+	c, _ := ctx.Value(contextKey{}).(Clock)
+	return Or(c)
+}

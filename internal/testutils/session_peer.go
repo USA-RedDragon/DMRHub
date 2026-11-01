@@ -189,7 +189,11 @@ func (p *SessionPeer) Retarget(addr string) error {
 	return nil
 }
 
-// WaitReady blocks until the login is complete or the timeout expires.
+// WaitReady blocks until the login is complete or the timeout expires. The
+// login is complete at the first pong of the master: in the MMDVM
+// protocol an RPTACK does not say what it acknowledges, so the session
+// Peer may take the RPTACK of a repeated RPTK as the one of its config and
+// go up before the master accepted the config.
 func (p *SessionPeer) WaitReady(timeout time.Duration) error {
 	select {
 	case <-p.ready:
@@ -307,7 +311,6 @@ func (p *SessionPeer) run(out []dmrdsession.Output) {
 			_, _ = p.conn.WriteToUDP(o.Packet, p.target)
 		case dmrdsession.OutputUp:
 			p.ups++
-			p.upOnce.Do(func() { close(p.ready) })
 		case dmrdsession.OutputDown:
 			p.downs++
 		case dmrdsession.OutputData:
@@ -344,6 +347,7 @@ func (p *SessionPeer) rx() {
 		p.rxAt = at
 		var out [dmrdsession.MaxOutputs]dmrdsession.Output
 		p.run(p.peer.Packet(time.Since(p.start), buf[:n], out[:0]))
+		p.confirm(buf[:n])
 		p.mu.Unlock()
 	}
 }
@@ -365,4 +369,18 @@ func (p *SessionPeer) ticks() {
 			p.mu.Unlock()
 		}
 	}
+}
+
+// confirm marks the login complete when b is a pong of the master to a
+// session that is up. The caller holds p.mu.
+func (p *SessionPeer) confirm(b []byte) {
+	if p.peer.State() == dmrdsession.StateRunning && isPong(b, p.Dialect) {
+		p.upOnce.Do(func() { close(p.ready) })
+	}
+}
+
+// isPong reports whether b is the answer of a master to a ping in dialect d.
+func isPong(b []byte, d dmrd.Dialect) bool {
+	c := dmrd.Classify(b, d)
+	return c == dmrd.CommandMSTPONG || c == dmrd.CommandRPTPONG
 }

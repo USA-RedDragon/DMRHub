@@ -47,13 +47,14 @@ type MMDVMClient struct {
 	stopOnce sync.Once
 	wg       sync.WaitGroup
 
-	state    atomic.Uint32
-	salt     atomic.Uint32
-	packets  chan models.Packet
-	readyVal atomic.Bool
-	pongs    atomic.Uint64
-	noPings  atomic.Bool
-	mstcls   atomic.Uint64
+	state     atomic.Uint32
+	salt      atomic.Uint32
+	packets   chan models.Packet
+	readyVal  atomic.Bool
+	readyOnce sync.Once
+	pongs     atomic.Uint64
+	noPings   atomic.Bool
+	mstcls    atomic.Uint64
 }
 
 const (
@@ -125,6 +126,10 @@ func (c *MMDVMClient) resendLogin() {
 }
 
 // WaitReady blocks until the handshake is complete or the timeout expires.
+// The handshake is complete at the first pong of the server: in the MMDVM
+// protocol an RPTACK does not say what it acknowledges, so a client that
+// sent its RPTK again takes the RPTACK of the second one as the one of its
+// config before the server accepted the config.
 func (c *MMDVMClient) WaitReady(timeout time.Duration) error {
 	select {
 	case <-c.ready:
@@ -298,7 +303,6 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 		if command == dmrd.CommandRPTACK {
 			c.state.Store(mmdvmStateReady)
 			c.readyVal.Store(true)
-			close(c.ready)
 			// Start keepalive
 			c.wg.Add(1)
 			go c.ping()
@@ -307,6 +311,7 @@ func (c *MMDVMClient) handlePacket(data []byte) {
 	case mmdvmStateReady:
 		if command == dmrd.CommandMSTPONG {
 			c.pongs.Add(1)
+			c.readyOnce.Do(func() { close(c.ready) })
 		}
 		if command == dmrd.CommandMSTCL {
 			c.mstcls.Add(1)

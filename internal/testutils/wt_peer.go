@@ -326,6 +326,7 @@ func (p *WebTransportPeer) take(at time.Time, b []byte) {
 	p.rxAt = at
 	var out [dmrdsession.MaxOutputs]dmrdsession.Output
 	p.run(p.peer.Packet(time.Since(p.start), b, out[:0]))
+	p.confirm(b)
 }
 
 func (p *WebTransportPeer) ticks() {
@@ -355,7 +356,6 @@ func (p *WebTransportPeer) run(out []dmrdsession.Output) {
 			}
 		case dmrdsession.OutputUp:
 			p.ups++
-			p.upOnce.Do(func() { close(p.ready) })
 		case dmrdsession.OutputDown:
 			p.downs++
 		case dmrdsession.OutputData:
@@ -390,7 +390,11 @@ func (p *WebTransportPeer) run(out []dmrdsession.Output) {
 	}
 }
 
-// WaitReady blocks until the login is complete or the timeout expires.
+// WaitReady blocks until the login is complete or the timeout expires. The
+// login is complete at the first pong of the master: in the MMDVM
+// protocol an RPTACK does not say what it acknowledges, so the session
+// Peer may take the RPTACK of a repeated RPTK as the one of its config and
+// go up before the master accepted the config.
 func (p *WebTransportPeer) WaitReady(timeout time.Duration) error {
 	select {
 	case <-p.ready:
@@ -488,4 +492,12 @@ func (p *WebTransportPeer) Close() {
 		}
 	})
 	p.wg.Wait()
+}
+
+// confirm marks the login complete when b is a pong of the master to a
+// session that is up. The caller holds p.mu.
+func (p *WebTransportPeer) confirm(b []byte) {
+	if p.peer.State() == dmrdsession.StateRunning && isPong(b, dmrd.DialectMMDVM) {
+		p.upOnce.Do(func() { close(p.ready) })
+	}
 }

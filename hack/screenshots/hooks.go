@@ -66,6 +66,7 @@ func hooks() map[string]hook {
 		"email":         setEmail,
 		"dmrgateway":    startDMRGateway,
 		"unassigned":    seedUnassigned,
+		"tokens":        makeTokens,
 	}
 }
 
@@ -462,6 +463,24 @@ func finishApp(ctx context.Context, r *runner) error {
 		return fmt.Errorf("token request: %s", resp.Status)
 	}
 	return nil
+}
+
+func makeTokens(ctx context.Context, r *runner) error {
+	a := r.api("n0call")
+	var made struct {
+		Secret string `json:"secret"`
+	}
+	if err := a.do(ctx, http.MethodPost, "/api/v1/users/me/tokens", map[string]any{
+		"name": "Home Assistant", "scopes": []string{"lastheard:read", "positions:read"}, "expires_in_days": 0,
+	}, &made); err != nil {
+		return err
+	}
+	script := newAPI(r.base, r.secrets)
+	script.header = map[string]string{"Authorization": "Bearer " + made.Secret}
+	if err := script.do(ctx, http.MethodGet, "/api/v1/lastheard", nil, nil); err != nil {
+		return err
+	}
+	return a.do(ctx, http.MethodPost, "/api/v1/users/me/tokens", map[string]any{"name": "Backup job", "full": true, "expires_in_days": 365}, nil)
 }
 
 func repeaterRules(ctx context.Context, r *runner) error {

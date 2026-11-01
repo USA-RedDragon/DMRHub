@@ -34,6 +34,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/USA-RedDragon/DMRHub/internal/oauth"
 )
 
 const (
@@ -590,6 +592,16 @@ func (s *secrets) add(kind, value string) {
 		s.values[value] = strings.Repeat(fmt.Sprintf("%02x", n), 20)
 	case "token", "access_token", "refresh_token":
 		s.values[value] = fmt.Sprintf("example-token-%d", n)
+	case "secret":
+		body, ok := strings.CutPrefix(value, oauth.PersonalPrefix)
+		if !ok {
+			s.values[value] = fmt.Sprintf("Example-Password-%d", n)
+			break
+		}
+		fake := oauth.PersonalPrefix + fmt.Sprintf("Ex%02dampleTokenOfTheDocsScreenshots0123456789", n)[:len(body)]
+		s.values[value] = fake
+		hint := len(oauth.PersonalPrefix) + 4
+		s.values[value[:hint]] = fake[:hint]
 	default:
 		s.values[value] = fmt.Sprintf("Example-Password-%d", n)
 	}

@@ -584,7 +584,8 @@ func (b *browser) mask(ctx context.Context, secrets map[string]string) error {
 	}
 	return b.eval(ctx, `(() => {
 		const m = `+string(m)+`;
-		const swap = (t) => { for (const [k, v] of Object.entries(m)) t = t.split(k).join(v); return t; };
+		const pairs = Object.entries(m).sort((a, b) => b[0].length - a[0].length);
+		const swap = (t) => { for (const [k, v] of pairs) t = t.split(k).join(v); return t; };
 		const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
 		for (let n = w.nextNode(); n; n = w.nextNode()) n.nodeValue = swap(n.nodeValue);
 		for (const e of document.querySelectorAll('input:not([type=file]), textarea')) { const v = swap(e.value); if (v !== e.value) e.value = v; }

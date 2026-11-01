@@ -337,3 +337,24 @@ shots:
     needs: [unassigned]
     route: /admin/repeaters/unassigned
     wait: "311861"
+  - name: settings-token-full.png
+    phase: main
+    as: n0call
+    needs: [tokens]
+    route: /settings
+    wait: Backup job
+    steps: ["click New token", "fill #token-name = Nightly backup", "toggle Full account access", "pick #token-expires = In 1 year", blur]
+    clip: card API tokens
+  - name: settings-token-new.png
+    phase: main
+    as: n0call
+    route: /settings
+    wait: Backup job
+    steps: ["click New token", "fill #token-name = Net logger", "toggle See the talkgroups of this network", "toggle See last heard for your radio IDs and your hotspots", blur]
+    clip: card API tokens
+    after: ["click Make token", "wait Copy the token now"]
+  - name: settings-tokens-card.png
+    phase: main
+    as: n0call
+    wait: Copy the token now
+    clip: card API tokens

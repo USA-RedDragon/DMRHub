@@ -37,6 +37,7 @@ const StateKey = "SetupWizardState"
 // cannot reach its database, then the Live and the database of DMRHub.
 type Phase interface {
 	Fix() *liveconfig.DatabaseFix
+	LastFix() *liveconfig.DatabaseFix
 	Live() *liveconfig.Live
 	DB() *gorm.DB
 }
@@ -97,9 +98,10 @@ func POSTConfigValidate(c *gin.Context) {
 }
 
 // PUTConfig saves a config as the config API does, and, while DMRHub
-// cannot reach its database, tries the new database setting. When DMRHub
-// reaches the database, it keeps the setting in its DatabaseState and
-// answers with the phase of the wizard that comes next.
+// cannot reach its database, starts a fix of the database setting. Once
+// DMRHub reaches the database and takes its migration lock, it answers
+// 202 with the pending status, and GETDatabaseFix reports the end of the
+// fix. While a fix runs, it answers with the status of that fix.
 func PUTConfig(c *gin.Context) {
 	fix := databaseFix(c)
 	if fix == nil {
@@ -117,19 +119,59 @@ func PUTConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: configcontroller.FormatErrors(errs)})
 		return
 	}
-	phase, err := fix.Fix(c.Request.Context(), next.Database)
+	status, err := fix.Fix(c.Request.Context(), next.Database)
 	if err != nil {
-		field := "database.host"
-		if next.Database.Driver == config.DatabaseDriverSQLite {
-			field = "database.database"
-		}
-		c.JSON(http.StatusBadRequest, gin.H{
-			errorKey:  err.Error(),
-			errorsKey: configcontroller.FormatErrors([]config.ValidationError{{Field: field, Err: err}}),
-		})
+		c.JSON(http.StatusBadRequest, failedFix(err, next.Database))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "DMRHub reached the database", "phase": phase})
+	writeFixStatus(c, status, http.StatusAccepted)
+}
+
+// GETDatabaseFix answers with the status of the last database fix: pending
+// while it runs, done with the phase of the wizard that comes next, or
+// failed with why.
+func GETDatabaseFix(c *gin.Context) {
+	p := phaseOf(c)
+	var fix *liveconfig.DatabaseFix
+	if p != nil {
+		fix = p.LastFix()
+	}
+	if fix == nil {
+		c.JSON(http.StatusNotFound, gin.H{errorKey: "The setup wizard has no database fix"})
+		return
+	}
+	writeFixStatus(c, fix.Status(), http.StatusOK)
+}
+
+func writeFixStatus(c *gin.Context, s liveconfig.FixStatus, pending int) {
+	switch s.State {
+	case liveconfig.FixDone:
+		c.JSON(http.StatusOK, gin.H{statusKey: s.State, messageKey: "DMRHub reached the database", "phase": s.Phase})
+	case liveconfig.FixFailed:
+		body := failedFix(s.Err, s.Database)
+		body[statusKey] = s.State
+		c.JSON(http.StatusOK, body)
+	case liveconfig.FixPending:
+		c.JSON(pending, gin.H{statusKey: s.State, messageKey: "DMRHub reached the database and migrates it"})
+	case liveconfig.FixIdle:
+		c.JSON(http.StatusOK, gin.H{statusKey: s.State})
+	}
+}
+
+const (
+	statusKey  = "status"
+	messageKey = "message"
+)
+
+func failedFix(err error, next config.Database) gin.H {
+	field := "database.host"
+	if next.Driver == config.DatabaseDriverSQLite {
+		field = "database.database"
+	}
+	return gin.H{
+		errorKey:  err.Error(),
+		errorsKey: configcontroller.FormatErrors([]config.ValidationError{{Field: field, Err: err}}),
+	}
 }
 
 // ProvideDB gives the request the database of the setup phase, and

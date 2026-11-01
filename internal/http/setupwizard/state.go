@@ -31,6 +31,7 @@ import (
 type State struct {
 	mu   sync.RWMutex
 	fix  *liveconfig.DatabaseFix
+	last *liveconfig.DatabaseFix
 	live *liveconfig.Live
 	db   *gorm.DB
 }
@@ -44,7 +45,7 @@ func NewState() *State {
 func (s *State) SetDatabaseFix(f *liveconfig.DatabaseFix) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.fix, s.live, s.db = f, nil, nil
+	s.fix, s.last, s.live, s.db = f, f, nil, nil
 }
 
 // SetLive starts the setup phase, with the Live and the database of
@@ -60,6 +61,14 @@ func (s *State) Fix() *liveconfig.DatabaseFix {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.fix
+}
+
+// LastFix returns the database fix of the database phase, also after the
+// database phase ends, or nil when the wizard had no database phase.
+func (s *State) LastFix() *liveconfig.DatabaseFix {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.last
 }
 
 // Live returns the Live of the setup phase, or nil.

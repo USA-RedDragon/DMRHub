@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"gorm.io/gorm"
 )
 
@@ -44,14 +45,16 @@ type DatabaseFix struct {
 	Base  *config.Config
 	Locks Locks
 	State DatabaseState
-	// Open connects to the database of a config, as db.MakeDBContext does,
-	// and returns the error of its context once the context ends.
-	Open func(context.Context, *config.Config) (*gorm.DB, error)
+	// Open connects to the database of a config and takes its migration
+	// lock, as OpenDatabase does, and returns the error of its context once
+	// the context ends.
+	Open func(context.Context, *config.Config) (Migration, error)
 	// Err is why DMRHub cannot reach its database.
 	Err error
 
 	mu       sync.Mutex
 	done     bool
+	status   FixStatus
 	fixed    chan Fixed
 	usedFile bool
 }
@@ -83,8 +86,52 @@ const (
 
 // NewDatabaseFix returns a DatabaseFix for a base config whose database
 // DMRHub cannot reach because of err.
-func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(context.Context, *config.Config) (*gorm.DB, error), err error) *DatabaseFix {
-	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database)}
+func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(context.Context, *config.Config) (Migration, error), err error) *DatabaseFix {
+	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database), status: FixStatus{State: FixIdle}}
+}
+
+// Migration is a database whose migration lock is held. Migrate migrates
+// it and returns it, or closes it and returns an error. The end of the
+// context of Migrate does not stop a migration.
+type Migration interface {
+	Migrate(ctx context.Context) (*gorm.DB, error)
+}
+
+// OpenDatabase connects to the database of a config and takes its
+// migration lock with db.Connect.
+func OpenDatabase(ctx context.Context, cfg *config.Config) (Migration, error) {
+	c, err := db.Connect(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("connect to the database: %w", err)
+	}
+	return c, nil
+}
+
+// FixState is the state of a Fix.
+type FixState string
+
+const (
+	// FixIdle is a DatabaseFix that has not run a Fix.
+	FixIdle FixState = "idle"
+	// FixPending is a Fix that runs.
+	FixPending FixState = "pending"
+	// FixDone is a Fix whose database the start of DMRHub took.
+	FixDone FixState = "done"
+	// FixFailed is a Fix that ended with an error.
+	FixFailed FixState = "failed"
+)
+
+// FixStatus is the state of the last Fix: pending while it runs, done
+// with the phase of the setup wizard that comes next, or failed with why.
+type FixStatus struct {
+	State FixState
+	// Phase is the phase of the setup wizard that comes next, once the
+	// Fix is done.
+	Phase string
+	// Err is why the Fix failed.
+	Err error
+	// Database is the database setting that the Fix tries.
+	Database config.Database
 }
 
 // Fixed returns the channel of the database that works.
@@ -156,56 +203,106 @@ func (f *DatabaseFix) Check(next *config.Config) []config.ValidationError {
 	return next.Database.ValidateWithFields()
 }
 
-// FixTimeout bounds a Fix: the connection to the database, its migration
-// and the hand-off of the database to the start of DMRHub. It stays below
-// the 10 s read and write timeouts of the setup wizard server, so that the
-// answer of a Fix reaches the browser.
+// FixTimeout bounds the start of a Fix: the connection to the database
+// and the wait for its migration lock. It stays below the 10 s read and
+// write timeouts of the setup wizard server, so that the answer of Fix
+// reaches the browser.
 const FixTimeout = 8 * time.Second
 
-// Fix connects to the database of next. When that works, it keeps next in
-// the DatabaseState, hands the database to the start of DMRHub and returns
-// the phase that comes next. It gives up when ctx ends or after FixTimeout.
-func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, FixTimeout)
-	defer cancel()
+// HandOffTimeout bounds each wait of a Fix for the start of DMRHub: to take
+// the database, then to name the phase that comes next.
+const HandOffTimeout = time.Minute
+
+// Status returns the state of the last Fix.
+func (f *DatabaseFix) Status() FixStatus {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.done {
-		return "", ErrDatabaseFixed
-	}
-	if DatabaseLocked(f.Locks) {
-		return "", ErrDatabaseLocked
-	}
-	if f.saved() {
-		return "", ErrDatabaseSaved
+	return f.status
+}
+
+// Fix tries the database setting next. It connects to the database and
+// takes its migration lock, and gives up when ctx ends or after
+// FixTimeout. Once the migration lock is held, the migration runs to its
+// end whatever ctx does, and Fix returns the pending status at once. When
+// the migration works, the fix keeps next in the DatabaseState, hands the
+// database to the start of DMRHub, and Status reports the phase that
+// comes next. While a Fix runs, Fix returns its status and tries nothing.
+func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (FixStatus, error) {
+	f.mu.Lock()
+	switch {
+	case f.status.State == FixPending:
+		defer f.mu.Unlock()
+		return f.status, nil
+	case f.done:
+		f.mu.Unlock()
+		return FixStatus{}, ErrDatabaseFixed
+	case DatabaseLocked(f.Locks):
+		f.mu.Unlock()
+		return FixStatus{}, ErrDatabaseLocked
+	case f.saved():
+		f.mu.Unlock()
+		return FixStatus{}, ErrDatabaseSaved
 	}
 	if err := f.State.Writable(); err != nil {
-		return "", fmt.Errorf("the setup wizard cannot keep a database setting, so set the database in the config file or the environment of the deployment: %w", err)
+		f.mu.Unlock()
+		return FixStatus{}, fmt.Errorf("the setup wizard cannot keep a database setting, so set the database in the config file or the environment of the deployment: %w", err)
 	}
+	f.status = FixStatus{State: FixPending, Database: next}
+	f.mu.Unlock()
+
 	cfg := *f.Base
 	cfg.Database = next
-	database, err := f.Open(ctx, &cfg)
+	connectCtx, cancel := context.WithTimeout(ctx, FixTimeout)
+	defer cancel()
+	m, err := f.Open(connectCtx, &cfg)
 	if err != nil {
-		return "", fmt.Errorf("DMRHub cannot reach this database: %w", err)
+		err = fmt.Errorf("DMRHub cannot reach this database: %w", err)
+		return f.finish(FixStatus{State: FixFailed, Err: err, Database: next}), err
+	}
+	go f.migrate(context.WithoutCancel(ctx), m, &cfg)
+	return f.Status(), nil
+}
+
+func (f *DatabaseFix) finish(s FixStatus) FixStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.status = s
+	return s
+}
+
+func (f *DatabaseFix) migrate(ctx context.Context, m Migration, cfg *config.Config) {
+	next := cfg.Database
+	database, err := m.Migrate(ctx)
+	if err != nil {
+		f.finish(FixStatus{State: FixFailed, Err: fmt.Errorf("DMRHub cannot migrate this database: %w", err), Database: next})
+		return
 	}
 	if err := f.State.Save(next); err != nil {
 		closeDB(database)
-		return "", fmt.Errorf("DMRHub reached the database but cannot keep the setting, so set it in the config file or the environment of the deployment: %w", err)
+		f.finish(FixStatus{State: FixFailed, Err: fmt.Errorf("DMRHub reached the database but cannot keep the setting, so set it in the config file or the environment of the deployment: %w", err), Database: next})
+		return
 	}
+	f.mu.Lock()
 	f.done = true
+	f.mu.Unlock()
 	ack := make(chan string, 1)
+	take := time.NewTimer(HandOffTimeout)
+	defer take.Stop()
 	select {
-	case f.fixed <- Fixed{DB: database, Config: &cfg, ack: ack}:
-	case <-ctx.Done():
+	case f.fixed <- Fixed{DB: database, Config: cfg, ack: ack}:
+	case <-take.C:
 		closeDB(database)
-		return "", fmt.Errorf("the start of DMRHub did not take the database: %w", ctx.Err())
+		f.finish(FixStatus{State: FixFailed, Err: errors.New("the start of DMRHub did not take the database; restart DMRHub"), Database: next})
+		return
 	}
+	phase := PhaseSetup
+	answer := time.NewTimer(HandOffTimeout)
+	defer answer.Stop()
 	select {
-	case phase := <-ack:
-		return phase, nil
-	case <-ctx.Done():
-		return PhaseSetup, nil
+	case phase = <-ack:
+	case <-answer.C:
 	}
+	f.finish(FixStatus{State: FixDone, Phase: phase, Database: next})
 }
 
 func closeDB(database *gorm.DB) {

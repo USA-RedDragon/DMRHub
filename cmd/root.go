@@ -195,7 +195,7 @@ func bootConfig(ctx context.Context, report *configulator.Report, base *config.C
 		return booted{}, false, fmt.Errorf("an admin must fix the users first: %w", err)
 	}
 	if err != nil {
-		fix := liveconfig.NewDatabaseFix(base, locks, state, db.MakeDBContext, err)
+		fix := liveconfig.NewDatabaseFix(base, locks, state, liveconfig.OpenDatabase, err)
 		switch {
 		case liveconfig.DatabaseLocked(locks):
 			slog.Error("DMRHub cannot reach its database; fix it in the config file, the environment or the flags and restart DMRHub", "error", err)

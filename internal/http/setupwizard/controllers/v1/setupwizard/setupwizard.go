@@ -146,5 +146,5 @@ func POSTSetupWizardComplete(c *gin.Context) {
 	} else {
 		slog.Warn("SetupWizardConfigCompleteChan not found in context or of wrong type")
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Setup wizard marked as complete"})
+	c.JSON(http.StatusOK, gin.H{messageKey: "Setup wizard marked as complete"})
 }

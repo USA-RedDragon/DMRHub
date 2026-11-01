@@ -45,7 +45,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func wizardRequest(t *testing.T, r *gin.Engine, method string, body any) *httptest.ResponseRecorder {
@@ -135,7 +134,7 @@ func brokenDatabase(t *testing.T, locks liveconfig.Locks, store liveconfig.Datab
 	base.Database.Database = filepath.Join(t.TempDir(), "missing", "DMRHub.db")
 	_, openErr := db.MakeDB(&base)
 	require.Error(t, openErr)
-	fix := liveconfig.NewDatabaseFix(&base, locks, store, db.MakeDBContext, openErr)
+	fix := liveconfig.NewDatabaseFix(&base, locks, store, liveconfig.OpenDatabase, openErr)
 	state := setupwizard.NewState()
 	state.SetDatabaseFix(fix)
 	return fix, internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
@@ -192,21 +191,28 @@ func TestSetupWizardFixesTheDatabase(t *testing.T) {
 
 	good := filepath.Join(t.TempDir(), "DMRHub.db")
 	setDatabase(raw, good)
-	got := make(chan liveconfig.Fixed, 1)
-	go func() {
-		f := <-fix.Fixed()
-		got <- f
-		f.Done(liveconfig.PhaseSetup)
-	}()
-	w = wizardRequest(t, r, http.MethodPut, raw)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Contains(t, w.Body.String(), `"phase":"setup"`)
-	f := <-got
-	assert.Equal(t, good, f.Config.Database.Database)
-	require.NotNil(t, f.DB)
-	if sqlDB, err := f.DB.DB(); err == nil {
-		_ = sqlDB.Close()
-	}
+	synctest.Test(t, func(t *testing.T) {
+		got := make(chan liveconfig.Fixed, 1)
+		go func() {
+			f := <-fix.Fixed()
+			got <- f
+			f.Done(liveconfig.PhaseSetup)
+		}()
+		w = wizardRequest(t, r, http.MethodPut, raw)
+		require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), `"status":"pending"`)
+		synctest.Wait()
+		w = wizardCall(t, r, http.MethodGet, "/api/v1/setupwizard/database-fix", nil, "")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), `"status":"done"`)
+		assert.Contains(t, w.Body.String(), `"phase":"setup"`)
+		f := <-got
+		assert.Equal(t, good, f.Config.Database.Database)
+		require.NotNil(t, f.DB)
+		if sqlDB, err := f.DB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
 
 	st, err := os.Stat(store.Path)
 	require.NoError(t, err)
@@ -264,7 +270,7 @@ func TestSetupWizardGivesUpOnADatabaseThatHangs(t *testing.T) {
 	raw, _ := wizardGET(t, r)
 	setDatabase(raw, filepath.Join(t.TempDir(), "DMRHub.db"))
 	started := make(chan struct{}, 1)
-	fix.Open = func(ctx context.Context, _ *config.Config) (*gorm.DB, error) {
+	fix.Open = func(ctx context.Context, _ *config.Config) (liveconfig.Migration, error) {
 		started <- struct{}{}
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -293,39 +299,6 @@ func TestSetupWizardGivesUpOnADatabaseThatHangs(t *testing.T) {
 	})
 	_, err := os.Stat(store.Path)
 	assert.ErrorIs(t, err, os.ErrNotExist, "a fix that gives up keeps no setting")
-}
-
-// TestSetupWizardGivesUpWhenTheStartDoesNotTakeTheDatabase fixes the
-// database while nothing takes the database from the fix. The fix gives up
-// after FixTimeout and closes the database.
-func TestSetupWizardGivesUpWhenTheStartDoesNotTakeTheDatabase(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
-		fix, r := brokenDatabase(t, liveconfig.Locks{}, store)
-		raw, _ := wizardGET(t, r)
-		setDatabase(raw, filepath.Join(t.TempDir(), "DMRHub.db"))
-		opened := make(chan *gorm.DB, 1)
-		fix.Open = func(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
-			database, err := db.MakeDBContext(ctx, cfg)
-			opened <- database
-			if err != nil {
-				return nil, fmt.Errorf("open the database: %w", err)
-			}
-			return database, nil
-		}
-
-		start := time.Now()
-		w := wizardRequest(t, r, http.MethodPut, raw)
-		require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
-		assert.Contains(t, w.Body.String(), "did not take the database")
-		assert.Equal(t, liveconfig.FixTimeout, time.Since(start))
-		database := <-opened
-		require.NotNil(t, database)
-		sqlDB, err := database.DB()
-		require.NoError(t, err)
-		assert.ErrorContains(t, sqlDB.PingContext(t.Context()), "database is closed")
-	})
 }
 
 // TestSetupWizardListensOnTheConfiguredAddress makes the setup wizard
@@ -522,7 +495,7 @@ func TestSetupWizardKeepsASavedDatabase(t *testing.T) {
 	base.Database = kept
 	_, openErr := db.MakeDB(&base)
 	require.Error(t, openErr)
-	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDBContext, openErr)
+	fix := liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, liveconfig.OpenDatabase, openErr)
 	state := setupwizard.NewState()
 	state.SetDatabaseFix(fix)
 	r := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
@@ -632,7 +605,7 @@ func sqliteHub(t *testing.T, n int, store liveconfig.DatabaseState) (*config.Con
 	base.Database.ExtraParameters = append(base.Database.ExtraParameters, "_txlock=broken")
 	_, openErr := db.MakeDB(&base)
 	require.Error(t, openErr)
-	return &base, liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, db.MakeDBContext, openErr)
+	return &base, liveconfig.NewDatabaseFix(&base, liveconfig.Locks{}, store, liveconfig.OpenDatabase, openErr)
 }
 
 // TestSetupWizardKeepsASQLiteFileWithUsers starts the wizard of a default

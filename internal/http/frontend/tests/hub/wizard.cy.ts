@@ -28,12 +28,19 @@ const start = (name: string, dir: string, env: Record<string, string> = {}) =>
 const openWizard = (wizard: boolean) => {
   expect(wizard, 'the setup wizard must start').to.eq(true);
   cy.visit(hub);
-  cy.contains('h1', 'Setup').should('be.visible');
-  cy.contains('General Settings').should('be.visible');
+  cy.contains('h1', 'Set up DMRHub').should('be.visible');
+  cy.get('[data-test="setup-menu"] a').first().should('have.attr', 'data-test', 'menu-database');
+  cy.get('[data-test="tab-database"]').should('be.visible');
+  cy.get('header nav').should('not.exist');
+};
+
+const tab = (id: string) => {
+  cy.get(`[data-test="menu-${id}"]`).click();
+  cy.get(`[data-test="tab-${id}"]`).should('be.visible');
 };
 
 const save = () => {
-  cy.contains('button', 'Save').click();
+  cy.get('[data-test="save"]').should('contain.text', 'Save and continue').click();
 };
 
 const createAdmin = (name: string) => {
@@ -53,9 +60,12 @@ const login = (base = hub) =>
     .its('status').should('eq', 200);
 
 const fillSetup = () => {
-  cy.get('#http-canonical-host').clear();
-  cy.get('#http-canonical-host').type('http://localhost:3005');
-  cy.get('label[for="disable-radio-id-validation"]').click();
+  tab('http');
+  cy.get('#setup-http-canonical-host').clear();
+  cy.get('#setup-http-canonical-host').type('http://localhost:3005');
+  cy.get('[data-test="menu-error-http"]').should('not.exist');
+  tab('accounts');
+  cy.get('label[for="setup-dmr-disable-radio-id-validation"]').click();
   save();
 };
 
@@ -78,9 +88,19 @@ describe('First start and the setup wizard', () => {
     cy.task<string>('workdir', 'fresh').then((dir) => {
       start('fresh', dir).then(({ wizard }) => {
         openWizard(wizard);
-        cy.get('#secret').should('have.attr', 'readonly');
+        cy.get('[data-test="database-reached"]').should('have.text', 'Connected.');
+        cy.get('#setup-database-driver').should('be.disabled');
+        cy.get('[data-test="menu-error-http"]').should('exist');
+        cy.get('[data-test="savebar-message"]').should('have.text', 'Set the Site URL on the HTTP tab.');
+        cy.intercept('PUT', '**/api/v1/config').as('put');
+        save();
+        cy.location('hash').should('eq', '#http');
+        cy.get('[data-test="field-http.canonical-host"] [data-test="field-error"]').should('have.text', 'Required.');
+        cy.get('@put.all').should('have.length', 0);
+        tab('general');
+        cy.get('#setup-secret').should('be.disabled');
         cy.contains('DMRHub made a random value at its first start and keeps it in the database.').should('be.visible');
-        cy.get('#network-name').should('not.have.attr', 'readonly');
+        cy.get('#setup-network-name').should('not.be.disabled');
         fillSetup();
         createAdmin('fresh');
       });
@@ -104,13 +124,24 @@ describe('First start and the setup wizard', () => {
         openWizard(wizard);
         cy.get('[data-test="database-problem"]').should('contain.text', 'DMRHub cannot reach its database.')
           .and('contain.text', `${dir}/dmrhub-database.json`);
-        cy.get('#network-name').should('have.attr', 'readonly');
-        cy.get('#database-database').should('not.have.attr', 'readonly');
-        cy.get('#database-database').clear();
-        cy.get('#database-database').type('hub.db');
+        cy.get('#setup-database-host').should('not.exist');
+        cy.get('#setup-database-database').should('not.be.disabled');
+        cy.get('[data-test="database-test"] button').click();
+        cy.get('[data-test="database-test-result"]').should('contain.text', 'DMRHub cannot reach this database');
+        cy.get('#setup-database-database').clear();
+        cy.get('#setup-database-database').type('hub.db');
+        cy.get('[data-test="database-test"] button').click();
+        cy.get('[data-test="database-test-result"]').should('have.text', 'Connected.');
+        cy.task('readFile', `${dir}/hub.db`).should('eq', null);
+        cy.task('readFile', `${dir}/dmrhub-database.json`).should('eq', null);
+        tab('general');
+        cy.get('#setup-network-name').should('be.disabled');
+        tab('database');
         save();
         cy.get('[data-test="database-problem"]', { timeout: 20000 }).should('not.exist');
-        cy.get('#network-name').should('not.have.attr', 'readonly');
+        cy.get('[data-test="database-reached"]').should('have.text', 'Connected.');
+        tab('general');
+        cy.get('#setup-network-name').should('not.be.disabled');
         fillSetup();
         createAdmin('baddb');
       });

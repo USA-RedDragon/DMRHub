@@ -205,6 +205,60 @@ func Connect(ctx context.Context, config *configPkg.Config) (*Connection, error)
 	return c, nil
 }
 
+// Ping connects to the database of a config, reads from it and closes
+// it. It takes no lock and migrates nothing. A SQLite file that did not
+// exist before Ping does not exist after it either.
+func Ping(ctx context.Context, config *configPkg.Config) error {
+	made := newSQLiteFile(config)
+	db, err := gorm.Open(getDialect(config), &gorm.Config{Logger: gormLogger(), DisableAutomaticPing: true})
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer func() {
+		closeDB(db)
+		if made != "" {
+			for _, suffix := range []string{"", "-journal", "-wal", "-shm"} {
+				_ = os.Remove(made + suffix)
+			}
+		}
+	}()
+	pool, ok := db.ConnPool.(*sql.DB)
+	if !ok {
+		return fmt.Errorf("failed to open database: unexpected connection pool %T", db.ConnPool)
+	}
+	var one int
+	if err := pool.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	if config.Database.Driver == configPkg.DatabaseDriverSQLite {
+		var version int
+		if err := pool.QueryRowContext(ctx, "PRAGMA schema_version").Scan(&version); err != nil {
+			return fmt.Errorf("failed to read database: %w", err)
+		}
+	}
+	return nil
+}
+
+// newSQLiteFile returns the path of the SQLite file of a config when that
+// file does not exist yet, and "" for any other database.
+func newSQLiteFile(config *configPkg.Config) string {
+	d := config.Database
+	if d.Driver != configPkg.DatabaseDriverSQLite || slices.Contains(d.ExtraParameters, "mode=memory") {
+		return ""
+	}
+	path := strings.TrimPrefix(d.Database, "file:")
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	if path == "" || path == ":memory:" {
+		return ""
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	return path
+}
+
 func connect(ctx context.Context, db *gorm.DB, config *configPkg.Config) (*Connection, error) {
 	pool, ok := db.ConnPool.(*sql.DB)
 	if !ok {

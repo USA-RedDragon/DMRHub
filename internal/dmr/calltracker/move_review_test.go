@@ -182,7 +182,7 @@ func TestANoteAfterAMergedSaveKeepsTheMergedRow(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		last := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 		c := waitDone(t, two, database, 1)[0]
-		two.Missed(last, 60)
+		two.Missed(t.Context(), last, 60)
 		two.Flush()
 
 		var stored models.Call
@@ -244,7 +244,7 @@ func TestANoteOfAWaitingPartReachesTheRow(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		last := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 		two.Flush()
-		two.Missed(last, 60)
+		two.Missed(t.Context(), last, 60)
 		two.Flush()
 
 		c := oneRow(t, one, waitDone(t, one, database, 1))

@@ -41,15 +41,15 @@ func TestTrackVoiceCodec(t *testing.T) {
 
 		s := newSender(t, one, userA, tgID, true, 7101)
 		head := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
-		one.VoiceCodec(head, models.CodecCodec2, 0)
+		one.VoiceCodec(t.Context(), head, models.CodecCodec2, 0)
 		burst := s.send(dmrconst.FrameVoiceSync, 0, layer2.RawBurst{})
-		one.VoiceCodec(burst, models.CodecCodec2, 3200)
-		one.Missed(burst, 60)
-		one.Converted(burst, models.CodecAMBE, "repeater:311860")
-		one.Converted(burst, models.CodecAMBE, "repeater:311860")
-		two.Converted(burst, models.CodecAMBE, "peer:3129201")
-		one.Missed(burst, 20)
-		one.Busy(burst)
+		one.VoiceCodec(t.Context(), burst, models.CodecCodec2, 3200)
+		one.Missed(t.Context(), burst, 60)
+		one.Converted(t.Context(), burst, models.CodecAMBE, "repeater:311860")
+		one.Converted(t.Context(), burst, models.CodecAMBE, "repeater:311860")
+		two.Converted(t.Context(), burst, models.CodecAMBE, "peer:3129201")
+		one.Missed(t.Context(), burst, 20)
+		one.Busy(t.Context(), burst)
 		time.Sleep(150 * time.Millisecond)
 		term := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 
@@ -61,7 +61,7 @@ func TestTrackVoiceCodec(t *testing.T) {
 		assert.Zero(t, c.SentCodec2)
 		assert.True(t, c.TranscodeBusy)
 
-		two.Converted(term, models.CodecAMBE, "repeater:311861")
+		two.Converted(t.Context(), term, models.CodecAMBE, "repeater:311861")
 		bubble.Eventually(t, func() bool {
 			one.Flush()
 			var got models.Call

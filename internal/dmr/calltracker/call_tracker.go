@@ -1580,7 +1580,7 @@ func (s *shard) undeliverable(stream uint, id uint64, target string) {
 		return
 	}
 	if r.shared {
-		s.notePart(r)
+		s.notePart(context.Background(), r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Select("undeliverable").Updates(&models.Call{Undeliverable: r.call.Undeliverable}).Error; err != nil {

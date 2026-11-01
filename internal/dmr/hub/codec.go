@@ -20,6 +20,7 @@
 package hub
 
 import (
+	"context"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -113,7 +114,7 @@ type heardNote struct {
 // the codec on the timeslot, and the Codec2 mode that the frames of a
 // Codec2 call show. A call without such an LC teaches nothing. It returns
 // nil for a burst of a stream that has had no voice.
-func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCodec {
+func (h *Hub) observeCodec(ctx context.Context, packet *models.Packet, sourceName string) *streamCodec {
 	now := h.clock.Now()
 	voice := transcode.IsVoice(packet) || isVoiceLC(packet)
 	sc, loaded := h.codecStreams.Load(packet.StreamID)
@@ -158,7 +159,7 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 		}
 		if m := sc.det.Mode(); m != codec2.ModeAuto {
 			sc.mode = m
-			h.noteCallCodec(packet, sc)
+			h.noteCallCodec(ctx, packet, sc)
 			if sc.learns {
 				h.noteHeard(heardNote{repeater: sc.repeater, slot: sc.slot, codec: sc.codec, mode: m, at: now})
 			}
@@ -166,7 +167,7 @@ func (h *Hub) observeCodec(packet *models.Packet, sourceName string) *streamCode
 	}
 	if !sc.noted {
 		sc.noted = true
-		h.noteCallCodec(packet, sc)
+		h.noteCallCodec(ctx, packet, sc)
 	}
 	return sc
 }
@@ -205,9 +206,9 @@ func (h *Hub) decideCodec(sc *streamCodec, codec transcode.Codec, lc pdu.LCBytes
 	}
 }
 
-func (h *Hub) noteCallCodec(packet *models.Packet, sc *streamCodec) {
+func (h *Hub) noteCallCodec(ctx context.Context, packet *models.Packet, sc *streamCodec) {
 	if h.callTracker != nil {
-		h.callTracker.VoiceCodec(*packet, sc.codec.String(), int(sc.mode))
+		h.callTracker.VoiceCodec(ctx, *packet, sc.codec.String(), int(sc.mode))
 	}
 }
 

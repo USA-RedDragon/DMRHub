@@ -75,7 +75,7 @@ func TestAnEndThatFailsOnTheKVAndTheDatabaseIsSavedLater(t *testing.T) {
 		dbDown.Store(true)
 		term := s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
 		ct.Flush()
-		ct.Missed(term, 60)
+		ct.Missed(t.Context(), term, 60)
 		ct.Flush()
 		for range 3 {
 			time.Sleep(time.Second)

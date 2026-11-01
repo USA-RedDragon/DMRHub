@@ -296,7 +296,7 @@ func savedRecord(rec *voiceRecord, gen uint64, ok bool, saved []voiceDelta, trie
 	return rec, res
 }
 
-func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRecord) error {
+func (c *CallTracker) updateRecord(ctx context.Context, key voiceKey, fn func(*voiceRecord) *voiceRecord) error {
 	now := c.now()
 	if c.kvFails.Load() >= kvTrips && now < time.Duration(c.kvDown.Load()) {
 		c.metrics.IncrementTrackerShareFailed()
@@ -306,7 +306,7 @@ func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRec
 		c.metrics.IncrementTrackerShareFailed()
 		return errKVDown
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
+	ctx, cancel := context.WithTimeout(ctx, kvTimeout)
 	defer cancel()
 	err := c.kv.Update(ctx, voiceRecordKey(key), streamIdle, func(old []byte) ([]byte, error) {
 		rec := fn(loadRecord(old))
@@ -341,7 +341,7 @@ func (s *shard) claimVoice(t *task, ch *channel, key voiceKey, e *row) (*row, bo
 	var verdict claimVerdict
 	var id uint
 	var start time.Time
-	if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+	if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 		rec, verdict = claimRecord(rec, me, name, p.Seq, isVoiceHeader(p), t.at)
 		id, start = rec.ID, rec.Start
 		return rec
@@ -371,7 +371,7 @@ func (s *shard) claimVoice(t *task, ch *channel, key voiceKey, e *row) (*row, bo
 	s.t.remember(s, r)
 	var got uint
 	var gotStart time.Time
-	if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+	if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 		rec, got, gotStart = installRecord(rec, me, name, r.call.ID, r.call.StartTime, p.Seq)
 		return rec
 	}); err != nil {
@@ -534,12 +534,12 @@ func (s *shard) finishShared(r *row, at time.Time) {
 	me, name := s.t.replica, chanName(r.ch.key)
 	now := s.t.clock.Now()
 	var res finishResult
-	if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+	if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 		rec, res = finishRecord(rec, me, name, call.ID, call.LastSeq, last, term, keyUp, mine, now)
 		return rec
 	}); err != nil {
 		slog.Warn("CallTracker: the voice call is added to its row without the other replicas", "error", err)
-		s.keep(r, mine)
+		s.keep(context.Background(), r, mine)
 		s.wait(r, now.Add(touchEvery))
 		return
 	}
@@ -555,7 +555,7 @@ func (s *shard) finishShared(r *row, at time.Time) {
 		slog.Debug("CallTracker: the part of a moved call ended here", "streamID", call.StreamID, "id", call.ID)
 		return
 	case finishDirect:
-		s.keep(r, mine)
+		s.keep(context.Background(), r, mine)
 		return
 	case finishSave:
 	}
@@ -564,10 +564,10 @@ func (s *shard) finishShared(r *row, at time.Time) {
 	s.saveLoop(r, key, res)
 }
 
-func (s *shard) keep(r *row, d voiceDelta) {
+func (s *shard) keep(ctx context.Context, r *row, d voiceDelta) {
 	r.pending = append(r.pending, d)
 	r.markGiven()
-	if !s.saveParts(r, slices.Clone(r.pending)) {
+	if !s.saveParts(ctx, r, slices.Clone(r.pending)) {
 		s.wait(r, s.t.clock.Now().Add(touchEvery))
 	}
 }
@@ -580,23 +580,23 @@ func (s *shard) wait(r *row, next time.Time) {
 	s.waiting[r] = next
 }
 
-func (s *shard) notePart(r *row) {
+func (s *shard) notePart(ctx context.Context, r *row) {
 	if r.deferred {
-		s.noteDeferred(r)
+		s.noteDeferred(ctx, r)
 		return
 	}
 	d := r.delta()
 	d.ID = fmt.Sprintf("%s/%d", s.t.replica, s.t.deltas.Add(1))
-	s.keep(r, d)
+	s.keep(ctx, r, d)
 }
 
-func (s *shard) noteDeferred(r *row) {
+func (s *shard) noteDeferred(ctx context.Context, r *row) {
 	key, _ := r.key.(voiceKey)
 	d := r.delta()
 	d.ID = fmt.Sprintf("%s/%d", s.t.replica, s.t.deltas.Add(1))
 	me, id := s.t.replica, r.call.ID
 	placed := false
-	err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+	err := s.t.updateRecord(ctx, key, func(rec *voiceRecord) *voiceRecord {
 		placed = false
 		if rec == nil || rec.ID != id {
 			return nil
@@ -611,7 +611,7 @@ func (s *shard) noteDeferred(r *row) {
 		return rec
 	})
 	if err != nil || !placed {
-		s.keep(r, d)
+		s.keep(ctx, r, d)
 		return
 	}
 	r.pending = append(r.pending, d)
@@ -661,12 +661,12 @@ func (s *shard) retryWaiting(now time.Time) {
 		var verdict retryVerdict
 		var res finishResult
 		me, id := s.t.replica, r.call.ID
-		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+		if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 			rec, verdict, res = retryRecord(rec, me, id, r.finished, now)
 			return rec
 		}); err != nil {
 			if len(r.pending) > 0 && now.Sub(r.waitSince) >= partLive {
-				s.saveParts(r, slices.Clone(r.pending))
+				s.saveParts(context.Background(), r, slices.Clone(r.pending))
 			}
 			if len(r.pending) == 0 && now.Sub(r.waitSince) >= streamIdle {
 				delete(s.waiting, r)
@@ -682,13 +682,13 @@ func (s *shard) retryWaiting(now time.Time) {
 			s.waiting[r] = now.Add(touchEvery)
 			s.saveLoop(r, key, res)
 		case retryDone:
-			if len(r.pending) > 0 && !s.saveParts(r, slices.Clone(r.pending)) {
+			if len(r.pending) > 0 && !s.saveParts(context.Background(), r, slices.Clone(r.pending)) {
 				s.waiting[r] = now.Add(touchEvery)
 				continue
 			}
 			delete(s.waiting, r)
 		case retryGone:
-			if len(r.pending) > 0 && !s.saveParts(r, slices.Clone(r.pending)) {
+			if len(r.pending) > 0 && !s.saveParts(context.Background(), r, slices.Clone(r.pending)) {
 				s.waiting[r] = now.Add(touchEvery)
 				continue
 			}
@@ -701,9 +701,9 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 	call := r.call
 	gen, parts := res.gen, res.held
 	for try := 1; ; try++ {
-		ok := s.saveParts(r, parts)
+		ok := s.saveParts(context.Background(), r, parts)
 		var after savedResult
-		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+		if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 			rec, after = savedRecord(rec, gen, ok, parts, try, s.t.clock.Now())
 			return rec
 		}); err != nil {
@@ -722,8 +722,8 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 	}
 }
 
-func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
-	out, changed, ok := s.saveMerged(r.call, parts)
+func (s *shard) saveParts(ctx context.Context, r *row, parts []voiceDelta) bool {
+	out, changed, ok := s.saveMerged(ctx, r.call, parts)
 	if !ok {
 		if r.unacked == nil {
 			r.unacked = map[string]bool{}
@@ -791,7 +791,7 @@ func (s *shard) touchShared(now time.Time) {
 		}
 		r.touched = now
 		me, name, call := s.t.replica, chanName(r.ch.key), r.call
-		if err := s.t.updateRecord(key, func(rec *voiceRecord) *voiceRecord {
+		if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 			return touchRecord(rec, me, name, call.ID, call.StartTime, call.LastSeq, r.last)
 		}); err != nil {
 			slog.Warn("CallTracker: the voice call was not refreshed for the other replicas", "error", err)
@@ -799,10 +799,10 @@ func (s *shard) touchShared(now time.Time) {
 	}
 }
 
-func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool, bool) {
+func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voiceDelta) (models.Call, bool, bool) {
 	var out models.Call
 	changed := false
-	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
+	ctx, cancel := context.WithTimeout(ctx, saveTimeout)
 	defer cancel()
 	err := s.t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var base models.Call

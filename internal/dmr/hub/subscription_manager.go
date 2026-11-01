@@ -245,7 +245,7 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 		slog.Error("Failed to load radio subscriptions", "repeaterID", repeaterID)
 		return
 	}
-	feed := h.subscriptionMgr.feedOf(repeaterID)
+	feed := h.subscriptionMgr.feedOf(ctx, repeaterID)
 
 	p, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
@@ -332,7 +332,7 @@ func (h *Hub) resubscribeLocked(ctx context.Context, repeaterID uint) {
 	if len(want) == 0 {
 		return
 	}
-	feed := h.subscriptionMgr.feedOf(repeaterID)
+	feed := h.subscriptionMgr.feedOf(ctx, repeaterID)
 	for key := range want {
 		if _, ok := radioSubs.Load(key); ok {
 			continue
@@ -653,19 +653,19 @@ func (m *subscriptionManager) forget(repeaterID uint, key uint, sub *subscriptio
 
 // feedOf returns the feed of a repeater, and starts it when it has none.
 // The caller holds m.mu.
-func (m *subscriptionManager) feedOf(repeaterID uint) *repeaterFeed {
+func (m *subscriptionManager) feedOf(ctx context.Context, repeaterID uint) *repeaterFeed {
 	if f, ok := m.feeds.Load(repeaterID); ok {
 		return f
 	}
 	f := &repeaterFeed{feed: m.hub.pubsub.Feed(), subs: map[string]*subscription{}}
 	m.feeds.Store(repeaterID, f)
-	go m.readFeed(f, repeaterID)
+	go m.readFeed(context.WithoutCancel(ctx), f, repeaterID)
 	return f
 }
 
 // readFeed delivers the messages of the feed of a repeater until it
 // closes.
-func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
+func (m *subscriptionManager) readFeed(ctx context.Context, f *repeaterFeed, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
 	for msg := range f.feed.Channel() {
 		if m.settledOn(msg.Payload) {
@@ -683,15 +683,15 @@ func (m *subscriptionManager) readFeed(f *repeaterFeed, repeaterID uint) {
 			continue
 		}
 		if sub.tg == 0 {
-			m.deliverPrivate(sub, packet, repeaterID)
+			m.deliverPrivate(ctx, sub, packet, repeaterID)
 		} else {
-			m.deliverGroup(sub, packet, repeaterID)
+			m.deliverGroup(ctx, sub, packet, repeaterID)
 		}
 	}
 }
 
 // deliverPrivate delivers a private call to the repeater.
-func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Packet, repeaterID uint) {
+func (m *subscriptionManager) deliverPrivate(ctx context.Context, sub *subscription, packet models.Packet, repeaterID uint) {
 	m.hub.noteRelayedSource(packet)
 	packet.Repeater = repeaterID
 	p, err := m.hub.routingRepeater(repeaterID)
@@ -707,12 +707,12 @@ func (m *subscriptionManager) deliverPrivate(sub *subscription, packet models.Pa
 		return
 	}
 	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-	m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+	m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
 }
 
 // deliverGroup delivers a group call of the talkgroup of sub to the
 // repeater, and ends sub when the repeater no longer listens to it.
-func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Packet, repeaterID uint) {
+func (m *subscriptionManager) deliverGroup(ctx context.Context, sub *subscription, packet models.Packet, repeaterID uint) {
 	p, err := m.hub.routingRepeater(repeaterID)
 	if err != nil {
 		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
@@ -731,7 +731,7 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 			return
 		}
 		sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-		m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+		m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
 		return
 	}
 
@@ -753,7 +753,7 @@ func (m *subscriptionManager) deliverGroup(sub *subscription, packet models.Pack
 		return
 	}
 	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
-	m.hub.noteCopy(&packet, repeaterTarget(repeaterID))
+	m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
 }
 
 // Subscribes reports whether the active repeater repeaterID takes the

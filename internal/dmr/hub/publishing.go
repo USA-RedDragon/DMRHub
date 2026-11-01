@@ -83,7 +83,7 @@ func (h *Hub) egressToPeers(ctx context.Context, packet models.Packet) {
 			continue
 		}
 		h.publishToPeer(p.id, packet)
-		h.noteCopy(&packet, "peer:"+strconv.FormatUint(uint64(p.id), 10))
+		h.noteCopy(ctx, &packet, "peer:"+strconv.FormatUint(uint64(p.id), 10))
 	}
 }
 

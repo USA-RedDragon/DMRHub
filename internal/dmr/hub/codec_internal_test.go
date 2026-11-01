@@ -71,7 +71,7 @@ func TestLateBurstsKeepTheCodecOfTheCall(t *testing.T) {
 		h.RegisterServer(ServerConfig{Name: "openbridge", Role: RolePeer})
 		header, voice, term := codec2Call(t)
 		observe := func(p models.Packet) uint8 {
-			h.observeCodec(&p, "openbridge")
+			h.observeCodec(t.Context(), &p, "openbridge")
 			return p.Codec
 		}
 		start := h.clock.Now()

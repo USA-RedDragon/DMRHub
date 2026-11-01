@@ -20,6 +20,7 @@
 package calltracker
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 
@@ -44,28 +45,28 @@ type codecNote struct {
 
 // VoiceCodec records on the voice call of p, a packet that Track got here,
 // its codec, "ambe" or "codec2", and a Codec2 mode other than 0.
-func (c *CallTracker) VoiceCodec(p models.Packet, codec string, mode int) {
-	c.noteCodec(codecNote{Stream: p.StreamID, Track: p.TrackID, Codec: codec, Mode: mode})
+func (c *CallTracker) VoiceCodec(ctx context.Context, p models.Packet, codec string, mode int) {
+	c.noteCodec(ctx, codecNote{Stream: p.StreamID, Track: p.TrackID, Codec: codec, Mode: mode})
 }
 
 // Missed adds ms milliseconds of audio that could not be converted to the
 // voice call of p, a packet that Track got here.
-func (c *CallTracker) Missed(p models.Packet, ms int) {
-	c.noteCodec(codecNote{Stream: p.StreamID, Track: p.TrackID, MissedMS: ms})
+func (c *CallTracker) Missed(ctx context.Context, p models.Packet, ms int) {
+	c.noteCodec(ctx, codecNote{Stream: p.StreamID, Track: p.TrackID, MissedMS: ms})
 }
 
 // Busy marks the voice call of p, a packet that Track got here, as not
 // converted because every AMBE server was busy.
-func (c *CallTracker) Busy(p models.Packet) {
-	c.noteCodec(codecNote{Stream: p.StreamID, Track: p.TrackID, Busy: true})
+func (c *CallTracker) Busy(ctx context.Context, p models.Packet) {
+	c.noteCodec(ctx, codecNote{Stream: p.StreamID, Track: p.TrackID, Busy: true})
 }
 
 // Converted records that target, such as "repeater:311860", got the voice
 // call of p converted to codec. Any replica may call it: a call that
 // another replica tracks gets it over pubsub.
-func (c *CallTracker) Converted(p models.Packet, codec, target string) {
+func (c *CallTracker) Converted(ctx context.Context, p models.Packet, codec, target string) {
 	n := codecNote{Stream: p.StreamID, Track: p.TrackID, To: codec, Target: target}
-	if c.noteCodec(n) || c.pubsub == nil {
+	if c.noteCodec(ctx, n) || c.pubsub == nil {
 		return
 	}
 	msg, err := json.Marshal(n)
@@ -80,12 +81,12 @@ func (c *CallTracker) remoteConverted(msg []byte) {
 	if err := json.Unmarshal(msg, &n); err != nil || n.Target == "" {
 		return
 	}
-	c.noteCodec(n)
+	c.noteCodec(context.Background(), n)
 }
 
 // noteCodec queues n on the worker of its call and reports whether the
 // call is tracked here.
-func (c *CallTracker) noteCodec(n codecNote) bool {
+func (c *CallTracker) noteCodec(ctx context.Context, n codecNote) bool {
 	if c.stopped.Load() {
 		return false
 	}
@@ -97,11 +98,12 @@ func (c *CallTracker) noteCodec(n codecNote) bool {
 	if n.Track != 0 {
 		idx = int(n.Track % shardCount)
 	}
-	c.enqueue(idx, task{fn: func(s *shard) { s.codecNote(n) }})
+	ctx = context.WithoutCancel(ctx)
+	c.enqueue(idx, task{fn: func(s *shard) { s.codecNote(ctx, n) }})
 	return true
 }
 
-func (s *shard) codecNote(n codecNote) {
+func (s *shard) codecNote(ctx context.Context, n codecNote) {
 	st, ok := s.streams[n.Stream]
 	if !ok {
 		return
@@ -145,7 +147,7 @@ func (s *shard) codecNote(n codecNote) {
 		return
 	}
 	if r.shared {
-		s.notePart(r)
+		s.notePart(ctx, r)
 		return
 	}
 	if err := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).

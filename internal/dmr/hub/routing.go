@@ -118,7 +118,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	h.noteHeardOn(packet, sourceName)
 	defer h.noteSighting(packet, sourceName)
 
-	sc := h.observeCodec(&packet, sourceName)
+	sc := h.observeCodec(ctx, &packet, sourceName)
 
 	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {
 		return

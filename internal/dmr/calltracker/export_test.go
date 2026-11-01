@@ -20,6 +20,7 @@
 package calltracker
 
 import (
+	"context"
 	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -47,6 +48,6 @@ const VoiceHang = voiceHang
 const SaveTimeout = saveTimeout
 
 func SaveMergedPart(c *CallTracker, call *models.Call, id string, packets uint) bool {
-	_, _, ok := c.shards[0].saveMerged(call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
+	_, _, ok := c.shards[0].saveMerged(context.Background(), call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
 	return ok
 }

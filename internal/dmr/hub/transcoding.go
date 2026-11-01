@@ -373,14 +373,14 @@ func wantsPeerVersion(packet *models.Packet, codec2Peer bool) bool {
 
 // noteCopy tells the call tracker, once per stream, that target got the
 // copy packet.
-func (h *Hub) noteCopy(packet *models.Packet, target string) {
+func (h *Hub) noteCopy(ctx context.Context, packet *models.Packet, target string) {
 	if !packet.Copy || h.callTracker == nil {
 		return
 	}
 	if _, seen := h.copyReports.LoadOrStore(copyReport{stream: packet.StreamID, target: target}, h.clock.Now()); seen {
 		return
 	}
-	h.callTracker.Converted(*packet, transcode.Codec(packet.Codec).String(), target)
+	h.callTracker.Converted(ctx, *packet, transcode.Codec(packet.Codec).String(), target)
 }
 
 // transcoder makes the copies of one stream in the other codec, in the
@@ -435,7 +435,7 @@ func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTic
 	t.mu.Lock()
 	t.pending--
 	if t.exited {
-		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
+		t.missed(ctx, &p, voiceFrames(&p), transcode.ReasonLate)
 		t.mu.Unlock()
 		t.h.finishCopy(ctx, ticket)
 		return
@@ -444,7 +444,7 @@ func (t *transcoder) queue(ctx context.Context, p models.Packet, ticket *copyTic
 	case t.in <- transcodeJob{packet: p, deadline: t.h.clock.Now().Add(t.st.Budget()), ticket: ticket}:
 		t.mu.Unlock()
 	default:
-		t.missed(&p, voiceFrames(&p), transcode.ReasonLate)
+		t.missed(ctx, &p, voiceFrames(&p), transcode.ReasonLate)
 		t.mu.Unlock()
 		t.h.finishCopy(ctx, ticket)
 	}
@@ -488,7 +488,7 @@ func (t *transcoder) exit(ctx context.Context) {
 	var dropped []*copyTicket
 	for len(t.in) > 0 {
 		job := <-t.in
-		t.missed(&job.packet, voiceFrames(&job.packet), transcode.ReasonLate)
+		t.missed(ctx, &job.packet, voiceFrames(&job.packet), transcode.ReasonLate)
 		dropped = append(dropped, job.ticket)
 	}
 	t.mu.Unlock()
@@ -535,7 +535,7 @@ func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 		return
 	}
 	if res.Busy {
-		t.busy(&job.packet, res.Missed)
+		t.busy(ctx, &job.packet, res.Missed)
 		t.h.finishCopy(ctx, job.ticket)
 		return
 	}
@@ -545,7 +545,7 @@ func (t *transcoder) convert(ctx context.Context, job *transcodeJob) {
 	cp.Codec = uint8(t.st.To())
 	cp.Copy, cp.HasCopy = true, false
 	if res.Missed > 0 {
-		t.missed(&cp, res.Missed, res.Reason)
+		t.missed(ctx, &cp, res.Missed, res.Reason)
 	}
 	copies := make([]models.Packet, 0, len(res.Fill)+1)
 	for _, f := range res.Fill {
@@ -576,12 +576,12 @@ func (t *transcoder) reports(p *models.Packet, res *transcode.Result) {
 
 // busy counts a burst of a call that found every AMBE server busy, which
 // is not converted, and marks the call once.
-func (t *transcoder) busy(p *models.Packet, frames int) {
+func (t *transcoder) busy(ctx context.Context, p *models.Packet, frames int) {
 	if !t.marked {
 		t.marked = true
 		slog.Info("Every AMBE server is busy, a call is not converted", "stream", p.StreamID, "to", t.st.To().String())
 		if t.h.callTracker != nil {
-			t.h.callTracker.Busy(*p)
+			t.h.callTracker.Busy(ctx, *p)
 		}
 	}
 	if frames > 0 {
@@ -590,14 +590,14 @@ func (t *transcoder) busy(p *models.Packet, frames int) {
 	}
 }
 
-func (t *transcoder) missed(p *models.Packet, frames int, reason string) {
+func (t *transcoder) missed(ctx context.Context, p *models.Packet, frames int, reason string) {
 	if frames == 0 {
 		return
 	}
 	d := time.Duration(frames) * transcode.FrameDuration
 	metrics.NewMetrics().AddTranscodeMissed(t.st.To().String(), reason, d.Seconds())
 	if t.h.callTracker != nil {
-		t.h.callTracker.Missed(*p, int(d.Milliseconds()))
+		t.h.callTracker.Missed(ctx, *p, int(d.Milliseconds()))
 	}
 }
 

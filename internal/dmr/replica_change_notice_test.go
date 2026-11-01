@@ -27,7 +27,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -52,6 +54,15 @@ func sendPrivateBursts(t *testing.T, c *testutils.MMDVMClient, src, dst, stream 
 	term.GroupCall = false
 	term.Seq = 4
 	require.NoError(t, c.SendDMRD(term))
+}
+
+// awaitEnd reads got until the terminator of a call that of takes comes,
+// bounded by deliverWait, and returns what it read.
+func awaitEnd(got <-chan models.Packet, of func(models.Packet) bool) []models.Packet {
+	return testutils.Collect(got, deliverWait, func(pkts []models.Packet) bool {
+		p := pkts[len(pkts)-1]
+		return of(p) && p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm
+	})
 }
 
 func countPrivate(pkts []models.Packet, dst uint) int {
@@ -123,10 +134,11 @@ func adminRouter(t *testing.T, stack *testutils.IntegrationStack) (*gin.Engine, 
 // through the API of replica A, right
 // after replica B routed traffic that read each of them. The next call on
 // replica B must follow the edit, without waiting for B to read the
-// database again on its own.
+// database again on its own: the hubs run on a test clock that stands
+// still, so no answer that B keeps gets old.
 func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 	t.Parallel()
-	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+	forAllBackendsWith(t, []testutils.Backend{testutils.ClockOn(clock.NewFake(time.Now()))}, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
@@ -175,7 +187,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			waitSubscribed(t, replicaB.Hub, 100002, 5, true)
 			c2.Drain(100 * time.Millisecond)
 			sendGroupBursts(t, c1, 5, 9103, 4)
-			assert.Positive(t, countDst(c2.Drain(noticeWait), 5), "a talkgroup made on replica A must route on replica B at once")
+			assert.Positive(t, countDst(awaitEnd(c2.ReceivedPackets(), func(p models.Packet) bool { return p.Dst == 5 }), 5), "a talkgroup made on replica A must route on replica B at once")
 		}()
 
 		func() {
@@ -191,25 +203,25 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 			})
 			c2.Drain(100 * time.Millisecond)
 			sendPrivateBursts(t, c1, 1000001, 1000004, 9203)
-			assert.Positive(t, countPrivate(c2.Drain(noticeWait), 1000004), "a user made on replica A must get private calls on replica B at once")
+			assert.Positive(t, countPrivate(awaitEnd(c2.ReceivedPackets(), func(p models.Packet) bool { return !p.GroupCall && p.Dst == 1000004 }), 1000004), "a user made on replica A must get private calls on replica B at once")
 		}()
 
 		func() {
 			to.Drain(100 * time.Millisecond)
 			sendGroupBursts(t, c1, 1, 9301, 4)
-			require.NotEmpty(t, to.Drain(noticeWait), "the peer must get the call before the edit")
+			require.NotEmpty(t, awaitEnd(to.ReceivedPackets(), func(p models.Packet) bool { return p.StreamID == 9301 }), "the peer must get the call before the edit")
 			off := false
 			_, w := testutils.PatchPeer(t, router, 500002, jar, apimodels.PeerPatch{Egress: &off})
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			notices.await(t, "hub:peers:changed")
 			sendGroupBursts(t, c1, 1, 9302, 4)
-			assert.Empty(t, to.Drain(noticeWait), "a peer whose egress replica A turned off must get nothing from replica B")
+			assert.Empty(t, ofStream(to.Drain(noticeWait), 9302), "a peer whose egress replica A turned off must get nothing from replica B")
 		}()
 
 		func() {
 			c2.Drain(100 * time.Millisecond)
 			require.NoError(t, ic.SendGroupVoice(1000001, 1, false, 9401))
-			require.Positive(t, countDst(c2.Drain(noticeWait), 1), "the IPSC call must route before the delete")
+			require.Positive(t, countDst(awaitEnd(c2.ReceivedPackets(), func(p models.Packet) bool { return p.Dst == 1 }), 1), "the IPSC call must route before the delete")
 			w := testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/repeaters/200001", nil)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			notices.await(t, "hub:repeaters:changed")

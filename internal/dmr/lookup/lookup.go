@@ -58,6 +58,11 @@ type Cache[K comparable, V any] struct {
 	load    func(K) (V, error)
 	entries *xsync.Map[K, *entry[V]]
 	flights *Flights[K, V]
+	// marks holds, by key, the mark of the last Reload, Refresh, Put or
+	// Drop. A load keeps its answer only when no such call came after it
+	// began, since it may have read the database before the change.
+	marks *xsync.Map[K, uint64]
+	seq   atomic.Uint64
 }
 
 // Flights runs one load of each key at a time, in the background.
@@ -148,7 +153,7 @@ type entry[V any] struct {
 // for ttl on the time of c. name names the cache in logs.
 func New[K comparable, V any](c clock.Clock, name string, ttl time.Duration, load func(K) (V, error)) *Cache[K, V] {
 	c = clock.Or(c)
-	return &Cache[K, V]{clock: c, name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V](c)}
+	return &Cache[K, V]{clock: c, name: name, ttl: ttl, load: load, entries: xsync.NewMap[K, *entry[V]](), flights: NewFlights[K, V](c), marks: xsync.NewMap[K, uint64]()}
 }
 
 // Get returns the answer for key. It calls load only when it has no
@@ -163,10 +168,11 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 		}
 		return e.val, nil
 	}
+	mark := c.markOf(key)
 	return c.flights.Do(key, func() (V, error) {
 		v, err := c.load(key)
 		if err == nil {
-			c.entries.LoadOrStore(key, newEntry(v, c.clock.Now()))
+			c.keep(key, mark, v, false)
 		}
 		return v, err
 	})
@@ -202,8 +208,11 @@ func (c *Cache[K, V]) refresh(key K, old *entry[V]) {
 
 // Reload loads the answer for key again when the Cache holds one, and
 // keeps the new answer. When the load fails, the Cache forgets the answer,
-// so that the next Get loads it.
+// so that the next Get loads it. A load of key that began before Reload,
+// and so may have read the database before the change that Reload is for,
+// does not replace the answer that Reload keeps.
 func (c *Cache[K, V]) Reload(key K) {
+	mark := c.newMark(key)
 	if _, ok := c.entries.Load(key); !ok {
 		return
 	}
@@ -213,13 +222,14 @@ func (c *Cache[K, V]) Reload(key K) {
 		c.entries.Delete(key)
 		return
 	}
-	c.entries.Store(key, newEntry(v, c.clock.Now()))
+	c.keep(key, mark, v, true)
 }
 
 // Refresh loads the answer for key again when the Cache holds one, and
 // keeps the new answer, so that an answer that is read seldom is not
 // pruned. When the load fails, the Cache keeps the answer that it had.
 func (c *Cache[K, V]) Refresh(key K) error {
+	mark := c.newMark(key)
 	if _, ok := c.entries.Load(key); !ok {
 		return nil
 	}
@@ -227,18 +237,45 @@ func (c *Cache[K, V]) Refresh(key K) error {
 	if err != nil {
 		return err
 	}
-	c.Put(key, v)
+	c.keep(key, mark, v, true)
 	return nil
 }
 
 // Put keeps v as the answer for key.
 func (c *Cache[K, V]) Put(key K, v V) {
+	c.newMark(key)
 	c.entries.Store(key, newEntry(v, c.clock.Now()))
 }
 
 // Drop forgets the answer for key, so that the next Get loads it.
 func (c *Cache[K, V]) Drop(key K) {
+	c.newMark(key)
 	c.entries.Delete(key)
+}
+
+// newMark records that a Reload, Refresh, Put or Drop of key begins, and
+// returns its mark.
+func (c *Cache[K, V]) newMark(key K) uint64 {
+	m := c.seq.Add(1)
+	c.marks.Store(key, m)
+	return m
+}
+
+func (c *Cache[K, V]) markOf(key K) uint64 {
+	m, _ := c.marks.Load(key)
+	return m
+}
+
+// keep stores v as the answer for key when the mark of key is still mark.
+// Without replace it keeps an answer that the Cache holds.
+func (c *Cache[K, V]) keep(key K, mark uint64, v V, replace bool) {
+	e := newEntry(v, c.clock.Now())
+	c.entries.Compute(key, func(cur *entry[V], loaded bool) (*entry[V], xsync.ComputeOp) {
+		if c.markOf(key) != mark || (loaded && !replace) {
+			return cur, xsync.CancelOp
+		}
+		return e, xsync.UpdateOp
+	})
 }
 
 // Prune forgets the answers that nobody read for Idle before now.
@@ -246,6 +283,14 @@ func (c *Cache[K, V]) Prune(now time.Time) {
 	c.entries.Range(func(key K, e *entry[V]) bool {
 		if now.Sub(monotime.Time(e.read.Load())) > Idle {
 			c.entries.Delete(key)
+		}
+		return true
+	})
+	c.marks.Range(func(key K, _ uint64) bool {
+		_, held := c.entries.Load(key)
+		_, loading := c.flights.m.Load(key)
+		if !held && !loading {
+			c.marks.Delete(key)
 		}
 		return true
 	})

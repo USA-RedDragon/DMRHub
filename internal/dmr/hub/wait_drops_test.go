@@ -65,6 +65,7 @@ func TestABurstThatTheOwnerLookupGaveUpOnIsCountedAsALookupWait(t *testing.T) { 
 		seedUser(t, database, testSrcID, "SENDER")
 		seedRepeater(t, database, testRepeaterID, testSrcID)
 		h.SetConfig(config.Config{DMR: config.DMR{Routing: config.Routing{Transmit: config.TransmitMembers}}})
+		synctest.Wait()
 		held := holdQueries(t, database, "users")
 		lookupWait, transmit := dropped(metrics.DropReasonLookupWait), dropped(metrics.DropReasonTransmit)
 
@@ -89,6 +90,7 @@ func TestABurstThatASlotLockRefusedForASlowLookupIsCountedAsALookupWait(t *testi
 		require.NoError(t, models.ReplaceRoutingRules(database, testRepeaterID, models.SlotRuleKinds(), []models.RoutingRule{{Kind: models.RoutingRuleSlotUser, Slot: 1, SubjectID: testSrcID}}))
 		h.RulesChanged(testRepeaterID)
 		knowTalkgroups(t, h)
+		synctest.Wait()
 		held := holdQueries(t, database, "users")
 		lookupWait := dropped(metrics.DropReasonLookupWait)
 
@@ -244,6 +246,7 @@ func TestABurstThatTheOwnerLookupTimedOutOnIsCountedAsALookupWait(t *testing.T) 
 		seedRepeater(t, database, testRepeaterID, testSrcID)
 		h.SetConfig(config.Config{DMR: config.DMR{Routing: config.Routing{Transmit: config.TransmitMembers}}})
 		var on atomic.Bool
+		synctest.Wait()
 		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:time_out_users", func(tx *gorm.DB) {
 			if on.Load() && tx.Statement.Table == "users" {
 				_ = tx.AddError(context.DeadlineExceeded)
@@ -266,6 +269,7 @@ func TestAGroupBurstToATalkgroupThatTheLookupGaveUpOnIsCountedAsALookupWait(t *t
 		h, database := makeTestHub(t)
 		seedUser(t, database, testSrcID, "SENDER")
 		seedRepeater(t, database, testRepeaterID, testSrcID)
+		synctest.Wait()
 		held := holdQueries(t, database, "talkgroups")
 		seedTalkgroup(t, database, 77, "TG77")
 		held.armed.Store(true)
@@ -286,6 +290,7 @@ func TestAPrivateBurstToARepeaterThatTheLookupGaveUpOnIsCountedAsALookupWait(t *
 		seedRepeater(t, database, testRepeaterID, testSrcID)
 		seedRepeater(t, database, 100009, testSrcID)
 		require.NoError(t, h.KnowRepeater(testRepeaterID))
+		synctest.Wait()
 		held := holdQueries(t, database, "repeaters")
 		held.armed.Store(true)
 		before := dropped(metrics.DropReasonLookupWait)
@@ -308,6 +313,7 @@ func TestAPrivateBurstToARadioHeardOnARepeaterThatTheLookupGaveUpOnIsCountedAsAL
 		require.NoError(t, h.KnowRepeater(testRepeaterID))
 		loadLookups(t, h, nil, []uint{testSrcID, 1000002})
 		require.NoError(t, h.StoreSighting(1000002, 100009, time.Now(), true))
+		synctest.Wait()
 		held := holdQueries(t, database, "repeaters")
 		held.armed.Store(true)
 		lastSeenWait := dropped(metrics.DropReasonLastSeenWait)
@@ -332,11 +338,13 @@ func TestABurstToThePeersThatThePeerLookupGaveUpOnIsCountedAsALookupWait(t *test
 		h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
 		require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: testSrcID, Egress: true}).Error)
 		var failing atomic.Bool
+		synctest.Wait()
 		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:fail_peers", func(tx *gorm.DB) {
 			if failing.Load() && tx.Statement.Table == "peers" {
 				_ = tx.AddError(errors.New("the database is down"))
 			}
 		}))
+		synctest.Wait()
 		held := holdQueries(t, database, "peers")
 		failing.Store(true)
 		h.PeerChanged(3100100)
@@ -370,11 +378,13 @@ func TestAGroupBurstToARepeaterThatTheLookupGaveUpOnIsCountedAsALookupWait(t *te
 		waitAllReceive(t, h, srv, 1, 1, 64000)
 
 		var failing atomic.Bool
+		synctest.Wait()
 		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:fail_repeaters", func(tx *gorm.DB) {
 			if failing.Load() && tx.Statement.Table == "repeaters" {
 				_ = tx.AddError(errors.New("the database is down"))
 			}
 		}))
+		synctest.Wait()
 		held := holdQueries(t, database, "repeaters")
 		failing.Store(true)
 		h.CodecChanged(100002)

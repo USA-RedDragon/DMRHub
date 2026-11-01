@@ -443,15 +443,16 @@ func mxSources() []mxSource {
 		}},
 		{name: "ipsc", ipsc: true, send: func(t *testing.T, n *mxNet, tx transmission, stream uint) []models.Packet {
 			pkts := tx.packets(stream)
-			for i, p := range pkts {
+			i := 0
+			sendPackets(t, func(p models.Packet) error {
 				h := layer2.Hint{Kind: layer2.KindData, DataType: enums.DataType(p.DTypeOrVSeq), HasDataType: true}
 				if p.FrameType == dmrconst.FrameVoice || p.FrameType == dmrconst.FrameVoiceSync {
 					pos, _ := enums.VoiceBurstAt(int(p.DTypeOrVSeq))
 					h = layer2.Hint{Kind: layer2.KindVoice, VoiceBurst: pos}
 				}
-				require.NoError(t, n.ipscSrc.SendBurst(p.Src, p.Dst, p.GroupCall, p.Slot, uint32(stream), layer2.RawBurst(p.DMRData), h, i == len(pkts)-1))
-				time.Sleep(30 * time.Millisecond)
-			}
+				i++
+				return n.ipscSrc.SendBurst(p.Src, p.Dst, p.GroupCall, p.Slot, uint32(stream), layer2.RawBurst(p.DMRData), h, i == len(pkts))
+			}, pkts)
 			return pkts
 		}},
 	}

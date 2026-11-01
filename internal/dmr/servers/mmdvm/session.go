@@ -1086,6 +1086,9 @@ func (s *Server) resumeLink(ctx context.Context, now time.Duration, l *link, id 
 // It first stops the packets of the hub to the repeater and takes those
 // already on their way, so that the handover holds every packet that went
 // out after the move, and those that ruleFor holds of the ones before.
+// Then it ends the session and waits for the bursts that came from the
+// repeater to go out, so that the other replica sends its bursts after
+// them.
 func (s *Server) dropMoved(id uint, since time.Time) {
 	if id > math.MaxUint32 || s.hub == nil {
 		return
@@ -1097,17 +1100,23 @@ func (s *Server) dropMoved(id uint, since time.Time) {
 		return
 	}
 	s.hub.StopFor(models.RepeaterTypeMMDVM, id)
-	s.handOver(id, since, ruleFor(l.ep))
+	h := s.report(id, since, ruleFor(l.ep))
+	s.endMoved(uint32(id), l)
+	released := s.hub.ReleaseIngress(models.RepeaterTypeMMDVM, id, servers.DrainLimit(s.config))
+	s.handOver(id, h, released)
+}
+
+func (s *Server) endMoved(id uint32, l *link) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.byID[uint32(id)] != l {
+	if s.byID[id] != l {
 		return
 	}
 	slog.Info("Repeater session moved to another replica", "repeaterID", id, "remoteAddr", l.ep.String())
-	s.dropOwnRecord(id)
+	s.dropOwnRecord(uint(id))
 	s.stopBeacon(l)
-	delete(s.byID, uint32(id))
-	s.connected.Delete(id)
+	delete(s.byID, id)
+	s.connected.Delete(uint(id))
 	l.m.Reset()
 	s.forget(l)
 }

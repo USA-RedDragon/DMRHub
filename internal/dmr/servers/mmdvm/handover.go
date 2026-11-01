@@ -101,6 +101,9 @@ type sentPacket struct {
 type handover struct {
 	Packets [][]byte `json:"packets"`
 	Earlier [][]byte `json:"earlier,omitempty"`
+	// IngressReleased tells that the bursts that the old replica took
+	// from the repeater went out before it sent the handover.
+	IngressReleased bool `json:"ingressReleased,omitempty"`
 }
 
 // lost returns the packets of the handover that the repeater lost: with
@@ -261,14 +264,15 @@ func (s *Server) takeHeld(id uint) []models.Packet {
 	return m.held
 }
 
-// handOver sends the replica that claimed the repeater id the packets that
-// this one sent to it after since, when its packet reached the other
-// replica, and those that the rule holds of the ones before.
-func (s *Server) handOver(id uint, since time.Time, rule handoverRule) {
+// handOver sends the replica that claimed the repeater id h, the packets
+// that the repeater did not get from this one, and whether the bursts that
+// this one took from the repeater went out.
+func (s *Server) handOver(id uint, h handover, released bool) {
 	if s.hub == nil {
 		return
 	}
-	b, err := json.Marshal(s.report(id, since, rule))
+	h.IngressReleased = released
+	b, err := json.Marshal(h)
 	if err != nil {
 		slog.Error("Error encoding an MMDVM handover", "repeaterID", id, "error", err)
 		return
@@ -284,10 +288,10 @@ func (s *Server) report(id uint, since time.Time, rule handoverRule) handover {
 }
 
 // awaitHandover holds the packets to the repeater id, which moves here,
-// until the handover of the replica that served it comes or handoverWait
-// passes. A browser hotspot that sent its anchors gets what the handover
-// holds after them; anchors is nil for any other. Call it before the claim
-// of the repeater.
+// and the bursts from it, until the handover of the replica that served it
+// comes or handoverWait passes. A browser hotspot that sent its anchors
+// gets what the handover holds after them; anchors is nil for any other.
+// Call it before the claim of the repeater.
 func (s *Server) awaitHandover(ctx context.Context, id uint, anchors []wtAnchor) {
 	if s.hub == nil {
 		return
@@ -302,6 +306,7 @@ func (s *Server) awaitHandover(ctx context.Context, id uint, anchors []wtAnchor)
 	}
 	s.moving[id] = &movingRepeater{seen: map[packetKey]bool{}}
 	s.movingMu.Unlock()
+	release := s.hub.HoldIngress(ctx, models.RepeaterTypeMMDVM, id, handoverWait, servers.DrainLimit(s.config))
 	expired, stop := s.hub.HandOverWait(ctx, id, handoverWait, servers.DrainLimit(s.config))
 	go func() {
 		defer func() { _ = sub.Close() }()
@@ -316,7 +321,11 @@ func (s *Server) awaitHandover(ctx context.Context, id uint, anchors []wtAnchor)
 			if ok && json.Unmarshal(b, &h) == nil {
 				lost = h.lost(anchors)
 			}
+			if !h.IngressReleased {
+				slog.Warn("The bursts of a repeater that moved here go out without waiting for those of the replica that served it", "repeaterID", id)
+			}
 		}
+		release()
 		s.finishHandover(context.WithoutCancel(ctx), id, lost)
 	}()
 }

@@ -20,13 +20,18 @@
 package ipsc
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,4 +63,44 @@ func TestHandOverEveryBurstOfASlowPeerMove(t *testing.T) {
 		_, lost, _ := p.handOver(k.peer, since)
 		require.Equal(t, bursts, len(lost), "the handover lost bursts that left after the move")
 	})
+}
+
+// TestHandOverWhatWaitsForAnEarlierPeerHandover moves a peer on while the
+// replica that it moved to still holds bursts for it until the handover
+// of the replica before comes. Those bursts never went to the peer, so the
+// handover to the next replica must hold them. The in-memory pubsub hands
+// the report to the subscription before HandOver returns.
+func TestHandOverWhatWaitsForAnEarlierPeerHandover(t *testing.T) {
+	t.Parallel()
+	const peer = 311861
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	h := hub.NewHub(nil, nil, ps, nil)
+	t.Cleanup(func() { h.Stop(context.Background()) })
+	sub := ps.Subscribe("hub:handover:" + models.RepeaterTypeIPSC + ":311861")
+	t.Cleanup(func() { _ = sub.Close() })
+	s := &IPSCServer{clock: clock.Real(), localID: 1, translator: NewIPSCTranslator(1), hub: h, peers: map[uint32]*peerState{peer: {}},
+		pacer: newPacer(clock.Real(), func(slotKey, []byte) {}, nil)}
+	t.Cleanup(s.pacer.stop)
+	m := newMoving()
+	m.held = []models.Packet{{StreamID: 7, Seq: 2}, {StreamID: 7, Seq: 3}}
+	s.moving = map[uint32]*moving{peer: m}
+
+	s.handOverPeer(peer, time.Now())
+	var report handoverReport
+	select {
+	case b := <-sub.Channel():
+		require.NoError(t, json.Unmarshal(b, &report))
+	default:
+		require.FailNow(t, "no handover report")
+	}
+	lost := unmarshalPackets(report.Lost)
+	seqs := make([]uint, 0, len(lost))
+	for _, p := range lost {
+		seqs = append(seqs, p.Seq)
+	}
+	require.Equal(t, []uint{2, 3}, seqs, "the handover lost the bursts that waited for the earlier one")
 }

@@ -172,9 +172,11 @@ func (s *Server) forgetPacket(id uint, p *sentPacket) {
 
 // sentSince returns the packets to the repeater id that left at or after
 // since, or that still wait in the queue, and those that the rule holds of
-// the ones that left before since, in order, and forgets the repeater. A
-// packet that waits leaves after the move, which the load balancer no
-// longer takes to the repeater.
+// the ones that left before since, in order, and then those that this
+// server holds for the repeater until the handover of the replica that
+// served it before comes, and forgets the repeater. A packet that waits
+// leaves after the move, which the load balancer no longer takes to the
+// repeater, and a held one never went to it.
 func (s *Server) sentSince(id uint, since time.Time, rule handoverRule) []models.Packet {
 	from := since.Add(-rule.slack)
 	s.sentMu.Lock()
@@ -197,7 +199,23 @@ func (s *Server) sentSince(id uint, since time.Time, rule handoverRule) []models
 		}
 	}
 	delete(s.sent, id)
-	return out
+	return append(out, s.takeHeld(id)...)
+}
+
+// takeHeld returns the packets that the server holds for the repeater id
+// until a handover comes, and ends that wait, as the repeater moved on.
+func (s *Server) takeHeld(id uint) []models.Packet {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	m, ok := s.moving[id]
+	if !ok {
+		return nil
+	}
+	delete(s.moving, id)
+	if m.done {
+		return nil
+	}
+	return m.held
 }
 
 // handOver sends the replica that claimed the repeater id the packets that

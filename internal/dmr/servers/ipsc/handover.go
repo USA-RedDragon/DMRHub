@@ -202,7 +202,7 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	}
 	s.hub.StopFor(models.RepeaterTypeIPSC, id)
 	_, lost, report.Hangs = s.pacer.handOver(peer, since)
-	report.Lost = marshalPackets(report.Lost, lost)
+	report.Lost = marshalPackets(report.Lost, append(lost, s.takeHeld(peer)...))
 	report.Ingress = s.ingressOf(peer)
 	b, err := json.Marshal(report)
 	if err != nil {
@@ -211,6 +211,22 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	}
 	s.hub.HandOver(models.RepeaterTypeIPSC, id, b)
 	slog.Info("IPSC peer moved to another replica", "peerID", id, "calls", len(report.Calls))
+}
+
+// takeHeld returns the packets that the server holds for the peer until
+// the handover of the replica that served it before comes, as the peer
+// moved on; they never went to it. The wait goes on for the packets of the
+// peer itself that it holds.
+func (s *IPSCServer) takeHeld(peer uint32) []models.Packet {
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	m, ok := s.moving[peer]
+	if !ok || m.done {
+		return nil
+	}
+	held := m.held
+	m.held = nil
+	return held
 }
 
 func (s *IPSCServer) holdIngress(ctx context.Context, op byte, data []byte, at time.Time) bool {

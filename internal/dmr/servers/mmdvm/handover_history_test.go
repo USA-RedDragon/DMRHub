@@ -73,3 +73,29 @@ func TestHandOverEveryBurstOfASlowBrowserMove(t *testing.T) {
 	t.Parallel()
 	checkHandoverHistory(t, endpoint{transport: webTransportName, addr: wtAddr("a")})
 }
+
+// TestHandOverWhatWaitsForAnEarlierHandover moves a repeater on while the
+// replica that it moved to still holds bursts for it until the handover of
+// the replica before comes. Those bursts never went to the repeater, so
+// the handover to the next replica must hold them, after what this one
+// sent, in order.
+func TestHandOverWhatWaitsForAnEarlierHandover(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		since := time.Now()
+		time.Sleep(time.Millisecond)
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 1})
+		s.writeOut(<-s.outgoingChan)
+		s.moving = map[uint]*movingRepeater{1: {seen: map[packetKey]bool{}}}
+		for _, seq := range []uint{2, 3} {
+			require.True(t, s.hold(1, models.Packet{StreamID: 7, Seq: seq}))
+		}
+		got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
+		seqs := make([]uint, 0, len(got))
+		for _, p := range got {
+			seqs = append(seqs, p.Seq)
+		}
+		require.Equal(t, []uint{1, 2, 3}, seqs, "the handover lost the bursts that waited for the earlier one")
+	})
+}

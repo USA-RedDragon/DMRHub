@@ -109,7 +109,7 @@ func sendIPSC(t *testing.T, c *testutils.IPSCClient, pkts []models.Packet) {
 // terminator carry embCC in their slot type.
 func assertEMBOfPackets(t *testing.T, pkts []models.Packet) {
 	t.Helper()
-	var voice, data int
+	var voice, data, headers int
 	for _, p := range pkts {
 		raw := layer2.RawBurst(p.DMRData)
 		switch p.FrameType {
@@ -120,19 +120,23 @@ func assertEMBOfPackets(t *testing.T, pkts []models.Packet) {
 			assert.True(t, emb.PreemptionAndPowerControlIndicator, "PI bit in the EMB of voice burst %d (seq %d)", p.DTypeOrVSeq, p.Seq)
 		case dmrconst.FrameDataSync:
 			data++
+			if p.DTypeOrVSeq == uint(enums.DataTypeVoiceLCHeader) {
+				headers++
+			}
 			assert.Equal(t, embCC, raw.SlotType().ColorCode, "color code in the slot type of data type %d (seq %d)", p.DTypeOrVSeq, p.Seq)
 		case dmrconst.FrameVoiceSync:
 		}
 	}
 	assert.Equal(t, 10, voice, "voice bursts B to F")
 	assert.GreaterOrEqual(t, data, 2, "voice LC header and terminator")
+	assert.Positive(t, headers, "voice LC header")
 }
 
 // assertEMBOfIPSC checks the same as assertEMBOfPackets in the IPSC packets
 // of the call.
 func assertEMBOfIPSC(t *testing.T, got []testutils.IPSCBurst) {
 	t.Helper()
-	var voice, data int
+	var voice, data, headers int
 	for _, b := range ipscOfCall(got, call{group: true, dst: embTG, src: embRadio}) {
 		u, err := ipscwire.DecodeUser(b.Data)
 		require.NoError(t, err)
@@ -151,10 +155,14 @@ func assertEMBOfIPSC(t *testing.T, got []testutils.IPSCBurst) {
 			continue
 		}
 		data++
+		if u.Burst.Type() == ipscwire.BurstType(enums.DataTypeVoiceLCHeader) {
+			headers++
+		}
 		assert.Equal(t, embCC, st.ColorCode(), "color code in the slot type of IPSC packet %d", u.RTP.Seq)
 	}
 	assert.Equal(t, 10, voice, "voice bursts B to F")
 	assert.GreaterOrEqual(t, data, 2, "voice LC header and terminator")
+	assert.Positive(t, headers, "voice LC header")
 }
 
 type embNet struct {

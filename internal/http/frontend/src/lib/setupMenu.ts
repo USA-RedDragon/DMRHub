@@ -109,6 +109,9 @@ export type TabDef = {
   optional?: boolean;
 };
 
+/** A dot on a tab of the Setup menu: unsaved changes, or a setting to fix. */
+export type TabMark = 'dirty' | 'error';
+
 export const isGrid = (r: Row): r is GridRow => 'grid' in r;
 export const isDetails = (r: Row): r is DetailsRow => 'details' in r;
 export const isText = (r: Row): r is TextRow => 'text' in r;

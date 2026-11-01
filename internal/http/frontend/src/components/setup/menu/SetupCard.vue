@@ -23,10 +23,10 @@
   <Card v-if="hasContent" :class="nested ? 'mb-3.5 gap-3.5 bg-transparent py-4.5 shadow-none' : 'mb-5'" :data-test="`card-${card.title}`">
     <CardHeader :class="[nested ? 'px-4.5' : '', card.pill ? 'flex flex-wrap items-center justify-between gap-2' : '']">
       <CardTitle>{{ card.title }}</CardTitle>
-      <ModemPill v-if="card.pill === 'modem' && read('dmr.modem.enabled') === true" />
+      <ModemPill v-if="!wizard && card.pill === 'modem' && read('dmr.modem.enabled') === true" />
     </CardHeader>
     <CardContent :class="nested ? 'px-4.5' : ''">
-      <ModemTest v-if="card.custom === 'modem-test'" :read="read" />
+      <ModemTest v-if="!wizard && card.custom === 'modem-test'" :read="read" />
       <SetupRows :rows="card.rows" v-bind="shared" @set="forward" />
       <template v-if="showCards">
         <SetupCard
@@ -34,6 +34,7 @@
           :key="c.title"
           :card="c"
           nested
+          :wizard="wizard"
           v-bind="shared"
           @set="forward"
         />
@@ -62,6 +63,8 @@ const props = defineProps<{
   errors: Record<string, string>;
   secrets: Record<string, boolean>;
   only?: string[];
+  /** Leaves out what needs the running network, for the setup wizard. */
+  wizard?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: 'set', path: string, value: unknown): void }>();
@@ -86,7 +89,7 @@ const shown = (f: FieldDef) => (!props.only || props.only.includes(f.path)) && (
 
 const hasContent = computed(() => {
   const all = (c: CardDef): FieldDef[] => [...fieldsOf(c.rows), ...(c.cards ?? []).flatMap(all)];
-  return props.card.custom !== undefined || all(props.card).some(shown);
+  return (props.card.custom !== undefined && !props.wizard) || all(props.card).some(shown);
 });
 
 const forward = (path: string, value: unknown) => emit('set', path, value);

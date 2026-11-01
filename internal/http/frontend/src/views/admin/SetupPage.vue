@@ -77,81 +77,18 @@
         <span class="size-1.5 rounded-[2px] border border-muted-foreground" />Read at start
       </span>
     </div>
-    <div class="grid items-start gap-7 md:grid-cols-[240px_minmax(0,1fr)]">
-      <nav
-        class="flex gap-1 overflow-x-auto rounded-xl border bg-sidebar p-1.5 md:sticky md:top-4 md:block md:max-h-[calc(100vh-2rem)] md:overflow-y-auto md:px-2 md:py-2.5"
-        aria-label="Setup areas"
-        data-test="setup-menu"
-      >
-        <template v-for="g in groups" :key="g.name">
-          <h4 class="mx-2.5 mt-2.5 mb-1 hidden text-[11px] font-bold tracking-[0.06em] text-muted-foreground uppercase first:mt-0.5 md:block">
-            {{ g.name }}
-          </h4>
-          <RouterLink
-            v-for="t in g.tabs"
-            :key="t.id"
-            :to="{ hash: `#${t.id}` }"
-            class="no-underline flex items-center gap-2 rounded-[7px] px-2.5 py-1.5 font-medium whitespace-nowrap text-foreground hover:bg-sidebar-accent"
-            :class="t.id === tab.id ? 'bg-sidebar-accent font-bold shadow-[inset_3px_0_0_var(--primary)]' : ''"
-            :aria-current="t.id === tab.id ? 'page' : undefined"
-            :data-test="`menu-${t.id}`"
-          >
-            {{ t.name }}
-            <span
-              v-if="dirty[t.id]"
-              class="ml-auto size-2 shrink-0 rounded-full bg-amber-500"
-              title="Unsaved changes"
-              :data-test="`menu-dirty-${t.id}`"
-            ><span class="sr-only">Unsaved changes</span></span>
-            <span
-              v-else-if="startOnly(t)"
-              class="ml-auto hidden text-[11px] font-medium text-muted-foreground md:inline"
-            >Read at start</span>
-          </RouterLink>
-        </template>
-      </nav>
-      <section :data-test="`tab-${tab.id}`" :aria-labelledby="`tab-title-${tab.id}`">
-        <div class="mb-3.5 flex flex-wrap items-end justify-between gap-2">
-          <h2 :id="`tab-title-${tab.id}`" class="text-[22px] leading-tight font-bold">{{ tab.name }}</h2>
-        </div>
-        <p v-if="tab.intro.length > 0" class="mb-4 max-w-[70ch] text-muted-foreground">
-          <template v-for="(part, i) in tab.intro" :key="i">
-            <template v-if="typeof part === 'string'">{{ part }}</template>
-            <RouterLink v-else :to="part.to">{{ part.text }}</RouterLink>
-          </template>
-        </p>
-        <div
-          v-if="startOnly(tab)"
-          class="mb-4 flex items-start gap-2.5 rounded-[10px] border bg-muted px-3.5 py-2.5 text-sm"
-          data-test="section-note"
-        >
-          <span class="inline-flex items-center gap-1.5 rounded-full border px-2 text-xs font-semibold leading-5 whitespace-nowrap text-muted-foreground">
-            <span class="size-1.5 rounded-[2px] border border-muted-foreground" />Read at start
-          </span>
-          <span>DMRHub reads these at start. Change them in the config file or the environment, then restart DMRHub.</span>
-        </div>
-        <template v-if="setupState.loaded">
-          <TranscodingTab
-            v-if="tab.custom === 'transcoding'"
-            :value="read(ambeServers)"
-            :setting="setupState.settings[ambeServers]"
-            :error="errors[ambeServers]"
-            :saves="saves"
-            @set="set"
-          />
-          <SetupCard
-            v-for="c in tab.cards"
-            v-else
-            :key="c.title"
-            :card="c"
-            :read="read"
-            :settings="setupState.settings"
-            :errors="errors"
-            :secrets="secrets"
-            :only="tab.optional ? Object.keys(setupState.settings) : undefined"
-            @set="set"
-          />
-        </template>
+    <SetupMenu
+      :tabs="tabs"
+      :tab="tab"
+      :state="setupState"
+      :read="read"
+      :errors="errors"
+      :secrets="secrets"
+      :saves="saves"
+      :marks="marks"
+      @set="set"
+    >
+      <template #savebar>
         <div
           class="sticky bottom-0 z-[3] mt-1 flex flex-wrap items-center justify-end gap-2 border-t bg-background py-3"
           data-test="savebar"
@@ -170,24 +107,22 @@
             </ShadButton>
           </template>
         </div>
-      </section>
-    </div>
+      </template>
+    </SetupMenu>
   </div>
 </template>
 
 <script lang="ts">
 import type { AxiosResponse } from 'axios';
 import { defineComponent } from 'vue';
-import { RouterLink } from 'vue-router';
 import { Lock } from 'lucide-vue-next';
 
-import SetupCard from '@/components/setup/menu/SetupCard.vue';
-import TranscodingTab from '@/components/setup/menu/TranscodingTab.vue';
+import SetupMenu from '@/components/setup/menu/SetupMenu.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { ambeServersError, type AmbeServerRow } from '@/lib/codec';
 import {
   AMBE_SERVERS, clone, getAt, keepEdits, setAt, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabPaths, tabPayload,
-  tabReadOnly, tabStartOnly, visibleTabs, TABS, type FieldDef, type TabDef, type TabGroup, type Values,
+  tabReadOnly, visibleTabs, TABS, type FieldDef, type TabDef, type TabMark, type Values,
 } from '@/lib/setupMenu';
 import {
   emptySetupState, replicaName, serverName, settingLabel, setupStateKey, setupStateOf, stateKeys, type SetupState,
@@ -239,12 +174,10 @@ const showApplyError = (e: ApplyError, self: boolean): ShownApplyError => {
 
 const fieldsByPath: Record<string, FieldDef> = Object.fromEntries(TABS.flatMap(tabFields).map((f) => [f.path, f]));
 
-const groupNames: TabGroup[] = ['Server', 'Users', 'DMR', 'Features'];
-
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
 
 export default defineComponent({
-  components: { Lock, RouterLink, SetupCard, ShadButton, TranscodingTab },
+  components: { Lock, SetupMenu, ShadButton },
   head() {
     return { title: 'Admin Setup' };
   },
@@ -266,7 +199,6 @@ export default defineComponent({
       failedReplicas: [] as string[],
       applyOK: '',
       unanswered: [] as string[],
-      ambeServers: AMBE_SERVERS,
     };
   },
   computed: {
@@ -276,11 +208,11 @@ export default defineComponent({
     tab(): TabDef {
       return tabOfHash(this.$route.hash, this.tabs);
     },
-    groups(): { name: TabGroup; tabs: TabDef[] }[] {
-      return groupNames.map((name) => ({ name, tabs: this.tabs.filter((t) => t.group === name) })).filter((g) => g.tabs.length > 0);
-    },
     dirty(): Record<string, boolean> {
       return Object.fromEntries(this.tabs.map((t) => [t.id, tabDirty(t, this.original, this.edited)]));
+    },
+    marks(): Record<string, TabMark> {
+      return Object.fromEntries(this.tabs.filter((t) => this.dirty[t.id]).map((t) => [t.id, 'dirty' as TabMark]));
     },
     readOnly(): boolean {
       return tabReadOnly(this.tab, this.setupState);
@@ -349,9 +281,6 @@ export default defineComponent({
   methods: {
     read(path: string): unknown {
       return getAt(this.edited, path);
-    },
-    startOnly(t: TabDef): boolean {
-      return tabStartOnly(t, this.setupState) && tabReadOnly(t, this.setupState);
     },
     set(path: string, value: unknown) {
       setAt(this.edited, path, clone(value));

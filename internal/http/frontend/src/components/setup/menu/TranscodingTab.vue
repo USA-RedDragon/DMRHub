@@ -34,7 +34,7 @@
         <div
           v-for="(row, i) in rows"
           :key="i"
-          class="grid grid-cols-[minmax(0,1fr)_110px] items-center gap-2 md:grid-cols-[minmax(0,1fr)_110px_auto_auto]"
+          :class="wizard ? 'grid grid-cols-[minmax(0,1fr)_110px_auto] items-center gap-2' : 'grid grid-cols-[minmax(0,1fr)_110px] items-center gap-2 md:grid-cols-[minmax(0,1fr)_110px_auto_auto]'"
           :data-test="`ambe-server-${i}`"
         >
           <ShadInput
@@ -57,6 +57,7 @@
             @update:model-value="(v: string | number) => setRow(i, { calls: String(v) })"
           />
           <span
+            v-if="!wizard"
             class="inline-flex items-center gap-1.5 justify-self-start rounded-full border px-2.5 text-xs leading-[22px] whitespace-nowrap"
             :data-test="`ambe-server-status-${i}`"
           >
@@ -103,7 +104,7 @@ import API from '@/services/API';
 
 const REFRESH_MS = 5000;
 
-const props = defineProps<{ value: unknown; setting?: Setting; error?: string; saves: number }>();
+const props = defineProps<{ value: unknown; setting?: Setting; error?: string; saves: number; wizard?: boolean }>();
 const emit = defineEmits<{ (e: 'set', path: string, value: unknown): void }>();
 
 const locked = computed(() => fieldLocked(props.setting));
@@ -151,6 +152,9 @@ const refresh = async () => {
 };
 
 onMounted(() => {
+  if (props.wizard) {
+    return;
+  }
   refresh();
   timer = setInterval(refresh, REFRESH_MS);
 });
@@ -163,6 +167,9 @@ onUnmounted(() => {
 });
 
 watch(() => props.saves, () => {
+  if (props.wizard) {
+    return;
+  }
   refresh();
 });
 </script>

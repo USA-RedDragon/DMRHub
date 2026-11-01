@@ -346,3 +346,29 @@ func TestUserViewShowsTheSizeOfDataThatIsNotText(t *testing.T) {
 	assert.True(t, keys["octets"])
 	assert.False(t, keys["raw"])
 }
+
+func TestTheOutboxShowsWhatStoreAndForwardDidWithAText(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	at := e.storage(true).Add(time.Second)
+	held := e.msg(at, owner, other, false, "held")
+	late := e.msg(at.Add(time.Second), owner, other, false, "delivered later")
+	plain := e.msg(at.Add(2*time.Second), owner, other, false, "plain")
+	done := at.Add(time.Hour)
+	require.NoError(t, e.db.Create(&models.HeldMessage{MessageID: held.ID, RadioID: other, UserID: other, State: models.HeldStateHeld, HeldAt: at}).Error)
+	require.NoError(t, e.db.Create(&models.HeldMessage{MessageID: late.ID, RadioID: other, UserID: other, State: models.HeldStateDelivered, Response: models.CallResponseACK, HeldAt: at, DoneAt: &done}).Error)
+
+	byText := map[string]apimodels.Message{}
+	for _, m := range e.list("/api/v1/messages/outbox").Messages {
+		byText[*m.Text] = m
+	}
+	require.NotNil(t, byText["held"].Held)
+	assert.Equal(t, "held", byText["held"].Held.State)
+	assert.False(t, byText["held"].Held.FormatKnown, "the hub never heard the radio send a text")
+	require.NotNil(t, byText["delivered later"].Held)
+	assert.Equal(t, "delivered", byText["delivered later"].Held.State)
+	assert.Equal(t, "ack", byText["delivered later"].Held.Response)
+	require.NotNil(t, byText["delivered later"].Held.DoneAt)
+	assert.Nil(t, byText["plain"].Held)
+	_ = plain
+}

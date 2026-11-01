@@ -78,7 +78,7 @@ func TestSMSStorageIsOffByDefault(t *testing.T) {
 
 	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/settings", nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false}`, w.Body.String())
+	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": false, "hold_days": 7}`, w.Body.String())
 }
 
 func TestSMSStorageOnSetsTheTimeAndOffAndOnResetsIt(t *testing.T) {
@@ -265,4 +265,84 @@ func TestRegistrationRefusesAnAddedRadioID(t *testing.T) {
 	_, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: ownerSecondID, Callsign: "KQ4APS", Username: "second", Password: "a long pass phrase 123"})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "DMR ID is already registered")
+}
+
+func storeForward(t *testing.T, router *gin.Engine, jar testutils.CookieJar, on bool) apimodels.UserSettings {
+	t.Helper()
+	w := testutils.Do(t, router, jar, http.MethodPut, "/api/v1/users/me/settings/store-forward", map[string]bool{"enabled": on})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var s apimodels.UserSettings
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &s))
+	return s
+}
+
+func heldTexts(t *testing.T, router *gin.Engine, jar testutils.CookieJar) []apimodels.HeldText {
+	t.Helper()
+	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/held-texts", nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var l apimodels.HeldTextList
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &l))
+	return l.Held
+}
+
+func TestStoreForwardTurnsOnAndOff(t *testing.T) {
+	t.Parallel()
+	router, db := settingsRouter(t, true)
+	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
+	jar := testutils.Login(t, router, "owner")
+
+	assert.True(t, storeForward(t, router, jar, true).StoreForward)
+	var u models.User
+	require.NoError(t, db.First(&u, ownerAccountID).Error)
+	assert.True(t, u.StoreForward)
+	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/settings", nil)
+	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": true, "hold_days": 7}`, w.Body.String())
+	assert.False(t, storeForward(t, router, jar, false).StoreForward)
+}
+
+func TestStoreForwardNeedsLoginAndABody(t *testing.T) {
+	t.Parallel()
+	router, db := settingsRouter(t, true)
+	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
+	w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPut, "/api/v1/users/me/settings/store-forward", map[string]bool{"enabled": true})
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	w = testutils.Do(t, router, testutils.CookieJar{}, http.MethodGet, "/api/v1/users/me/held-texts", nil)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	jar := testutils.Login(t, router, "owner")
+	w = testutils.Do(t, router, jar, http.MethodPut, "/api/v1/users/me/settings/store-forward", map[string]string{})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHeldTextsListOnlyTheTextsWaitingForMyRadios(t *testing.T) {
+	t.Parallel()
+	router, db := settingsRouter(t, false)
+	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
+	testutils.SeedAccount(t, db, otherCallsignID, "KD5SMP", "other")
+	jar := testutils.Login(t, router, "owner")
+	storeForward(t, router, jar, true)
+	require.NoError(t, db.Create(&models.UserRadioID{UserID: ownerAccountID, RadioID: ownerSecondID, VerifiedAt: time.Now()}).Error)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	hold := func(dst, user uint, body string, state models.HeldState, at time.Time) {
+		m := models.Message{ReceivedAt: at, SourceID: otherCallsignID, DestinationID: dst, Format: models.MessageFormatTMS, Text: &body, ChecksumOK: true}
+		require.NoError(t, db.Create(&m).Error)
+		require.NoError(t, db.Create(&models.HeldMessage{MessageID: m.ID, RadioID: dst, UserID: user, State: state, HeldAt: at}).Error)
+	}
+	hold(ownerSecondID, ownerAccountID, "second radio", models.HeldStateHeld, now.Add(time.Minute))
+	hold(ownerAccountID, ownerAccountID, "account radio", models.HeldStateHeld, now)
+	hold(ownerAccountID, ownerAccountID, "already delivered", models.HeldStateDelivered, now)
+	hold(otherCallsignID, otherCallsignID, "not mine", models.HeldStateHeld, now)
+	rate := uint8(7)
+	body := "own text"
+	require.NoError(t, db.Create(&models.Message{ReceivedAt: now, SourceID: ownerAccountID, DestinationID: otherCallsignID, Format: models.MessageFormatTMS, Text: &body, ChecksumOK: true, Rate: rate}).Error)
+
+	got := heldTexts(t, router, jar)
+	require.Len(t, got, 2)
+	assert.Equal(t, "account radio", got[0].Text)
+	assert.Equal(t, ownerAccountID, got[0].RadioID)
+	assert.Equal(t, otherCallsignID, got[0].SourceID)
+	assert.Equal(t, "KD5SMP", got[0].SourceCallsign)
+	assert.True(t, now.Equal(got[0].HeldAt))
+	assert.Equal(t, "second radio", got[1].Text)
+	assert.False(t, got[1].FormatKnown, "the second radio never sent a text")
 }

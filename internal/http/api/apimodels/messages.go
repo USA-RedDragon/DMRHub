@@ -37,6 +37,18 @@ type Message struct {
 	Response            string    `json:"response"`
 	ChecksumOK          bool      `json:"checksum_ok"`
 	Octets              uint      `json:"octets"`
+	Held                *Held     `json:"held,omitempty"`
+}
+
+// Held is what store and forward did with a message that the hub could
+// not deliver at first. State is held, sending, delivered, expired or
+// failed; Response is ack, nack or none for the delivery; FormatKnown is
+// false while the hub does not know the text format of the radio.
+type Held struct {
+	State       string     `json:"state"`
+	Response    string     `json:"response"`
+	DoneAt      *time.Time `json:"done_at"`
+	FormatKnown bool       `json:"format_known"`
 }
 
 // AdminMessage is a stored data message as an admin sees it. Raw, in hex,

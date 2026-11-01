@@ -25,6 +25,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"gorm.io/gorm"
 )
@@ -32,10 +33,15 @@ import (
 type names struct {
 	callsigns  map[uint]string
 	talkgroups map[uint]string
+	held       map[uint]*apimodels.Held
 }
 
 func lookup(db *gorm.DB, msgs []models.Message) (names, error) {
-	n := names{callsigns: map[uint]string{}, talkgroups: map[uint]string{}}
+	held, err := storeforward.HeldOf(db, msgs)
+	if err != nil {
+		return names{}, fmt.Errorf("could not find held messages: %w", err)
+	}
+	n := names{callsigns: map[uint]string{}, talkgroups: map[uint]string{}, held: held}
 	var userIDs, tgIDs []uint
 	for i := range msgs {
 		userIDs = append(userIDs, msgs[i].SourceID)
@@ -97,6 +103,7 @@ func (n names) user(m *models.Message) apimodels.Message {
 		Response:       response(m.Response),
 		ChecksumOK:     m.ChecksumOK,
 		Octets:         m.Octets,
+		Held:           n.held[m.ID],
 	}
 	if m.IsGroup {
 		out.TalkgroupName = n.talkgroups[m.DestinationID]

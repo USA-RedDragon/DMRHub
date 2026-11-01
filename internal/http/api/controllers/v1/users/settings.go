@@ -27,15 +27,20 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-const msgTryLater = "Try again later"
+const (
+	msgTryLater    = "Try again later"
+	msgSendEnabled = "Send enabled as true or false"
+)
 
 // GETUserSettings returns the settings of the logged-in user.
 func GETUserSettings(c *gin.Context) {
@@ -47,7 +52,7 @@ func GETUserSettings(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, settingsOf(&user))
+	c.JSON(http.StatusOK, settingsOf(c, &user))
 }
 
 // PUTUserSMSStorage turns SMS Storage of the logged-in user on or off.
@@ -62,7 +67,7 @@ func PUTUserSMSStorage(c *gin.Context) {
 	}
 	var req apimodels.SMSStoragePut
 	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Send enabled as true or false"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgSendEnabled})
 		return
 	}
 	if err := models.SetSMSStorage(db, &user, *req.Enabled, time.Now()); err != nil {
@@ -70,11 +75,65 @@ func PUTUserSMSStorage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
 		return
 	}
-	c.JSON(http.StatusOK, settingsOf(&user))
+	c.JSON(http.StatusOK, settingsOf(c, &user))
 }
 
-func settingsOf(user *models.User) apimodels.UserSettings {
-	return apimodels.UserSettings{SMSStorage: user.SMSStorageEnabled, SharePositions: user.SharePositions}
+func settingsOf(c *gin.Context, user *models.User) apimodels.UserSettings {
+	var limits config.Messages
+	if v, ok := c.Get("Config"); ok {
+		if cfg, ok := v.(*config.Config); ok && cfg != nil {
+			limits = cfg.DMR.Messages
+		}
+	}
+	return apimodels.UserSettings{
+		SMSStorage: user.SMSStorageEnabled, SharePositions: user.SharePositions, StoreForward: user.StoreForward,
+		HoldDays: int(limits.HoldFor() / (24 * time.Hour)),
+	}
+}
+
+// PUTUserStoreForward turns store and forward of the logged-in user on or
+// off. Turning it off ends the texts held for the user's radios.
+func PUTUserStoreForward(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	user, ok := utils.GetSessionUser(c, db)
+	if !ok {
+		return
+	}
+	var req apimodels.StoreForwardPut
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgSendEnabled})
+		return
+	}
+	if err := models.SetStoreForward(db, user.ID, *req.Enabled, time.Now()); err != nil {
+		slog.Error("Error saving store and forward", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
+		return
+	}
+	user.StoreForward = *req.Enabled
+	c.JSON(http.StatusOK, settingsOf(c, &user))
+}
+
+// GETMyHeldTexts lists the texts that store and forward keeps for the
+// radios of the logged-in user, oldest first.
+func GETMyHeldTexts(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	user, ok := utils.GetSessionUser(c, db)
+	if !ok {
+		return
+	}
+	list, err := storeforward.HeldFor(db, user.ID)
+	if err != nil {
+		slog.Error("Error listing held texts", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
+		return
+	}
+	c.JSON(http.StatusOK, list)
 }
 
 // PUTUserSharePositions turns sharing of the positions of the logged-in
@@ -90,7 +149,7 @@ func PUTUserSharePositions(c *gin.Context) {
 	}
 	var req apimodels.SharePositionsPut
 	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
-		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Send enabled as true or false"})
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgSendEnabled})
 		return
 	}
 	if err := models.SetSharePositions(db, user.ID, *req.Enabled); err != nil {
@@ -99,7 +158,7 @@ func PUTUserSharePositions(c *gin.Context) {
 		return
 	}
 	user.SharePositions = *req.Enabled
-	c.JSON(http.StatusOK, settingsOf(&user))
+	c.JSON(http.StatusOK, settingsOf(c, &user))
 }
 
 // GETMyRadioIDs lists the radio IDs of the logged-in user.

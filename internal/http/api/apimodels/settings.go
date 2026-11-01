@@ -26,6 +26,33 @@ import "time"
 type UserSettings struct {
 	SMSStorage     bool `json:"sms_storage"`
 	SharePositions bool `json:"share_positions"`
+	StoreForward   bool `json:"store_forward"`
+	// HoldDays is how many days store and forward keeps a text.
+	HoldDays int `json:"hold_days"`
+}
+
+// StoreForwardPut turns store and forward on or off.
+type StoreForwardPut struct {
+	Enabled *bool `json:"enabled" binding:"required"`
+}
+
+// HeldText is a text that store and forward keeps for one of the user's
+// radios. FormatKnown is false while the hub has not heard the radio send
+// a text whose format it can build, so it cannot send the text yet.
+type HeldText struct {
+	ID             uint      `json:"id"`
+	MessageID      uint      `json:"message_id"`
+	Text           string    `json:"text"`
+	SourceID       uint      `json:"source_id"`
+	SourceCallsign string    `json:"source_callsign"`
+	RadioID        uint      `json:"radio_id"`
+	HeldAt         time.Time `json:"held_at"`
+	FormatKnown    bool      `json:"format_known"`
+}
+
+// HeldTextList is the texts held for the user's radios, oldest first.
+type HeldTextList struct {
+	Held []HeldText `json:"held"`
 }
 
 // SMSStoragePut turns SMS Storage on or off.

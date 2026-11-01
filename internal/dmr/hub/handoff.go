@@ -82,18 +82,27 @@ func (h *Hub) settle(id uint) {
 // the repeater. It has no time bound: a server that a starved machine
 // slows down still takes the packets, and the handover must hold them.
 func (h *Hub) Barrier(server string) {
+	h.barrierUnless(server, nil)
+}
+
+func (h *Hub) barrierUnless(server string, quit <-chan struct{}) bool {
 	h.mu.RLock()
 	entry, ok := h.servers[server]
 	h.mu.RUnlock()
 	if !ok {
-		return
+		return true
 	}
 	done := make(chan struct{})
-	go h.deliverToServerUnless(h.done, server, RoutedPacket{Barrier: done})
+	go h.deliverToServerUnless(quit, server, RoutedPacket{Barrier: done})
 	select {
 	case <-done:
+		return true
 	case <-entry.gone:
+		return true
+	case <-quit:
+		return false
 	case <-h.done:
+		return false
 	}
 }
 

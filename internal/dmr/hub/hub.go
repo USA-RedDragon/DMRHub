@@ -258,6 +258,8 @@ type Hub struct {
 	// that another replica made, as this replica heard it.
 	claimedElsewhere *xsync.Map[uint, time.Time]
 	owners           *lookup.Flights[uint, []byte]
+	ingressHolds     *xsync.Map[streamSource, *ingressHold]
+	ingressHeld      atomic.Int32
 }
 
 // NewHub creates a new Hub.
@@ -308,6 +310,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamPeers = xsync.NewMap[streamTarget, streamPeerSet]()
 	h.streamClaims = xsync.NewMap[claimKey, streamClaim]()
 	h.claimWaits = xsync.NewMap[sourceSlot, *claimWait]()
+	h.ingressHolds = xsync.NewMap[streamSource, *ingressHold]()
 	h.claimedAt = xsync.NewMap[uint, time.Time]()
 	h.claimedElsewhere = xsync.NewMap[uint, time.Time]()
 	h.owners = lookup.NewFlights[uint, []byte](h.clock)

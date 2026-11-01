@@ -81,9 +81,13 @@ func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName 
 // RouteStreamAt is RouteStream for a packet that came at at, as
 // RoutePacketAt is.
 func (h *Hub) RouteStreamAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time, admitted func(bool)) {
-	if !h.AdmitSlotRate(packet, sourceName) {
+	if !h.AdmitSlotRate(packet, sourceName) || h.holdIngress(ctx, packet, sourceName, at, admitted) {
 		return
 	}
+	h.routeStreamAt(ctx, packet, sourceName, at, admitted)
+}
+
+func (h *Hub) routeStreamAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time, admitted func(bool)) {
 	h.admitStream(ctx, packet, sourceName, func(ok bool) {
 		ok = ok && h.admitRouting(packet, sourceName)
 		if admitted != nil {

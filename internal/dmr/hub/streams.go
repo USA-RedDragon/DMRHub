@@ -213,10 +213,11 @@ type claimAsk struct {
 // claims of streams of it in the KV store. The held bursts of a stream
 // share one check.
 type claimWait struct {
-	mu   sync.Mutex
-	held []heldBurst
-	asks map[claimKey]*claimAsk
-	done bool
+	mu      sync.Mutex
+	held    []heldBurst
+	asks    map[claimKey]*claimAsk
+	done    bool
+	drained chan struct{}
 }
 
 // hold adds b to the held bursts of src, and starts a check of the claim
@@ -276,7 +277,7 @@ func (h *Hub) admitStream(ctx context.Context, packet models.Packet, sourceName 
 			then(h.admitFrom(packet, src, owner, false))
 			return
 		}
-		w := &claimWait{asks: map[claimKey]*claimAsk{}}
+		w := &claimWait{asks: map[claimKey]*claimAsk{}, drained: make(chan struct{})}
 		if _, loaded := h.claimWaits.LoadOrStore(key, w); loaded {
 			continue
 		}
@@ -331,6 +332,7 @@ func (h *Hub) releaseHeld(ctx context.Context, key sourceSlot, w *claimWait) {
 		if len(w.held) == 0 {
 			h.claimWaits.Delete(key)
 			w.done = true
+			close(w.drained)
 			w.mu.Unlock()
 			return
 		}

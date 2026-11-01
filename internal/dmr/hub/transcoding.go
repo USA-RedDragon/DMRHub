@@ -149,6 +149,7 @@ type copyTicket struct {
 	source  string
 	done    bool
 	packets []models.Packet
+	then    chan struct{}
 }
 
 func (h *Hub) reserveCopy(key sourceSlot, sourceName string) *copyTicket {
@@ -216,6 +217,9 @@ func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, packets ...models.P
 		for _, r := range ready {
 			for _, p := range r.packets {
 				h.fanOut(ctx, p, r.source)
+			}
+			if r.then != nil {
+				close(r.then)
 			}
 		}
 		h.copyMu.Lock()

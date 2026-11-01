@@ -38,6 +38,28 @@ Go to **Admin**, then **Message access** (`<siteurl>/admin/message-access`). Eac
 
 The log follows the message retention: **Keep messages** (`dmr.retention.messages`) also deletes the entries that are older than it, and 0 keeps them all.
 
+## Store and forward
+
+Users turn store and forward on for their own radios in **Settings**. DMRHub then keeps the private text messages to their radio IDs that it cannot deliver, and sends them when it hears the radio again. See [Send and read text messages](../guides/text-messages.md#keep-messages-for-your-radio-while-it-is-off-the-air).
+
+Set the limits on **Admin**, **Setup**, **Messages** tab, **Store and forward** card:
+
+| Setting | Default | What it does | Configuration key |
+| ------- | ------- | ------------ | ----------------- |
+| **Hold messages for (days)** | 7 | DMRHub stops keeping a message that it could not deliver in this time. 1 to 365. | `dmr.messages.hold-days` |
+| **Most messages held for one user** | 50 | DMRHub keeps no new message for a user who has this many waiting. 1 to 1000. | `dmr.messages.hold-max` |
+
+![The Messages tab of Setup with the Store and forward card](../Screenshots/storefwd-setup.png)
+
+How DMRHub sends a kept message:
+
+- It sends a message only in the text format that the radio itself sends: the same format, header type, rate, IP header and end of text as the last private text that the radio sent through a repeater of its owner or a trusted repeater. A text through another repeater does not count, so a hotspot that sends with the ID of the radio cannot set the format. The wrong format can lock up a radio; for example, an ETSI IP text locks up a BTECH DA-7X2. Before it uses a format, DMRHub checks that it can build the last text of the radio again, octet for octet. If it cannot, or the radio never sent a text, the message stays waiting and the users see "Held: radio format not known yet".
+- It sends from the ID that sent the message, to the hotspot or repeater that heard the radio, on the timeslot that the radio used, after the radio is quiet for 2 seconds.
+- When the radio asks for replies to its own texts, DMRHub asks for one too, and keeps the message waiting when none comes. After 5 sends with no reply, it stops.
+- With several replicas, the replica that hears the radio takes the waiting messages of that radio in the database first, so only one replica sends each message.
+
+**Keep messages** (`dmr.retention.messages`) also deletes the store and forward records of the messages that it deletes.
+
 ## Retention
 
 By default, DMRHub keeps all records forever. To delete old records:

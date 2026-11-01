@@ -472,6 +472,17 @@ func (b *browser) clickTest(ctx context.Context, test string) error {
 	return b.eval(ctx, "document.querySelector("+string(q)+").click()", nil)
 }
 
+func (b *browser) pressTest(ctx context.Context, test string) error {
+	q, err := json.Marshal("[data-test=\"" + test + "\"]")
+	if err != nil {
+		return fmt.Errorf("bad selector: %w", err)
+	}
+	if err := b.waitFor(ctx, "document.querySelector("+string(q)+")"); err != nil {
+		return err
+	}
+	return b.eval(ctx, "document.querySelector("+string(q)+").dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, button: 0}))", nil)
+}
+
 const tilesStatus = "https://tiles.squallar.app/status/"
 
 const quietTime = 1500 * time.Millisecond

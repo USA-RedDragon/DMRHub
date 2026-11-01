@@ -32,6 +32,10 @@ DMRHub sends a private call to the hotspot or repeater where it last heard the o
 
 No. DMRHub shows it only once. Open the page of the hotspot, click **Connect**, then click **Rotate password**. DMRHub makes a new password and shows it once. The old one stops working at once. See [Rotate the password](guides/connect-hotspot.md#rotate-the-password).
 
+### Does DMRHub keep a text message for my radio while it is off the air?
+
+Yes, when you turn on **Store and forward** in **Settings**. DMRHub then sends the message when it hears your radio again, in the text format that your radio sends. See [Keep messages for your radio while it is off the air](guides/text-messages.md#keep-messages-for-your-radio-while-it-is-off-the-air).
+
 ### Who can see my text messages and positions?
 
 Your text messages show on the web site only when you turn on SMS Storage, and only you and the admins see them. Your positions show only to you, until you turn on **Share my positions**. See the [Messages reference](messages.md) and the [Positions reference](positions.md#who-sees-a-position).

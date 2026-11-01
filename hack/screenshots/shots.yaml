@@ -11,6 +11,7 @@
 #   steps  what to do before the capture; after: what to do after it
 #          fill <label or #id> = <text>, pick <label or #id> = <option>,
 #          toggle <label or #id>, click <button text>, clicktest <data-test>,
+#          presstest <data-test> (a mouse press, for tabs),
 #          clickcss <selector>, wait <text>, scroll <card title>, blur,
 #          file <selector> = <file in the work directory>, goto <route>,
 #          run <state>
@@ -408,3 +409,22 @@ shots:
     route: /repeaters/300000201
     wait: Emails go to
     clip: card Offline alert
+  - name: storefwd-settings.png
+    phase: main
+    as: n0call
+    needs: [seed, texts, held]
+    route: /settings
+    wait: the net moved to 8 pm
+    clip: card Store and forward
+  - name: storefwd-outbox.png
+    phase: main
+    as: n2call
+    needs: [seed, texts, held]
+    route: /messages
+    wait: Private messages sent to your radio IDs
+    steps: ["presstest tab-outbox", "wait Held: radio format not known yet"]
+  - name: storefwd-setup.png
+    phase: main
+    as: n0call
+    route: /admin/setup#messages
+    wait: Hold messages for (days)

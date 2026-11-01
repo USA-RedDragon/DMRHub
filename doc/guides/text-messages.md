@@ -23,6 +23,27 @@ SMS Storage is off by default. While it is off, DMRHub keeps no copy of your mes
 
 To turn it off, turn off the switch, then click **Turn off**. Your inbox and outbox are then empty.
 
+## Keep messages for your radio while it is off the air
+
+Store and forward is off by default. When you turn it on, DMRHub keeps the private text messages that it cannot deliver to your radio, and sends them when DMRHub hears your radio again.
+
+1. Log in.
+2. Go to **Settings** (`<siteurl>/settings`).
+3. In the **Store and forward** card, turn on the switch.
+
+![The Store and forward card with the switch on and one message waiting](../Screenshots/storefwd-settings.png)
+
+The card lists the messages that wait for your radios. DMRHub keeps a message when:
+
+- It does not know where your radio is, so it cannot send the message at all.
+- The sender asked for a reply, and your radio did not answer within 10 seconds.
+
+DMRHub sends the waiting messages when your radio is heard on a hotspot or repeater that your private calls can go to, after your radio stops sending for 2 seconds.
+
+DMRHub sends a waiting message only in the text format that your radio itself sends, as the wrong format can lock up some radios. It learns the format from the last private text message that your radio sent through a hotspot or repeater that you own, or one that the admin trusts. Until your radio sends one, the message stays waiting, and the card shows "Waits until your radio sends a text". To fix this, send any private text message from your radio through your own hotspot or repeater.
+
+When you turn store and forward off, DMRHub stops keeping messages for you and does not send the waiting ones.
+
 ## Add your other radio IDs
 
 The Messages page shows the messages of your account ID and of the other radio IDs that you add. To add one:
@@ -39,7 +60,11 @@ RadioID.net must list the ID under your callsign. Hotspot and repeater IDs go on
 
 ![The Messages page with the Inbox tab open](../Screenshots/messages-inbox.png)
 
-New messages appear while the page is open. Each box shows the 250 newest messages. The **State** column shows whether the other radio accepted the message. See the [Messages reference](../messages.md) for what each column means.
+New messages appear while the page is open. Each box shows the 250 newest messages. The **State** column shows whether the other radio accepted the message, and whether DMRHub keeps it for a radio that is off the air.
+
+![The Outbox with a message that DMRHub keeps for the other radio](../Screenshots/storefwd-outbox.png)
+
+See the [Messages reference](../messages.md) for what each column means.
 
 ## Read messages in an app
 

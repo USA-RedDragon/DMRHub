@@ -298,6 +298,8 @@ func (r *runner) step(ctx context.Context, st string) error {
 		return r.dialogClick(ctx, arg)
 	case "clicktest":
 		return r.b.clickTest(ctx, arg)
+	case "presstest":
+		return r.b.pressTest(ctx, arg)
 	case "clickcss":
 		return r.clickCSS(ctx, arg)
 	case "wait":

@@ -74,6 +74,7 @@ func hooks() map[string]hook {
 		"offline-alert": offlineAlert,
 		"open-call":     openCall,
 		"end-call":      endCall,
+		"held":          holdText,
 	}
 }
 
@@ -342,6 +343,14 @@ func textMessages() []call {
 		{repeater: 300000201, src: 3000002, dst: 3100, group: true, slot2: true, text: "Net control tonight: N1CALL"},
 		{repeater: 300000401, src: 3000004, dst: 3000001, slot2: true, text: "N0CALL, the repeater sounds good"},
 	}
+}
+
+func holdText(ctx context.Context, r *runner) error {
+	on := map[string]bool{"enabled": true}
+	if err := r.api("n0call").do(ctx, http.MethodPut, "/api/v1/users/me/settings/store-forward", on, nil); err != nil {
+		return err
+	}
+	return playCalls([]call{{repeater: 300000301, src: 3000003, dst: 3000011, slot2: true, text: "N0CALL, the net moved to 8 pm"}})(ctx, r)
 }
 
 func (r *runner) play(c call) error {

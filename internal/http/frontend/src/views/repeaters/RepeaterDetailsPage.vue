@@ -129,6 +129,13 @@
 
       <RepeaterRulesCard v-if="canEditCodec" :repeater-id="repeater.id" />
 
+      <ConnectionLogCard
+        v-if="canEditCodec"
+        ref="connectionLog"
+        :repeater-id="repeater.id"
+        :device="repeater.type === 'ipsc' ? 'repeater' : 'hotspot'"
+      />
+
       <CosysopsCard
         v-if="cosysops"
         :repeater-id="repeater.id"
@@ -342,6 +349,7 @@ import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import RepeaterRulesCard from '@/components/RepeaterRulesCard.vue';
 import CosysopsCard from '@/components/CosysopsCard.vue';
+import ConnectionLogCard from '@/components/ConnectionLogCard.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
@@ -446,6 +454,7 @@ export default {
     RelativeTimestamp,
     RepeaterRulesCard,
     CosysopsCard,
+    ConnectionLogCard,
     Talkgroup,
     User,
   },

@@ -70,6 +70,7 @@ func hooks() map[string]hook {
 		"unassigned":    seedUnassigned,
 		"tokens":        makeTokens,
 		"cosysops":      inviteCosysops,
+		"wrong-login":   wrongLogin,
 	}
 }
 
@@ -502,6 +503,19 @@ func inviteCosysops(ctx context.Context, r *runner) error {
 		}
 	}
 	return r.api("n1call").do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/cosysop-invite/accept", nil, nil)
+}
+
+// wrongLogin tries to log hotspot 300000101 in three times with a wrong
+// password, for the connection log.
+func wrongLogin(_ context.Context, _ *runner) error {
+	for range 3 {
+		p, err := dialPeer(fmt.Sprintf("127.0.0.1:%d", mmdvmPort), 300000101, "wrong-password", site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
+		if err == nil {
+			p.close()
+			return errors.New("the hub took a wrong password")
+		}
+	}
+	return nil
 }
 
 func setEmail(ctx context.Context, r *runner) error {

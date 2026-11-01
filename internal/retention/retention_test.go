@@ -267,3 +267,29 @@ func TestRetentionPurgesExpiredCosysopInvites(t *testing.T) {
 		})
 	}
 }
+
+// TestRetentionPurgesTheConnectionLogAfterADay keeps the entries of the
+// connection logs whose last event is within models.RepeaterEventWindow.
+func TestRetentionPurgesTheConnectionLogAfterADay(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, database, kvStore := setup(t, be)
+			now := time.Now()
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100000101}, Password: "pw"}).Error)
+			for _, ev := range []models.RepeaterEvent{
+				{RepeaterID: 100000101, Kind: "timeout", LastAt: now.Add(-models.RepeaterEventWindow - time.Minute)},
+				{RepeaterID: 100000101, Kind: "connected", LastAt: now.Add(-models.RepeaterEventWindow + time.Minute)},
+			} {
+				_, err := models.NoteRepeaterEvent(database, ev, 1)
+				require.NoError(t, err)
+			}
+
+			res, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.RepeaterEvents)
+			assert.Equal(t, int64(1), count(t, database, &models.RepeaterEvent{}, "kind = ?", "connected"))
+		})
+	}
+}

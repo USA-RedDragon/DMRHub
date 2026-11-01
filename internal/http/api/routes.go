@@ -142,6 +142,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Repeaters.DELETE("/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.DELETERepeater)
 	v1Repeaters.GET("/cosysop-invites", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.GETCosysopInvites)
 	v1Repeaters.GET("/:id/cosysops", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETCosysops)
+	v1Repeaters.GET("/:id/events", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETRepeaterEvents)
 	v1Repeaters.POST("/:id/cosysops", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTCosysop)
 	v1Repeaters.DELETE("/:id/cosysops/:user", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.DELETECosysop)
 	v1Repeaters.POST("/:id/cosysop-invite/accept", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTCosysopAccept)

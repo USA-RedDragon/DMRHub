@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -87,7 +88,7 @@ func TestAReplicaDoesNotResumeASessionThatLoggedInWithAnOldPassword(t *testing.T
 	second := r.replica(r.store)
 
 	require.NoError(t, models.SetRepeaterPassword(r.s.DB, id, "n3wPassw0rd9"))
-	second.endSessions(context.Background(), id)
+	second.endSessions(context.Background(), id, connlog.PasswordRotated)
 
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
@@ -115,7 +116,7 @@ func TestAResumeThatReadTheRecordBeforeAPasswordChangeDoesNotTakeTheSession(t *t
 	require.NoError(t, err)
 	r.sendTo(second, p)
 	<-held.entered
-	second.endSessions(context.Background(), id)
+	second.endSessions(context.Background(), id, connlog.PasswordRotated)
 	close(held.release)
 	r.noPong(second, id, "a session that logged in with the old password resumed")
 }

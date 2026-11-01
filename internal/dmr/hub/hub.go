@@ -30,6 +30,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
@@ -146,6 +147,8 @@ type Hub struct {
 	kv          kv.KV
 	pubsub      pubsub.PubSub
 	callTracker *calltracker.CallTracker
+	// events writes the connection logs of the repeaters.
+	events *connlog.Log
 
 	mu      sync.RWMutex
 	servers map[string]*serverEntry
@@ -276,6 +279,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		left:          make(chan struct{}, 1),
 		configSet:     make(chan struct{}, 1),
 		dynamicSet:    make(chan struct{}, 1),
+		events:        connlog.New(db),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -526,7 +530,21 @@ func (h *Hub) Stop(ctx context.Context) {
 		close(h.done)
 		h.transcoders.Wait()
 		h.transcoder.Close()
+		h.events.Close()
 	})
+}
+
+// NoteRepeaterEvent adds an event of kind, one of the kinds of package
+// connlog, from address with detail to the connection log of the
+// repeater. It does not wait for the database.
+func (h *Hub) NoteRepeaterEvent(repeaterID uint, kind, address, detail string) {
+	h.events.Note(repeaterID, kind, address, detail, h.clock.Now())
+}
+
+// WaitRepeaterEvents waits until the events of the connection logs noted
+// before it are written.
+func (h *Hub) WaitRepeaterEvents() {
+	h.events.Wait()
 }
 
 // ErrServersStarted is returned by SetInstanceID when a server already

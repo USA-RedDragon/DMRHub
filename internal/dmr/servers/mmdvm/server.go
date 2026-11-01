@@ -31,6 +31,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
@@ -335,7 +336,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Role: hub.RoleRepeater,
 	})
 	s.stopClaims = s.hub.OnClaimedElsewhere(s.dropMoved)
-	s.stopSecrets = s.hub.OnRepeaterSecretChange(func(id uint) { s.endSessions(ctx, id) })
+	s.stopSecrets = s.hub.OnRepeaterSecretChange(func(id uint) { s.endSessions(ctx, id, connlog.PasswordRotated) })
 	s.stopIPLists = s.hub.OnIPListsChange(func() { s.endRefused(ctx) })
 
 	slog.Info("MMDVM Server listening", "address", s.SocketAddress.String())

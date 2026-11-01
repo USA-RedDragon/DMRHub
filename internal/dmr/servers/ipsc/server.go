@@ -33,6 +33,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
@@ -351,6 +352,7 @@ func (s *IPSCServer) rekey(id uint) {
 		return
 	}
 	slog.Info("Dropping an IPSC peer whose auth key changed", "peerID", peer, "reason", ipscsession.ReasonDropped)
+	s.notePeer(peer, connlog.PasswordRotated, "")
 	s.apply(context.Background(), out)
 }
 
@@ -378,6 +380,7 @@ func (s *IPSCServer) dropRefused() {
 			continue
 		}
 		slog.Info("Dropping an IPSC peer whose address the IP list now refuses", "peerID", id, "reason", ipscsession.ReasonDropped)
+		s.notePeer(id, connlog.IPBlocked, "")
 		s.apply(context.Background(), out)
 	}
 }
@@ -492,6 +495,9 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 		out = s.m.Packet(now, from, data, kp, s.out[:0])
 	}
 	ignored := len(out) == 0 || out[0].Kind == ipscsession.OutputDropped
+	if ignored && len(out) > 0 && out[0].Reason == ipscsession.ReasonAuth {
+		s.note(raw.ID, connlog.WrongPassword, from, "")
+	}
 	s.apply(ctx, out)
 	if p, ok := s.peers[raw.ID]; ok {
 		s.updateRepeaterDBTimes(p, uint(raw.ID), false)
@@ -539,6 +545,9 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			s.up(ctx, o, nil)
 		case ipscsession.OutputDown:
 			slog.Info("IPSC peer down", "peerID", o.ID, "reason", o.Reason)
+			if _, here := s.peers[o.ID]; here {
+				s.noteDown(o)
+			}
 			delete(s.peers, o.ID)
 			if s.hub != nil {
 				id := uint(o.ID)
@@ -554,6 +563,41 @@ func (s *IPSCServer) apply(ctx context.Context, out []ipscsession.Output) {
 			s.bursts = append(s.bursts, burst{op: byte(op), data: append([]byte(nil), o.Packet...), addr: toUDPAddr(o.Addr)})
 		case ipscsession.OutputPeers:
 		}
+	}
+}
+
+// note adds an event of kind from addr with detail to the connection log
+// of the peer id.
+func (s *IPSCServer) note(id uint32, kind string, addr ipscsession.Addr, detail string) {
+	if s.hub == nil {
+		return
+	}
+	address := ""
+	if a := toUDPAddr(addr); a != nil && a.IP != nil && !a.IP.IsUnspecified() {
+		address = a.IP.String()
+	}
+	s.hub.NoteRepeaterEvent(uint(id), kind, address, detail)
+}
+
+// notePeer adds an event of kind with detail to the connection log of the
+// registered peer id, from its address. The caller holds s.mu.
+func (s *IPSCServer) notePeer(id uint32, kind, detail string) {
+	info, ok := s.m.Peer(id)
+	if !ok {
+		return
+	}
+	s.note(id, kind, info.Addr, detail)
+}
+
+// noteDown adds the end of the registration of o to the connection log of
+// its peer: a timeout or a de-registration of the peer. A peer that moved
+// to another replica is not here any more, and the caller skips it.
+func (s *IPSCServer) noteDown(o ipscsession.Output) {
+	switch o.Reason { //nolint:exhaustive
+	case ipscsession.ReasonTimeout:
+		s.note(o.ID, connlog.Timeout, o.Addr, "")
+	case ipscsession.ReasonClosed:
+		s.note(o.ID, connlog.Closed, o.Addr, "")
 	}
 }
 
@@ -603,6 +647,8 @@ func (s *IPSCServer) up(ctx context.Context, o ipscsession.Output, reply []byte)
 	queued := s.peerJobs.Must(id, func() {
 		if s.hub.OwnerLeaving(ctx, id) {
 			s.awaitHandover(ctx, peer, since)
+		} else {
+			s.note(peer, connlog.Connected, to, "")
 		}
 		s.decided(peer, true)
 		s.hub.ActivateRepeaterSince(ctx, id, since)

@@ -228,6 +228,9 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RoutingRule{}).Error; err != nil {
 				return fmt.Errorf("could not delete the routing rules of repeater %d: %w", r.ID, err)
 			}
+			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterEvent{}).Error; err != nil {
+				return fmt.Errorf("delete the connection log of repeater %d: %w", r.ID, err)
+			}
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterCosysop{}).Error; err != nil {
 				return fmt.Errorf("could not delete the co-sysops of repeater %d: %w", r.ID, err)
 			}

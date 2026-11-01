@@ -378,3 +378,10 @@ shots:
     needs: [cosysops]
     route: /repeaters
     wait: Co-sysop
+  - name: repeater-connection-log.png
+    phase: main
+    as: n0call
+    needs: [wrong-login]
+    route: /repeaters/300000101
+    wait: "Login refused: wrong password."
+    clip: card Connection log

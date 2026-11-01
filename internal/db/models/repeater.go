@@ -224,6 +224,9 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 			return fmt.Errorf("delete routing rules: %w", err)
 		}
 
+		if err := tx.Where("repeater_id = ?", id).Delete(&RepeaterEvent{}).Error; err != nil {
+			return fmt.Errorf("delete the connection log of repeater %d: %w", id, err)
+		}
 		if err := tx.Where("repeater_id = ?", id).Delete(&RepeaterCosysop{}).Error; err != nil {
 			return fmt.Errorf("delete co-sysops: %w", err)
 		}

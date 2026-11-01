@@ -287,12 +287,14 @@ func (r *dialectRig) expect(d dmrd.Dialect, want dmrd.Command) dmrd.Control {
 	return k
 }
 
-// handled waits until s has done the lookups and the repeater jobs that
-// the packets that the rig gave it started, for a test that checks the
-// state that they leave or that nothing happened.
+// handled waits until s has done the lookups, the repeater jobs and the
+// connection log writes that the packets that the rig gave it started,
+// for a test that checks the state that they leave or that nothing
+// happened.
 func (r *dialectRig) handled(s *Server) {
 	s.lookups.Wait()
 	s.records.Wait()
+	s.hub.WaitRepeaterEvents()
 }
 
 // expectNothing fails the test when the server sent the peer anything
@@ -363,6 +365,7 @@ func (r *dialectRig) loginWith(d dmrd.Dialect, id uint32, config []byte) {
 	r.expect(d, ack)
 	_, st, _ := r.link(r.s)
 	require.Equal(r.t, dmrdsession.StateRunning, st)
+	r.handled(r.s)
 }
 
 func TestLoginWithABadColorCodeIsAccepted(t *testing.T) {

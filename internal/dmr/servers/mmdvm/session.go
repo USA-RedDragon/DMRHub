@@ -30,9 +30,13 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/netip"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -619,6 +623,9 @@ func (s *Server) checkConfig(ctx context.Context, l *link, id uint32, ep endpoin
 	repeater, ok := s.takeConfig(id, ep, d, data)
 	activate := login && s.hub != nil
 	stored := ok && s.records.MustAfter(uint(id), func() {
+		if login {
+			s.notePushedOff(ctx, id, ep)
+		}
 		s.kvClient.StoreRepeater(ctx, uint(id), repeater)
 		s.keepOwnRecord(uint(id), repeater)
 		if activate {
@@ -652,7 +659,60 @@ func (s *Server) checkConfig(ctx context.Context, l *link, id uint32, ep endpoin
 	s.run(ctx, now, l, l.m.Accept(now, buf[:0]))
 	l.active = false
 	s.forget(l)
-	return s.byID[id] == l
+	if s.byID[id] != l {
+		return false
+	}
+	if login {
+		s.note(id, connlog.Connected, ep, software(&repeater))
+	}
+	return true
+}
+
+func software(repeater *models.Repeater) string {
+	return strings.Join(nonEmpty(strings.TrimSpace(repeater.SoftwareID), strings.TrimSpace(repeater.PackageID)), ", ")
+}
+
+func nonEmpty(values ...string) []string {
+	out := values[:0]
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func (s *Server) note(id uint32, kind string, ep endpoint, detail string) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.NoteRepeaterEvent(uint(id), kind, addressText(s.sourceOf(ep)), detail)
+}
+
+func addressText(a netip.Addr) string {
+	if !a.IsValid() {
+		return ""
+	}
+	return a.Unmap().String()
+}
+
+func (s *Server) notePushedOff(ctx context.Context, id uint32, ep endpoint) {
+	if s.hub == nil {
+		return
+	}
+	prev, err := s.kvClient.GetRepeater(ctx, uint(id))
+	if err != nil || prev.Connection != models.RepeaterStateConnected || s.clock.Since(prev.LastPing) >= dmrdsession.TimeoutDefault {
+		return
+	}
+	a, err := netip.ParseAddr(prev.IP)
+	if err != nil {
+		return
+	}
+	now := addressText(s.sourceOf(ep))
+	if now == "" || addressText(a) == now {
+		return
+	}
+	s.note(id, connlog.PushedOff, ep, "")
 }
 
 // heldEgress is a burst that the hub routed to a repeater while the server
@@ -751,6 +811,7 @@ func (s *Server) takeConfig(id uint32, ep endpoint, d dmrd.Dialect, data []byte)
 	}
 	if err := parse(data, s.Version, s.Commit); err != nil {
 		slog.Error("Invalid RPTC packet", "repeaterID", repeaterID, "error", err)
+		s.note(id, connlog.BadConfig, ep, err.Error())
 		return models.Repeater{}, false
 	}
 	now := s.clock.Now()
@@ -833,6 +894,9 @@ func (s *Server) stopBeacon(l *link) {
 }
 
 func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
+	if o.Reason == dmrdsession.ReasonRefused && o.State == dmrdsession.StateAuth {
+		s.note(o.ID, connlog.WrongPassword, l.ep, "")
+	}
 	if s.byID[o.ID] != l {
 		slog.Debug("Repeater login ended", "repeaterID", o.ID, "reason", o.Reason, "state", o.State)
 		return
@@ -843,8 +907,12 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 	delete(s.byID, o.ID)
 	s.connected.Delete(uint(o.ID))
 	downAt := s.clock.Now()
+	ep := l.ep
 	s.records.Always(uint(o.ID), func() {
 		owned := s.kvOwned(ctx, o, downAt)
+		if owned {
+			s.noteDown(o, ep)
+		}
 		deleted := owned && s.kvClient.DeleteRepeater(ctx, uint(o.ID))
 		if owned && !deleted {
 			slog.Error("Repeater ID not deleted", "repeaterID", o.ID)
@@ -856,6 +924,15 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 			s.hub.DeactivateRepeater(ctx, uint(o.ID))
 		}
 	})
+}
+
+func (s *Server) noteDown(o dmrdsession.Output, ep endpoint) {
+	switch o.Reason { //nolint:exhaustive
+	case dmrdsession.ReasonTimeout:
+		s.note(o.ID, connlog.Timeout, ep, strconv.Itoa(int(dmrdsession.TimeoutDefault/time.Second)))
+	case dmrdsession.ReasonClosed:
+		s.note(o.ID, connlog.Closed, ep, "")
+	}
 }
 
 // kvOwned reports whether the KV record of the repeater of the session
@@ -1124,8 +1201,9 @@ func (s *Server) endMoved(id uint32, l *link) {
 // endSessions ends every session of the repeater id here with MSTCL, as
 // after a change of its password, so that it must log in again with the
 // new one. It also ends a login that is still going on, which may have
-// read the old password.
-func (s *Server) endSessions(ctx context.Context, id uint) {
+// read the old password. Each session that ran goes into the connection
+// log as kind.
+func (s *Server) endSessions(ctx context.Context, id uint, kind string) {
 	if id > math.MaxUint32 {
 		return
 	}
@@ -1143,7 +1221,10 @@ func (s *Server) endSessions(ctx context.Context, id uint) {
 		if l.m.ID() != uint32(id) || l.m.State() == dmrdsession.StateIdle {
 			continue
 		}
-		slog.Info("Ending the session of a repeater whose password changed", "repeaterID", id, "remoteAddr", l.ep.String())
+		slog.Info("Ending the session of a repeater", "repeaterID", id, "remoteAddr", l.ep.String(), "why", kind)
+		if l.m.State() == dmrdsession.StateRunning {
+			s.note(uint32(id), kind, l.ep, "")
+		}
 		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 		s.run(ctx, now, l, l.m.Close(now, buf[:0]))
 		s.forget(l)

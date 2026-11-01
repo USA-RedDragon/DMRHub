@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/ipfilter"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -75,6 +76,9 @@ func (s *Server) refuse(t transport, remote net.Addr, p []byte) {
 		if !ok {
 			return
 		}
+		if s.hub != nil && dmrd.Classify(p, d) == dmrd.CommandRPTL {
+			s.hub.NoteRepeaterEvent(uint(id), connlog.IPBlocked, addressText(ipfilter.AddrOf(remote)), "")
+		}
 		var buf [16]byte
 		nak := dmrd.Control{Command: dmrd.CommandMSTNAK, ID: id}
 		b, err := nak.AppendBinary(buf[:0], d)
@@ -122,6 +126,9 @@ func (s *Server) endRefused(ctx context.Context) {
 		}
 		if link.m.State() != dmrdsession.StateIdle {
 			slog.Info("Ending the session of a repeater whose address the IP list now refuses", "repeaterID", link.m.ID(), "remoteAddr", link.ep.String())
+			if link.m.State() == dmrdsession.StateRunning {
+				s.note(link.m.ID(), connlog.IPBlocked, link.ep, "")
+			}
 			var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 			s.run(ctx, now, link, link.m.Close(now, buf[:0]))
 		}

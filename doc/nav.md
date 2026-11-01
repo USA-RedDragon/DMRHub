@@ -19,6 +19,7 @@ This page lists the pages of the docs site in reading order, by section. The sit
   - [See who is on the air](guides/last-heard.md)
   - [Use Codec2 radios](guides/voice-codec.md)
   - [Share a repeater with co-sysops](guides/co-sysops.md)
+  - [Look after your hotspot or repeater](guides/sysop-tools.md)
   - [Use DMRHub Radio](guides/browser-radio.md)
   - [Manage your account](guides/account.md)
 - Admin guides

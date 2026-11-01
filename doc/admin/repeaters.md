@@ -46,3 +46,7 @@ The owner of a repeater, its co-sysops and an admin can block talkgroups on the 
 ## Repeaters for each user
 
 A user can add at most 100 repeaters and hotspots. When a user has that many, DMRHub refuses another one with the message "You have 100 repeaters and hotspots, the most that a user can add". Admins have no limit, and an admin can still assign a repeater to a user who has that many. To change the limit, set **Repeaters for each user** on the **Routing** tab of the Setup page, or `dmr.repeater-quota`; `0` is no limit. A change applies at once on every replica, and a user who has more than a new limit keeps the repeaters and hotspots they have. See [Configuration](configuration.md).
+
+## Connection log and co-sysops
+
+Each repeater page has a connection log of the last 24 hours, for its owner, its co-sysops and admins. See [Look after your hotspot or repeater](../guides/sysop-tools.md). DMRHub deletes the older entries at its hourly retention run. The owner of a repeater can invite co-sysops; see [Share a repeater with co-sysops](../guides/co-sysops.md).

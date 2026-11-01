@@ -24,7 +24,10 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"strconv"
+	"strings"
 
+	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -73,6 +76,7 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 	parsed, err := dmrd.ParseFreeDMROptions(text)
 	if err != nil {
 		slog.Info("Repeater options have a value that is not valid", "repeaterID", id, "error", err)
+		s.note(o.ID, connlog.BadOptions, ep, err.Error())
 	}
 	logIgnoredOptions(id, text, &parsed)
 	text = append([]byte(nil), text...)
@@ -86,6 +90,7 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 		}
 	}) {
 		slog.Warn("Withholding the RPTACK of repeater options while the records queue of the repeater is full; the repeater sends them again", "repeaterID", id)
+		s.note(o.ID, connlog.OptionsBusy, ep, "")
 	}
 }
 
@@ -155,6 +160,7 @@ func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionVal
 	}
 	if !exists {
 		slog.Info("Ignoring a default dial in repeater options that does not exist", "repeaterID", id, "slot", slot, "talkgroupID", v.Value)
+		s.noteUnknownTalkgroups(id, []uint{uint(v.Value)})
 		return false
 	}
 	slog.Info("Linking the default dial of repeater options", "repeaterID", id, "slot", slot, "talkgroupID", v.Value)
@@ -199,11 +205,23 @@ func (s *Server) staticTalkgroups(id uint, text []byte, slot enums.Slot, set, ba
 		found := talkgroupIDs(tgs)
 		missing := slices.DeleteFunc(ids, func(tg uint) bool { return slices.Contains(found, tg) })
 		slog.Info("Ignoring static talkgroups in repeater options that do not exist", "repeaterID", id, "slot", slot, "talkgroups", missing)
+		s.noteUnknownTalkgroups(id, missing)
 		if len(tgs) == 0 {
 			return nil
 		}
 	}
 	return tgs
+}
+
+func (s *Server) noteUnknownTalkgroups(id uint, tgs []uint) {
+	if s.hub == nil || len(tgs) == 0 {
+		return
+	}
+	parts := make([]string, 0, len(tgs))
+	for _, tg := range tgs {
+		parts = append(parts, strconv.FormatUint(uint64(tg), 10))
+	}
+	s.hub.NoteRepeaterEvent(id, connlog.UnknownTalkgroup, "", strings.Join(parts, ","))
 }
 
 func talkgroupIDs(tgs []models.Talkgroup) []uint {

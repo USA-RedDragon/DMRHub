@@ -493,6 +493,27 @@ func TestStoreGivesAResponseToTheMessageItFollowsWhenThatMessageComesLate(t *tes
 	assert.Equal(t, models.CallResponseACK, msgs[1].Response, "the message that the ACK follows has no ACK")
 }
 
+// TestStoreGivesAResponseHeardFirstToTheLastMessageBeforeIt hands the
+// store the ACK of a window of three messages before any of them. Only
+// the last message before the ACK takes it.
+func TestStoreGivesAResponseHeardFirstToTheLastMessageBeforeIt(t *testing.T) {
+	t.Parallel()
+	store, database := storeOnly(t)
+	now := time.Now()
+	h1, one := confirmed(t, "one", 1)
+	h2, two := confirmed(t, "two", 2)
+	h3, three := confirmed(t, "three", 3)
+	store.DataResponse(responseRow(9), responseEvent(packet.ResponseACK), now.Add(700*time.Millisecond))
+	store.DataPacket(&models.Call{ID: 1}, delivered(h1, one, false), now)
+	store.DataPacket(&models.Call{ID: 2}, delivered(h2, two, false), now.Add(200*time.Millisecond))
+	store.DataPacket(&models.Call{ID: 3}, delivered(h3, three, false), now.Add(400*time.Millisecond))
+	msgs := all(t, store, database)
+	require.Len(t, msgs, 3)
+	assert.Equal(t, models.CallResponseNone, msgs[0].Response, "the first message keeps no response")
+	assert.Equal(t, models.CallResponseNone, msgs[1].Response, "the second message keeps no response")
+	assert.Equal(t, models.CallResponseACK, msgs[2].Response, "the last message before the ACK takes it")
+}
+
 func TestStoreGivesNoResponseToAnUnconfirmedMessage(t *testing.T) {
 	t.Parallel()
 	store, database := storeOnly(t)

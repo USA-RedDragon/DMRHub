@@ -324,7 +324,9 @@ func (s *Store) packet(j *job) {
 		if err := s.db.Model(&models.Message{}).Where("id = ?", msg.ID).Update("response", p.Response).Error; err != nil {
 			slog.Error("Message store: cannot set a response", "id", msg.ID, "error", err)
 		} else {
+			p.Answered, p.AnsweredAt, p.Prev = msg.ID, msg.ReceivedAt, msg.Response
 			msg.Response = p.Response
+			s.setPending(msg.SourceID, msg.DestinationID, *p)
 		}
 	}
 	s.changed(msg)
@@ -456,14 +458,6 @@ func (s *Store) setPending(src, dst uint, p pendingResponse) {
 	}
 }
 
-func (s *Store) deletePending(src, dst uint) {
-	ctx, cancel := context.WithTimeout(context.Background(), kvTimeout)
-	defer cancel()
-	if err := s.kv.Delete(ctx, pendingKey(src, dst)); err != nil {
-		slog.Error("Message store: cannot delete a pending response", "error", err)
-	}
-}
-
 func (s *Store) takePending(msg *models.Message) *pendingResponse {
 	if msg.IsGroup || !msg.Confirmed {
 		return nil
@@ -483,7 +477,6 @@ func (s *Store) takePending(msg *models.Message) *pendingResponse {
 			return nil
 		}
 	}
-	s.deletePending(msg.SourceID, msg.DestinationID)
 	return &p
 }
 

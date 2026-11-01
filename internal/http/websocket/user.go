@@ -42,6 +42,7 @@ const (
 	reasonLoggedOut       = "logged out"
 	reasonPasswordChanged = "password changed"
 	reasonAppRemoved      = "app removed"
+	reasonTokenRevoked    = "token revoked"
 )
 
 // UserTopic is the pubsub topic that tells every replica that the user
@@ -73,6 +74,13 @@ func PublishPasswordChanged(ps pubsub.PubSub, userID uint, keepSessionID string)
 // of the user userID opened with a token of the grant grantID.
 func PublishAppRemoved(ps pubsub.PubSub, userID uint, grantID string) error {
 	return publishUserEvent(ps, userID, userEvent{Reason: reasonAppRemoved, Grant: grantID})
+}
+
+// PublishTokenRevoked closes, on every replica, the websockets that a
+// script of the user userID opened with the personal token whose grant ID
+// is grantID.
+func PublishTokenRevoked(ps pubsub.PubSub, userID uint, grantID string) error {
+	return publishUserEvent(ps, userID, userEvent{Reason: reasonTokenRevoked, Grant: grantID})
 }
 
 type userEvent struct {
@@ -164,7 +172,7 @@ func (w *userWatch) closes(msg []byte) (error, bool) {
 		return nil, false
 	}
 	switch event.Reason {
-	case reasonLoggedOut, reasonPasswordChanged, reasonAppRemoved:
+	case reasonLoggedOut, reasonPasswordChanged, reasonAppRemoved, reasonTokenRevoked:
 		return policyCloseError{reason: event.Reason}, true
 	default:
 		return errUserChanged, true

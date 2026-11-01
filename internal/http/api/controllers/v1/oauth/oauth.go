@@ -326,7 +326,7 @@ func GETApps(c *gin.Context) {
 	grants, err := srv.Grants(uid)
 	if err != nil {
 		slog.Error("Failed to list apps", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgain})
 		return
 	}
 	apps := make([]App, 0, len(grants))
@@ -353,7 +353,7 @@ func DELETEApp(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: "App not found"})
 	case err != nil:
 		slog.Error("Failed to remove an app", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Try again later"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgain})
 	default:
 		closeAppSockets(c, uid, c.Param("id"))
 		c.JSON(http.StatusOK, gin.H{"message": "App removed"})

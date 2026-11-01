@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	"github.com/stretchr/testify/assert"
@@ -63,25 +64,34 @@ func TestResumeTokens(t *testing.T) {
 	assert.False(t, s.spendToken(ctx, token), "a spent token moves no session again")
 }
 
-func wtLogin(t *testing.T, s *Server, addr wtAddr, id uint32) {
+// wtLogin logs the hotspot id in to s over a WebTransport session, as a
+// browser does, and returns the address of the session.
+func wtLogin(t *testing.T, s *Server, cfg *config.Config, id uint32) wtAddr {
 	t.Helper()
-	ep := endpoint{transport: webTransportName, addr: addr}
-	handle := func(p []byte) {
-		s.handleFrom(context.Background(), ep, p, time.Now())
-		s.lookups.Wait()
-		s.records.Wait()
+	sess := dialByHash(t, s, cfg)
+	answer := func(p []byte) dmrd.Command {
+		t.Helper()
+		require.NoError(t, sess.SendDatagram(p))
+		ctx, cancel := context.WithTimeout(context.Background(), answerWait)
+		defer cancel()
+		b, err := sess.ReceiveDatagram(ctx)
+		require.NoError(t, err)
+		return dmrd.Classify(b, dmrd.DialectMMDVM)
 	}
 	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	handle(rptl)
+	require.Equal(t, dmrd.CommandRPTACK, answer(rptl))
 	tok, err := dmrdauth.Token(dmrd.DialectMMDVM, testSalt, []byte("s3cret"))
 	require.NoError(t, err)
 	rptk, err := (&dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: tok}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	handle(rptk)
-	handle(rptc(t, dmrd.DialectMMDVM, id))
-	_, ok := s.connected.Load(uint(id))
+	require.Equal(t, dmrd.CommandRPTACK, answer(rptk))
+	require.Equal(t, dmrd.CommandRPTACK, answer(rptc(t, dmrd.DialectMMDVM, id)))
+	ep, ok := s.connected.Load(uint(id))
 	require.True(t, ok, "the hotspot %d should be logged in", id)
+	addr, ok := ep.addr.(wtAddr)
+	require.True(t, ok, "the hotspot %d should be at a WebTransport session", id)
+	return addr
 }
 
 // TestResumeTokenSurvivesABusySession asks a session that already carries
@@ -90,15 +100,15 @@ func wtLogin(t *testing.T, s *Server, addr wtAddr, id uint32) {
 // spend the token; the token still moves the session only once.
 func TestResumeTokenSurvivesABusySession(t *testing.T) {
 	t.Parallel()
-	s, _ := webTransportServer(t)
+	s, cfg := webTransportServer(t)
 	s.mu.Lock()
 	s.newSalt = func() (uint32, error) { return testSalt, nil }
 	s.mu.Unlock()
-	wtLogin(t, s, wtAddr("old"), 311860)
-	wtLogin(t, s, wtAddr("busy"), 311861)
+	wtLogin(t, s, cfg, 311860)
+	busy := wtLogin(t, s, cfg, 311861)
 
 	token := s.resumeToken(311860, time.Now())
-	r := s.resumeWebTransport(wtAddr("busy"), token)
+	r := s.resumeWebTransport(busy, token)
 	assert.False(t, r.Resumed)
 	assert.Equal(t, "busy", r.Reason)
 

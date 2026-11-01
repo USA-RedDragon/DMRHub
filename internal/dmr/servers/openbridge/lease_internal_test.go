@@ -326,3 +326,38 @@ func TestAStopGivesUpALeaseThatAFollowerHolds(t *testing.T) {
 		assert.Equal(t, s.leaseValue(), string(v), "the stop gave up the lease of another replica")
 	})
 }
+
+// TestAHolderThatLostTheLeaseAtARenewalSendsUntilTheTakenMessage lets
+// another replica take the egress lease of a holder whose renewal came
+// late, as on a starved machine, and announce it. The packets on the egress
+// topic before the taken message are the old holder's to send, as the new
+// holder sends only those after it, so the old holder must send until the
+// message comes, or until takeWait passes for a taker of an older DMRHub.
+func TestAHolderThatLostTheLeaseAtARenewalSendsUntilTheTakenMessage(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	ctx := context.Background()
+	store, err := kv.MakeKV(ctx, &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	fake := clock.NewFake(time.Unix(0, 0))
+	s := &Server{clock: fake, kv: store, id: "a", done: make(chan struct{})}
+	require.True(t, s.holdLease(ctx))
+	s.role.Store(roleLeader)
+	s.deleteLease(ctx)
+	b := &Server{clock: fake, kv: store, id: "b"}
+	require.True(t, b.holdLease(ctx))
+
+	s.renewLease(ctx)
+	assert.True(t, s.sends(), "the old holder stopped sending before the taken message of the new one")
+	s.leaseMessage(egressJob{Kind: kindTaken, Replica: "b"})
+	assert.False(t, s.sends(), "the old holder sends the packets after the taken message too")
+
+	s.role.Store(roleLeader)
+	s.renewLease(ctx)
+	require.True(t, s.sends())
+	fake.Advance(takeWait)
+	s.renewLease(ctx)
+	assert.False(t, s.sends(), "the old holder sends on after an old replica took the lease")
+}

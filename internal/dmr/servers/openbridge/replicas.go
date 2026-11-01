@@ -143,6 +143,11 @@ func (s *Server) holdLease(ctx context.Context) bool {
 	}
 	at := s.clock.Now()
 	held, err := s.tryLease(ctx)
+	s.takenElsewhere = errors.Is(err, errTakenElsewhere)
+	if s.takenElsewhere {
+		s.leaseUntil = time.Time{}
+		return false
+	}
 	if err != nil {
 		slog.Error("Error holding the OpenBridge egress lease", "error", err)
 		return at.Before(s.leaseUntil)
@@ -155,8 +160,12 @@ func (s *Server) holdLease(ctx context.Context) bool {
 	return true
 }
 
+// errTakenElsewhere is the answer of tryLease when another replica holds
+// the lease.
+var errTakenElsewhere = errors.New("another replica holds the lease")
+
 // tryLease takes or renews the lease in the KV store and reports whether
-// this replica holds it.
+// this replica holds it, or errTakenElsewhere.
 func (s *Server) tryLease(ctx context.Context) (bool, error) {
 	ok, err := s.kv.SetNX(ctx, egressLeaseKey, s.leaseValue(), EgressLeaseTTL)
 	if err != nil {
@@ -173,7 +182,7 @@ func (s *Server) tryLease(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("reading the lease: %w", err)
 	}
 	if string(v) != s.leaseValue() {
-		return false, nil
+		return false, errTakenElsewhere
 	}
 	if err := s.kv.Expire(ctx, egressLeaseKey, EgressLeaseTTL); err != nil {
 		return false, fmt.Errorf("renewing the lease: %w", err)
@@ -198,7 +207,9 @@ func (s *Server) runLease(ctx context.Context) {
 
 // renewLease takes or renews the lease and moves the role of the replica
 // on: a replica that takes the lease announces it and waits for its
-// announcement before it sends, and one that lost the lease stops sending.
+// announcement before it sends, and a holder that lost the lease sends
+// until the taken message of the replica that took it, or for takeWait,
+// as that replica sends only the packets after its message.
 // A stopped replica does nothing, so that a renewal that waited on the
 // role lock does not take the lease that the stop gave up.
 func (s *Server) renewLease(ctx context.Context) {
@@ -214,11 +225,17 @@ func (s *Server) renewLease(ctx context.Context) {
 		return
 	}
 	held := s.holdLease(ctx)
+	if held || role != roleLeader || !s.takenElsewhere {
+		s.lostAt = time.Time{}
+	}
 	switch {
 	case held && role == roleFollower:
 		s.beginTaking()
 	case held && role == roleTaking && s.clock.Since(s.takingAt) >= takeWait:
 		s.setRole(roleLeader)
+	case !held && role == roleLeader && s.takenElsewhere && s.lostAt.IsZero():
+		s.lostAt = s.clock.Now()
+	case !held && role == roleLeader && s.takenElsewhere && s.clock.Since(s.lostAt) < takeWait:
 	case !held && role != roleFollower:
 		s.setRole(roleFollower)
 	}

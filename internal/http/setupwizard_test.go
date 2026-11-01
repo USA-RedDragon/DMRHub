@@ -236,13 +236,13 @@ func TestSetupWizardLeavesALockedDatabaseToTheDeployment(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "the deployment sets the database")
 }
 
-// TestSetupWizardSaysWhenItCannotKeepTheDatabase starts the wizard in a
-// working directory that DMRHub cannot write, as on a read-only mount. The
-// wizard cannot change the database and says where it would keep it.
+// TestSetupWizardSaysWhenItCannotKeepTheDatabase starts the wizard with a
+// state file in a directory that does not exist, which DMRHub cannot write
+// even as root. The wizard cannot change the database and says where it
+// would keep it.
 func TestSetupWizardSaysWhenItCannotKeepTheDatabase(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "readonly")
-	require.NoError(t, os.Mkdir(dir, 0o500))
+	dir := filepath.Join(t.TempDir(), "missing")
 	store := liveconfig.DatabaseState{Path: filepath.Join(dir, liveconfig.DatabaseStateFile)}
 	_, r := brokenDatabase(t, liveconfig.Locks{}, store)
 	raw, cfg := wizardGET(t, r)

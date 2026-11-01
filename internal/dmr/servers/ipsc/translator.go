@@ -51,7 +51,7 @@ type IPSCTranslator struct {
 	peerID         uint32
 	repeaterID     uint32
 	streams        map[uint32]*streamState
-	reverseStreams map[uint32]*reverseStreamState
+	reverseStreams map[reverseKey]*reverseStreamState
 	burst          *layer2.Burst // reusable burst to reduce allocations
 	events         []voice.Event
 	epoch          time.Time
@@ -163,7 +163,7 @@ func newTranslator(c clock.Clock, peerID uint32) *IPSCTranslator {
 		nextStreamID:        binary.LittleEndian.Uint32(seed[:]),
 		clock:               clock.Or(c),
 		streams:             make(map[uint32]*streamState),
-		reverseStreams:      make(map[uint32]*reverseStreamState),
+		reverseStreams:      make(map[reverseKey]*reverseStreamState),
 		peerID:              peerID,
 		repeaterID:          peerID,
 		burst:               layer2.NewBurst(),
@@ -411,10 +411,10 @@ func (t *IPSCTranslator) CleanupStream(streamID uint32) {
 }
 
 // CleanupReverseStream removes reverse stream state for a given call control ID.
-func (t *IPSCTranslator) CleanupReverseStream(callControl uint32) {
+func (t *IPSCTranslator) CleanupReverseStream(peer, callControl uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	delete(t.reverseStreams, callControl)
+	delete(t.reverseStreams, reverseKey{peer: peer, callControl: callControl})
 }
 
 // CleanupStaleStreams removes any forward or reverse stream entries that
@@ -693,9 +693,12 @@ func fullLCMatchesPacket(cw [12]byte, pkt models.Packet) bool {
 	return ok && group == pkt.GroupCall && uint(target) == pkt.Dst && uint(source) == pkt.Src
 }
 
+type reverseKey struct {
+	peer, callControl uint32
+}
+
 // reverseStreamState tracks per-call state for IPSC→MMDVM translation.
 type reverseStreamState struct {
-	peer         uint32
 	streamID     uint32
 	ended        bool
 	seq          uint8
@@ -709,9 +712,9 @@ func (t *IPSCTranslator) ingressCalls(peer uint32) []handedIngress {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var out []handedIngress
-	for cc, rss := range t.reverseStreams {
-		if rss.peer == peer && !rss.ended {
-			out = append(out, handedIngress{CallControl: cc, Stream: rss.streamID, Seq: rss.seq, BurstIndex: rss.burstIndex, Started: rss.started})
+	for k, rss := range t.reverseStreams {
+		if k.peer == peer && !rss.ended {
+			out = append(out, handedIngress{CallControl: k.callControl, Stream: rss.streamID, Seq: rss.seq, BurstIndex: rss.burstIndex, Started: rss.started})
 		}
 	}
 	return out
@@ -721,7 +724,8 @@ func (t *IPSCTranslator) continueIngress(peer uint32, calls []handedIngress) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, c := range calls {
-		rss, ok := t.reverseStreams[c.CallControl]
+		k := reverseKey{peer: peer, callControl: c.CallControl}
+		rss, ok := t.reverseStreams[k]
 		if !ok || rss.ended {
 			rx, err := voice.NewReceiver(&voice.ReceiverConfig{Lost: -1, Hang: -1, Scratch: t.burst})
 			if err != nil {
@@ -729,9 +733,9 @@ func (t *IPSCTranslator) continueIngress(peer uint32, calls []handedIngress) {
 				continue
 			}
 			rss = &reverseStreamState{rx: rx}
-			t.reverseStreams[c.CallControl] = rss
+			t.reverseStreams[k] = rss
 		}
-		rss.peer, rss.streamID, rss.seq, rss.burstIndex = peer, c.Stream, c.Seq, c.BurstIndex
+		rss.streamID, rss.seq, rss.burstIndex = c.Stream, c.Seq, c.BurstIndex
 		rss.started = rss.started || c.Started
 		rss.lastActivity = t.clock.Now()
 	}
@@ -755,7 +759,8 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 		"slot", u.Info.Slot(), "isEnd", u.Info.End())
 
 	// Use call control as the stream identifier
-	rss, ok := t.reverseStreams[u.CallControl]
+	rk := reverseKey{peer: u.ID, callControl: u.CallControl}
+	rss, ok := t.reverseStreams[rk]
 	if ok && rss.ended && t.clock.Since(rss.lastActivity) > endedCallHold {
 		ok = false
 	}
@@ -770,12 +775,11 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 			return nil
 		}
 		rss = &reverseStreamState{
-			peer:         u.ID,
 			streamID:     t.nextStreamID,
 			lastActivity: t.clock.Now(),
 			rx:           rx,
 		}
-		t.reverseStreams[u.CallControl] = rss
+		t.reverseStreams[rk] = rss
 	}
 	rss.lastActivity = t.clock.Now()
 

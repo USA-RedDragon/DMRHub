@@ -20,9 +20,12 @@
 package ipsc
 
 import (
+	"context"
+	"encoding/binary"
 	"encoding/json"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -137,8 +140,16 @@ type streamKey struct {
 // to the peer then, until the grace ends. Once the early report came, last
 // holds the sequence of the last packet of each call that went to the
 // peer, and blocked the slots whose packets wait for the full report.
+type heldIngress struct {
+	ctx  context.Context //nolint:containedctx
+	op   byte
+	data []byte
+	at   time.Time
+}
+
 type moving struct {
 	held    []models.Packet
+	ingress []heldIngress
 	early   bool
 	done    bool
 	seen    map[packetKey]bool
@@ -197,6 +208,29 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	}
 	s.hub.HandOver(models.RepeaterTypeIPSC, id, b)
 	slog.Info("IPSC peer moved to another replica", "peerID", id, "calls", len(report.Calls))
+}
+
+func (s *IPSCServer) holdIngress(ctx context.Context, op byte, data []byte, at time.Time) bool {
+	if len(data) < 5 {
+		return false
+	}
+	peer := binary.BigEndian.Uint32(data[1:5])
+	s.movingMu.Lock()
+	defer s.movingMu.Unlock()
+	m := s.moving[peer]
+	if m == nil || m.early || m.done {
+		return false
+	}
+	m.ingress = append(m.ingress, heldIngress{ctx: ctx, op: op, data: slices.Clone(data), at: at})
+	return true
+}
+
+func (s *IPSCServer) releaseIngress(m *moving) {
+	held := m.ingress
+	m.ingress = nil
+	for _, h := range held {
+		s.routeIngress(h.ctx, h.op, h.data, h.at)
+	}
 }
 
 func (s *IPSCServer) ingressOf(peer uint32) []handedIngress {
@@ -318,6 +352,7 @@ func (s *IPSCServer) startHandover(id uint32, since time.Time, report *handoverR
 	}
 	m.early = true
 	s.applyReport(id, report, true)
+	s.releaseIngress(m)
 	for _, c := range report.Calls {
 		m.last[streamKey{slot: c.Slot, stream: c.Stream}] = c.Seq
 	}
@@ -350,6 +385,7 @@ func (s *IPSCServer) finishHandover(id uint32, since time.Time, report *handover
 	if !ok {
 		return
 	}
+	s.releaseIngress(m)
 	s.sendHanded(id, m, batch, since)
 	for _, p := range m.held {
 		if k := keyOf(p); !m.seen[k] {

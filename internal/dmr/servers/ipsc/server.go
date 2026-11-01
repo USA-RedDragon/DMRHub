@@ -662,6 +662,13 @@ func (s *IPSCServer) peerBursts(ctx context.Context) func(byte, []byte, *net.UDP
 // peer sent and which came at at, and starts the call hang that its calls
 // give the peer.
 func (s *IPSCServer) fromPeer(ctx context.Context, packetType byte, data []byte, at time.Time) {
+	if s.holdIngress(ctx, packetType, data, at) {
+		return
+	}
+	s.routeIngress(ctx, packetType, data, at)
+}
+
+func (s *IPSCServer) routeIngress(ctx context.Context, packetType byte, data []byte, at time.Time) {
 	for _, pkt := range s.translator.TranslateToMMDVM(packetType, data) {
 		if s.pacer != nil && pkt.Repeater <= math.MaxUint32 {
 			s.pacer.heard(slotKey{peer: uint32(pkt.Repeater), slot: pkt.Slot}, pkt)

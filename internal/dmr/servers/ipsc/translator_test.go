@@ -957,7 +957,7 @@ func TestBuildMMDVMVoiceBurstSyncLost(t *testing.T) {
 		if slot2 {
 			lost[30] |= 0x80
 		}
-		rss := tr.reverseStreams[0x2222]
+		rss := tr.reverseStreams[reverseKey{peer: binary.BigEndian.Uint32(header[1:5]), callControl: 0x2222}]
 		if rss == nil || rss.rx.State() == voice.StateIdle {
 			t.Fatalf("slot 2 %v: no call before the lost burst", slot2)
 		}
@@ -1277,7 +1277,7 @@ func TestCleanupReverseStream(t *testing.T) {
 
 	// The call control value is at bytes 13-16 of the IPSC packet
 	callControl := binary.BigEndian.Uint32(data[13:17])
-	tr.CleanupReverseStream(callControl)
+	tr.CleanupReverseStream(binary.BigEndian.Uint32(data[1:5]), callControl)
 
 	_, rev = tr.StreamCount()
 	if rev != 0 {

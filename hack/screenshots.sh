@@ -14,7 +14,7 @@
 #   DMRHUB_SHOTS_WASM      plugin file for the plugin upload shots (default:
 #                          build the parrot plugin with TinyGo)
 #   DMRHUB_SHOTS_RADIO     directory of a built dmr-web (its dist directory)
-#                          for the Browser Radio shots (default: clone
+#                          for the DMRHub Radio shots (default: clone
 #                          dmr-web at the commit below and build it, which
 #                          needs git, Go and npm)
 #   DMRHUB_SHOTS_EXT       directory of the external programs that
@@ -33,7 +33,7 @@
 # ERR_NETWORK_CHANGED.
 set -euo pipefail
 
-dmrweb_commit=c2fab6f75b9a7b205273f24ba5923ab0c11dbbfe
+dmrweb_commit=35a28177f5708f6bce54928700fc2383765d0d5d
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=${DMRHUB_SHOTS_WORK:-$root/artifacts/screenshots}

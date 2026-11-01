@@ -725,7 +725,19 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 func (s *shard) saveParts(r *row, parts []voiceDelta) bool {
 	out, changed, ok := s.saveMerged(r.call, parts)
 	if !ok {
+		if r.unacked == nil {
+			r.unacked = map[string]bool{}
+		}
+		for _, p := range parts {
+			r.unacked[p.ID] = true
+		}
 		return false
+	}
+	for _, p := range parts {
+		if r.unacked[p.ID] {
+			changed = true
+			delete(r.unacked, p.ID)
+		}
 	}
 	s.adoptMerged(r, &out)
 	saved := make(map[string]bool, len(parts))

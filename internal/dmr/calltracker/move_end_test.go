@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -363,5 +364,73 @@ func TestKVFailuresMinutesApartDoNotStopSharing(t *testing.T) {
 			}
 		}
 		assert.Len(t, moved, 1, "rows of the moved call")
+	})
+}
+
+type lostAckPool struct {
+	*sql.DB
+	lose atomic.Bool
+}
+
+func (p *lostAckPool) BeginTx(ctx context.Context, opts *sql.TxOptions) (gorm.ConnPool, error) {
+	tx, err := p.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err //nolint:wrapcheck
+	}
+	return &lostAckTx{Tx: tx, pool: p}, nil
+}
+
+func (p *lostAckPool) GetDBConn() (*sql.DB, error) { return p.DB, nil }
+
+type lostAckTx struct {
+	*sql.Tx
+	pool *lostAckPool
+}
+
+func (t *lostAckTx) Commit() error {
+	if err := t.Tx.Commit(); err != nil {
+		return err //nolint:wrapcheck
+	}
+	if t.pool.lose.CompareAndSwap(true, false) {
+		return errors.New("the connection broke before the commit was acknowledged")
+	}
+	return nil
+}
+
+// TestASaveWhoseCommitAckIsLostPublishesTheEnd ends a shared call whose
+// save commits while its acknowledgement is lost, as a connection that
+// breaks right after the commit does. The worker saves again, finds every
+// part stored, and still publishes the end of the row once.
+func TestASaveWhoseCommitAckIsLostPublishesTheEnd(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		database, ps, kvStore := trackerDeps(t)
+		ev := watchCalls(t, ps)
+		sqlDB, err := database.DB()
+		require.NoError(t, err)
+		pool := &lostAckPool{DB: sqlDB}
+		lossy := database.Session(&gorm.Session{})
+		lossy.Statement.ConnPool = pool
+		ct := calltracker.NewCallTracker(lossy, ps, kvStore)
+		t.Cleanup(ct.Stop)
+
+		s := newSender(t, ct, userA, tgID, true, 9390)
+		s.voiceCall(1, false)
+		ct.Flush()
+		pool.lose.Store(true)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+
+		c := waitDone(t, ct, database, 1)[0]
+		for range 3 {
+			time.Sleep(time.Second)
+			ct.Flush()
+		}
+		assert.False(t, pool.lose.Load(), "no commit lost its acknowledgement")
+		assert.Equal(t, uint(8), c.TotalPackets, "packets")
+		synctest.Wait()
+		ev.mu.Lock()
+		defer ev.mu.Unlock()
+		assert.Equal(t, 1, ev.ends[c.ID], "end events of the row")
 	})
 }

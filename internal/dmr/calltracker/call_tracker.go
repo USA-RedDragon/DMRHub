@@ -1200,6 +1200,7 @@ type row struct {
 	touched   time.Time
 	pending   []voiceDelta
 	waitSince time.Time
+	unacked   map[string]bool
 }
 
 type channel struct {

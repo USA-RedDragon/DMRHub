@@ -32,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/consts"
+	"github.com/USA-RedDragon/DMRHub/internal/redisping"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
@@ -51,8 +52,13 @@ func makePubSubFromRedis(ctx context.Context, config *config.Config) (ret redisP
 		MaxRetries:            -1,
 	})
 	redis.AddHook(handshakeHook{})
-	_, err = redis.Ping(ctx).Result()
+	err = redisping.Until(ctx, func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, consts.RedisCallTimeout)
+		defer cancel()
+		return redis.Ping(ctx).Err()
+	})
 	if err != nil {
+		_ = redis.Close()
 		err = fmt.Errorf("failed to connect to redis: %w", err)
 		return
 	}

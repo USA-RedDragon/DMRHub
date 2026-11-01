@@ -684,6 +684,12 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		c2 := connect(tcC2Rpt, stack.MMDVMAddr)
 		listen := connect(tcAMBERpt, second.MMDVMAddr)
 		talk := connect(tcAMBETalkRpt, second.MMDVMAddr)
+		learned := make(chan uint, 4)
+		t.Cleanup(second.Hub.OnCodecChange(func(id uint) {
+			if id == tcC2Rpt {
+				learned <- id
+			}
+		}))
 
 		group := call{group: true, dst: tcTG, src: tcTalker}
 		stream := uint(0xB0010)
@@ -693,6 +699,7 @@ func TestTranscodingAcrossReplicas(t *testing.T) {
 		got := drainUntil(callEnded(group), c2, listen, talk)
 		requireCopy(t, sent, ofStream(got[1], stream), tcAMBERpt, tcLC(t, group, enums.FIDStandardized), ambeCopySlots(t, srv, 0, cc.slots))
 		requireCodecRow(t, stack, stream, tcRow{codec: models.CodecCodec2, mode: int(codec2.Mode2400), sentAMBE: 1})
+		require.Len(t, testutils.Collect(learned, deliverWait, gotN[uint](1)), 1, "the second replica did not learn that the Codec2 hotspot was heard")
 
 		a := call{group: true, dst: tcTG, src: tcOther}
 		stream = 0xB0020

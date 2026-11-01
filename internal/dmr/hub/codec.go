@@ -269,6 +269,13 @@ func (h *Hub) recordHeard(n heardNote) {
 	h.CodecChanged(n.repeater)
 }
 
+// OnCodecChange calls fn with the ID of a repeater after this replica
+// reads the codecs of its timeslots again for a CodecChanged on any
+// replica. The returned func stops the calls.
+func (h *Hub) OnCodecChange(fn func(repeaterID uint)) (stop func()) {
+	return h.watchers.add(codecChangedTopic, fn)
+}
+
 // CodecChanged drops what every replica knows of the codecs of the
 // repeater id. Call it after a change of the codec of one of its
 // timeslots. The other replicas hear of it through the outbox, so that it
@@ -276,6 +283,7 @@ func (h *Hub) recordHeard(n heardNote) {
 func (h *Hub) CodecChanged(id uint) {
 	h.reloadRepeater(id)
 	h.loadCodec2Repeaters()
+	h.watchers.call(codecChangedTopic, id)
 	if h.pubsub == nil {
 		return
 	}
@@ -308,6 +316,7 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 			}
 			h.reloadRepeater(id)
 			h.loadCodec2Repeaters()
+			h.watchers.call(codecChangedTopic, id)
 		}
 	}
 }

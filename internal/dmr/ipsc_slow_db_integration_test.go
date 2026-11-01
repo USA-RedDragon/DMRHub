@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -51,23 +52,29 @@ func TestIPSCSlowDatabaseHoldsNoBurst(t *testing.T) {
 		require.NoError(t, ic.Connect(stack.IPSCAddr))
 		require.NoError(t, ic.WaitReady(handshakeWait))
 
-		fromCaller := func(got []models.Packet) int {
-			n := 0
+		fromCaller := func(got []models.Packet) (n int, ended bool) {
 			for _, p := range got {
 				if p.Src == 1000001 && p.Dst == 1 {
 					n++
+					ended = ended || p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm
 				}
 			}
-			return n
+			return n, ended
 		}
 		call := func(stream uint32) {
 			require.NoError(t, ic.SendGroupVoice(1000001, 1, false, stream))
-			got := testutils.Collect(mc.ReceivedPackets(), deliverWait, func(got []models.Packet) bool { return fromCaller(got) >= 3 })
-			require.GreaterOrEqual(t, fromCaller(got), 3, "stream %d: the call did not reach the repeater", stream)
+			got := testutils.Collect(mc.ReceivedPackets(), deliverWait, func(got []models.Packet) bool {
+				n, ended := fromCaller(got)
+				return n >= 3 && ended
+			})
+			n, ended := fromCaller(got)
+			require.GreaterOrEqual(t, n, 3, "stream %d: the call did not reach the repeater", stream)
+			require.True(t, ended, "stream %d: the terminator did not reach the repeater", stream)
 		}
 
 		call(12001)
-		waitFor(t, "the call tracker drops the row of the first call, shorter than a key-up", func() bool { return db.ranOn("delete", "calls") >= 1 })
+		stack.CallTracker.Flush()
+		require.Positive(t, db.ranOn("delete", "calls")+db.ranOn("update", "calls"), "the call tracker ends the row of the first call at its terminator")
 
 		db.hold()
 		call(12002)

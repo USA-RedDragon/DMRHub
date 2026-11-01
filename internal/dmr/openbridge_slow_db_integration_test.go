@@ -75,6 +75,7 @@ func holdDatabase(t *testing.T, database *gorm.DB) *dbHold {
 	}
 	require.NoError(t, cb.Create().After("gorm:create").Register("test:ran_create", ran("create")))
 	require.NoError(t, cb.Delete().After("gorm:delete").Register("test:ran_delete", ran("delete")))
+	require.NoError(t, cb.Update().After("gorm:update").Register("test:ran_update", ran("update")))
 	t.Cleanup(d.release)
 	return d
 }

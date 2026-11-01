@@ -101,5 +101,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_repeater_cosysops_migration_202611011701(db, cfg),
 		add_repeater_events_migration_202611011702(db, cfg),
 		add_offline_alerts_migration_202611011703(db, cfg),
+		add_message_rate_migration_202611011800(db, cfg),
 	}
 }

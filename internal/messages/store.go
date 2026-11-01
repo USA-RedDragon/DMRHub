@@ -93,6 +93,8 @@ type job struct {
 	call     data.Call
 	header   pdu.DataHeader
 	payload  []byte
+	rate     uint8
+	prop     bool
 	badCRC   bool
 	frag     bool
 	whole    bool
@@ -187,6 +189,8 @@ func (s *Store) DataPacket(call *models.Call, ev *data.Event, at time.Time) {
 	}
 	j := s.jobOf(call, ev, at)
 	j.payload = bytes.Clone(ev.Message.Payload)
+	j.rate = uint8(ev.Message.Rate)
+	j.prop = ev.Message.Proprietary != nil
 	j.badCRC = ev.Message.BadCRC
 	j.frag = ev.Message.Fragmented
 	j.whole = ev.Kind == data.EventReassembled
@@ -375,6 +379,7 @@ func (s *Store) replace(i int, r *recent, msg *models.Message) {
 	row.RepeaterID, row.Slot, row.Transport, row.StreamID = msg.RepeaterID, msg.Slot, msg.Transport, msg.StreamID
 	row.Format, row.Text, row.ChecksumOK = msg.Format, msg.Text, msg.ChecksumOK
 	row.BadCRC, row.Blocks, row.Octets, row.Raw = msg.BadCRC, msg.Blocks, msg.Octets, msg.Raw
+	row.Rate, row.Proprietary = msg.Rate, msg.Proprietary
 	row.Confirmed = row.Confirmed || msg.Confirmed
 	if row.SendSequence == nil {
 		row.SendSequence = msg.SendSequence
@@ -518,6 +523,8 @@ func (s *Store) decode(j *job) *models.Message {
 		BadCRC:        j.badCRC,
 		ChecksumOK:    true,
 		Octets:        uint(len(j.payload)),
+		Rate:          j.rate,
+		Proprietary:   j.prop,
 	}
 	if dst, src, ok := h.Addresses(); ok && dst != 0 && src != 0 {
 		msg.SourceID, msg.DestinationID = uint(src), uint(dst)

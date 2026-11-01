@@ -67,9 +67,16 @@ type Message struct {
 	ChecksumOK     bool         `gorm:"not null"`
 	Blocks         uint         `gorm:"not null;default:0"`
 	Octets         uint         `gorm:"not null;default:0"`
-	Raw            []byte
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Rate is the data type of the blocks, as the enums.DataType of dmrgo:
+	// rate 1/2, 3/4 or 1. It is 0 for a message stored before the hub kept
+	// it.
+	Rate uint8 `gorm:"not null;default:0"`
+	// Proprietary reports a message whose second header was a P_HEAD,
+	// which Raw does not hold.
+	Proprietary bool `gorm:"not null;default:false"`
+	Raw         []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // TableName returns the table of the messages.

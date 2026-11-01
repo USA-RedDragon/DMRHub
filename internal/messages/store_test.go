@@ -527,3 +527,40 @@ func TestStoreGivesNoResponseToAnUnconfirmedMessage(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.Equal(t, models.CallResponseNone, msgs[0].Response)
 }
+
+func TestStoreKeepsTheRateOfAMessage(t *testing.T) {
+	t.Parallel()
+	for _, rate := range []enums.DataType{enums.DataTypeRate12, enums.DataTypeRate34, enums.DataTypeRate1} {
+		t.Run(rate.String(), func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t)
+			var h sms.Header
+			payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatAnyTone, Source: uint32(userB), Destination: uint32(userA), Body: []byte("rate")}, &h)
+			require.NoError(t, err)
+			p, err := packet.NewPacket(h.Data, payload, rate)
+			require.NoError(t, err)
+			bursts, err := packet.Bursts(&p, 1, layer2.SyncSourceMS)
+			require.NoError(t, err)
+			r.send(userB, userA, false, 7300, bursts)
+			msgs := r.messages(1)
+			assert.Equal(t, uint8(rate), msgs[0].Rate)
+			assert.False(t, msgs[0].Proprietary)
+		})
+	}
+}
+
+func TestStoreMarksAMessageWithAProprietaryHeader(t *testing.T) {
+	t.Parallel()
+	store, database := storeOnly(t)
+	var h sms.Header
+	payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("p head")}, &h)
+	require.NoError(t, err)
+	ev := delivered(h.Data, payload, false)
+	ev.Message.Rate = enums.DataTypeRate34
+	ev.Message.Proprietary = &pdu.ProprietaryHeader{}
+	store.DataPacket(&models.Call{ID: 1}, ev, time.Now())
+	msgs := all(t, store, database)
+	require.Len(t, msgs, 1)
+	assert.True(t, msgs[0].Proprietary)
+	assert.Equal(t, uint8(enums.DataTypeRate34), msgs[0].Rate)
+}

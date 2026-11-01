@@ -22,6 +22,7 @@ package config
 import (
 	"crypto/sha256"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -175,6 +176,13 @@ type Routing struct {
 	Transmit            Transmit      `json:"transmit" name:"transmit" description:"Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)" default:"any"`
 	MaxTransmission     time.Duration `json:"max-transmission" yaml:"max-transmission" name:"max-transmission" description:"Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit" default:"0s"`
 	Contention          Contention    `json:"contention" name:"contention" description:"What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)" default:"mix"`
+	LocalTalkgroups     []uint        `json:"local-talkgroups" yaml:"local-talkgroups" name:"local-talkgroups" description:"Talkgroup numbers that users can make local groups on. A group call to one of them goes only to the other repeaters of the local group of the repeater on that number and timeslot, and never to a network talkgroup or an OpenBridge peer. On a repeater in no such group, the call goes nowhere" default:"8,9"`
+}
+
+// IsLocalTalkgroup reports whether tg is one of the local talkgroup
+// numbers.
+func (r Routing) IsLocalTalkgroup(tg uint) bool {
+	return slices.Contains(r.LocalTalkgroups, tg)
 }
 
 // PrivateCalls holds how DMRHub finds the radio that private traffic goes

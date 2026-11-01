@@ -679,6 +679,16 @@ var ErrInvalidDynamicTimeout = errors.New("the dynamic talkgroup timeout must be
 
 const fieldDynamicTimeout = "dmr.routing.dynamic-timeout"
 
+// ErrInvalidLocalTalkgroup indicates a local talkgroup number that is not a
+// group ID, is the unlink ID 4000, or is listed twice.
+var ErrInvalidLocalTalkgroup = errors.New("each local talkgroup must be a number from 1 to 16777215, other than 4000, listed once")
+
+const (
+	maxGroupID    = 1<<24 - 1
+	unlinkGroupID = 4000
+	fieldLocalTGs = "dmr.routing.local-talkgroups"
+)
+
 // Validate validates the routing configuration.
 func (r Routing) Validate() error {
 	return firstValidationError(r.ValidateWithFields())
@@ -699,6 +709,14 @@ func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	}
 	if r.Contention != "" && r.Contention != ContentionMix && r.Contention != ContentionFirst {
 		errs = append(errs, ValidationError{Field: "dmr.routing.contention", Err: ErrInvalidContention})
+	}
+	seen := map[uint]bool{}
+	for _, tg := range r.LocalTalkgroups {
+		if tg == 0 || tg > maxGroupID || tg == unlinkGroupID || seen[tg] {
+			errs = append(errs, ValidationError{Field: fieldLocalTGs, Err: ErrInvalidLocalTalkgroup})
+			break
+		}
+		seen[tg] = true
 	}
 	return
 }

@@ -21,6 +21,7 @@ package config_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -34,8 +35,8 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix}
-	if cfg.DMR.Routing != want {
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}}
+	if !reflect.DeepEqual(cfg.DMR.Routing, want) {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
 	if cfg.DMR.RepeaterQuota != 100 {
@@ -56,6 +57,10 @@ func TestRoutingValidate(t *testing.T) {
 		{"dmr.routing.ephemeral-ttl", config.Routing{Ephemeral: true}, config.ErrInvalidEphemeralTTL},
 		{"dmr.routing.ephemeral-ttl", config.Routing{EphemeralTTL: -time.Hour}, config.ErrInvalidEphemeralTTL},
 		{"dmr.routing.max-transmission", config.Routing{MaxTransmission: -time.Second}, config.ErrInvalidMaxTransmission},
+		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{0}}, config.ErrInvalidLocalTalkgroup},
+		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{4000}}, config.ErrInvalidLocalTalkgroup},
+		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{1 << 24}}, config.ErrInvalidLocalTalkgroup},
+		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{8, 9, 8}}, config.ErrInvalidLocalTalkgroup},
 	} {
 		cfg := makeValidConfig()
 		cfg.DMR.Routing = c.r
@@ -75,7 +80,7 @@ func TestRoutingValidate(t *testing.T) {
 		t.Errorf("a negative repeater quota: error %v, want %v", err, config.ErrInvalidRepeaterQuota)
 	}
 	cfg := makeValidConfig()
-	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst}
+	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst, LocalTalkgroups: []uint{8, 9, 1<<24 - 1}}
 	if err := cfg.DMR.Routing.Validate(); err != nil {
 		t.Errorf("valid routing settings: %v", err)
 	}

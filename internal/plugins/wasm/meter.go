@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental"
 )
@@ -34,6 +35,7 @@ import (
 // wait in poll_oneoff, where a wasip1 program sleeps and waits for its
 // stdin.
 type meter struct {
+	clock   clock.Clock
 	mu      sync.Mutex
 	tid     int
 	cpu     time.Duration
@@ -43,8 +45,10 @@ type meter struct {
 	window  time.Time
 }
 
-func newMeter(now time.Time) *meter {
-	return &meter{since: now, window: now}
+func newMeter(c clock.Clock) *meter {
+	c = clock.Or(c)
+	now := c.Now()
+	return &meter{clock: c, since: now, window: now}
 }
 
 // start starts measuring at now, when the plugin said hello. Its start
@@ -104,7 +108,7 @@ func (pollListener) Abort(ctx context.Context, mod api.Module, def api.FunctionD
 
 // Before notes that the plugin waits.
 func (m *meter) Before(context.Context, api.Module, api.FunctionDefinition, []uint64, experimental.StackIterator) {
-	now := time.Now()
+	now := m.clock.Now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.waiting {
@@ -124,14 +128,16 @@ func (m *meter) Abort(context.Context, api.Module, api.FunctionDefinition, error
 }
 
 func (m *meter) resume() {
-	now := time.Now()
+	now := m.clock.Now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.waiting, m.since = false, now
 }
 
 // over reports whether the plugin ran more than share of window in the
-// window that holds now, and starts a new window when this one ended.
+// window that holds now, and starts a new window when this one ended. A
+// check that comes late, as on a loaded machine, finds a window longer
+// than window, and allows share of its whole length.
 func (m *meter) over(now time.Time, window time.Duration, share float64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -146,7 +152,7 @@ func (m *meter) over(now time.Time, window time.Duration, share float64) bool {
 	if onCPU {
 		busy = cpu - m.cpu
 	}
-	if busy > time.Duration(float64(window)*share) {
+	if busy > time.Duration(float64(max(window, now.Sub(m.window)))*share) {
 		return true
 	}
 	if now.Sub(m.window) >= window {

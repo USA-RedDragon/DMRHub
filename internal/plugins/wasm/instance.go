@@ -98,7 +98,7 @@ func (e *Engine) Start(ctx context.Context, name string, wasm []byte, hosts Host
 	l := e.limits
 	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	i := &Instance{
-		name: name, limits: l, cancel: cancel, engine: e, code: code, meter: newMeter(time.Now()),
+		name: name, limits: l, cancel: cancel, engine: e, code: code, meter: newMeter(l.Clock),
 		frames: make(chan *pluginv1.ConnectRequest, frameQueue), helloed: make(chan struct{}), done: make(chan struct{}),
 	}
 	runCtx = context.WithValue(runCtx, meterKey{}, i.meter)
@@ -190,13 +190,13 @@ func (i *Instance) finish(ctx context.Context, mod api.Module, err error) {
 // watch stops the plugin when it uses more CPU than its limit.
 func (i *Instance) watch() {
 	every := max(i.limits.CPUWindow/10, 50*time.Millisecond) //nolint:mnd // a tenth of the window
-	t := time.NewTicker(every)
+	t := clock.Or(i.limits.Clock).NewTicker(every)
 	defer t.Stop()
 	for {
 		select {
 		case <-i.done:
 			return
-		case now := <-t.C:
+		case now := <-t.C():
 			select {
 			case <-i.helloed:
 			default:
@@ -265,7 +265,7 @@ func (i *Instance) deliver(m *pluginv1.ConnectRequest) {
 			return
 		}
 		i.hello = h
-		i.meter.start(time.Now())
+		i.meter.start(i.meter.clock.Now())
 		close(i.helloed)
 		return
 	}

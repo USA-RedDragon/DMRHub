@@ -328,3 +328,40 @@ func TestASaveThatStallsGivesUpTheRow(t *testing.T) {
 		assert.Equal(t, uint(3), stored.TotalPackets)
 	})
 }
+
+// TestKVFailuresMinutesApartDoNotStopSharing fails one KV Update of three
+// other calls on the new replica of a call, a minute apart, and moves the
+// call there right after the last one. Failures that far apart say nothing of the store now, so
+// the moved call stays one row.
+func TestKVFailuresMinutesApartDoNotStopSharing(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		one, two, database, shared := armedReplicas(t)
+		for i := range uint(3) {
+			other := newSender(t, two, userB, tgID, true, 9370+i)
+			other.repeater = repeaterA + 7 + i
+			shared.failNext.Store(1)
+			other.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+			two.Flush()
+			if i < 2 {
+				time.Sleep(time.Minute)
+			}
+		}
+		s := newSender(t, one, userA, tgID, true, 9380)
+		s.voiceCall(1, false)
+		one.Flush()
+		s.ct = two
+		sendSuperframe(s)
+		time.Sleep(150 * time.Millisecond)
+		s.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		two.Flush()
+
+		var moved []uint
+		for _, c := range waitDone(t, two, database, 4) {
+			if c.StreamID == 9380 {
+				moved = append(moved, c.ID)
+			}
+		}
+		assert.Len(t, moved, 1, "rows of the moved call")
+	})
+}

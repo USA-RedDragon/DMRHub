@@ -324,6 +324,9 @@ func (c *CallTracker) updateRecord(key voiceKey, fn func(*voiceRecord) *voiceRec
 		return nil
 	}
 	c.keyDown.Store(key, now+kvBackoff)
+	if now-time.Duration(c.kvLast.Swap(int64(now))) > kvBackoff {
+		c.kvFails.Store(0)
+	}
 	if c.kvFails.Add(1) >= kvTrips || ctx.Err() != nil {
 		c.kvFails.Store(kvTrips)
 		c.kvDown.Store(int64(now + kvBackoff))

@@ -153,6 +153,7 @@ type CallTracker struct {
 	deltas  atomic.Uint64
 	kvDown  atomic.Int64
 	kvFails atomic.Int64
+	kvLast  atomic.Int64
 	keyDown *xsync.Map[voiceKey, time.Duration]
 }
 

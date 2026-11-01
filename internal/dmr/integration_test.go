@@ -848,15 +848,16 @@ func makeGroupVoiceHeaderPacket(src, dst, streamID uint, slot bool) models.Packe
 	}
 }
 
-// makePrivateVoiceHeaderPacket builds a private voice header packet.
-func makePrivateVoiceHeaderPacket(src, dst, streamID uint, slot bool) models.Packet {
+// makePrivateVoiceHeaderPacket builds a private voice header packet from
+// radio 1000001 on timeslot 1.
+func makePrivateVoiceHeaderPacket(dst, streamID uint) models.Packet {
 	return models.Packet{
 		Signature:   string(dmrconst.CommandDMRD),
 		Seq:         0,
-		Src:         src,
+		Src:         1000001,
 		Dst:         dst,
 		GroupCall:   false,
-		Slot:        slot,
+		Slot:        false,
 		FrameType:   dmrconst.FrameDataSync,
 		DTypeOrVSeq: uint(dmrconst.DTypeVoiceHead),
 		StreamID:    streamID,
@@ -894,7 +895,7 @@ func TestParrotReturnsToSource(t *testing.T) {
 		streamID := uint(8888)
 
 		// Send voice header to parrot
-		header := makePrivateVoiceHeaderPacket(1000001, parrotUser, streamID, false)
+		header := makePrivateVoiceHeaderPacket(parrotUser, streamID)
 		require.NoError(t, c1.SendDMRD(header))
 
 		// Send several voice frames
@@ -974,7 +975,7 @@ func TestUnlinkRemovesDynamicTG(t *testing.T) {
 		}
 
 		// Step 3: C1 sends unlink (private call to 4000) on TS1.
-		unlinkHeader := makePrivateVoiceHeaderPacket(1000001, 4000, 3001, false)
+		unlinkHeader := makePrivateVoiceHeaderPacket(4000, 3001)
 		require.NoError(t, c1.SendDMRD(unlinkHeader))
 		unlinkTerm := makePrivateVoiceTermPacket(4000, 3001)
 		require.NoError(t, c1.SendDMRD(unlinkTerm))

@@ -113,7 +113,7 @@ func TestAPluginMovesToAnotherReplicaWithoutLosingABurst(t *testing.T) {
 		require.NoError(t, c.WaitReady(handshakeWait))
 
 		drained := make(chan int, 1)
-		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(caller, pluginID, streamID, false)))
+		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(pluginID, streamID)))
 		for i := uint(1); i <= voice; i++ {
 			time.Sleep(60 * time.Millisecond)
 			if i == 10 {
@@ -138,7 +138,7 @@ func TestAPluginMovesToAnotherReplicaWithoutLosingABurst(t *testing.T) {
 		require.Len(t, left, 1, "the drain did not end")
 		assert.Equal(t, 0, left[0], "the plugin's stream on the first replica ends")
 		require.Len(t, testutils.Collect(p.allSeen, deliverWait, gotN[struct{}](1)), 1, "the plugin did not get every burst")
-		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(caller, pluginID, streamID+1, false)))
+		require.NoError(t, c.SendDMRD(makePrivateVoiceHeaderPacket(pluginID, streamID+1)))
 		require.Len(t, testutils.Collect(p.marked, deliverWait, gotN[struct{}](1)), 1, "the plugin did not get the call after the moved one")
 
 		p.mu.Lock()

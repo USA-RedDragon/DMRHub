@@ -92,19 +92,27 @@ func (r *InstanceRegistry) heartbeat(ctx context.Context) {
 }
 
 // write stores the key of the instance, with its state, for instanceTTL.
+// A write that read that the instance serves stores the key again when the
+// instance began to drain meanwhile, since its store may land after the
+// one of MarkDraining.
 func (r *InstanceRegistry) write(ctx context.Context) error {
 	key := instanceKeyPrefix + r.instanceID
-	value := r.instanceID
-	if r.draining.Load() {
-		value = drainingValue
+	for {
+		draining := r.draining.Load()
+		value := r.instanceID
+		if draining {
+			value = drainingValue
+		}
+		if err := r.kv.Set(ctx, key, []byte(value)); err != nil {
+			return fmt.Errorf("failed to set the key: %w", err)
+		}
+		if err := r.kv.Expire(ctx, key, instanceTTL); err != nil {
+			return fmt.Errorf("failed to set the TTL: %w", err)
+		}
+		if draining || !r.draining.Load() {
+			return nil
+		}
 	}
-	if err := r.kv.Set(ctx, key, []byte(value)); err != nil {
-		return fmt.Errorf("failed to set the key: %w", err)
-	}
-	if err := r.kv.Expire(ctx, key, instanceTTL); err != nil {
-		return fmt.Errorf("failed to set the TTL: %w", err)
-	}
-	return nil
 }
 
 // ID returns the ID of the instance.

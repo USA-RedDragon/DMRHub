@@ -78,11 +78,13 @@ type IPSCClient struct {
 	stopOnce sync.Once
 	wg       sync.WaitGroup
 	packets  chan IPSCBurst
+	marks    map[string]chan struct{}
 }
 
 var (
 	ErrIPSCHandshakeTimeout = errors.New("IPSC handshake timed out")
 	ErrIPSCNotConnected     = errors.New("IPSC client not connected")
+	ErrIPSCNotSettled       = errors.New("IPSC client closed before it read the datagrams that came before")
 )
 
 // NewIPSCClient creates a new IPSC simulator client. password is the hex
@@ -332,6 +334,47 @@ func (c *IPSCClient) Heard() int {
 	return int(c.heard.Load())
 }
 
+// Settle returns once the client read every datagram that reached its
+// socket before the call. A datagram that a master on this host sent
+// before then is counted by Heard after it. It returns an error when the
+// client closes first.
+func (c *IPSCClient) Settle() error {
+	if c.conn == nil {
+		return ErrIPSCNotConnected
+	}
+	to, ok := c.conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return ErrIPSCNotConnected
+	}
+	mark, err := net.DialUDP("udp", nil, to)
+	if err != nil {
+		return fmt.Errorf("opening the settle socket: %w", err)
+	}
+	defer func() { _ = mark.Close() }()
+	key := mark.LocalAddr().String()
+	read := make(chan struct{})
+	c.mu.Lock()
+	if c.marks == nil {
+		c.marks = map[string]chan struct{}{}
+	}
+	c.marks[key] = read
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.marks, key)
+		c.mu.Unlock()
+	}()
+	if _, err := mark.Write([]byte{0}); err != nil {
+		return fmt.Errorf("sending the settle mark: %w", err)
+	}
+	select {
+	case <-read:
+		return nil
+	case <-c.done:
+		return ErrIPSCNotSettled
+	}
+}
+
 // Close shuts down the client.
 func (c *IPSCClient) Close() {
 	c.stopOnce.Do(func() {
@@ -396,6 +439,13 @@ func (c *IPSCClient) rx() {
 			return
 		}
 		at := time.Now()
+		c.mu.Lock()
+		read, mark := c.marks[from.String()]
+		c.mu.Unlock()
+		if mark {
+			close(read)
+			continue
+		}
 		c.heard.Add(1)
 		addr, ok := ipscsession.AddrOf(from.IP, from.Port)
 		if !ok {

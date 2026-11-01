@@ -112,6 +112,7 @@ func TestRotatedAuthKeyStopsAtOnceOnEveryReplica(t *testing.T) {
 		stack.Hub.RepeaterSecretChanged(200001)
 		waitSubscribed(t, second.Hub, 200001, 200001, false)
 
+		require.NoError(t, old.Settle(), "the repeater must read what the replica sent before it dropped the repeater")
 		heard := old.Heard()
 		call(302)
 		assert.Empty(t, old.Drain(drainWait), "a repeater with the old key must not take the packets of DMRHub")

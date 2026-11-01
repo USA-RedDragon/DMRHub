@@ -84,6 +84,8 @@
         </CardContent>
       </Card>
 
+      <StoreForwardCard v-if="!mustChange" :enabled="storeForward" :hold-days="holdDays" />
+
       <Card v-if="!mustChange" data-test="radio-ids-card">
         <CardHeader>
           <CardTitle>Radio IDs</CardTitle>
@@ -180,6 +182,7 @@ import AccountCard from '@/components/users/AccountCard.vue';
 import AppsCard from '@/components/users/AppsCard.vue';
 import EmailCard from '@/components/users/EmailCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
+import StoreForwardCard from '@/components/users/StoreForwardCard.vue';
 import TokensCard from '@/components/users/TokensCard.vue';
 import { badgeClass } from '@/lib/badge';
 import {
@@ -210,6 +213,8 @@ const email = ref('');
 const emailVerified = ref(false);
 const userStore = useUserStore();
 const smsStorage = ref(false);
+const storeForward = ref(false);
+const holdDays = ref(7);
 const confirmOff = ref(false);
 const justEnabled = ref(false);
 const smsError = ref('');
@@ -237,6 +242,8 @@ const load = async () => {
     }
     const [settings, ids] = await Promise.all([getSettings(), getRadioIDs()]);
     smsStorage.value = settings.sms_storage;
+    storeForward.value = settings.store_forward === true;
+    holdDays.value = settings.hold_days ?? 7;
     radioIDs.value = ids;
     state.value = 'ready';
   } catch (err) {

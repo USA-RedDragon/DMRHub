@@ -22,6 +22,20 @@ import API from '@/services/API';
 export type UserSettings = {
   sms_storage: boolean;
   share_positions?: boolean;
+  store_forward?: boolean;
+  hold_days?: number;
+};
+
+/** A text that store and forward keeps for one of the user's radios. */
+export type HeldText = {
+  id: number;
+  message_id: number;
+  text: string;
+  source_id: number;
+  source_callsign: string;
+  radio_id: number;
+  held_at: string;
+  format_known: boolean;
 };
 
 export type RadioID = {
@@ -39,6 +53,16 @@ export async function getSettings(): Promise<UserSettings> {
 export async function setSMSStorage(enabled: boolean): Promise<UserSettings> {
   const res = await API.put('/users/me/settings/sms-storage', { enabled });
   return res.data;
+}
+
+export async function setStoreForward(enabled: boolean): Promise<UserSettings> {
+  const res = await API.put('/users/me/settings/store-forward', { enabled });
+  return res.data;
+}
+
+export async function getHeldTexts(): Promise<HeldText[]> {
+  const res = await API.get('/users/me/held-texts');
+  return res.data.held ?? [];
 }
 
 export async function getRadioIDs(): Promise<RadioID[]> {

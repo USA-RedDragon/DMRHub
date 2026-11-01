@@ -97,6 +97,25 @@ describe('messages service', () => {
     expect(messageState({ confirmed: true, response: 'none' }).label).toBe('Confirmed, no reply');
   });
 
+  it('names what store and forward did with a message', () => {
+    const held = (state: string, response = 'none', formatKnown = true) => ({
+      confirmed: true,
+      response: 'none' as const,
+      held: { state, response, done_at: null, format_known: formatKnown },
+    });
+    expect(messageState(held('held'))).toEqual({ label: 'Held for the radio', tone: 'warn' });
+    expect(messageState(held('sending'))).toEqual({ label: 'Held for the radio', tone: 'warn' });
+    expect(messageState(held('held', 'none', false))).toEqual({
+      label: 'Held: radio format not known yet',
+      tone: 'warn',
+    });
+    expect(messageState(held('delivered', 'ack'))).toEqual({ label: 'Delivered later (ACK)', tone: 'ok' });
+    expect(messageState(held('delivered'))).toEqual({ label: 'Delivered later', tone: 'ok' });
+    expect(messageState(held('expired'))).toEqual({ label: 'Not delivered', tone: 'bad' });
+    expect(messageState(held('failed', 'nack'))).toEqual({ label: 'Not delivered (NACK)', tone: 'bad' });
+    expect(messageState(held('failed'))).toEqual({ label: 'Not delivered', tone: 'bad' });
+  });
+
   it('shows the size of a message that is not text when it has one', () => {
     expect(notTextLabel({ octets: 92 })).toBe('Not text: 92 octets of data');
     expect(notTextLabel({ octets: 0 })).toBe('Not text: 0 octets of data');

@@ -804,6 +804,19 @@ export const TABS: TabDef[] = [
           },
         ],
       },
+      {
+        title: 'Store and forward',
+        rows: [
+          {
+            path: 'dmr.messages.hold-days', label: 'Hold messages for (days)', kind: 'number',
+            help: 'How long DMRHub keeps a text for a radio that is off the air, 1 to 365.',
+          },
+          {
+            path: 'dmr.messages.hold-max', label: 'Most messages held for one user', kind: 'number',
+            help: 'DMRHub holds no more texts for a user who has this many waiting, 1 to 1000.',
+          },
+        ],
+      },
     ],
   },
   {

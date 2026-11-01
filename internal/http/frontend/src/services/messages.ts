@@ -43,6 +43,17 @@ export type Message = {
   response: MessageResponse;
   checksum_ok: boolean;
   octets: number;
+  held?: MessageHeld;
+};
+
+export type HeldState = 'held' | 'sending' | 'delivered' | 'expired' | 'failed';
+
+/** What store and forward did with a message that DMRHub could not deliver at first. */
+export type MessageHeld = {
+  state: HeldState | string;
+  response: MessageResponse | string;
+  done_at: string | null;
+  format_known: boolean;
 };
 
 export type MessagePage<T extends Message = Message> = {
@@ -80,7 +91,24 @@ export function formatLabel(format: string): string {
   return FORMAT_LABELS[format as MessageFormat] ?? format;
 }
 
-export function messageState(m: Pick<Message, 'confirmed' | 'response'>): { label: string; tone: BadgeTone } {
+export function heldState(h: MessageHeld): { label: string; tone: BadgeTone } {
+  switch (h.state) {
+  case 'held':
+  case 'sending':
+    return h.format_known
+      ? { label: 'Held for the radio', tone: 'warn' }
+      : { label: 'Held: radio format not known yet', tone: 'warn' };
+  case 'delivered':
+    return { label: h.response === 'ack' ? 'Delivered later (ACK)' : 'Delivered later', tone: 'ok' };
+  default:
+    return { label: h.response === 'nack' ? 'Not delivered (NACK)' : 'Not delivered', tone: 'bad' };
+  }
+}
+
+export function messageState(m: Pick<Message, 'confirmed' | 'response' | 'held'>): { label: string; tone: BadgeTone } {
+  if (m.held) {
+    return heldState(m.held);
+  }
   if (!m.confirmed) {
     return { label: 'Unconfirmed', tone: 'none' };
   }

@@ -204,6 +204,8 @@ const labels: Record<string, string> = {
   'dmr.repeater-id-url': 'Repeater ID URL',
   'dmr.public-address': 'Public server address',
   'dmr.retention.messages': 'Keep messages',
+  'dmr.messages.hold-days': 'Hold messages for',
+  'dmr.messages.hold-max': 'Most messages held for one user',
   'dmr.retention.transmissions': 'Keep last heard',
   'dmr.retention.bursts': 'Keep raw bursts',
   'dmr.positions.min-interval': 'Shortest report interval',

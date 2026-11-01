@@ -241,6 +241,15 @@ describe('setup menu IP lists', () => {
 describe('setup menu routing', () => {
   const reader = (v: Record<string, unknown>) => (p: string) => v[p];
 
+  it('has the store and forward limits on the Messages tab', () => {
+    expect(tab('messages').cards.map((c) => c.title)).toEqual(['Messages', 'Store and forward']);
+    const rows = tab('messages').cards[1]?.rows ?? [];
+    expect(rows.map((r) => [(r as FieldDef).path, (r as FieldDef).label, (r as FieldDef).kind])).toEqual([
+      ['dmr.messages.hold-days', 'Hold messages for (days)', 'number'],
+      ['dmr.messages.hold-max', 'Most messages held for one user', 'number'],
+    ]);
+  });
+
   it('has the routing settings and no explainer text', () => {
     expect(tabPaths(tab('routing'))).toEqual([
       'dmr.routing.disable-dynamic-links', 'dmr.routing.dynamic-timeout', 'dmr.routing.transmit', 'dmr.routing.max-transmission',

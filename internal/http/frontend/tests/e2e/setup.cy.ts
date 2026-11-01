@@ -66,3 +66,32 @@ describe('Admin Setup: OpenBridge', () => {
     cy.get('#setup-dmr-ipsc-enabled').should('have.attr', 'data-state', 'checked');
   });
 });
+
+describe('Admin Setup: Messages', () => {
+  beforeEach(() => {
+    cy.stubCommonEndpoints();
+    cy.loginAsAdmin();
+    cy.mockAPI('GET', '/network/features', { openbridge: true, ipsc: true });
+    cy.mockAPI('GET', '/config', {
+      dmr: {
+        retention: { messages: 0, transmissions: 0, bursts: 0 },
+        messages: { 'hold-days': 7, 'hold-max': 50 },
+      },
+      http: {}, database: {}, smtp: {}, redis: {}, metrics: {}, pprof: {},
+      secrets: { secretSet: true, passwordSaltSet: true, smtpPasswordSet: false },
+    }).as('config');
+    cy.mockAPI('POST', '/config/validate', { valid: true, errors: {} }).as('validate');
+    cy.mockAPI('PUT', '/config', { message: 'Configuration updated successfully' }).as('save');
+  });
+
+  it('shows the store and forward limits and saves them', () => {
+    cy.visit('/admin/setup#messages');
+    cy.wait('@config');
+    cy.contains('Store and forward').should('be.visible');
+    cy.contains('label', 'Hold messages for (days)').should('be.visible');
+    cy.get('#setup-dmr-messages-hold-days').should('have.value', '7').type('{selectall}14');
+    cy.contains('button', 'Save Messages').click();
+    cy.wait('@validate');
+    cy.wait('@save').its('request.body.dmr.messages').should('deep.equal', { 'hold-days': 14, 'hold-max': 50 });
+  });
+});

@@ -100,6 +100,24 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-test="password-card"]').text()).toContain('Change password');
   });
 
+  it('shows the store and forward card with the setting of the user', async () => {
+    serve(false);
+    const get = mockAPI.get.getMockImplementation() as (url: string) => Promise<unknown>;
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url === '/users/me/settings') {
+        return Promise.resolve({ data: { sms_storage: false, store_forward: true, hold_days: 3 } });
+      }
+      if (url === '/users/me/held-texts') {
+        return Promise.resolve({ data: { held: [] } });
+      }
+      return get(url);
+    });
+    const wrapper = await mountPage();
+    const card = wrapper.find('[data-test="store-forward-card"]');
+    expect(card.find('[data-test="store-forward-status"]').text()).toBe('On.');
+    expect(card.find('[data-test="store-forward-on"]').text()).toBe('Store and forward is on. Messages wait up to 3 days.');
+  });
+
   it('shows the apps that can use the account', async () => {
     serve(false);
     const wrapper = await mountPage();

@@ -157,8 +157,10 @@ func (f *DatabaseFix) Check(next *config.Config) []config.ValidationError {
 }
 
 // FixTimeout bounds a Fix: the connection to the database, its migration
-// and the hand-off of the database to the start of DMRHub.
-const FixTimeout = time.Minute
+// and the hand-off of the database to the start of DMRHub. It stays below
+// the 10 s read and write timeouts of the setup wizard server, so that the
+// answer of a Fix reaches the browser.
+const FixTimeout = 8 * time.Second
 
 // Fix connects to the database of next. When that works, it keeps next in
 // the DatabaseState, hands the database to the start of DMRHub and returns

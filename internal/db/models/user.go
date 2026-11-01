@@ -55,6 +55,10 @@ type User struct {
 	// radios to every other user. Only SetSharePositions
 	// writes it.
 	SharePositions bool `json:"-" gorm:"<-:create;not null;default:false"`
+	// StoreForward reports that the hub keeps the texts to the user's
+	// radios that it cannot deliver, and sends them when the radio is
+	// heard again. Only SetStoreForward writes it.
+	StoreForward bool `json:"-" gorm:"<-:create;not null;default:false"`
 	// MustChangePassword reports that an admin set the password of the
 	// user, who must choose their own before they use the rest of
 	// DMRHub. Only SetPassword writes it.

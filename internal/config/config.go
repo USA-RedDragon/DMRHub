@@ -128,6 +128,7 @@ type DMR struct {
 	RepeaterIDURL            string        `json:"repeater-id-url,omitempty" name:"repeater-id-url" description:"URL to fetch repeater information for validation and display purposes. Expected JSON format is the same as RadioID.net." default:"https://www.radioid.net/static/rptrs.json"`
 	PublicAddress            string        `json:"public-address" yaml:"public-address" name:"public-address" description:"Host name or IP address that hotspots and repeaters connect to, as the enroll page shows it, such as dmr.example.org. Empty uses the host name of the canonical host of the HTTP server"`
 	Retention                Retention     `json:"retention" name:"retention" description:"How long DMRHub keeps its records"`
+	Messages                 Messages      `json:"messages" name:"messages" description:"Text messages between radios"`
 	Positions                Positions     `json:"positions" name:"positions" description:"Position tracking of the radios whose owners turn it on"`
 	Plugins                  Plugins       `json:"plugins" name:"plugins" description:"Plugins, which answer the calls to the IDs an admin gives them: inside DMRHub, or as their own programs that connect to its listener"`
 	Transcoding              Transcoding   `json:"transcoding" name:"transcoding" description:"Conversion of calls between Codec2 and AMBE"`
@@ -324,6 +325,36 @@ type Retention struct {
 	Messages      int `json:"messages" name:"messages" description:"Days to keep text and data messages, with their raw bytes. 0 keeps them forever" default:"0"`
 	Transmissions int `json:"transmissions" name:"transmissions" description:"Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever" default:"0"`
 	Bursts        int `json:"bursts" name:"bursts" description:"Days to keep the raw DMR bursts of each transmission. 0 keeps them forever" default:"0"`
+}
+
+// Messages holds the limits of store and forward, which keeps the texts
+// for a radio that is off the air until it is heard again.
+type Messages struct {
+	HoldDays int `json:"hold-days" yaml:"hold-days" name:"hold-days" description:"Days that store and forward keeps a text for a radio that is off the air. 0 is 7" default:"7"`
+	HoldMax  int `json:"hold-max" yaml:"hold-max" name:"hold-max" description:"Most texts that store and forward keeps for one user. 0 is 50" default:"50"`
+}
+
+const (
+	defaultHoldDays = 7
+	defaultHoldMax  = 50
+)
+
+// HoldFor returns how long store and forward keeps a text.
+func (m Messages) HoldFor() time.Duration {
+	days := m.HoldDays
+	if days <= 0 {
+		days = defaultHoldDays
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// MostHeld returns the most texts that store and forward keeps for one
+// user.
+func (m Messages) MostHeld() int {
+	if m.HoldMax <= 0 {
+		return defaultHoldMax
+	}
+	return m.HoldMax
 }
 
 // MMDVM holds the configuration for the MMDVM server.

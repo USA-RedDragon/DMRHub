@@ -169,8 +169,17 @@ func purgeMessages(db *gorm.DB, cut time.Time) (int, error) {
 		if len(ids) == 0 {
 			return total, nil
 		}
-		if err := db.Where("id IN ?", ids).Delete(&models.Message{}).Error; err != nil {
-			return total, fmt.Errorf("retention: cannot delete old messages: %w", err)
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("message_id IN ?", ids).Delete(&models.HeldMessage{}).Error; err != nil {
+				return fmt.Errorf("cannot delete the held texts of old messages: %w", err)
+			}
+			if err := tx.Where("id IN ?", ids).Delete(&models.Message{}).Error; err != nil {
+				return fmt.Errorf("cannot delete old messages: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return total, fmt.Errorf("retention: %w", err)
 		}
 		total += len(ids)
 		if len(ids) < batchSize {

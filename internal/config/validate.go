@@ -52,6 +52,8 @@ const (
 	fieldRetentionMessages = "dmr.retention.messages"
 	fieldRetentionTransm   = "dmr.retention.transmissions"
 	fieldRetentionBursts   = "dmr.retention.bursts"
+	fieldMessagesHoldDays  = "dmr.messages.hold-days"
+	fieldMessagesHoldMax   = "dmr.messages.hold-max"
 
 	fieldPrivateVoiceReach   = "dmr.private-calls.voice.reach"
 	fieldPrivateVoiceUnknown = "dmr.private-calls.voice.unknown"
@@ -190,6 +192,10 @@ var (
 	ErrInvalidDMRRadioIDURL = errors.New("invalid DMR radio ID URL provided")
 	// ErrInvalidRetention indicates that a retention period is not 0 or a number of days up to MaxRetentionDays.
 	ErrInvalidRetention = errors.New("retention must be 0 (keep forever) or a number of days up to 36500")
+	// ErrInvalidHoldDays indicates that the days store and forward keeps a text are not 0 (the default) or 1 to MaxHoldDays.
+	ErrInvalidHoldDays = errors.New("store and forward must keep a text for 1 to 365 days, or 0 for the default of 7")
+	// ErrInvalidHoldMax indicates that the texts store and forward keeps for a user are not 0 (the default) or 1 to MaxHeld.
+	ErrInvalidHoldMax = errors.New("store and forward must keep 1 to 1000 texts for a user, or 0 for the default of 50")
 	// ErrInvalidDMRPublicAddress indicates that the public address of the DMR servers is not a host name or IP address.
 	ErrInvalidDMRPublicAddress = errors.New("enter a host name or IP address with no scheme or port, such as dmr.example.org")
 	// ErrInvalidDMRRepeaterIDURL indicates that the provided DMR repeater ID URL is not valid.
@@ -697,6 +703,28 @@ func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	return
 }
 
+// MaxHoldDays is the longest time, in days, that store and forward keeps a
+// text.
+const MaxHoldDays = 365
+
+// MaxHeld is the most texts that store and forward can keep for one user.
+const MaxHeld = 1000
+
+// Validate validates the Messages configuration.
+func (m Messages) Validate() error {
+	return firstValidationError(m.ValidateWithFields())
+}
+
+func (m Messages) ValidateWithFields() (errs []ValidationError) {
+	if m.HoldDays < 0 || m.HoldDays > MaxHoldDays {
+		errs = append(errs, ValidationError{Field: fieldMessagesHoldDays, Err: ErrInvalidHoldDays})
+	}
+	if m.HoldMax < 0 || m.HoldMax > MaxHeld {
+		errs = append(errs, ValidationError{Field: fieldMessagesHoldMax, Err: ErrInvalidHoldMax})
+	}
+	return errs
+}
+
 // MaxRetentionDays is the longest retention period, in days.
 const MaxRetentionDays = 36500
 
@@ -745,6 +773,7 @@ func (d DMR) ValidateWithFields() (errs []ValidationError) {
 		errs = append(errs, retentionErrs...)
 	}
 
+	errs = append(errs, d.Messages.ValidateWithFields()...)
 	errs = append(errs, d.Positions.ValidateWithFields()...)
 	errs = append(errs, d.Plugins.ValidateWithFields()...)
 	errs = append(errs, d.Transcoding.ValidateWithFields()...)

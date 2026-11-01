@@ -293,3 +293,30 @@ func TestRetentionPurgesTheConnectionLogAfterADay(t *testing.T) {
 		})
 	}
 }
+
+// TestRetentionPurgesTheHeldTextsWithTheirMessages purges an old message
+// that store and forward held, and keeps a new one with its held text.
+func TestRetentionPurgesTheHeldTextsWithTheirMessages(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, database, kvStore := setup(t, be)
+			now := time.Now()
+			require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "held"}).Error)
+			for _, age := range []int{40, 1} {
+				at := now.Add(-time.Duration(age) * daySpan)
+				m := models.Message{ReceivedAt: at, SourceID: 3140598, DestinationID: 3191868, Format: models.MessageFormatAnyTone}
+				require.NoError(t, database.Create(&m).Error)
+				require.NoError(t, database.Create(&models.HeldMessage{MessageID: m.ID, RadioID: 3191868, UserID: 3191868, State: models.HeldStateExpired, HeldAt: at}).Error)
+			}
+			cfg.DMR.Retention = config.Retention{Messages: 30}
+
+			_, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1), count(t, database, &models.Message{}))
+			assert.Equal(t, int64(1), count(t, database, &models.HeldMessage{}))
+			assert.Equal(t, int64(0), count(t, database, &models.HeldMessage{}, "held_at < ?", now.Add(-30*daySpan)))
+		})
+	}
+}

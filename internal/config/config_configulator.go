@@ -140,6 +140,11 @@ type retentionShadow struct {
 	Bursts        *int `json:"bursts"        toml:"bursts"        yaml:"bursts"`
 }
 
+type messagesShadow struct {
+	HoldDays *int `json:"hold-days" toml:"hold-days" yaml:"hold-days"`
+	HoldMax  *int `json:"hold-max"  toml:"hold-max"  yaml:"hold-max"`
+}
+
 type aPRSISShadow struct {
 	Callsign *string `json:"callsign" toml:"callsign" yaml:"callsign"`
 	Server   *string `json:"server"   toml:"server"   yaml:"server"`
@@ -221,6 +226,7 @@ type dMRShadow struct {
 	RepeaterIDURL            *string              `json:"repeater-id-url"             toml:"repeater-id-url"             yaml:"repeater-id-url"`
 	PublicAddress            *string              `json:"public-address"              toml:"public-address"              yaml:"public-address"`
 	Retention                *retentionShadow     `json:"retention"                   toml:"retention"                   yaml:"retention"`
+	Messages                 *messagesShadow      `json:"messages"                    toml:"messages"                    yaml:"messages"`
 	Positions                *positionsShadow     `json:"positions"                   toml:"positions"                   yaml:"positions"`
 	Plugins                  *pluginsShadow       `json:"plugins"                     toml:"plugins"                     yaml:"plugins"`
 	Transcoding              *transcodingShadow   `json:"transcoding"                 toml:"transcoding"                 yaml:"transcoding"`
@@ -401,6 +407,10 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.retention.transmissions", configulator.LayerDefault, "default tag")
 	cfg.DMR.Retention.Bursts = 0
 	set("dmr.retention.bursts", configulator.LayerDefault, "default tag")
+	cfg.DMR.Messages.HoldDays = 7
+	set("dmr.messages.hold-days", configulator.LayerDefault, "default tag")
+	cfg.DMR.Messages.HoldMax = 50
+	set("dmr.messages.hold-max", configulator.LayerDefault, "default tag")
 	cfg.DMR.Positions.MinInterval = 5
 	set("dmr.positions.min-interval", configulator.LayerDefault, "default tag")
 	cfg.DMR.Positions.MaxRetention = 30
@@ -862,6 +872,16 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.Retention.Bursts != nil {
 				cfg.DMR.Retention.Bursts = *s.DMR.Retention.Bursts
 				set("dmr.retention.bursts", configulator.LayerFile, file)
+			}
+		}
+		if s.DMR.Messages != nil {
+			if s.DMR.Messages.HoldDays != nil {
+				cfg.DMR.Messages.HoldDays = *s.DMR.Messages.HoldDays
+				set("dmr.messages.hold-days", configulator.LayerFile, file)
+			}
+			if s.DMR.Messages.HoldMax != nil {
+				cfg.DMR.Messages.HoldMax = *s.DMR.Messages.HoldMax
+				set("dmr.messages.hold-max", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.Positions != nil {
@@ -1981,6 +2001,32 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Retention.Bursts = int(p)
 		set("dmr.retention.bursts", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "messages", "hold-days"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.messages.hold-days",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Messages.HoldDays = int(p)
+		set("dmr.messages.hold-days", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "messages", "hold-max"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.messages.hold-max",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Messages.HoldMax = int(p)
+		set("dmr.messages.hold-max", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "positions", "min-interval"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2535,6 +2581,8 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "retention" + o.Separator + "messages",
 		"dmr" + o.Separator + "retention" + o.Separator + "transmissions",
 		"dmr" + o.Separator + "retention" + o.Separator + "bursts",
+		"dmr" + o.Separator + "messages" + o.Separator + "hold-days",
+		"dmr" + o.Separator + "messages" + o.Separator + "hold-max",
 		"dmr" + o.Separator + "positions" + o.Separator + "min-interval",
 		"dmr" + o.Separator + "positions" + o.Separator + "max-retention",
 		"dmr" + o.Separator + "positions" + o.Separator + "aprs-is" + o.Separator + "callsign",
@@ -2692,67 +2740,69 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Var(impl.NewInt(0), names[77], "Days to keep text and data messages, with their raw bytes. 0 keeps them forever")
 	fs.Var(impl.NewInt(0), names[78], "Days to keep the last heard entries of voice, data and control traffic. 0 keeps them forever")
 	fs.Var(impl.NewInt(0), names[79], "Days to keep the raw DMR bursts of each transmission. 0 keeps them forever")
-	fs.Var(impl.NewInt(5), names[80], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
-	fs.Var(impl.NewInt(30), names[81], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
-	fs.String(names[82], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
-	fs.String(names[83], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
-	fs.Bool(names[84], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
-	fs.Bool(names[85], false, "Accept plugins that run as their own programs")
-	fs.String(names[86], "[::]", "Address the plugin listener binds to")
-	fs.Var(impl.NewInt(3006), names[87], "TCP port that plugins connect to")
-	fs.String(names[88], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
-	fs.String(names[89], "", "TLS key file of the certificate file")
-	fs.String(names[90], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
-	fs.String(names[91], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
-	fs.Duration(names[92], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
-	fs.String(names[93], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
-	fs.String(names[94], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
-	fs.Duration(names[95], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
-	fs.String(names[96], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[97], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[98], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[99], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[100], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[101], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[102], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[103], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[104], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.String(names[105], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
-	fs.StringSlice(names[106], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
-	fs.StringSlice(names[107], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
-	fs.Bool(names[108], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
-	fs.Duration(names[109], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
-	fs.Bool(names[110], false, "Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call")
-	fs.Bool(names[111], false, "Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept")
-	fs.Duration(names[112], time.Duration(int64(86400000000000)), "Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h")
-	fs.String(names[113], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
-	fs.Duration(names[114], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
-	fs.String(names[115], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
-	fs.Var(impl.NewInt(100), names[116], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
-	fs.Var(impl.NewInt(25), names[117], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[118], false, "Enable SMTP support for sending emails")
-	fs.String(names[119], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[120], "SMTP server port")
-	fs.String(names[121], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[122], "", "SMTP server username")
-	fs.String(names[123], "", "SMTP server password")
-	fs.String(names[124], "", "Email address to use as the sender")
-	fs.String(names[125], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[126], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[127], false, "Enable metrics collection and export")
-	fs.String(names[128], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[129], "Metrics server port")
-	fs.StringSlice(names[130], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[131], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[132], false, "Enable PProf profiling and debugging support")
-	fs.String(names[133], "[::]", "PProf server listen address")
-	fs.StringSlice(names[134], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[135], "PProf server port")
-	fs.String(names[136], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[137], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
-	fs.String(names[138], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
-	fs.String(names[139], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
-	fs.Bool(names[140], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
+	fs.Var(impl.NewInt(7), names[80], "Days that store and forward keeps a text for a radio that is off the air. 0 is 7")
+	fs.Var(impl.NewInt(50), names[81], "Most texts that store and forward keeps for one user. 0 is 50")
+	fs.Var(impl.NewInt(5), names[82], "Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60")
+	fs.Var(impl.NewInt(30), names[83], "Longest time, in days, that an owner can keep the positions of a radio, from 1 to 365")
+	fs.String(names[84], "", "Callsign with SSID that the hub logs in to APRS-IS as. Empty sends nothing to APRS-IS")
+	fs.String(names[85], "rotate.aprs2.net:14580", "APRS-IS server, as host:port")
+	fs.Bool(names[86], true, "Run the parrot, the location server and the uploaded plugins inside DMRHub. Turn it off only when every plugin runs as its own program")
+	fs.Bool(names[87], false, "Accept plugins that run as their own programs")
+	fs.String(names[88], "[::]", "Address the plugin listener binds to")
+	fs.Var(impl.NewInt(3006), names[89], "TCP port that plugins connect to")
+	fs.String(names[90], "", "TLS certificate file of the plugin listener. Empty makes DMRHub use a certificate of its own, which plugins check by its fingerprint")
+	fs.String(names[91], "", "TLS key file of the certificate file")
+	fs.String(names[92], "hybrid", "Radios that private traffic reaches. One of hybrid (any radio heard on a repeater of this network; a radio ID that a user owns counts only where that user owns the repeater or an admin trusts it), members (only the radio IDs that users own, on the repeaters of their owner or trusted ones), or anyone (any radio, wherever it was last heard)")
+	fs.String(names[93], "drop", "What happens to private traffic to a radio that the reach allows but that DMRHub has not heard, or not within the max age. One of drop (drop it and log it) or flood (send it to every repeater)")
+	fs.Duration(names[94], time.Duration(int64(0)), "Longest time since a radio was last heard on a repeater that private traffic still goes there, such as 24h. 0 is no limit")
+	fs.String(names[95], "", "Radios that private SMS and data reach, as for voice. Empty takes the voice reach")
+	fs.String(names[96], "", "What happens to private SMS and data to a radio that DMRHub has not heard, as for voice. Empty takes the voice setting")
+	fs.Duration(names[97], time.Duration(int64(0)), "Longest time since a radio was last heard that private SMS and data still go there. 0 takes the voice max age; a negative value, such as -1s, is no limit")
+	fs.String(names[98], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[99], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[100], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[101], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[102], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[103], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[104], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[105], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[106], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.String(names[107], "off", "Which list applies. One of off (accept every address), block (refuse the addresses of the block list) or allow (refuse every address but those of the allow list)")
+	fs.StringSlice(names[108], nil, "Addresses and CIDR ranges, IPv4 or IPv6, such as 203.0.113.7 or 2001:db8::/32, that the block mode refuses")
+	fs.StringSlice(names[109], nil, "Addresses and CIDR ranges, IPv4 or IPv6, that the allow mode accepts")
+	fs.Bool(names[110], false, "Do not link a talkgroup as the dynamic talkgroup of a timeslot when someone transmits on it or a hotspot dials it. Calls still reach the repeaters that carry the talkgroup")
+	fs.Duration(names[111], time.Duration(int64(900000000000)), "Time with no transmission from a repeater on its dynamic talkgroup after which DMRHub unlinks it from that timeslot, such as 15m. 0 never unlinks it")
+	fs.Bool(names[112], false, "Make a talkgroup when a repeater or hotspot of this network sends a group voice call to an ID that is not a talkgroup, rather than drop the call")
+	fs.Bool(names[113], false, "Delete a talkgroup that DMRHub made by itself when no call is made on it for the ephemeral TTL. A talkgroup that an admin edits is kept")
+	fs.Duration(names[114], time.Duration(int64(86400000000000)), "Time with no call on a talkgroup that DMRHub made by itself after which it deletes the talkgroup, when ephemeral talkgroups are on, such as 24h")
+	fs.String(names[115], "any", "Radios that may transmit through the repeaters and hotspots of this network. One of any (any radio ID), radioid (the radio IDs that the RadioID list has) or members (the DMR IDs of accounts and the radio IDs that their users added)")
+	fs.Duration(names[116], time.Duration(int64(0)), "Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit")
+	fs.String(names[117], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
+	fs.Var(impl.NewInt(100), names[118], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
+	fs.Var(impl.NewInt(25), names[119], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[120], false, "Enable SMTP support for sending emails")
+	fs.String(names[121], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[122], "SMTP server port")
+	fs.String(names[123], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[124], "", "SMTP server username")
+	fs.String(names[125], "", "SMTP server password")
+	fs.String(names[126], "", "Email address to use as the sender")
+	fs.String(names[127], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[128], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[129], false, "Enable metrics collection and export")
+	fs.String(names[130], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[131], "Metrics server port")
+	fs.StringSlice(names[132], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[133], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[134], false, "Enable PProf profiling and debugging support")
+	fs.String(names[135], "[::]", "PProf server listen address")
+	fs.StringSlice(names[136], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[137], "PProf server port")
+	fs.String(names[138], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[139], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[140], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
+	fs.String(names[141], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
+	fs.Bool(names[142], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
 	return nil
 }
 
@@ -3716,6 +3766,30 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Retention.Bursts = v
 		set("dmr.retention.bursts", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "messages" + o.Separator + "hold-days"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.messages.hold-days",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Messages.HoldDays = v
+		set("dmr.messages.hold-days", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "messages" + o.Separator + "hold-max"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.messages.hold-max",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Messages.HoldMax = v
+		set("dmr.messages.hold-max", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "positions" + o.Separator + "min-interval"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -5398,6 +5472,25 @@ func (s *dMRShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.Retention = &sub
 			}
+		case "messages":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError(path+".messages", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub messagesShadow
+				if err := sub.decodeJSON(dec, path+".messages"); err != nil {
+					return err
+				}
+				s.Messages = &sub
+			}
 		case "positions":
 			if dec.PeekKind() == jsontext.KindNull {
 				if _, err := dec.ReadToken(); err != nil {
@@ -6697,6 +6790,69 @@ func (s *retentionShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				s.Bursts = &num
 			default:
 				return configJSONError(path+".bursts", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *messagesShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "hold-days":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".hold-days", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".hold-days", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.HoldDays = &num
+			default:
+				return configJSONError(path+".hold-days", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "hold-max":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".hold-max", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".hold-max", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.HoldMax = &num
+			default:
+				return configJSONError(path+".hold-max", v, fmt.Errorf("expected a number, got %v", v.Kind()))
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -8022,6 +8178,8 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.retention.messages = %v\n", c.DMR.Retention.Messages)
 	fmt.Fprintf(&b, "dmr.retention.transmissions = %v\n", c.DMR.Retention.Transmissions)
 	fmt.Fprintf(&b, "dmr.retention.bursts = %v\n", c.DMR.Retention.Bursts)
+	fmt.Fprintf(&b, "dmr.messages.hold-days = %v\n", c.DMR.Messages.HoldDays)
+	fmt.Fprintf(&b, "dmr.messages.hold-max = %v\n", c.DMR.Messages.HoldMax)
 	fmt.Fprintf(&b, "dmr.positions.min-interval = %v\n", c.DMR.Positions.MinInterval)
 	fmt.Fprintf(&b, "dmr.positions.max-retention = %v\n", c.DMR.Positions.MaxRetention)
 	fmt.Fprintf(&b, "dmr.positions.aprs-is.callsign = %v\n", c.DMR.Positions.APRSIS.Callsign)

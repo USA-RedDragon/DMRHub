@@ -72,6 +72,7 @@ func setupPaths() []string {
 		"dmr.repeater-id-url",
 		"dmr.public-address",
 		"dmr.retention",
+		"dmr.messages",
 		"dmr.positions",
 		"dmr.plugins.in-process",
 		"dmr.transcoding",

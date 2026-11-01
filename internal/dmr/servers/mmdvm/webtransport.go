@@ -84,7 +84,7 @@ type webTransport struct {
 	// another replica.
 	draining atomic.Bool
 	// onResume takes the resume request of a session.
-	onResume atomic.Pointer[func(wtAddr, string) wtResume]
+	onResume atomic.Pointer[func(wtAddr, wtResume) wtResume]
 	// onPathMoved takes each session whose QUIC connection the load
 	// balancer moved to another path, and the time of it.
 	onPathMoved atomic.Pointer[func(wtAddr, time.Time)]
@@ -309,7 +309,7 @@ func (t *webTransport) answer(addr wtAddr, str *webtransport.Stream) {
 	reply := wtResume{Reason: "bad request"}
 	if json.Unmarshal(line, &req) == nil && req.Resume != "" {
 		if fn := t.onResume.Load(); fn != nil {
-			reply = (*fn)(addr, req.Resume)
+			reply = (*fn)(addr, req)
 		}
 	}
 	b, err := json.Marshal(reply)

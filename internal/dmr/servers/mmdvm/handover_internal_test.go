@@ -45,6 +45,12 @@ func queueServer() *Server {
 	return s
 }
 
+// sentSince is the first list of sentAround for the repeater 1.
+func (s *Server) sentSince(since time.Time, rule handoverRule) []models.Packet {
+	out, _ := s.sentAround(1, since, rule)
+	return out
+}
+
 // TestHandOverAPacketQueuedAtTheMove queues a packet to a repeater that
 // then moves. The packet leaves after the move, which the load balancer no
 // longer takes to the repeater, so the handover must hold it.
@@ -55,7 +61,7 @@ func TestHandOverAPacketQueuedAtTheMove(t *testing.T) {
 		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 		time.Sleep(time.Millisecond)
 		since := time.Now()
-		got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
+		got := s.sentSince(since, ruleFor(udpEndpoint(net.UDPAddr{})))
 		require.Len(t, got, 1, "the handover misses the packet that waits in the queue")
 		assert.Equal(t, uint(3), got[0].Seq)
 	})
@@ -70,7 +76,7 @@ func TestHandOverNoPacketSentBeforeTheMove(t *testing.T) {
 		s := queueServer()
 		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 		s.writeOut(<-s.outgoingChan)
-		assert.Empty(t, s.sentSince(1, time.Now().Add(2*MoveSlack), ruleFor(udpEndpoint(net.UDPAddr{}))))
+		assert.Empty(t, s.sentSince(time.Now().Add(2*MoveSlack), ruleFor(udpEndpoint(net.UDPAddr{}))))
 	})
 }
 
@@ -85,7 +91,7 @@ func TestHandOverAPacketSentJustBeforeTheClaim(t *testing.T) {
 		s := queueServer()
 		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 		s.writeOut(<-s.outgoingChan)
-		assert.Len(t, s.sentSince(1, time.Now().Add(100*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses the packet sent just before the claim")
+		assert.Len(t, s.sentSince(time.Now().Add(100*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses the packet sent just before the claim")
 	})
 }
 
@@ -103,7 +109,7 @@ func TestHandOverToABrowserHotspotAPacketSentBeforeAStalledClaim(t *testing.T) {
 		s.connected.Store(1, ep)
 		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
 		s.writeOut(<-s.outgoingChan)
-		assert.Len(t, s.sentSince(1, time.Now().Add(300*time.Millisecond), ruleFor(ep)), 1, "the handover misses the packet sent before a stalled claim")
+		assert.Len(t, s.sentSince(time.Now().Add(300*time.Millisecond), ruleFor(ep)), 1, "the handover misses the packet sent before a stalled claim")
 	})
 }
 
@@ -127,7 +133,7 @@ func TestHandOverToAnMMDVMRepeaterOnlyItsLastFrame(t *testing.T) {
 			p.at = now.Add(time.Duration(i-4)*60*time.Millisecond - 5*time.Millisecond)
 		}
 		s.sentMu.Unlock()
-		got := s.sentSince(1, now, ruleFor(ep))
+		got := s.sentSince(now, ruleFor(ep))
 		require.Len(t, got, 1, "the handover holds more than the last frame")
 		assert.Equal(t, uint(4), got[0].Seq)
 	})
@@ -153,7 +159,7 @@ func TestHandOverToAnMMDVMRepeaterOnlyTheLastOfAClump(t *testing.T) {
 			p.at = now.Add(time.Duration(i*3-20) * time.Millisecond)
 		}
 		s.sentMu.Unlock()
-		got := s.sentSince(1, now, ruleFor(ep))
+		got := s.sentSince(now, ruleFor(ep))
 		require.Len(t, got, 2, "the handover holds more than the last frame of each slot")
 		assert.Equal(t, models.Packet{StreamID: 8, Seq: 1, Slot: true}, got[0])
 		assert.Equal(t, models.Packet{StreamID: 7, Seq: 2}, got[1])
@@ -172,7 +178,7 @@ func TestHandOverAPacketSentAfterTheMove(t *testing.T) {
 		since := time.Now()
 		time.Sleep(time.Millisecond)
 		s.writeOut(o)
-		assert.Len(t, s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{}))), 1)
+		assert.Len(t, s.sentSince(since, ruleFor(udpEndpoint(net.UDPAddr{}))), 1)
 	})
 }
 
@@ -212,7 +218,7 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 		}()
 		<-slow.writing
 		time.Sleep(2 * MoveSlack)
-		got := s.sentSince(1, time.Now(), ruleFor(udpEndpoint(net.UDPAddr{})))
+		got := s.sentSince(time.Now(), ruleFor(udpEndpoint(net.UDPAddr{})))
 		close(slow.release)
 		<-wrote
 		assert.Len(t, got, 1, "the handover misses the packet that left after the move")

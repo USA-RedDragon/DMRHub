@@ -129,13 +129,39 @@ These points are particular to WebTransport:
 
 Control messages are JSON objects, one per stream, each on one line that ends with a newline (`\n`). They are never in datagrams.
 
+### Anchors
+
+An anchor tells DMRHub the last `DMRD` burst of a slot that the client took with no burst of its stream missing before it. DMRHub then sends the client every burst that went to it after the anchor, and not only those of a time window.
+
+```json
+{"slot":1,"stream":8201,"seq":2}
+```
+
+| Field    | What it is                                                     |
+| -------- | -------------------------------------------------------------- |
+| `slot`   | `1` or `2`                                                     |
+| `stream` | The stream ID of the burst, octets 16 to 19 of the `DMRD` packet |
+| `seq`    | The sequence number of the burst, octet 4 of the `DMRD` packet |
+
+A list of anchors has at most one anchor for each slot. A slot with no anchor in the list is a slot on which the client took no burst: DMRHub sends it every burst of that slot that it kept.
+
+Keep the anchor of each slot as the Browser Radio does:
+
+- A burst of a new stream on the slot starts the anchor at that burst. Ignore a later burst of the stream before it.
+- A burst whose sequence number is the anchor plus 1 (modulo 256) moves the anchor to it, and then on over each burst that the client took after it, as long as none is missing.
+- Keep the bursts that come after a missing one. When a burst comes that is more than 64 after the anchor, give the missing ones before it up: move the anchor to 64 before that burst, and then on as above. A burst that never comes then holds the anchor back by at most 64 bursts.
+- Ignore a burst of the stream that is not 1 to 128 after the anchor (modulo 256): it is a copy, or older than the anchor.
+- Count only the bursts that the client took: not those of an old session that it holds aside during a move.
+
 ### Resume request
 
 The client opens a bidirectional stream, writes one line, and reads one line back:
 
 ```json
-{"resume":"<token>"}
+{"resume":"<token>","anchor":[{"slot":1,"stream":8201,"seq":2}]}
 ```
+
+`anchor` is the list of the [anchors](#anchors) of the client when it sends the request, `[]` when it took no burst yet. A client that keeps no anchors leaves `anchor` out. A DMRHub before anchors ignores it.
 
 DMRHub answers:
 
@@ -192,13 +218,15 @@ When a replica drains:
 5. When the answer is `{"resumed":true}`, the new session carries the MMDVM session. The client sends its packets on the new session, and closes the old one after a short time. The Browser Radio closes it after 1 second.
 6. When the session does not open, answers `503`, or the answer is not `resumed`, close that session and try again. The Browser Radio tries 100 times, 200 ms apart. When no try works, stay on the old session until it closes, and then log in again.
 
-The new replica sends the hotspot the bursts that the old replica sent to it in the last 500 ms before the move and after it, in order, 2 ms apart. Some of them can come twice: once on the old session and once on the new one. So:
+The new replica sends the hotspot the bursts that the old replica sent to it after the anchors of the resume request, in order, 2 ms apart. Without anchors, it sends those that the old replica sent from 500 ms before the second in which the drain notice went out; a load balancer that stalls longer than that loses bursts. Some bursts can come twice: once on the old session and once on the new one. So:
 
 - Read the datagrams of the new session from the moment it opens. The bursts can come before the answer to the resume request.
 - While the move goes on, keep the `DMRD` packets of the old session aside. Drop them when the new session resumes. Use them when the move fails.
 - Drop a `DMRD` packet that came before. The Browser Radio and the Go test client remember each burst for 2 seconds by its slot, its stream ID and its sequence number.
 
 A load balancer can also move the QUIC connection of a session to another path while the replica stays up. Then DMRHub sends again the bursts of the last 500 ms, 2 ms apart, on the same session. The same check for copies drops them.
+
+DMRHub keeps the last 64 bursts to each hotspot, and all of the drain timeout plus 500 ms while its replica drains (25.5 seconds by default). It cannot send again a burst that it no longer keeps.
 
 ## Limits
 
@@ -209,6 +237,7 @@ A load balancer can also move the QUIC connection of a session to another path w
 | Wait for a control stream              | 5 seconds to open, read or write a control stream                        |
 | Drain notices                          | Sent within 2 seconds                                                    |
 | Resume token                           | Good for 1 minute and for one takeover                                   |
+| Bursts kept to send again              | The last 64, and all of the drain timeout plus 500 ms while the replica drains |
 | Size of a QUIC packet at the start     | 1200 octets                                                              |
 
 ## Rules for client authors
@@ -218,4 +247,5 @@ A load balancer can also move the QUIC connection of a session to another path w
 - Log in with the hotspot password, not with an OAuth token.
 - Read the unidirectional streams, and move to another replica on a drain notice.
 - Drop copies of `DMRD` packets.
+- Keep [anchors](#anchors), and send them in each resume request.
 - When the session closes without a drain notice, connect again with a growing wait. The Browser Radio waits 1 second, then twice as long each time, up to 30 seconds.

@@ -108,14 +108,14 @@ func TestResumeTokenSurvivesABusySession(t *testing.T) {
 	busy := wtLogin(t, s, cfg, 311861)
 
 	token := s.resumeToken(311860, time.Now())
-	r := s.resumeWebTransport(busy, token)
+	r := s.resumeWebTransport(busy, wtResume{Resume: token})
 	assert.False(t, r.Resumed)
 	assert.Equal(t, "busy", r.Reason)
 
-	r = s.resumeWebTransport(wtAddr("new"), token)
+	r = s.resumeWebTransport(wtAddr("new"), wtResume{Resume: token})
 	assert.True(t, r.Resumed, "a refusal that moved nothing must leave the token good, got %q", r.Reason)
 
-	r = s.resumeWebTransport(wtAddr("third"), token)
+	r = s.resumeWebTransport(wtAddr("third"), wtResume{Resume: token})
 	assert.False(t, r.Resumed)
 	assert.Equal(t, "the token was used", r.Reason)
 }

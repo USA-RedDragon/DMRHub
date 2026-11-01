@@ -220,7 +220,7 @@ func (s *Server) resolve(ctx context.Context, remote endpoint, key string, id ui
 		rec.elsewhere = !rec.moved && s.hub != nil && s.hub.OwnedElsewhere(ctx, uint(id))
 	}
 	if rec.moved {
-		s.awaitHandover(ctx, uint(id))
+		s.awaitHandover(ctx, uint(id), nil)
 	}
 	record := func(x uint32) (kvRecord, bool) { return rec, err == nil && x == id }
 	s.mu.Lock()

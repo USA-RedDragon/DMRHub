@@ -55,7 +55,7 @@ func checkHandoverHistory(t *testing.T, ep endpoint) {
 			s.writeOut(<-s.outgoingChan)
 			time.Sleep(30 * time.Millisecond)
 		}
-		got := s.sentSince(1, since, ruleFor(ep))
+		got := s.sentSince(since, ruleFor(ep))
 		require.Equal(t, bursts, len(got), "the handover lost bursts that left after the move")
 	})
 }
@@ -91,7 +91,7 @@ func TestHandOverWhatWaitsForAnEarlierHandover(t *testing.T) {
 		for _, seq := range []uint{2, 3} {
 			require.True(t, s.hold(1, models.Packet{StreamID: 7, Seq: seq}))
 		}
-		got := s.sentSince(1, since, ruleFor(udpEndpoint(net.UDPAddr{})))
+		got := s.sentSince(since, ruleFor(udpEndpoint(net.UDPAddr{})))
 		seqs := make([]uint, 0, len(got))
 		for _, p := range got {
 			seqs = append(seqs, p.Seq)

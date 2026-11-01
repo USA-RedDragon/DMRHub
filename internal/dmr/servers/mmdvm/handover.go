@@ -93,9 +93,48 @@ type sentPacket struct {
 	pkt models.Packet
 }
 
-// handover is what a draining replica sent to a repeater after it moved.
+// handover is what a draining replica sent to a repeater after it moved:
+// Packets are those that the rule of the repeater holds. Earlier are
+// those that went to a browser hotspot before them, which a replica that
+// knows the anchors of the hotspot hands over from the anchors on;
+// replicas before Earlier send none and ignore them.
 type handover struct {
 	Packets [][]byte `json:"packets"`
+	Earlier [][]byte `json:"earlier,omitempty"`
+}
+
+// lost returns the packets of the handover that the repeater lost: with
+// anchors, which a browser hotspot sent, those of Earlier and Packets after
+// the anchors, else Packets.
+func (h handover) lost(anchors []wtAnchor) []models.Packet {
+	pkts := decodePackets(h.Packets)
+	if anchors == nil {
+		return pkts
+	}
+	return afterAnchors(append(decodePackets(h.Earlier), pkts...), anchors)
+}
+
+func decodePackets(raw [][]byte) []models.Packet {
+	out := make([]models.Packet, 0, len(raw))
+	for _, b := range raw {
+		var p models.Packet
+		if _, err := p.UnmarshalMsg(b); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func encodePackets(pkts []models.Packet) [][]byte {
+	out := make([][]byte, 0, len(pkts))
+	for _, p := range pkts {
+		b, err := p.MarshalMsg(nil)
+		if err != nil {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 // movingRepeater is a repeater that moved here, whose packets wait for the
@@ -170,14 +209,16 @@ func (s *Server) forgetPacket(id uint, p *sentPacket) {
 	}
 }
 
-// sentSince returns the packets to the repeater id that left at or after
+// sentAround returns the packets to the repeater id that left at or after
 // since, or that still wait in the queue, and those that the rule holds of
 // the ones that left before since, in order, and then those that this
 // server holds for the repeater until the handover of the replica that
 // served it before comes, and forgets the repeater. A packet that waits
 // leaves after the move, which the load balancer no longer takes to the
-// repeater, and a held one never went to it.
-func (s *Server) sentSince(id uint, since time.Time, rule handoverRule) []models.Packet {
+// repeater, and a held one never went to it. By a rule that holds all
+// that left in its slack, as for a browser hotspot, it also returns those
+// that left before that, in order, as earlier.
+func (s *Server) sentAround(id uint, since time.Time, rule handoverRule) (out, earlier []models.Packet) {
 	from := since.Add(-rule.slack)
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
@@ -188,18 +229,20 @@ func (s *Server) sentSince(id uint, since time.Time, rule handoverRule) []models
 			lastOn[p.pkt.Slot] = i
 		}
 	}
-	var out []models.Packet
 	for i, p := range list {
 		switch {
 		case p.at.IsZero() || !p.at.Before(since):
 			out = append(out, p.pkt)
 		case p.at.Before(from):
+			if !rule.last {
+				earlier = append(earlier, p.pkt)
+			}
 		case !rule.last || lastOn[p.pkt.Slot] == i:
 			out = append(out, p.pkt)
 		}
 	}
 	delete(s.sent, id)
-	return append(out, s.takeHeld(id)...)
+	return append(out, s.takeHeld(id)...), earlier
 }
 
 // takeHeld returns the packets that the server holds for the repeater id
@@ -225,16 +268,7 @@ func (s *Server) handOver(id uint, since time.Time, rule handoverRule) {
 	if s.hub == nil {
 		return
 	}
-	lost := s.sentSince(id, since, rule)
-	h := handover{Packets: make([][]byte, 0, len(lost))}
-	for _, p := range lost {
-		b, err := p.MarshalMsg(nil)
-		if err != nil {
-			continue
-		}
-		h.Packets = append(h.Packets, b)
-	}
-	b, err := json.Marshal(h)
+	b, err := json.Marshal(s.report(id, since, rule))
 	if err != nil {
 		slog.Error("Error encoding an MMDVM handover", "repeaterID", id, "error", err)
 		return
@@ -242,10 +276,19 @@ func (s *Server) handOver(id uint, since time.Time, rule handoverRule) {
 	s.hub.HandOver(models.RepeaterTypeMMDVM, id, b)
 }
 
+// report returns the handover of the repeater id from since by rule, as
+// sentAround finds it, and forgets the repeater.
+func (s *Server) report(id uint, since time.Time, rule handoverRule) handover {
+	lost, earlier := s.sentAround(id, since, rule)
+	return handover{Packets: encodePackets(lost), Earlier: encodePackets(earlier)}
+}
+
 // awaitHandover holds the packets to the repeater id, which moves here,
 // until the handover of the replica that served it comes or handoverWait
-// passes. Call it before the claim of the repeater.
-func (s *Server) awaitHandover(ctx context.Context, id uint) {
+// passes. A browser hotspot that sent its anchors gets what the handover
+// holds after them; anchors is nil for any other. Call it before the claim
+// of the repeater.
+func (s *Server) awaitHandover(ctx context.Context, id uint, anchors []wtAnchor) {
 	if s.hub == nil {
 		return
 	}
@@ -271,12 +314,7 @@ func (s *Server) awaitHandover(ctx context.Context, id uint) {
 		case b, ok := <-sub.Channel():
 			var h handover
 			if ok && json.Unmarshal(b, &h) == nil {
-				for _, raw := range h.Packets {
-					var p models.Packet
-					if _, err := p.UnmarshalMsg(raw); err == nil {
-						lost = append(lost, p)
-					}
-				}
+				lost = h.lost(anchors)
 			}
 		}
 		s.finishHandover(context.WithoutCancel(ctx), id, lost)

@@ -69,8 +69,8 @@ const (
 // WebTransportPeer is a browser hotspot, as dmr-web is one: it logs in
 // with the dmrgo session Peer over WebTransport datagrams, and when its
 // replica drains, it opens a session to another replica, resumes its
-// login there with the token of the drain notice, and moves to it without
-// a gap.
+// login there with the token of the drain notice and its anchors, and
+// moves to it without a gap.
 type WebTransportPeer struct {
 	ID uint32
 
@@ -87,6 +87,7 @@ type WebTransportPeer struct {
 	ups     int
 	moves   int
 	seen    map[dmrKey]time.Time
+	anchors anchors
 	rxAt    time.Time
 	heard   []Heard
 	notices []time.Time
@@ -283,7 +284,12 @@ func (p *WebTransportPeer) resume(ctx context.Context, sess *webtransport.Sessio
 		return false
 	}
 	defer func() { _ = str.Close() }()
-	b, err := json.Marshal(map[string]string{"resume": token})
+	p.mu.Lock()
+	b, err := json.Marshal(struct {
+		Resume string   `json:"resume"`
+		Anchor []Anchor `json:"anchor"`
+	}{token, p.anchors.list()})
+	p.mu.Unlock()
 	if err != nil {
 		return false
 	}
@@ -367,6 +373,7 @@ func (p *WebTransportPeer) run(out []dmrdsession.Output) {
 				continue
 			}
 			pkt := models.PacketFromData(&d, d.Size > 53)
+			p.anchors.take(pkt)
 			if len(p.heard) < maxHeard {
 				p.heard = append(p.heard, Heard{At: p.rxAt, Packet: pkt})
 			}

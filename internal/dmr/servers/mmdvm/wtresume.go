@@ -61,11 +61,12 @@ type wtDrain struct {
 }
 
 // wtResume is the message of a browser that resumes its session, and the
-// answer of the replica.
+// answer of the replica. Anchor is nil when the browser sent none.
 type wtResume struct {
-	Resume  string `json:"resume,omitempty"`
-	Resumed bool   `json:"resumed"`
-	Reason  string `json:"reason,omitempty"`
+	Resume  string     `json:"resume,omitempty"`
+	Anchor  []wtAnchor `json:"anchor,omitempty"`
+	Resumed bool       `json:"resumed"`
+	Reason  string     `json:"reason,omitempty"`
 }
 
 func resumeKey(secret []byte) []byte {
@@ -174,11 +175,13 @@ func (s *Server) idleAt(ep endpoint) bool {
 }
 
 // resumeWebTransport takes over, at the WebTransport session addr, the
-// MMDVM session that the token names, as a browser hotspot that moves from
-// a draining replica asks. A load balancer may have lost what the draining
-// replica sent the hotspot since the notice, so the claim asks for all of
-// that, and the hotspot drops the copies of what it got.
-func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
+// MMDVM session that the token of req names, as a browser hotspot that
+// moves from a draining replica asks. A load balancer may have lost what
+// the draining replica sent the hotspot, so the hotspot gets all that went
+// to it after the anchors of req, or without anchors all since the notice,
+// and drops the copies of what it got.
+func (s *Server) resumeWebTransport(addr wtAddr, req wtResume) wtResume {
+	token := req.Resume
 	now := s.clock.Now()
 	id, ok := s.checkResumeToken(token, now)
 	if !ok {
@@ -209,7 +212,7 @@ func (s *Server) resumeWebTransport(addr wtAddr, token string) wtResume {
 	if !s.spendToken(ctx, token) {
 		return wtResume{Reason: "the token was used"}
 	}
-	s.awaitHandover(ctx, uint(id))
+	s.awaitHandover(ctx, uint(id), req.Anchor)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	refuse := func(reason string) wtResume {

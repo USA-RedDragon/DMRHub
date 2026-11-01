@@ -28,20 +28,26 @@ basemap:
   key: basemap/omt-20260828.pmtiles
   part_bytes: 500000000
 shots:
+  - name: setup-wizard-database.png
+    phase: setup
+    keep: true
+    route: /setup
+    wait: Test the connection
+    steps: ["fill #setup-database-database = DMRHub-demo.db", "click Test the connection", "wait Connected.", blur]
+    clip: card Database
+    after: ["click Save and continue", "wait Fix the marked settings"]
   - name: setup-wizard-general.png
     phase: setup
-    route: /setup
-    wait: General Settings
-    steps: ["fill #network-name = DMRHub Demo", blur]
-  - name: setup-wizard-dmr.png
-    phase: setup
-    steps: ["scroll DMR Settings"]
+    keep: true
+    steps: ["clicktest menu-general", "wait Network name", "fill #setup-network-name = DMRHub Demo", blur]
   - name: setup-wizard-http.png
     phase: setup
-    steps: ["scroll HTTP Settings", "fill #http-canonical-host = https://dmrhub.example.org", blur]
+    keep: true
+    steps: ["clicktest menu-http", "wait robots.txt"]
     after: ["run configure"]
   - name: setup-admin-user.png
     phase: setup
+    keep: true
     route: /setup/user
     wait: Create User
     steps: ["fill #dmr_id = 3000001", "fill #username = n0call", "fill #callsign = N0CALL", "fill #password = demo-admin-password", "fill #confirmPassword = demo-admin-password", blur]

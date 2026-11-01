@@ -27,15 +27,19 @@ DMRHub starts the setup wizard instead of the network when its configuration is 
    The wizard listens on `http.bind` and `http.port`, the same address as the web interface. DMRHub also tries to open a web browser on the server. On a server without a desktop, or in a container, this fails with a `Failed to open browser` error in the log. That error is normal.
 
 2. Open `http://<server>:<http.port>/setup` in a browser, such as `http://<server>:3005/setup`. You do not need anything from the log.
-3. Fill in the settings and click **Save**. DMRHub checks them and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database. When the deployment sets every needed setting, the wizard opens on the next page.
+3. Fill in the settings on the tabs of the wizard and click **Save and continue**. The wizard has the same tabs as **Admin**, **Setup**, with **Database** first. A red dot marks a tab with a value that is missing or not valid. DMRHub checks every tab and saves them in the database (see [Setup settings](configuration.md#setup-settings)). When no deployment sets `secret` and `password-salt`, DMRHub makes them at the first start and keeps them in the database. When the deployment sets every needed setting, the wizard opens on the next page.
 4. Make the first admin user on the **Create the first admin** page. DMRHub checks the DMR ID and callsign against RadioID.net when those checks are on (see [RadioID checks](users.md#radioid-checks)). This user is the super admin (see [Admins and the super admin](overview.md#admins-and-the-super-admin)).
 5. DMRHub stops the wizard and starts the network in the same process, with the new settings. Log in at `<siteurl>/login`.
 
 The wizard is the only way to make the first admin user. It starts while no admin exists, also when the configuration is complete. The database lets only one visitor make the first admin, also when several replicas run the wizard at once. A visitor who comes second gets the message that the admin exists, and can log in when that admin gives them an account.
 
+When DMRHub cannot reach its database, the wizard shows `DMRHub cannot reach its database.` with the error, and only the **Database** tab can change. While **SQLite** is the driver, the tab shows no host, port, username or password. Click **Test the connection** to try the settings on the tab: it shows `Connected.` or why DMRHub cannot reach the database, and it saves nothing and makes no SQLite file. Click **Save and continue** to use the settings. DMRHub reaches the database, migrates it, and keeps the setting in `dmrhub-database.json` in its working directory, readable only by the user that runs DMRHub. The other tabs then open. After the database step, the **Database** tab shows `Connected.` and cannot change, as DMRHub reads it only at start.
+
+![The Database tab of the setup wizard after Test the connection reached a SQLite file](../Screenshots/setup-wizard-database.png)
+
 The wizard changes settings only on a new DMRHub. When an admin exists, it shows `DMRHub has an admin, so the setup wizard cannot change the settings.` When DMRHub cannot reach a database setting that the wizard saved before in `dmrhub-database.json`, or a SQLite file that has a user, it shows `A database setting was saved before, so the setup wizard cannot change it.` In both cases, fix the setting in the config file, the environment or the flags, then restart DMRHub. A database setting there wins over `dmrhub-database.json`.
 
-![The setup wizard with the General Settings card at the top](../Screenshots/setup-wizard-general.png)
+![The General tab of the setup wizard](../Screenshots/setup-wizard-general.png)
 
 ![The Create the first admin page, filled in with the DMR ID 3000001 and the callsign N0CALL](../Screenshots/setup-admin-user.png)
 

@@ -22,10 +22,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -440,7 +442,13 @@ func (r *runner) clickCSS(ctx context.Context, css string) error {
 	return r.b.eval(ctx, "document.querySelector("+string(q)+").click()", nil)
 }
 
+// runSetup takes the shots of the setup wizard. A directory in the place of
+// the default SQLite file keeps DMRHub from its database, so the wizard
+// starts with the database step.
 func runSetup(ctx context.Context, o options, l *shotList, c *clock) error {
+	if err := os.Mkdir(filepath.Join(o.work, "DMRHub.db"), 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("could not block the default database: %w", err)
+	}
 	start := l.Start.Add(-time.Hour)
 	if err := c.set(start); err != nil {
 		return err

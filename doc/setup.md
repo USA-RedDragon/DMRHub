@@ -145,19 +145,19 @@ The unit runs DMRHub as the `dmrhub` user, in `/etc/dmrhub`. DMRHub keeps its da
 The setup wizard has no password. Anyone who opens it can change the settings, and the first visitor to make the admin account becomes the super admin. Do this step before you open port 3005 to the internet, or open the port only to you until you finish. On a DMRHub that has an admin, or that saved a database setting before, the wizard changes no setting and tells you to fix the config and restart DMRHub (see [First start and the setup wizard](admin/install.md#first-start-and-the-setup-wizard)).
 
 1. Open `http://<server>:3005/setup` in a web browser. Use the address of the server for `<server>`, or `localhost` on the server itself. You do not need anything from the log.
-2. In **General Settings**, enter a **Network Name**. Leave **Secret** and **Password Salt** blank: DMRHub made random values for them at the first start and keeps them in the database, so both show `Stored. Leave blank to keep the existing value.`
 
-   ![The General Settings card of the setup wizard, with a network name](Screenshots/setup-wizard-general.png)
+   The wizard shows the same menu of tabs as **Admin**, **Setup**, with **Database** first. A tab with a value that DMRHub needs has a red dot, and the bar at the bottom says where to set it. You can change every setting later in **Admin**, **Setup**.
 
-3. In **DMR Settings**, keep the defaults. The MMDVM server listens on port 62031. Keep **Disable Radio ID validation** off: DMRHub then checks each DMR ID and callsign against the RadioID.net data.
+2. On the **General** tab, enter a **Network name**. Leave **Secret** and **Password salt** as they are: DMRHub made random values for them at the first start and keeps them in the database.
 
-   ![The DMR Settings card of the setup wizard with the default values](Screenshots/setup-wizard-dmr.png)
+   ![The General tab of the setup wizard, with a network name](Screenshots/setup-wizard-general.png)
 
-4. In **HTTP Settings**, set **Canonical Host** to the address that your users open, with `http://` or `https://`, for example `https://dmrhub.example.org`. It is required. Without it, the wizard shows `canonical host is required for generating absolute URLs in the HTTP server`.
+3. Keep the defaults of the **DMR and MMDVM** tab. The MMDVM server listens on port 62031. On the **Accounts** tab, keep the **RadioID checks** on: DMRHub then checks each DMR ID and callsign against the RadioID.net data.
+4. On the **HTTP** tab, set **Site URL** to the address that your users open, with `http://` or `https://`, for example `https://dmrhub.example.org`. It is required. Until you set it, the **HTTP** tab has a red dot, the field shows `Required.`, and the bar at the bottom shows `Set the Site URL on the HTTP tab.`
 
-   ![The HTTP Settings card of the setup wizard with the canonical host set](Screenshots/setup-wizard-http.png)
+   ![The HTTP tab of the setup wizard before the Site URL is set, with a red dot on each tab that needs a value](Screenshots/setup-wizard-http.png)
 
-5. Click **Save** at the bottom of the page. The wizard opens the **Create the first admin** page. A banner above the form says that no admin exists yet, and that whoever makes this account first becomes the admin.
+5. Click **Save and continue** at the bottom of the page. DMRHub checks every tab and saves them all. When a value is not valid, the wizard opens its tab and marks it. Otherwise it opens the **Create the first admin** page. A banner above the form says that no admin exists yet, and that whoever makes this account first becomes the admin.
 6. Enter your **DMR ID**, a **Username**, your **Callsign** and a **Password** two times, then click **Create User**.
 
    ![The Create the first admin page, filled in with the DMR ID 3000001 and the callsign N0CALL](Screenshots/setup-admin-user.png)

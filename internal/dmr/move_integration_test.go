@@ -582,6 +582,8 @@ func TestALatePacketDoesNotTakeAMovedSessionBack(t *testing.T) {
 		require.NoError(t, old.WaitReady(handshakeWait))
 		waitRecorded(t, stack, 100001)
 		old.PausePings()
+		report := stack.PubSub.Subscribe("hub:handover:" + models.RepeaterTypeMMDVM + ":100001")
+		t.Cleanup(func() { _ = report.Close() })
 
 		first.MarkDraining(t.Context())
 		ping, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: 100001}).AppendBinary(nil, dmrd.DialectMMDVM)
@@ -591,7 +593,7 @@ func TestALatePacketDoesNotTakeAMovedSessionBack(t *testing.T) {
 			v, err := stack.KV.Get(t.Context(), "dmrhub:peer_owner:100001")
 			return err == nil && string(v) == regB.ID()
 		})
-		waitSubscribed(t, stack.Hub, 100001, 100001, false)
+		require.Len(t, testutils.Collect(report.Channel(), deliverWait, gotN[[]byte](1)), 1, "the old replica did not end the session that moved")
 
 		records := servers.MakeKVClient(stack.KV)
 		rec, err := records.GetRepeater(t.Context(), 100001)

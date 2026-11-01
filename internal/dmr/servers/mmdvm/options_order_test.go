@@ -324,9 +324,14 @@ func TestFullRecordsQueueWithholdsTheOptionsAck(t *testing.T) {
 	require.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(next("RPTACK of the config"), dmrd.DialectMMDVM))
 	s.records.Wait()
 
-	gate := make(chan struct{})
+	gate, running := make(chan struct{}), make(chan struct{})
 	release := sync.OnceFunc(func() { close(gate) })
 	t.Cleanup(release)
+	require.True(t, s.records.Do(uint(id), func() {
+		close(running)
+		<-gate
+	}))
+	<-running
 	for s.records.Do(uint(id), func() { <-gate }) {
 	}
 	send(dmrd.Control{Command: dmrd.CommandRPTO, ID: id, Text: []byte("TS1=91;")})

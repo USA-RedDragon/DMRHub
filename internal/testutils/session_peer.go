@@ -56,8 +56,12 @@ type SessionPeer struct {
 	downs   int
 	ups     int
 	noTicks bool
-	rxAt    time.Time
-	heard   []Heard
+	// pausedAt is the session time at which the pings paused, and paused
+	// the time that they were paused before.
+	pausedAt time.Duration
+	paused   time.Duration
+	rxAt     time.Time
+	heard    []Heard
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -225,18 +229,26 @@ func (p *SessionPeer) Ups() int {
 }
 
 // PausePings stops the timers of the Peer, so that it sends no ping and
-// nothing else that it is not told to send.
+// nothing else that it is not told to send. The session time of the Peer
+// stands meanwhile, so that its timeout does not end the session when the
+// pings resume, as for a repeater that goes on pinging.
 func (p *SessionPeer) PausePings() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.noTicks = true
+	if !p.noTicks {
+		p.pausedAt = p.sessionTime()
+		p.noTicks = true
+	}
 }
 
 // ResumePings starts the timers of the Peer again after PausePings.
 func (p *SessionPeer) ResumePings() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.noTicks = false
+	if p.noTicks {
+		p.paused = p.sinceConnect() - p.pausedAt
+		p.noTicks = false
+	}
 }
 
 // LocalAddr returns the address of the socket of the peer.
@@ -296,7 +308,7 @@ func (p *SessionPeer) Close() {
 	p.stopOnce.Do(func() {
 		p.mu.Lock()
 		var buf [dmrdsession.MaxOutputs]dmrdsession.Output
-		p.run(p.peer.Close(time.Since(p.start), buf[:0]))
+		p.run(p.peer.Close(p.sessionTime(), buf[:0]))
 		p.mu.Unlock()
 		close(p.done)
 		_ = p.conn.Close()
@@ -346,7 +358,7 @@ func (p *SessionPeer) rx() {
 		p.mu.Lock()
 		p.rxAt = at
 		var out [dmrdsession.MaxOutputs]dmrdsession.Output
-		p.run(p.peer.Packet(time.Since(p.start), buf[:n], out[:0]))
+		p.run(p.peer.Packet(p.sessionTime(), buf[:n], out[:0]))
 		p.confirm(buf[:n])
 		p.mu.Unlock()
 	}
@@ -364,7 +376,7 @@ func (p *SessionPeer) ticks() {
 			p.mu.Lock()
 			if !p.noTicks {
 				var out [dmrdsession.MaxOutputs]dmrdsession.Output
-				p.run(p.peer.Tick(time.Since(p.start), out[:0]))
+				p.run(p.peer.Tick(p.sessionTime(), out[:0]))
 			}
 			p.mu.Unlock()
 		}
@@ -383,4 +395,17 @@ func (p *SessionPeer) confirm(b []byte) {
 func isPong(b []byte, d dmrd.Dialect) bool {
 	c := dmrd.Classify(b, d)
 	return c == dmrd.CommandMSTPONG || c == dmrd.CommandRPTPONG
+}
+
+// sessionTime returns the time that the Peer takes: the time since Connect
+// without the time that its pings were paused. The caller holds p.mu.
+func (p *SessionPeer) sessionTime() time.Duration {
+	if p.noTicks {
+		return p.pausedAt
+	}
+	return p.sinceConnect() - p.paused
+}
+
+func (p *SessionPeer) sinceConnect() time.Duration {
+	return time.Since(p.start)
 }

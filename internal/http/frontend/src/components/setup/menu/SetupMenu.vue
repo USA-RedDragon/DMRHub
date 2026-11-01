@@ -101,8 +101,9 @@
           :only="tab.optional ? Object.keys(state.settings) : undefined"
           :wizard="wizard"
           @set="forward"
-        />
-        <slot name="tab" />
+        >
+          <slot name="card" :card="c" />
+        </SetupCard>
       </template>
       <slot name="savebar" />
     </section>

@@ -28,6 +28,7 @@
     <CardContent :class="nested ? 'px-4.5' : ''">
       <ModemTest v-if="!wizard && card.custom === 'modem-test'" :read="read" />
       <SetupRows :rows="card.rows" v-bind="shared" @set="forward" />
+      <slot />
       <template v-if="showCards">
         <SetupCard
           v-for="c in card.cards"

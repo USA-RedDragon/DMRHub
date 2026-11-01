@@ -99,23 +99,25 @@
         wizard
         @set="set"
       >
-        <template #tab>
-          <div v-if="tab.id === 'database' && databaseEditable" class="-mt-2 mb-5 flex flex-wrap items-center gap-3" data-test="database-test">
-            <ShadButton type="button" variant="outline" size="sm" :disabled="testing || saving" @click="testDatabase">
-              Test the connection
-            </ShadButton>
-            <span
-              v-if="tested.text"
-              class="text-sm break-all"
-              :class="tested.reached ? 'text-green-700 dark:text-green-400' : 'text-destructive-foreground'"
-              data-test="database-test-result"
-            >{{ tested.text }}</span>
-          </div>
-          <p
-            v-else-if="tab.id === 'database' && setupState.loaded && !databasePhase"
-            class="-mt-2 mb-5 text-sm text-green-700 dark:text-green-400"
-            data-test="database-reached"
-          >Connected.</p>
+        <template #card="{ card }">
+          <template v-if="tab.id === 'database' && card === tab.cards[0]">
+            <div v-if="databaseEditable" class="flex flex-wrap items-center gap-3" data-test="database-test">
+              <ShadButton type="button" variant="outline" size="sm" :disabled="testing || saving" @click="testDatabase">
+                Test the connection
+              </ShadButton>
+              <span
+                v-if="tested.text"
+                class="text-sm break-all"
+                :class="tested.reached ? 'text-green-700 dark:text-green-400' : 'text-destructive-foreground'"
+                data-test="database-test-result"
+              >{{ tested.text }}</span>
+            </div>
+            <p
+              v-else-if="setupState.loaded && !databasePhase"
+              class="text-sm text-green-700 dark:text-green-400"
+              data-test="database-reached"
+            >Connected.</p>
+          </template>
         </template>
         <template #savebar>
           <div
@@ -292,7 +294,7 @@ export default defineComponent({
       if (onTabs.length === 0) {
         return { text: `Some settings are not valid: ${listNames(paths.map(settingLabel))}.`, error: true };
       }
-      const names = [...new Set(onTabs.map((p) => tabOfPath(p)!.name))];
+      const names = this.tabs.filter((t) => onTabs.some((p) => tabOfPath(p)?.id === t.id)).map((t) => t.name);
       const only = onTabs[0] as string;
       if (onTabs.length === 1 && this.shownErrors[only] === 'Required.') {
         return { text: `Set the ${fieldsByPath[only]?.label ?? settingLabel(only)} on the ${names[0]} tab.`, error: true };

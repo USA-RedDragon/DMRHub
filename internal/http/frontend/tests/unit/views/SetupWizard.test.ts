@@ -164,7 +164,7 @@ describe('Setup wizard menu', () => {
 
   it('says that DMRHub reaches the database once it does, and keeps the database read-only', async () => {
     const { wrapper } = await mountAt();
-    expect(wrapper.find('[data-test="database-reached"]').text()).toBe('Connected.');
+    expect(wrapper.find('[data-test="card-Database"] [data-test="database-reached"]').text()).toBe('Connected.');
     expect(wrapper.find('[data-test="database-test"]').exists()).toBe(false);
     expect((wrapper.find('#setup-database-driver').element as HTMLSelectElement).disabled).toBe(true);
     expect(wrapper.find('#setup-database-host').exists()).toBe(false);
@@ -291,6 +291,9 @@ describe('Setup wizard database phase', () => {
     expect(mockAPI.post).not.toHaveBeenCalled();
     expect((wrapper.find('#setup-database-host').element as HTMLInputElement).disabled).toBe(false);
     expect(wrapper.find('[data-test="menu-error-http"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="card-Database"] [data-test="database-test"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="tab-database"]').text()).not.toContain('Read at start');
+    expect(wrapper.find('[data-test="tab-database"]').text()).not.toContain('DMRHub reads this at start');
     await go('#general');
     expect((wrapper.find('#setup-network-name').element as HTMLInputElement).disabled).toBe(true);
     wrapper.unmount();

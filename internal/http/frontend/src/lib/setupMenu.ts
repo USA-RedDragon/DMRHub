@@ -514,8 +514,8 @@ export const TABS: TabDef[] = [
         rows: [
           {
             path: 'dmr.mmdvm.webtransport.enabled', label: 'Accept browser hotspots and radios', kind: 'bool',
-            help: 'Such as the DMRHub Browser Radio. They log in with a hotspot ID and password, like any other hotspot.',
-            links: [{ text: 'Open the DMRHub Browser Radio.', href: 'https://radio.dmrhub.net' }],
+            help: 'Such as DMRHub Radio. They log in with a hotspot ID and password, like any other hotspot.',
+            links: [{ text: 'Open DMRHub Radio.', href: 'https://radio.dmrhub.net' }],
           },
           {
             path: 'dmr.mmdvm.webtransport.port', label: 'Port', kind: 'number', show: on('dmr.mmdvm.webtransport.enabled'),

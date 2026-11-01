@@ -281,9 +281,9 @@ describe('setup menu routing', () => {
 });
 
 describe('setup menu browser radios', () => {
-  it('links the DMRHub Browser Radio from the help that names it', () => {
+  it('links DMRHub Radio from the help that names it', () => {
     const f = field('dmr.mmdvm.webtransport.enabled');
-    expect(f.help).toContain('DMRHub Browser Radio');
-    expect(f.links).toEqual([{ text: 'Open the DMRHub Browser Radio.', href: 'https://radio.dmrhub.net' }]);
+    expect(f.help).toContain('DMRHub Radio');
+    expect(f.links).toEqual([{ text: 'Open DMRHub Radio.', href: 'https://radio.dmrhub.net' }]);
   });
 });

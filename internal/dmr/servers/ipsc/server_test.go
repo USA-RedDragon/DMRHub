@@ -26,14 +26,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
+	"github.com/USA-RedDragon/configulator/v2"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	ipscauth "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscauth"
 	ipscsession "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -100,22 +105,64 @@ func signWith(t *testing.T, key [20]byte, data []byte) []byte {
 }
 
 // newTestServerWithUDP returns a server on a loopback socket whose peers
-// all have the test key.
+// all have the test key. See newHubServer.
 func newTestServerWithUDP(t *testing.T) (*IPSCServer, *net.UDPAddr) {
 	t.Helper()
-	s := NewIPSCServer(testConfig(), nil, nil)
+	database, err := db.MakeDB(testDBConfig(t))
+	if err != nil {
+		t.Fatalf("db: %v", err)
+	}
+	s, addr := newHubServer(t, database)
 	key := testKey(t)
 	s.keyFor = func(uint32) ([20]byte, bool, error) { return key, true, nil }
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	return s, addr
+}
+
+// testDBConfig returns the default config with the network ID of
+// testConfig, on an in-memory database.
+func testDBConfig(t *testing.T) *config.Config {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	cfg.DMR.IPSC.NetworkID = testConfig().DMR.IPSC.NetworkID
+	memdb.Use(&cfg)
+	return &cfg
+}
+
+// newHubServer returns a server on a loopback socket with a real hub and
+// call tracker on database, as production makes it, so that it answers a
+// registration once the hub serves the peer. The server does not run its
+// reader: a test hands it each packet with handlePacket, as the reader
+// does, or runs the reader itself, and may set the burst handler first.
+func newHubServer(t *testing.T, database *gorm.DB) (*IPSCServer, *net.UDPAddr) {
+	t.Helper()
+	cfg := testDBConfig(t)
+	cfg.DMR.IPSC.Bind = "127.0.0.1"
+	cfg.DMR.IPSC.Port = 0
+	kvStore, err := kv.MakeKV(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("kv: %v", err)
+	}
+	ps, err := pubsub.MakePubSub(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("pubsub: %v", err)
+	}
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	h := hub.NewHub(database, kvStore, ps, ct)
+	s := NewIPSCServer(cfg, h, database)
+	if err := s.Listen(); err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	s.udp = conn
 	t.Cleanup(func() {
-		s.stopped.Store(true)
-		_ = conn.Close()
+		_ = s.Stop(context.Background())
+		h.Stop(context.Background())
+		ct.Stop()
+		_ = ps.Close()
+		_ = kvStore.Close()
 	})
-	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	addr, ok := s.udp.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		t.Fatal("expected *net.UDPAddr from LocalAddr")
 	}
@@ -136,9 +183,11 @@ func dialServer(t *testing.T, srv *net.UDPAddr) (*net.UDPConn, *net.UDPAddr) {
 	return c, a
 }
 
+// readUDP returns the next packet to conn. A peer that hears nothing for
+// registerWait drops the server, so a packet that takes longer has failed.
 func readUDP(t *testing.T, conn *net.UDPConn) []byte {
 	t.Helper()
-	if err := conn.SetReadDeadline(time.Now().Add(eventWait)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(registerWait)); err != nil {
 		t.Fatalf("SetReadDeadline: %v", err)
 	}
 	buf := make([]byte, 1500)
@@ -200,19 +249,16 @@ func register(t *testing.T, s *IPSCServer, client *net.UDPConn, addr *net.UDPAdd
 
 func TestUnknownPeerDropped(t *testing.T) {
 	t.Parallel()
-	dbConn, err := gorm.Open(sqlite.Open(memdb.DSN()), &gorm.Config{})
+	dbConn, err := db.MakeDB(testDBConfig(t))
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("db: %v", err)
 	}
-	if err := dbConn.AutoMigrate(&models.Repeater{}); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	s := NewIPSCServer(testConfig(), nil, dbConn)
-	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
+	s, _ := newHubServer(t, dbConn)
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
 	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 42), addr); err == nil {
 		t.Fatal("expected an error for a peer that is not in the DB")
 	}
-	if s.m.Peers() != 0 {
+	if peers(s, 42) != 0 {
 		t.Fatal("expected no peer for an unknown repeater")
 	}
 }
@@ -598,12 +644,9 @@ func TestPeersWithOwnKeys(t *testing.T) {
 
 func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	t.Parallel()
-	dbConn, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "ipsc.db")), &gorm.Config{})
+	dbConn, err := db.MakeDB(testDBConfig(t))
 	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	if err := dbConn.AutoMigrate(&models.Repeater{}); err != nil {
-		t.Fatalf("migrate: %v", err)
+		t.Fatalf("db: %v", err)
 	}
 	if err := dbConn.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 9}, Type: models.RepeaterTypeIPSC}).Error; err != nil {
 		t.Fatalf("create: %v", err)
@@ -624,18 +667,8 @@ func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	if err := dbConn.Callback().Update().Before("gorm:update").Register("test:slow_update", slow); err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	s := NewIPSCServer(testConfig(), nil, dbConn)
+	s, srv := newHubServer(t, dbConn)
 	s.keyFor = func(uint32) ([20]byte, bool, error) { return [20]byte{}, false, nil }
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	s.udp = conn
-	t.Cleanup(func() { _ = s.Stop(context.Background()) })
-	srv, ok := conn.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		t.Fatal("expected *net.UDPAddr from LocalAddr")
-	}
 	client, addr := dialServer(t, srv)
 
 	before := time.Now()

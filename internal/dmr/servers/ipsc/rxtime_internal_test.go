@@ -44,23 +44,7 @@ const stampWait = 5 * time.Second
 // sent after that time, and a late stamp loses what went out in between.
 func TestAPacketIsStampedWhenItArrives(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig()
-	cfg.DMR.IPSC.Bind = "127.0.0.1"
-	s := NewIPSCServer(cfg, nil, nil)
-	key := testKey(t)
-	s.keyFor = func(uint32) ([20]byte, bool, error) { return key, true, nil }
-	if err := s.Listen(); err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	t.Cleanup(func() {
-		s.stopped.Store(true)
-		_ = s.udp.Close()
-		s.wg.Wait()
-	})
-	srv, ok := s.udp.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		t.Fatal("expected *net.UDPAddr from LocalAddr")
-	}
+	s, srv := newTestServerWithUDP(t)
 	client, _ := dialServer(t, srv)
 	awaitStamps(t, s.udp, client)
 	if _, err := client.Write(signTestPacket(t, control(t, ipscwire.OpRegisterRequest, 7))); err != nil {

@@ -130,13 +130,30 @@ func TestMakeDBKeepsConnectionsOpenAfterABusySpell(t *testing.T) {
 
 func TestSQLiteTransactionsThatReadThenWriteRunTogether(t *testing.T) {
 	t.Parallel()
-
-	defConfig, err := configulator.New(config.ConfigSchema()).Default()
-	if err != nil {
-		t.Fatalf("Failed to create default config: %v", err)
+	for _, tc := range []struct {
+		name string
+		use  func(t *testing.T, cfg *config.Config)
+	}{
+		{name: "file", use: func(t *testing.T, cfg *config.Config) {
+			cfg.Database.Database = filepath.Join(t.TempDir(), "readwrite.db")
+		}},
+		{name: "shared cache", use: func(_ *testing.T, cfg *config.Config) { memdb.Use(cfg) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			defConfig, err := configulator.New(config.ConfigSchema()).Default()
+			if err != nil {
+				t.Fatalf("Failed to create default config: %v", err)
+			}
+			tc.use(t, &defConfig)
+			readThenWriteTogether(t, &defConfig)
+		})
 	}
-	defConfig.Database.Database = filepath.Join(t.TempDir(), "readwrite.db")
-	gdb, err := db.MakeDB(&defConfig)
+}
+
+func readThenWriteTogether(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	gdb, err := db.MakeDB(cfg)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -156,12 +173,26 @@ func TestSQLiteTransactionsThatReadThenWriteRunTogether(t *testing.T) {
 	}
 
 	const workers, rounds = 4, 25
-	errs := make(chan error, (workers+1)*rounds)
+	errs := make(chan error, (2*workers+1)*rounds)
 	var wg sync.WaitGroup
 	for w := range workers {
 		wg.Go(func() {
 			for range rounds {
 				if _, err := models.EnsureBuiltinPlugin(gdb, "parrot", "Parrot", fmt.Sprintf("v%d", w), ranges, time.Now()); err != nil {
+					errs <- err
+				}
+			}
+		})
+		wg.Go(func() {
+			for range rounds {
+				err := gdb.Transaction(func(tx *gorm.DB) error {
+					var got models.Plugin
+					if err := tx.First(&got, p.ID).Error; err != nil {
+						return err
+					}
+					return tx.Model(&models.Plugin{}).Where("id = ?", p.ID).Update("version", fmt.Sprintf("r%d", w)).Error
+				})
+				if err != nil {
 					errs <- err
 				}
 			}

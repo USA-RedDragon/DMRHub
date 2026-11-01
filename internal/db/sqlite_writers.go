@@ -28,13 +28,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// sqliteWriters is a pool of SQLite connections whose transactions all
-// begin immediately, so each takes the one write lock of the database.
-// SQLite makes the other writers poll for that lock with longer and longer
+// sqliteWriters is a pool of SQLite connections whose transactions and
+// writes take turns, in the order they ask. On a file, each transaction
+// begins immediately and takes the one write lock of the database. SQLite
+// makes the other writers poll for that lock with longer and longer
 // sleeps, so a writer that begins again as soon as it commits keeps
 // winning it from one that has waited a while, until the busy timeout of
-// that one runs out. sqliteWriters gives the lock to the writers of this
-// process in the order they ask for it instead.
+// that one runs out. In a shared cache, SQLite does not wait for a table
+// lock: two transactions that each read a table and then write it fail
+// with "database is deadlocked".
 type sqliteWriters struct {
 	*sql.DB
 	turn chan struct{}

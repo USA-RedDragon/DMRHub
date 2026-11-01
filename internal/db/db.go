@@ -155,9 +155,12 @@ func sqliteParameters(params []string) []string {
 	return append(out, "_txlock=immediate")
 }
 
-func sqliteBeginsImmediately(config *configPkg.Config) bool {
-	return config.Database.Driver == configPkg.DatabaseDriverSQLite && config.Database.Database != "" &&
-		slices.Contains(sqliteParameters(config.Database.ExtraParameters), "_txlock=immediate")
+func sqliteWritesInTurn(config *configPkg.Config) bool {
+	if config.Database.Driver != configPkg.DatabaseDriverSQLite || config.Database.Database == "" {
+		return false
+	}
+	params := sqliteParameters(config.Database.ExtraParameters)
+	return slices.Contains(params, "_txlock=immediate") || slices.Contains(params, "cache=shared")
 }
 
 func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
@@ -165,7 +168,7 @@ func MakeDB(config *configPkg.Config) (db *gorm.DB, err error) {
 	if err != nil {
 		return db, fmt.Errorf("failed to open database: %w", err)
 	}
-	if pool, ok := db.ConnPool.(*sql.DB); ok && sqliteBeginsImmediately(config) {
+	if pool, ok := db.ConnPool.(*sql.DB); ok && sqliteWritesInTurn(config) {
 		writers := newSQLiteWriters(pool)
 		db.ConnPool, db.Statement.ConnPool = writers, writers
 	}

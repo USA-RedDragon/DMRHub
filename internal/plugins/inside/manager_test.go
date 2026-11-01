@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins/builtin"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/inside"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins/wasm"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -55,27 +56,57 @@ var guests struct { //nolint:gochecknoglobals // built once for all the tests
 
 func guest(t *testing.T, name string) []byte {
 	t.Helper()
-	guests.once.Do(func() {
-		guests.dir, guests.err = os.MkdirTemp("", "dmrhub-inside-guests-")
-		if guests.err != nil {
-			return
-		}
-		for _, g := range []string{"echo", "netprobe", "quit"} {
-			cmd := exec.Command("go", "build", "-o", filepath.Join(guests.dir, g+".wasm"), "../wasm/testdata/"+g) //nolint:noctx // a build for the tests
-			cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				guests.err = fmt.Errorf("could not build %s: %w\n%s", g, err, out)
-				return
-			}
-		}
-	})
+	guests.once.Do(buildGuests)
 	require.NoError(t, guests.err)
 	b, err := os.ReadFile(filepath.Join(guests.dir, name+".wasm"))
 	require.NoError(t, err)
 	return b
 }
 
+func buildGuests() {
+	guests.dir, guests.err = os.MkdirTemp("", "dmrhub-inside-guests-")
+	if guests.err != nil {
+		return
+	}
+	for _, g := range []string{"echo", "netprobe", "quit"} {
+		cmd := exec.Command("go", "build", "-o", filepath.Join(guests.dir, g+".wasm"), "../wasm/testdata/"+g) //nolint:noctx // a build for the tests
+		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			guests.err = fmt.Errorf("could not build %s: %w\n%s", g, err, out)
+			return
+		}
+	}
+}
+
+// compileGuests builds the guests and compiles them and the built-in
+// module into engine before the tests run, so that no wait of a test
+// includes a build or a compile.
+func compileGuests() {
+	guests.once.Do(buildGuests)
+	if guests.err != nil {
+		return
+	}
+	ctx := context.Background()
+	for _, g := range []string{"echo", "netprobe", "quit"} {
+		b, err := os.ReadFile(filepath.Join(guests.dir, g+".wasm"))
+		if err != nil {
+			return
+		}
+		_, _ = engine.Inspect(ctx, b)
+	}
+	for _, p := range builtin.All()[:1] {
+		module, err := p.Module()
+		if err != nil {
+			return
+		}
+		if inst, err := engine.Start(ctx, p.Key, module, nil, p.Args()...); err == nil {
+			inst.Stop()
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
+	compileGuests()
 	code := m.Run()
 	if guests.dir != "" {
 		_ = os.RemoveAll(guests.dir)

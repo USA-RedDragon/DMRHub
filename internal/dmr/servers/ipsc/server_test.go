@@ -254,7 +254,7 @@ func TestUnknownPeerDropped(t *testing.T) {
 		t.Fatalf("db: %v", err)
 	}
 	s, _ := newHubServer(t, dbConn)
-	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1234}
+	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
 	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 42), addr); err == nil {
 		t.Fatal("expected an error for a peer that is not in the DB")
 	}

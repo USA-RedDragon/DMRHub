@@ -937,6 +937,10 @@ type Heard struct {
 	Slot uint32 `protobuf:"varint,2,opt,name=slot,proto3" json:"slot,omitempty"`
 	// The color code of the repeater, 0 to 15.
 	ColorCode uint32 `protobuf:"varint,3,opt,name=color_code,json=colorCode,proto3" json:"colorCode,omitempty"`
+	// When the hub heard the radio, in milliseconds since 1970 UTC, by the
+	// clock of the hub. A Heard can come some time after that. A hub older
+	// than this field leaves it out: take the time the Heard came then.
+	At *int64 `protobuf:"varint,4,opt,name=at,proto3,oneof" json:"at,omitempty"`
 }
 
 func (x *Heard) Reset() {
@@ -962,6 +966,13 @@ func (x *Heard) GetSlot() uint32 {
 func (x *Heard) GetColorCode() uint32 {
 	if x != nil {
 		return x.ColorCode
+	}
+	return 0
+}
+
+func (x *Heard) GetAt() int64 {
+	if x != nil && x.At != nil {
+		return *x.At
 	}
 	return 0
 }
@@ -1633,6 +1644,7 @@ func (m *Heard) CloneVT() *Heard {
 	r.Radio = m.Radio
 	r.Slot = m.Slot
 	r.ColorCode = m.ColorCode
+	r.At = protobuf_go_lite.ClonePtr(m.At)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = slices.Clone(m.unknownFields)
 	}
@@ -2732,6 +2744,11 @@ func (m *Heard) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
 	}
+	if m.At != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.At))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.ColorCode != 0 {
 		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.ColorCode))
 		i--
@@ -3424,6 +3441,7 @@ func (m *Heard) SizeVT() (n int) {
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.Slot)
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.ColorCode)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.At)
 	n += len(m.unknownFields)
 	return n
 }
@@ -4709,6 +4727,16 @@ func (m *Heard) UnmarshalVT(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field At", wireType)
+			}
+			var v int64
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.At = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])

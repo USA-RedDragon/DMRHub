@@ -1347,7 +1347,11 @@ type Heard struct {
 	// The timeslot it was heard on, 1 or 2.
 	Slot uint32 `protobuf:"varint,2,opt,name=slot,proto3" json:"slot,omitempty"`
 	// The color code of the repeater, 0 to 15.
-	ColorCode     uint32 `protobuf:"varint,3,opt,name=color_code,json=colorCode,proto3" json:"color_code,omitempty"`
+	ColorCode uint32 `protobuf:"varint,3,opt,name=color_code,json=colorCode,proto3" json:"color_code,omitempty"`
+	// When the hub heard the radio, in milliseconds since 1970 UTC, by the
+	// clock of the hub. A Heard can come some time after that. A hub older
+	// than this field leaves it out: take the time the Heard came then.
+	At            *int64 `protobuf:"varint,4,opt,name=at,proto3,oneof" json:"at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1399,6 +1403,13 @@ func (x *Heard) GetSlot() uint32 {
 func (x *Heard) GetColorCode() uint32 {
 	if x != nil {
 		return x.ColorCode
+	}
+	return 0
+}
+
+func (x *Heard) GetAt() int64 {
+	if x != nil && x.At != nil {
+		return *x.At
 	}
 	return 0
 }
@@ -1811,12 +1822,14 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\bTracking\x12\x14\n" +
 	"\x05radio\x18\x01 \x01(\rR\x05radio\x12\x0e\n" +
 	"\x02on\x18\x02 \x01(\bR\x02on\x12)\n" +
-	"\x10interval_seconds\x18\x03 \x01(\rR\x0fintervalSeconds\"P\n" +
+	"\x10interval_seconds\x18\x03 \x01(\rR\x0fintervalSeconds\"l\n" +
 	"\x05Heard\x12\x14\n" +
 	"\x05radio\x18\x01 \x01(\rR\x05radio\x12\x12\n" +
 	"\x04slot\x18\x02 \x01(\rR\x04slot\x12\x1d\n" +
 	"\n" +
-	"color_code\x18\x03 \x01(\rR\tcolorCode\"P\n" +
+	"color_code\x18\x03 \x01(\rR\tcolorCode\x12\x13\n" +
+	"\x02at\x18\x04 \x01(\x03H\x00R\x02at\x88\x01\x01B\x05\n" +
+	"\x03_at\"P\n" +
 	"\aWelcome\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x121\n" +
 	"\x06ranges\x18\x02 \x03(\v2\x19.dmrhub.plugin.v1.IDRangeR\x06ranges\";\n" +
@@ -1969,6 +1982,7 @@ func file_dmrhub_plugin_v1_plugin_proto_init() {
 		(*ConnectResponse_Draining)(nil),
 		(*ConnectResponse_Net)(nil),
 	}
+	file_dmrhub_plugin_v1_plugin_proto_msgTypes[12].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

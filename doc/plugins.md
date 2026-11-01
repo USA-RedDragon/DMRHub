@@ -156,7 +156,7 @@ What the hub sends (`ConnectResponse`):
 | `Ranges`      | The admin changed the plugin's IDs.                                                                                                                                                                    |
 | `Tracked`     | After a `Subscribe` with tracking: all the radios with tracking on.                                                                                                                                   |
 | `Tracking`    | An owner turned tracking of a radio on or off, or changed how often it reports.                                                                                                                       |
-| `Heard`       | The hub heard a tracked radio on a repeater, with its timeslot and color code.                                                                                                                        |
+| `Heard`       | The hub heard a tracked radio on a repeater, with its timeslot, its color code and `at`, when the hub heard it in milliseconds since 1970 UTC. A `Heard` can come later than `at`. A hub older than `at` leaves it out: use the time the `Heard` came then. |
 | `Draining`    | The replica stops soon. Connect again while you keep this stream. See [Several replicas](admin/plugins.md#several-replicas).                                                                                         |
 | `NetResponse` | The answer to a `NetRequest`.                                                                                                                                                                          |
 

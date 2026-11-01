@@ -210,6 +210,10 @@ message Heard {
   uint32 slot = 2;
   // The color code of the repeater, 0 to 15.
   uint32 color_code = 3;
+  // When the hub heard the radio, in milliseconds since 1970 UTC, by the
+  // clock of the hub. A Heard can come some time after that. A hub older
+  // than this field leaves it out: take the time the Heard came then.
+  optional int64 at = 4;
 }
 
 // Welcome tells a plugin who it is to the hub.

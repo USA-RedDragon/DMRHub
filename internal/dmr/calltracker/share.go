@@ -43,6 +43,7 @@ const (
 	partLive          = voiceHang + touchEvery + kvTimeout
 	kvBackoff         = 5 * time.Second
 	kvTrips           = 3
+	saveTimeout       = 5 * time.Second
 )
 
 var (
@@ -786,7 +787,9 @@ func (s *shard) touchShared(now time.Time) {
 func (s *shard) saveMerged(call *models.Call, parts []voiceDelta) (models.Call, bool, bool) {
 	var out models.Call
 	changed := false
-	err := s.t.db.Transaction(func(tx *gorm.DB) error {
+	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
+	defer cancel()
+	err := s.t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var base models.Call
 		if err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
 			return fmt.Errorf("reading the call: %w", err)

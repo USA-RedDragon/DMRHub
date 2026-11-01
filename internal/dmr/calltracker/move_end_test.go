@@ -27,9 +27,15 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
+	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -275,5 +281,50 @@ func TestASaveThatRunsTwicePublishesTheEndOnce(t *testing.T) {
 		ev.mu.Lock()
 		defer ev.mu.Unlock()
 		assert.Equal(t, 1, ev.ends[c.ID], "end events of the row")
+	})
+}
+
+// TestASaveThatStallsGivesUpTheRow stalls the save of a shared row while
+// it holds the lock of the row, as a replica that loses the database in
+// the middle of a save does. The save gives up the row after its timeout,
+// so it cannot hold the lock for long, and a later save stores the part.
+// A pinned connection keeps the memory database while the timeout drops
+// the connection of the save.
+func TestASaveThatStallsGivesUpTheRow(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(&cfg)
+		database, err := db.MakeDB(&cfg)
+		require.NoError(t, err)
+		sqlDB, err := database.DB()
+		require.NoError(t, err)
+		keep, err := sqlDB.Conn(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = keep.Close()
+			_ = sqlDB.Close()
+		})
+		ps, err := pubsub.MakePubSub(t.Context(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ps.Close() })
+		ct := calltracker.NewCallTracker(database, ps, memKV(t))
+		t.Cleanup(ct.Stop)
+		call := models.Call{StartTime: time.Now(), Kind: models.CallKindVoice, Active: true}
+		require.NoError(t, database.Create(&call).Error)
+		var stall atomic.Bool
+		require.NoError(t, database.Callback().Query().Before("gorm:query").Register("test:stall", func(d *gorm.DB) {
+			if _, ok := d.Statement.Clauses["FOR"]; ok && stall.CompareAndSwap(true, false) {
+				time.Sleep(calltracker.SaveTimeout + time.Second)
+			}
+		}))
+
+		stall.Store(true)
+		assert.False(t, calltracker.SaveMergedPart(ct, &call, "a", 3), "a stalled save kept the row")
+		assert.True(t, calltracker.SaveMergedPart(ct, &call, "a", 3))
+		var stored models.Call
+		require.NoError(t, database.First(&stored, call.ID).Error)
+		assert.Equal(t, uint(3), stored.TotalPackets)
 	})
 }

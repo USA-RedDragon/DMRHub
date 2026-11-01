@@ -19,7 +19,11 @@
 
 package calltracker
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+)
 
 // ResponseWindow is how long before an answer the row it answers can
 // start, and how long the answer stays pending.
@@ -39,3 +43,10 @@ func WorkerOf(server string, repeater uint, slot bool) int {
 }
 
 const VoiceHang = voiceHang
+
+const SaveTimeout = saveTimeout
+
+func SaveMergedPart(c *CallTracker, call *models.Call, id string, packets uint) bool {
+	_, _, ok := c.shards[0].saveMerged(call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
+	return ok
+}

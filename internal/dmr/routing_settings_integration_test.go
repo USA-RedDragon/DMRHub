@@ -146,6 +146,14 @@ func tgCall(t *testing.T, c *testutils.MMDVMClient, dst, stream uint) {
 	require.NoError(t, c.SendDMRD(makeGroupVoiceTermPacket(1000001, dst, stream, true)))
 }
 
+// settleCalls waits until the hub routed every burst of the calls sent and
+// the call tracker stored them, so that a step of the test clock comes
+// after them.
+func settleCalls(stack *testutils.IntegrationStack) {
+	stack.Hub.WaitForCalls()
+	stack.CallTracker.Flush()
+}
+
 func streamEnds(stream uint) func([]models.Packet) bool {
 	return func(got []models.Packet) bool {
 		p := got[len(got)-1]
@@ -173,7 +181,7 @@ func TestDynamicTalkgroupTimesOut(t *testing.T) {
 
 		tgCall(t, c, 3100, 501)
 		waitLinked(t, links, 3100, "a call on a talkgroup links it")
-		stack.Hub.WaitForCalls()
+		settleCalls(stack)
 		fake.Advance(timeout + time.Second)
 		waitLinked(t, links, 0, "the dynamic talkgroup must unlink after the timeout")
 	})
@@ -188,7 +196,7 @@ func TestDynamicTalkgroupWithNoTimeoutStays(t *testing.T) {
 
 		tgCall(t, c, 3100, 701)
 		waitLinked(t, links, 3100, "a call on a talkgroup links it")
-		stack.Hub.WaitForCalls()
+		settleCalls(stack)
 		fake.Advance(3 * time.Second)
 		time.Sleep(drainWait)
 		require.NotNil(t, dynamicTS2(t, stack), "a timeout of 0 never unlinks")
@@ -435,12 +443,12 @@ func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 			tgCall(t, c, 3999, 1800+i)
 			got := testutils.Collect(listener.ReceivedPackets(), deliverWait, streamEnds(1800+i))
 			require.Positive(t, countStream(got, 1800+i), "call %d reaches the listener", i)
-			stack.Hub.WaitForCalls()
+			settleCalls(stack)
 			fake.Advance(ttl / 3)
 			_, ok := talkgroupOf(t, stack)
 			require.True(t, ok, "each call restarts the TTL of the talkgroup")
 		}
-		stack.Hub.WaitForCalls()
+		settleCalls(stack)
 		fake.Advance(ttl + time.Second)
 		waitChanged(t, changes, 3999, "the talkgroup goes after its TTL with no call")
 		_, ok := talkgroupOf(t, stack)
@@ -463,6 +471,7 @@ func TestEditedEphemeralTalkgroupStays(t *testing.T) {
 		routingStack(t, stack, config.Routing{AutoCreate: true, Ephemeral: true, EphemeralTTL: ttl})
 		changes := talkgroupChanges(t, stack)
 		c := oneHotspot(t, stack)
+		links := dynamicLinks(t, stack, 100001)
 		tgCall(t, c, 3999, 1901)
 		waitChanged(t, changes, 3999, "a call to an unknown talkgroup makes it")
 		require.NoError(t, stack.DB.Model(&models.Talkgroup{}).Where("id = ?", 3999).Update("auto_created", false).Error)
@@ -470,8 +479,9 @@ func TestEditedEphemeralTalkgroupStays(t *testing.T) {
 		waitChanged(t, changes, 3999, "the hub takes the edit")
 		tgCall(t, c, 3998, 1902)
 		waitChanged(t, changes, 3998, "a call to another unknown talkgroup makes it")
+		waitLinked(t, links, 3998, "the call links the talkgroup it made")
 
-		stack.Hub.WaitForCalls()
+		settleCalls(stack)
 		fake.Advance(ttl + time.Second)
 		waitChanged(t, changes, 3998, "the talkgroup that the hub made and nobody edited goes after its TTL")
 		_, ok := talkgroupOf(t, stack)

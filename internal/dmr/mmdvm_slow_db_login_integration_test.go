@@ -75,7 +75,7 @@ func TestMMDVMSlowDatabaseLoginsHoldNoCall(t *testing.T) {
 			}
 		}
 		burstsArrive(t, 8401, 16, send(16, nil), listener.ReceivedPackets())
-		waitFor(t, "the call tracker writes the first call", func() bool { return db.ranOn("create", "calls") >= 1 })
+		waitFor(t, "the call tracker writes the first call", func() bool { return db.ranOn("create") >= 1 })
 
 		db.hold()
 		var wg sync.WaitGroup

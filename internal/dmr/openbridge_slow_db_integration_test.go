@@ -89,10 +89,10 @@ func (d *dbHold) hold() {
 	}
 }
 
-func (d *dbHold) ranOn(op, table string) int {
+func (d *dbHold) ranOn(op string) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.ran[op+" "+table]
+	return d.ran[op+" calls"]
 }
 
 // release lets the held statements go, and holds no more.
@@ -194,7 +194,7 @@ func TestOpenBridgeSlowDatabaseHoldsNoBurst(t *testing.T) {
 
 		allBurstsArrive(t, 8001, send(true), to.ReceivedPackets(), mc.ReceivedPackets())
 		allBurstsArrive(t, 8002, send(false), to.ReceivedPackets())
-		waitFor(t, "the call tracker writes the first calls", func() bool { return db.ranOn("create", "calls") >= 2 })
+		waitFor(t, "the call tracker writes the first calls", func() bool { return db.ranOn("create") >= 2 })
 
 		db.hold()
 		allBurstsArrive(t, 8003, send(true), to.ReceivedPackets(), mc.ReceivedPackets())

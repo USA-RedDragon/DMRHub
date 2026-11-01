@@ -74,7 +74,7 @@ func TestIPSCSlowDatabaseHoldsNoBurst(t *testing.T) {
 
 		call(12001)
 		stack.CallTracker.Flush()
-		require.Positive(t, db.ranOn("delete", "calls")+db.ranOn("update", "calls"), "the call tracker ends the row of the first call at its terminator")
+		require.Positive(t, db.ranOn("delete")+db.ranOn("update"), "the call tracker ends the row of the first call at its terminator")
 
 		db.hold()
 		call(12002)

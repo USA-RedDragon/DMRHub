@@ -1,6 +1,6 @@
 # OAuth Apps
 
-A web app can use a DMRHub account with OAuth 2.0. The user signs in to DMRHub, sees what the app asks for, and clicks **Allow**. The app then gets tokens that let it read and change a small set of things as that user. This page is for the people who write such apps.
+A web app can use a DMRHub account with OAuth 2.0. The user signs in to DMRHub, sees what the app asks for, and clicks **Allow**. The app then gets tokens that let it read and change a small set of things as that user. This page is for the people who write such apps. For your own scripts, an [API token](api-tokens.md) is simpler.
 
 DMRHub uses the authorization code flow with PKCE (RFC 7636), for public clients. An app has no client secret.
 

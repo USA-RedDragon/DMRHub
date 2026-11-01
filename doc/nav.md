@@ -64,5 +64,6 @@ This page lists the pages of the docs site in reading order, by section. The sit
 - Developers
   - [Plugins](plugins.md)
   - [OAuth apps](oauth-apps.md)
+  - [API tokens](api-tokens.md)
   - [MMDVM over WebTransport](webtransport.md)
   - [Building from source](Building.md)

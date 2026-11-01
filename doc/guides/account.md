@@ -1,6 +1,6 @@
 # Manage your account
 
-Go to **Settings** (`<siteurl>/settings`) to change your password, set your email address, turn SMS Storage on or off, add your other radio IDs, and remove apps.
+Go to **Settings** (`<siteurl>/settings`) to change your password, set your email address, turn SMS Storage on or off, add your other radio IDs, remove apps, and make API tokens for your own scripts.
 
 ![The Settings page](../Screenshots/settings.png)
 
@@ -42,6 +42,12 @@ An app can never change your password or account, and never gets admin access.
 The **Apps** card on Settings lists the apps that you allowed, what each one can use, when you allowed it and when it last used your account. Click **Remove** to take away the access of an app. DMRHub signs it out at once.
 
 An app keeps its access while you use it. If you do not use an app for 30 days, its login ends and you must log in again in the app.
+
+## API tokens
+
+The **API tokens** card makes tokens that let your own scripts use the DMRHub API as you. A token can use only what you pick for it, or have **Full account access**: everything you can do signed in, except admin pages and account security (tokens, apps, password, username, callsign, email, and deleting the account). DMRHub shows each token once. **Rotate** gives a token a new secret and ends the old one at once; **Delete** ends it. See [API tokens](../api-tokens.md).
+
+![The API tokens card with a new token to copy, and the list of tokens](../Screenshots/settings-tokens-card.png)
 
 ## Theme
 

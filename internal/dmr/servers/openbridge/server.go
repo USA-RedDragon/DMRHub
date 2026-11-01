@@ -119,6 +119,8 @@ type Server struct {
 	egressOut  chan outMessage
 	eventsOut  chan outMessage
 	outDropped atomic.Uint64
+	markers    *xsync.Map[string, chan struct{}]
+	markerSeq  atomic.Uint64
 
 	kv   kv.KV
 	id   string
@@ -319,6 +321,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		pinged:        xsync.NewMap[uint, time.Time](),
 		pings:         make(chan peerPing, pingQueueSize),
 		egressOut:     make(chan outMessage, outboxSize),
+		markers:       xsync.NewMap[string, chan struct{}](),
 		eventsOut:     make(chan outMessage, outboxSize),
 		kv:            kvStore,
 		id:            newReplicaID(),
@@ -353,7 +356,7 @@ func (s *Server) Start(ctx context.Context) error {
 	egress := s.pubsub.Subscribe(egressTopic)
 	s.renewLease(ctx)
 	s.wg.Add(10)
-	go s.consumeHubPackets()
+	go s.consumeHubPackets(context.WithoutCancel(ctx))
 	go s.writePings()
 	go s.keepalive()
 	go s.runLease(context.WithoutCancel(ctx))
@@ -421,7 +424,7 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 // consumeHubPackets reads routed packets from the hub and sends them to OpenBridge peers.
-func (s *Server) consumeHubPackets() {
+func (s *Server) consumeHubPackets(ctx context.Context) {
 	defer s.wg.Done()
 	for {
 		select {
@@ -430,6 +433,10 @@ func (s *Server) consumeHubPackets() {
 		case rp, ok := <-s.hubHandle.Packets:
 			if !ok {
 				return
+			}
+			if rp.Barrier != nil {
+				s.settleEgress(ctx, rp.Barrier)
+				continue
 			}
 			// rp.RepeaterID is the peer ID for peer-role servers
 			s.sendPacketToPeer(rp.RepeaterID, rp.Packet, origin{repeater: uint32(rp.Packet.Repeater)}) //nolint:gosec

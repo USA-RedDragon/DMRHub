@@ -310,7 +310,7 @@ func TestAStopGivesUpALeaseThatAFollowerHolds(t *testing.T) {
 		ctx := context.Background()
 
 		s := &Server{clock: clock.Real(), kv: store, id: "a", done: make(chan struct{})}
-		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte("a")))
+		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte(s.leaseValue())))
 		require.Equal(t, roleFollower, s.role.Load())
 		close(s.done)
 		s.releaseLease(ctx)
@@ -318,11 +318,11 @@ func TestAStopGivesUpALeaseThatAFollowerHolds(t *testing.T) {
 		require.ErrorIs(t, err, kv.ErrNotFound, "the stop kept the lease that the replica holds")
 
 		other := &Server{clock: clock.Real(), kv: store, id: "b", done: make(chan struct{})}
-		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte("a")))
+		require.NoError(t, store.Set(ctx, egressLeaseKey, []byte(s.leaseValue())))
 		close(other.done)
 		other.releaseLease(ctx)
 		v, err := store.Get(ctx, egressLeaseKey)
 		require.NoError(t, err)
-		assert.Equal(t, "a", string(v), "the stop gave up the lease of another replica")
+		assert.Equal(t, s.leaseValue(), string(v), "the stop gave up the lease of another replica")
 	})
 }

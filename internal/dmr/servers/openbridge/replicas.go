@@ -89,12 +89,21 @@ const (
 const (
 	kindRelease = "release"
 	kindTaken   = "taken"
+	kindMarker  = "marker"
+	kindAck     = "ack"
 )
+
+const leaseAcks = "acks"
+
+func (s *Server) leaseValue() string {
+	return s.id + " " + leaseAcks
+}
 
 // outMessage is a message that an outbox publishes.
 type outMessage struct {
 	topic string
 	msg   []byte
+	then  func()
 }
 
 // egressJob is a packet that a replica without the lease hands to the
@@ -107,6 +116,7 @@ type egressJob struct {
 	Hops     uint8  `json:"hops"`
 	Kind     string `json:"kind,omitempty"`
 	Replica  string `json:"replica,omitempty"`
+	Marker   string `json:"marker,omitempty"`
 }
 
 func newReplicaID() string {
@@ -148,7 +158,7 @@ func (s *Server) holdLease(ctx context.Context) bool {
 // tryLease takes or renews the lease in the KV store and reports whether
 // this replica holds it.
 func (s *Server) tryLease(ctx context.Context) (bool, error) {
-	ok, err := s.kv.SetNX(ctx, egressLeaseKey, s.id, EgressLeaseTTL)
+	ok, err := s.kv.SetNX(ctx, egressLeaseKey, s.leaseValue(), EgressLeaseTTL)
 	if err != nil {
 		return false, fmt.Errorf("taking the lease: %w", err)
 	}
@@ -162,7 +172,7 @@ func (s *Server) tryLease(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("reading the lease: %w", err)
 	}
-	if string(v) != s.id {
+	if string(v) != s.leaseValue() {
 		return false, nil
 	}
 	if err := s.kv.Expire(ctx, egressLeaseKey, EgressLeaseTTL); err != nil {
@@ -270,7 +280,7 @@ func (s *Server) releaseLease(ctx context.Context) {
 // KV store, whatever its role says, since a SetNX whose reply timed out may
 // have taken it.
 func (s *Server) deleteLease(ctx context.Context) {
-	if _, err := s.kv.DeleteIfEqual(ctx, egressLeaseKey, []byte(s.id)); err != nil {
+	if _, err := s.kv.DeleteIfEqual(ctx, egressLeaseKey, []byte(s.leaseValue())); err != nil {
 		slog.Error("Error giving up the OpenBridge egress lease", "error", err)
 	}
 }
@@ -317,7 +327,7 @@ func (s *Server) handOver(ctx context.Context) {
 			if taken != nil {
 				continue
 			}
-			if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && len(v) > 0 && string(v) != s.id {
+			if v, err := s.kv.Get(ctx, egressLeaseKey); err == nil && len(v) > 0 && string(v) != s.leaseValue() {
 				t := s.clock.NewTimer(takeWait)
 				defer t.Stop()
 				taken = t.C()
@@ -356,6 +366,9 @@ func (s *Server) runOutbox(out chan outMessage) {
 		if err := s.pubsub.Publish(m.topic, m.msg); err != nil {
 			slog.Error("Error publishing an OpenBridge message", "topic", m.topic, "error", err)
 		}
+		if m.then != nil {
+			m.then()
+		}
 	}
 	for {
 		select {
@@ -392,7 +405,7 @@ func (s *Server) consumeEgress(sub pubsub.Subscription) {
 				continue
 			}
 			if j.Kind != "" {
-				s.leaseMessage(j)
+				s.controlMessage(j)
 				continue
 			}
 			if !s.sends() {
@@ -405,6 +418,70 @@ func (s *Server) consumeEgress(sub pubsub.Subscription) {
 			s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
 		}
 	}
+}
+
+func (s *Server) controlMessage(j egressJob) {
+	switch j.Kind {
+	case kindMarker:
+		if s.sends() {
+			s.ack(j)
+		}
+	case kindAck:
+		if j.Replica != s.id {
+			return
+		}
+		if done, ok := s.markers.LoadAndDelete(j.Marker); ok {
+			close(done)
+		}
+	default:
+		s.leaseMessage(j)
+	}
+}
+
+func (s *Server) ack(m egressJob) {
+	b, err := json.Marshal(egressJob{Kind: kindAck, Replica: m.Replica, Marker: m.Marker})
+	if err != nil {
+		slog.Error("Error encoding an OpenBridge ack", "error", err)
+		return
+	}
+	if err := s.pubsub.Publish(egressTopic, b); err != nil {
+		slog.Error("Error publishing an OpenBridge ack", "error", err)
+	}
+}
+
+func (s *Server) settleEgress(ctx context.Context, done chan struct{}) {
+	token := s.id + ":" + strconv.FormatUint(s.markerSeq.Add(1), 10)
+	b, err := json.Marshal(egressJob{Kind: kindMarker, Replica: s.id, Marker: token})
+	if err != nil {
+		slog.Error("Error encoding an OpenBridge marker", "error", err)
+		close(done)
+		return
+	}
+	m := outMessage{topic: egressTopic, msg: b}
+	if s.holderAcks(ctx) {
+		s.markers.Store(token, done)
+	} else {
+		m.then = func() { close(done) }
+	}
+	select {
+	case s.egressOut <- m:
+	case <-s.done:
+		if _, ok := s.markers.LoadAndDelete(token); ok || m.then != nil {
+			close(done)
+		}
+	}
+}
+
+func (s *Server) holderAcks(ctx context.Context) bool {
+	if s.kv == nil {
+		return true
+	}
+	v, err := s.kv.Get(ctx, egressLeaseKey)
+	if err != nil {
+		return false
+	}
+	f := strings.Fields(string(v))
+	return len(f) == 2 && f[1] == leaseAcks
 }
 
 // leaseMessage takes a release or taken message from the egress topic.

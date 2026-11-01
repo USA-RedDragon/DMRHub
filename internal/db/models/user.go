@@ -212,8 +212,8 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 // DeleteUser deletes the user id and what they own in one transaction.
 // Their repeaters go with the calls through them and their routing rules,
 // their peers with their rules, and the slots open to them close to them.
-// Their sessions, app grants, password reset links and tracked positions
-// end. Their other calls, nets and scheduled nets stay without the user.
+// Their co-sysop roles and invites, sessions, app grants, password reset
+// links and tracked positions end. Their other calls, nets and scheduled nets stay without the user.
 func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var repeaters []Repeater
@@ -228,9 +228,15 @@ func DeleteUser(db *gorm.DB, id uint) error {
 			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RoutingRule{}).Error; err != nil {
 				return fmt.Errorf("could not delete the routing rules of repeater %d: %w", r.ID, err)
 			}
+			if err := tx.Where("repeater_id = ?", r.ID).Delete(&RepeaterCosysop{}).Error; err != nil {
+				return fmt.Errorf("could not delete the co-sysops of repeater %d: %w", r.ID, err)
+			}
 			if err := tx.Unscoped().Select(clause.Associations, "TS1StaticTalkgroups").Select(clause.Associations, "TS2StaticTalkgroups").Delete(r).Error; err != nil {
 				return fmt.Errorf("could not delete repeater %d: %w", r.ID, err)
 			}
+		}
+		if err := tx.Where("user_id = ?", id).Delete(&RepeaterCosysop{}).Error; err != nil {
+			return fmt.Errorf("could not delete the co-sysop roles: %w", err)
 		}
 		var peers []uint
 		if err := tx.Unscoped().Model(&Peer{}).Where("owner_id = ?", id).Pluck("id", &peers).Error; err != nil {

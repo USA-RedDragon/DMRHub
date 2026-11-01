@@ -22,15 +22,18 @@
 <template>
   <div>
     <h1>Repeaters</h1>
-    <RepeaterTable />
+    <CosysopInvites @accepted="reload += 1" />
+    <RepeaterTable :key="reload" />
   </div>
 </template>
 
 <script lang="ts">
+import CosysopInvites from '@/components/CosysopInvites.vue';
 import RepeaterTable from '@/components/RepeaterTable.vue';
 
 export default {
   components: {
+    CosysopInvites,
     RepeaterTable,
   },
   head: {
@@ -40,7 +43,9 @@ export default {
   mounted() {},
   unmounted() {},
   data: function() {
-    return {};
+    return {
+      reload: 0,
+    };
   },
   methods: {},
   computed: {},

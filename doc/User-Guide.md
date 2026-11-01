@@ -15,6 +15,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 - [Link a repeater](guides/link-repeater.md), MMDVM or Motorola IPSC
 - [Use Codec2 radios](guides/voice-codec.md)
 - [Set the rules of your repeater](guides/repeater-rules.md): slot lock and talkgroup lists
+- [Share a repeater with co-sysops](guides/co-sysops.md): invite other users to look after it
 
 ## On the air
 

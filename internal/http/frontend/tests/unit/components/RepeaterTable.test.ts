@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/services/API', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -29,6 +30,7 @@ vi.mock('@/services/ws', () => ({
 
 import API from '@/services/API';
 import RepeaterTable from '@/components/RepeaterTable.vue';
+import { useUserStore } from '@/store';
 
 const mockAPI = API as unknown as { get: Mock };
 
@@ -74,4 +76,55 @@ describe('RepeaterTable timeslots', () => {
       expect(await editing(slots)).toEqual({ ts1, ts2 });
     });
   }
+});
+
+describe('RepeaterTable co-sysop rows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows the owner with a Co-sysop badge and no Delete for a repeater of another owner', async () => {
+    const own = { ...repeater(3), id: 3191868, owner: { id: 3191868, callsign: 'KI5VMF' } };
+    const co = { ...repeater(3), id: 311888, owner: { id: 3191869, callsign: 'KP4DJT' } };
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url.startsWith('/talkgroups')) {
+        return Promise.resolve({ data: { talkgroups: [] } });
+      }
+      return Promise.resolve({ data: { repeaters: [own, co], total: 2 } });
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useUserStore().id = 3191868;
+    const wrapper = mount(RepeaterTable, {
+      global: { plugins: [pinia], mocks: { $toast: { add: vi.fn() }, $confirm: { require: vi.fn() } }, stubs: { RouterLink: true } },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Owner');
+    expect(wrapper.text()).toContain('You');
+    expect(wrapper.find('[data-test="cosysop-badge-311888"]').text()).toBe('Co-sysop');
+    expect(wrapper.find('[data-test="cosysop-badge-3191868"]').exists()).toBe(false);
+
+    const coRow = () => wrapper.findAll('tbody tr').find((r) => r.find('[data-test="cosysop-badge-311888"]').exists())!;
+    await coRow().findAll('button').find((b) => b.text() === 'Edit')!.trigger('click');
+    await flushPromises();
+    const after = coRow();
+    expect(after.findAll('button').map((b) => b.text())).toEqual(['Save', 'Cancel']);
+  });
+
+  it('shows no Owner column when the user owns every repeater', async () => {
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url.startsWith('/talkgroups')) {
+        return Promise.resolve({ data: { talkgroups: [] } });
+      }
+      return Promise.resolve({ data: { repeaters: [{ ...repeater(3), owner: { id: 3191868, callsign: 'KI5VMF' } }], total: 1 } });
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useUserStore().id = 3191868;
+    const wrapper = mount(RepeaterTable, {
+      global: { plugins: [pinia], mocks: { $toast: { add: vi.fn() }, $confirm: { require: vi.fn() } }, stubs: { RouterLink: true } },
+    });
+    await flushPromises();
+    expect(wrapper.findAll('th').map((h) => h.text())).not.toContain('Owner');
+  });
 });

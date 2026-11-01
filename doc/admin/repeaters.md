@@ -37,11 +37,11 @@ Mark a repeater as trusted when it is a shared repeater of the network that user
 
 ## Slot locks
 
-The owner of a repeater, and an admin, can lock a timeslot to a list of users, for example to keep it open for emergency traffic. A locked timeslot carries only the traffic from the radios of those users, and private traffic to them. See [Set the rules of your repeater](../guides/repeater-rules.md).
+The owner of a repeater, its co-sysops and an admin can lock a timeslot to a list of users, for example to keep it open for emergency traffic. A locked timeslot carries only the traffic from the radios of those users, and private traffic to them. See [Set the rules of your repeater](../guides/repeater-rules.md).
 
 ## Talkgroup lists
 
-The owner of a repeater, and an admin, can block talkgroups on the repeater, or allow only some talkgroups. See [Set the rules of your repeater](../guides/repeater-rules.md). An owner can misuse the lists to shut people out of a repeater, for example to keep a community off a shared repeater. Admins can see and change the lists of every repeater.
+The owner of a repeater, its co-sysops and an admin can block talkgroups on the repeater, or allow only some talkgroups. See [Set the rules of your repeater](../guides/repeater-rules.md). An owner can misuse the lists to shut people out of a repeater, for example to keep a community off a shared repeater. Admins can see and change the lists of every repeater.
 
 ## Repeaters for each user
 

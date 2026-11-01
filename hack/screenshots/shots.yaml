@@ -358,3 +358,23 @@ shots:
     as: n0call
     wait: Copy the token now
     clip: card API tokens
+  - name: repeater-cosysops.png
+    phase: main
+    as: n0call
+    needs: [cosysops]
+    route: /repeaters/300000101
+    wait: Cancel invite
+    clip: card Co-sysops
+  - name: repeaters-cosysop-invite.png
+    phase: main
+    as: n2call
+    needs: [cosysops]
+    route: /repeaters
+    wait: Co-sysop invites
+    clip: card Co-sysop invites
+  - name: repeaters-cosysop.png
+    phase: main
+    as: n1call
+    needs: [cosysops]
+    route: /repeaters
+    wait: Co-sysop

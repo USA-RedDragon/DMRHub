@@ -130,16 +130,22 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Repeaters.GET("/unassigned", middleware.RequireAdmin(), userSuspension, v1RepeatersControllers.GETUnassignedRepeaters)
 	v1Repeaters.POST("/:id/owner", middleware.RequireAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterOwner)
 	v1Repeaters.POST("", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTRepeater)
-	v1Repeaters.POST("/:id/link/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterLink)
-	v1Repeaters.POST("/:id/unlink/:type/:slot/:target", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterUnlink)
-	v1Repeaters.POST("/:id/talkgroups", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterTalkgroups)
-	v1Repeaters.GET("/:id/rules", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.GETRepeaterRules)
-	v1Repeaters.PATCH("/:id/rules", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.PATCHRepeaterRules)
-	v1Repeaters.GET("/:id/rules/user", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.GETRepeaterRuleUser)
+	v1Repeaters.POST("/:id/link/:type/:slot/:target", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.POSTRepeaterLink)
+	v1Repeaters.POST("/:id/unlink/:type/:slot/:target", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.POSTRepeaterUnlink)
+	v1Repeaters.POST("/:id/talkgroups", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.POSTRepeaterTalkgroups)
+	v1Repeaters.GET("/:id/rules", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETRepeaterRules)
+	v1Repeaters.PATCH("/:id/rules", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.PATCHRepeaterRules)
+	v1Repeaters.GET("/:id/rules/user", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETRepeaterRuleUser)
 	v1Repeaters.GET("/:id", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.GETRepeater)
-	v1Repeaters.PATCH("/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.PATCHRepeater)
+	v1Repeaters.PATCH("/:id", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.PATCHRepeater)
 	v1Repeaters.POST("/:id/rotate-password", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterRotatePassword)
 	v1Repeaters.DELETE("/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.DELETERepeater)
+	v1Repeaters.GET("/cosysop-invites", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.GETCosysopInvites)
+	v1Repeaters.GET("/:id/cosysops", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETCosysops)
+	v1Repeaters.POST("/:id/cosysops", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTCosysop)
+	v1Repeaters.DELETE("/:id/cosysops/:user", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.DELETECosysop)
+	v1Repeaters.POST("/:id/cosysop-invite/accept", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTCosysopAccept)
+	v1Repeaters.POST("/:id/cosysop-invite/decline", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTCosysopDecline)
 
 	v1Talkgroups := group.Group("/talkgroups")
 	// Paginated
@@ -247,7 +253,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	// Paginated
 	v1Lastheard.GET("/user/:id", middleware.RequireSelfOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardUser)
 	// Paginated
-	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
+	v1Lastheard.GET("/repeater/:id", middleware.RequireRepeaterSysop(), userSuspension, v1LastheardControllers.GETLastheardRepeater)
 	// Paginated
 	v1Lastheard.GET("/talkgroup/:id", view, v1LastheardControllers.GETLastheardTalkgroup)
 

@@ -52,6 +52,8 @@ type Result struct {
 	MessageAccesses int
 	Transmissions   int
 	Bursts          int
+	// CosysopInvites is the expired invites to be a co-sysop purged.
+	CosysopInvites int
 }
 
 // Purger deletes old records in batches. Only one replica purges in each
@@ -123,6 +125,9 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 	if err := models.PrunePositions(db, now, time.Duration(cfg.DMR.Positions.Retention())*day); err != nil {
 		return res, fmt.Errorf("retention: %w", err)
 	}
+	if res.CosysopInvites, err = models.PurgeExpiredCosysopInvites(db, now); err != nil {
+		return res, fmt.Errorf("retention: %w", err)
+	}
 	if r.Messages > 0 {
 		cut := now.Add(-time.Duration(r.Messages) * day)
 		if res.Messages, err = purgeMessages(db, cut); err != nil {
@@ -142,8 +147,8 @@ func (p *Purger) Run(ctx context.Context, now time.Time) (Result, error) {
 			return res, err
 		}
 	}
-	if res.Messages+res.MessageAccesses+res.Bursts+res.Transmissions > 0 {
-		slog.Info("Retention: purged old records", "messages", res.Messages, "message_accesses", res.MessageAccesses, "transmissions", res.Transmissions, "bursts", res.Bursts)
+	if res.Messages+res.MessageAccesses+res.Bursts+res.Transmissions+res.CosysopInvites > 0 {
+		slog.Info("Retention: purged old records", "messages", res.Messages, "message_accesses", res.MessageAccesses, "transmissions", res.Transmissions, "bursts", res.Bursts, "cosysop_invites", res.CosysopInvites)
 	}
 	return res, nil
 }

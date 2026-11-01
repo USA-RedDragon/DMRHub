@@ -254,6 +254,46 @@ func RequireRepeaterOwnerOrAdmin() gin.HandlerFunc {
 	}
 }
 
+// RequireRepeaterSysop lets through the owner of the repeater of the id
+// parameter, its co-sysops and admins.
+func RequireRepeaterSysop() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer panicRecovery(c)
+
+		id := c.Param("id")
+		user, db, ok := authenticateUser(c, "RequireRepeaterSysop")
+		if !ok {
+			return
+		}
+		if !user.Approved || user.Suspended {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errorKey: msgAuthFailed})
+			return
+		}
+		if user.Admin {
+			return
+		}
+
+		var repeater models.Repeater
+		db.Find(&repeater, "id = ?", id)
+		if repeater.ID != 0 && repeater.OwnerID == user.ID {
+			return
+		}
+		if repeater.ID != 0 {
+			co, err := models.IsRepeaterCosysop(db, repeater.ID, user.ID)
+			if err != nil {
+				slog.Error("Failed to check the co-sysops of a repeater", "repeaterID", repeater.ID, "error", err)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{errorKey: msgAuthFailed})
+				return
+			}
+			if co {
+				return
+			}
+		}
+
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{errorKey: MsgNotRepeaterOwner})
+	}
+}
+
 func RequireTalkgroupOwnerOrAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer panicRecovery(c)

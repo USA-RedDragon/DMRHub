@@ -261,4 +261,43 @@ describe('Owner repeater page', () => {
     cy.contains('tr', '311001').find('button').contains('Save').click();
     cy.wait('@patchRepeater').its('request.body').should('not.have.property', 'trusted');
   });
+  it('accepts a co-sysop invite and lists the repeater with a Co-sysop badge', () => {
+    const shared = {
+      id: 311888,
+      type: 'mmdvm',
+      connected_time: '2024-06-10T14:00:00Z',
+      created_at: '2024-01-10T09:00:00Z',
+      last_ping_time: '2024-06-10T14:05:00Z',
+      slots: 3,
+      ts1_static_talkgroups: [],
+      ts2_static_talkgroups: [],
+      ts1_dynamic_talkgroup: { id: 0, name: 'None' },
+      ts2_dynamic_talkgroup: { id: 0, name: 'None' },
+      hotspot: false,
+      simplex_repeater: false,
+      owner: { id: 3191868, callsign: 'KP4DJT' },
+    };
+    cy.intercept('GET', '/api/v1/talkgroups?limit=none', { statusCode: 200, body: { talkgroups: [] } });
+    cy.intercept('GET', '/api/v1/repeaters/cosysop-invites', {
+      statusCode: 200,
+      body: {
+        invites: [{
+          repeater_id: 311888, repeater_callsign: 'W5DFW', owner: { id: 3191868, callsign: 'KP4DJT' },
+          invited_at: '2026-11-01T12:00:00Z', expires_at: '2026-11-08T12:00:00Z',
+        }],
+      },
+    });
+    cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, body: { total: 0, repeaters: [] } }).as('before');
+    cy.visit('/repeaters');
+    cy.wait('@before');
+    cy.contains('KP4DJT invited you to manage W5DFW 311888.').should('be.visible');
+
+    cy.intercept('POST', '/api/v1/repeaters/311888/cosysop-invite/accept', { statusCode: 200, body: { message: 'Done' } }).as('accept');
+    cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, body: { total: 1, repeaters: [shared] } }).as('after');
+    cy.get('[data-test="accept-311888"]').click();
+    cy.wait('@accept');
+    cy.wait('@after');
+    cy.get('[data-test="cosysop-invites"]').should('not.exist');
+    cy.get('[data-test="cosysop-badge-311888"]').should('have.text', 'Co-sysop');
+  });
 });

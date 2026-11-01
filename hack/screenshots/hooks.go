@@ -69,6 +69,7 @@ func hooks() map[string]hook {
 		"dmrgateway":    startDMRGateway,
 		"unassigned":    seedUnassigned,
 		"tokens":        makeTokens,
+		"cosysops":      inviteCosysops,
 	}
 }
 
@@ -489,6 +490,18 @@ func repeaterRules(ctx context.Context, r *runner) error {
 	return r.api("n0call").do(ctx, http.MethodPatch, "/api/v1/repeaters/300000101/rules", map[string]any{
 		"ts2_users": []uint{3000001, 3000002}, "talkgroup_mode": "block", "talkgroups": []uint{91},
 	}, nil)
+}
+
+// inviteCosysops makes N1CALL a co-sysop of hotspot 300000101 and leaves
+// an invite of N2CALL open.
+func inviteCosysops(ctx context.Context, r *runner) error {
+	owner := r.api("n0call")
+	for _, user := range []string{"N1CALL", "N2CALL"} {
+		if err := owner.do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/cosysops", map[string]string{"user": user}, nil); err != nil {
+			return err
+		}
+	}
+	return r.api("n1call").do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/cosysop-invite/accept", nil, nil)
 }
 
 func setEmail(ctx context.Context, r *runner) error {

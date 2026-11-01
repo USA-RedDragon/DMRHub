@@ -18,7 +18,11 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 package migration
 
-import "github.com/USA-RedDragon/DMRHub/internal/config"
+import (
+	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/go-gormigrate/gormigrate/v2"
+	"gorm.io/gorm"
+)
 
 // IDs returns the IDs of every migration that Migrate and MigrateSchema
 // run, which share one table of the migrations done.
@@ -30,4 +34,15 @@ func IDs() []string {
 		ids = append(ids, m.ID)
 	}
 	return ids
+}
+
+// Rollback rolls back the migration id of Migrate.
+func Rollback(db *gorm.DB, cfg *config.Config, id string) error {
+	all := migrations(db, cfg)
+	for _, m := range all {
+		if m.ID == id {
+			return gormigrate.New(db, gormigrate.DefaultOptions, all).RollbackMigration(m) //nolint:wrapcheck
+		}
+	}
+	return gorm.ErrRecordNotFound
 }

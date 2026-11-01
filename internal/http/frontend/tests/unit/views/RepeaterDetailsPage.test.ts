@@ -19,7 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/services/API', () => ({
   default: { get: vi.fn(), patch: vi.fn() },
@@ -30,6 +30,7 @@ vi.mock('@/services/ws', () => ({
 
 import API from '@/services/API';
 import RepeaterDetailsPage from '@/views/repeaters/RepeaterDetailsPage.vue';
+import { useUserStore } from '@/store';
 
 const mockAPI = API as unknown as { get: Mock };
 
@@ -95,5 +96,70 @@ describe('RepeaterDetailsPage details', () => {
   it('shows no rules to a visitor who does not own the repeater', async () => {
     const text = await badge(new Date(Date.now() - 10_000).toISOString(), { owner: { id: 3000001, callsign: 'N0DEMO' } });
     expect(text).not.toContain('Slot lock');
+  });
+});
+
+async function asRole(role: string | null, userID: number) {
+  mockAPI.get.mockImplementation((url: string) => {
+    if (url.startsWith('/lastheard')) {
+      return Promise.resolve({ data: { calls: [], total: 0 } });
+    }
+    if (url.endsWith('/cosysops')) {
+      if (role === null) return Promise.reject({ response: { status: 403 } });
+      return Promise.resolve({ data: { owner: { id: 3000001, callsign: 'N0DEMO' }, role, cosysops: [] } });
+    }
+    const t = new Date().toISOString();
+    return Promise.resolve({
+      data: {
+        id: 310000101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: t, connected_time: t, created_at: t,
+        ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
+        latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
+        owner: { id: 3000001, callsign: 'N0DEMO' },
+      },
+    });
+  });
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const store = useUserStore();
+  store.loggedIn = true;
+  store.id = userID;
+  const wrapper = mount(RepeaterDetailsPage, {
+    global: {
+      plugins: [pinia],
+      mocks: { $route: { params: { id: '310000101' } }, $toast: { add: vi.fn() } },
+      stubs: { RouterLink: true, RepeaterRulesCard: true },
+    },
+  });
+  await flushPromises();
+  return wrapper;
+}
+
+describe('RepeaterDetailsPage roles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('lets a co-sysop edit the codec but not connect or see the password', async () => {
+    const w = await asRole('cosysop', 3000002);
+    expect(w.find('[data-test="codec-save"]').exists()).toBe(true);
+    expect(w.find('[data-test="connect"]').exists()).toBe(false);
+    expect(w.find('[data-test="cosysops"]').text()).toContain('Owner: N0DEMO.');
+    w.unmount();
+  });
+
+  it('lets the owner connect and manage co-sysops', async () => {
+    const w = await asRole('owner', 3000001);
+    expect(w.find('[data-test="codec-save"]').exists()).toBe(true);
+    expect(w.find('[data-test="connect"]').exists()).toBe(true);
+    expect(w.find('[data-test="invite-user"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('shows another user no controls', async () => {
+    const w = await asRole(null, 3000003);
+    expect(w.find('[data-test="codec-save"]').exists()).toBe(false);
+    expect(w.find('[data-test="connect"]').exists()).toBe(false);
+    expect(w.find('[data-test="cosysops"]').exists()).toBe(false);
+    w.unmount();
   });
 });

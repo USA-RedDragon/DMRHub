@@ -53,6 +53,7 @@ import { DataTable } from '@/components/ui/data-table';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 
 import API from '@/services/API';
+import { useUserStore } from '@/store';
 import { getWebsocketURI } from '@/services/util';
 import ws from '@/services/ws';
 
@@ -77,6 +78,7 @@ type RepeaterRow = {
   simplex_repeater: boolean;
   trusted: boolean;
   editable: boolean;
+  owner?: { id: number; callsign: string };
 };
 
 /**
@@ -160,7 +162,9 @@ export default {
               actionButton('Save', () => this.saveTalkgroups(repeater)),
             ];
             actions.push(actionButton('Cancel', () => this.cancelEdit(repeater)));
-            actions.push(actionButton('Delete', () => this.deleteRepeater(repeater)));
+            if (!this.isCosysopRow(repeater)) {
+              actions.push(actionButton('Delete', () => this.deleteRepeater(repeater)));
+            }
 
             return h('div', { class: 'flex gap-2 whitespace-nowrap' }, actions);
           },
@@ -175,6 +179,23 @@ export default {
             }, () => `${row.original.id}`);
           },
         },
+        ...(this.showOwner ? [{
+          accessorKey: 'owner',
+          header: 'Owner',
+          cell: ({ row }: { row: { original: RepeaterRow } }) => {
+            const repeater = row.original;
+            if (!this.isCosysopRow(repeater)) {
+              return 'You';
+            }
+            return h('span', { class: 'inline-flex items-center gap-1.5 whitespace-nowrap' }, [
+              repeater.owner?.callsign ?? '',
+              h('span', {
+                class: 'rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
+                'data-test': `cosysop-badge-${repeater.id}`,
+              }, 'Co-sysop'),
+            ]);
+          },
+        }] : []),
         {
           accessorKey: 'type',
           header: 'Type',
@@ -440,6 +461,9 @@ export default {
 
       return columns;
     },
+    showOwner(): boolean {
+      return !this.admin && this.repeaters.some((r) => this.isCosysopRow(r));
+    },
     totalPages() {
       if (!this.totalRecords || this.totalRecords <= 0) {
         return 1;
@@ -448,6 +472,9 @@ export default {
     },
   },
   methods: {
+    isCosysopRow(repeater: RepeaterRow): boolean {
+      return !this.admin && !!repeater.owner && repeater.owner.id !== useUserStore().id;
+    },
     handlePageIndexUpdate(pageIndex: number) {
       const nextPage = pageIndex + 1;
       if (nextPage === this.page || nextPage < 1) {

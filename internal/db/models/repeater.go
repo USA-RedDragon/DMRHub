@@ -165,15 +165,19 @@ func CountRepeaters(db *gorm.DB) (int, error) {
 	return int(count), err
 }
 
+// GetUserRepeaters returns the repeaters that the user id owns or is a
+// co-sysop of.
 func GetUserRepeaters(db *gorm.DB, id uint) ([]Repeater, error) {
 	var repeaters []Repeater
-	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ?", id).Order("id asc").Find(&repeaters).Error
+	err := db.Preload("Owner").Preload("TS1DynamicTalkgroup").Preload("TS2DynamicTalkgroup").Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("owner_id = ? OR "+cosysopOf, id, id).Order("id asc").Find(&repeaters).Error
 	return repeaters, err
 }
 
+// CountUserRepeaters returns the number of repeaters that GetUserRepeaters
+// returns.
 func CountUserRepeaters(db *gorm.DB, id uint) (int, error) {
 	var count int64
-	err := db.Model(&Repeater{}).Where("owner_id = ?", id).Count(&count).Error
+	err := db.Model(&Repeater{}).Where("owner_id = ? OR "+cosysopOf, id, id).Count(&count).Error
 	return int(count), err
 }
 
@@ -218,6 +222,10 @@ func DeleteRepeater(db *gorm.DB, id uint) error {
 
 		if err := tx.Where("repeater_id = ?", id).Delete(&RoutingRule{}).Error; err != nil {
 			return fmt.Errorf("delete routing rules: %w", err)
+		}
+
+		if err := tx.Where("repeater_id = ?", id).Delete(&RepeaterCosysop{}).Error; err != nil {
+			return fmt.Errorf("delete co-sysops: %w", err)
 		}
 
 		repeater := Repeater{RepeaterConfiguration: RepeaterConfiguration{ID: id}}

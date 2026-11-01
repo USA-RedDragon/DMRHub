@@ -129,6 +129,14 @@
 
       <RepeaterRulesCard v-if="canEditCodec" :repeater-id="repeater.id" />
 
+      <CosysopsCard
+        v-if="cosysops"
+        :repeater-id="repeater.id"
+        :data="cosysops"
+        :my-id="myID"
+        @changed="fetchCosysops"
+      />
+
       <!-- Info grid -->
       <div class="grid gap-6 md:grid-cols-2">
         <!-- Radio Configuration -->
@@ -333,11 +341,13 @@ import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import RepeaterRulesCard from '@/components/RepeaterRulesCard.vue';
+import CosysopsCard from '@/components/CosysopsCard.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import { connectKind } from '@/lib/enroll';
 import { heardLine, type Codec, type Codec2Mode, type SlotCodec } from '@/lib/codec';
+import { asCosysops, canManage, canSeeSecret, type Cosysops, type Role } from '@/lib/cosysops';
 import {
   cleanCalls,
   defaultFilter,
@@ -435,6 +445,7 @@ export default {
     TypeFilter,
     RelativeTimestamp,
     RepeaterRulesCard,
+    CosysopsCard,
     Talkgroup,
     User,
   },
@@ -447,6 +458,7 @@ export default {
     if (id) {
       this.repeaterID = Number(id);
       this.fetchRepeater();
+      this.fetchCosysops();
       this.fetchLastheard();
       this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
       this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
@@ -480,6 +492,7 @@ export default {
       codecSaving: false,
       codecMessage: '',
       codecFailed: false,
+      cosysops: null as Cosysops | null,
     };
   },
   watch: {
@@ -500,13 +513,17 @@ export default {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';
       return this.repeater.dialect === 'HBRP' ? 'HBRP' : 'MMDVM';
     },
+    role(): Role | null {
+      return this.cosysops ? this.cosysops.role : null;
+    },
+    myID(): number {
+      return useUserStore().id;
+    },
     canConnect(): boolean {
-      return this.canEditCodec && !!this.repeater && connectKind(this.repeater.type || 'mmdvm', this.repeater.id) !== null;
+      return canSeeSecret(this.role) && !!this.repeater && connectKind(this.repeater.type || 'mmdvm', this.repeater.id) !== null;
     },
     canEditCodec(): boolean {
-      const userStore = useUserStore();
-      if (!this.repeater || !userStore.loggedIn) return false;
-      return userStore.admin || (!!this.repeater.owner && this.repeater.owner.id === userStore.id);
+      return !!this.repeater && canManage(this.role);
     },
     codecSlots(): { key: SlotKey; title: string; heard: string }[] {
       const r = this.repeater;
@@ -561,6 +578,19 @@ export default {
           console.error(err);
           this.error = 'Failed to load repeater details. You may not have permission to view this repeater.';
           this.loading = false;
+        });
+    },
+    fetchCosysops() {
+      if (!useUserStore().loggedIn) {
+        this.cosysops = null;
+        return;
+      }
+      API.get(`/repeaters/${this.repeaterID}/cosysops`)
+        .then((res) => {
+          this.cosysops = asCosysops(res.data);
+        })
+        .catch(() => {
+          this.cosysops = null;
         });
     },
     setCodec(slot: SlotKey, value: AcceptableValue) {

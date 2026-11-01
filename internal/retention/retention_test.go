@@ -233,3 +233,37 @@ func TestRetentionPurgesThePartsWithTheirTransmissions(t *testing.T) {
 		})
 	}
 }
+
+// TestRetentionPurgesExpiredCosysopInvites keeps the co-sysops and the
+// invites that still wait, and purges the expired invites.
+func TestRetentionPurgesExpiredCosysopInvites(t *testing.T) {
+	t.Parallel()
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			cfg, database, kvStore := setup(t, be)
+			now := time.Now()
+			for _, id := range []uint{1000001, 1000002, 1000003, 1000004} {
+				require.NoError(t, database.Create(&models.User{ID: id, Callsign: fmt.Sprintf("N%dC", id), Username: fmt.Sprintf("u%d", id), Password: "hash"}).Error)
+			}
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100000101}, OwnerID: 1000001, Password: "pw"}).Error)
+			old := now.Add(-models.CosysopInviteLifetime - time.Hour)
+			_, err := models.InviteCosysop(database, 100000101, 1000002, 1000001, old)
+			require.NoError(t, err)
+			_, err = models.InviteCosysop(database, 100000101, 1000003, 1000001, old)
+			require.NoError(t, err)
+			ok, err := models.AnswerCosysopInvite(database, 100000101, 1000003, true, old)
+			require.NoError(t, err)
+			require.True(t, ok)
+			_, err = models.InviteCosysop(database, 100000101, 1000004, 1000001, now)
+			require.NoError(t, err)
+
+			res, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.CosysopInvites)
+			assert.Equal(t, int64(0), count(t, database, &models.RepeaterCosysop{}, "user_id = ?", 1000002))
+			assert.Equal(t, int64(1), count(t, database, &models.RepeaterCosysop{}, "user_id = ?", 1000003))
+			assert.Equal(t, int64(1), count(t, database, &models.RepeaterCosysop{}, "user_id = ?", 1000004))
+		})
+	}
+}

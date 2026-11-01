@@ -464,7 +464,8 @@ func TestBootMakesTheSecretsOnce(t *testing.T) {
 
 // TestDatabaseFixKeepsASavedDatabase gives the database fix a state file
 // that keeps a database setting. Neither Check nor Fix lets the setup
-// wizard change the database, and the file stays as it was.
+// wizard change the database, Try tests none, and the file stays as it
+// was.
 func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 	t.Parallel()
 	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
@@ -489,6 +490,7 @@ func TestDatabaseFixKeepsASavedDatabase(t *testing.T) {
 	assert.ErrorIs(t, errs[0].Err, liveconfig.ErrDatabaseSaved)
 	_, err = fix.Fix(context.Background(), next.Database)
 	require.ErrorIs(t, err, liveconfig.ErrDatabaseSaved)
+	require.ErrorIs(t, fix.Try(context.Background(), next.Database), liveconfig.ErrDatabaseSaved)
 	kept, ok, err := store.Load()
 	require.NoError(t, err)
 	require.True(t, ok)

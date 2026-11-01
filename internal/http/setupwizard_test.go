@@ -651,3 +651,82 @@ func TestSetupWizardFixesASQLiteFileWithNoUsers(t *testing.T) {
 	require.NotNil(t, cfg.Wizard)
 	assert.Equal(t, liveconfig.PhaseDatabase, cfg.Wizard.Phase)
 }
+
+type databaseTest struct {
+	Reached bool           `json:"reached"`
+	Error   string         `json:"error"`
+	Errors  map[string]any `json:"errors"`
+}
+
+func testDatabase(t *testing.T, r *gin.Engine, body any) (int, databaseTest) {
+	t.Helper()
+	w := wizardCall(t, r, http.MethodPost, "/api/v1/setupwizard/database-test", body, "")
+	var got databaseTest
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got), w.Body.String())
+	return w.Code, got
+}
+
+// TestSetupWizardTestsADatabaseSetting tests database settings in the
+// database phase of the wizard. A test says whether DMRHub reaches the
+// database, and keeps nothing: no state file, no SQLite file, and the
+// wizard stays in the database phase until a save.
+func TestSetupWizardTestsADatabaseSetting(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	fix, r := brokenDatabase(t, liveconfig.Locks{}, store)
+	raw, _ := wizardGET(t, r)
+
+	dir := t.TempDir()
+	good := filepath.Join(dir, "DMRHub.db")
+	setDatabase(raw, good)
+	code, got := testDatabase(t, r, raw)
+	require.Equal(t, http.StatusOK, code)
+	assert.True(t, got.Reached, got.Error)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "a test makes no SQLite file")
+	_, err = os.Stat(store.Path)
+	require.ErrorIs(t, err, os.ErrNotExist, "a test keeps no database setting")
+	assert.Equal(t, liveconfig.FixIdle, fix.Status().State)
+	_, cfg := wizardGET(t, r)
+	assert.Equal(t, liveconfig.PhaseDatabase, cfg.Wizard.Phase)
+
+	setDatabase(raw, filepath.Join(t.TempDir(), "missing", "DMRHub.db"))
+	code, got = testDatabase(t, r, raw)
+	require.Equal(t, http.StatusOK, code)
+	assert.False(t, got.Reached)
+	assert.Contains(t, got.Error, "DMRHub cannot reach this database")
+	assert.Contains(t, got.Errors["database"], "database")
+
+	raw["network-name"] = "Too early"
+	code, got = testDatabase(t, r, raw)
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, got.Errors, "network-name")
+}
+
+// TestSetupWizardTestsNoDatabaseItCannotChange tests a database setting
+// that the deployment sets, and one after the database phase.
+func TestSetupWizardTestsNoDatabaseItCannotChange(t *testing.T) {
+	t.Parallel()
+	store := liveconfig.DatabaseState{Path: filepath.Join(t.TempDir(), liveconfig.DatabaseStateFile)}
+	_, r := brokenDatabase(t, liveconfig.Locks{"database.host": {Source: liveconfig.SourceEnv}}, store)
+	raw, _ := wizardGET(t, r)
+	code, got := testDatabase(t, r, raw)
+	require.Equal(t, http.StatusOK, code)
+	assert.False(t, got.Reached)
+	assert.Contains(t, got.Error, "the deployment sets the database")
+
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	memdb.Use(&base)
+	database, err := db.MakeDB(&base)
+	require.NoError(t, err)
+	live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
+	require.NoError(t, live.Boot(context.Background()))
+	state := setupwizard.NewState()
+	state.SetLive(live, database)
+	after := internalhttp.CreateSetupWizardRouter(&base, state, make(chan any, 1), "test", "test")
+	code, got = testDatabase(t, after, map[string]any{})
+	require.Equal(t, http.StatusConflict, code)
+	assert.Contains(t, got.Error, "DMRHub reaches its database")
+}

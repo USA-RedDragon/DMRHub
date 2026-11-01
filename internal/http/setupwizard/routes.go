@@ -45,6 +45,7 @@ func v1(group *gin.RouterGroup) {
 	group.POST("/users", v1SetupWizardControllers.ProvideDB, v1APIUsersControllers.POSTFirstAdmin)
 	group.GET("/setupwizard", v1SetupWizardControllers.GETSetupWizard)
 	group.GET("/setupwizard/database-fix", v1SetupWizardControllers.GETDatabaseFix)
+	group.POST("/setupwizard/database-test", refuseClosed, v1SetupWizardControllers.POSTDatabaseTest)
 	group.GET("/network/name", v1APIControllers.GETNetworkName)
 	group.GET("/version", v1APIControllers.GETVersion)
 	group.GET("/ping", v1APIControllers.GETPing)

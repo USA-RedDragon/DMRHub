@@ -127,6 +127,37 @@ func PUTConfig(c *gin.Context) {
 	writeFixStatus(c, status, http.StatusAccepted)
 }
 
+// POSTDatabaseTest tries the database setting of the config in the body,
+// while DMRHub cannot reach its database, and keeps nothing. It answers
+// whether DMRHub reached the database, with why not; 400 for a config
+// that changes more than the database settings; and 409 after the
+// database phase.
+func POSTDatabaseTest(c *gin.Context) {
+	fix := databaseFix(c)
+	if fix == nil {
+		c.JSON(http.StatusConflict, gin.H{errorKey: "DMRHub reaches its database already"})
+		return
+	}
+	var req apimodels.POSTConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: err.Error()})
+		return
+	}
+	next := &config.Config{}
+	req.ToConfig(next, fix.Base)
+	if errs := fix.Check(next); len(errs) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Invalid configuration", errorsKey: configcontroller.FormatErrors(errs)})
+		return
+	}
+	if err := fix.Try(c.Request.Context(), next.Database); err != nil {
+		body := failedFix(err, next.Database)
+		body[reachedKey] = false
+		c.JSON(http.StatusOK, body)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{reachedKey: true})
+}
+
 // GETDatabaseFix answers with the status of the last database fix: pending
 // while it runs, done with the phase of the wizard that comes next, or
 // failed with why.
@@ -160,6 +191,7 @@ func writeFixStatus(c *gin.Context, s liveconfig.FixStatus, pending int) {
 
 const (
 	statusKey  = "status"
+	reachedKey = "reached"
 	messageKey = "message"
 )
 

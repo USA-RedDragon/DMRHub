@@ -49,6 +49,9 @@ type DatabaseFix struct {
 	// lock, as OpenDatabase does, and returns the error of its context once
 	// the context ends.
 	Open func(context.Context, *config.Config) (Migration, error)
+	// Probe connects to the database of a config and closes it again, as
+	// db.Ping does.
+	Probe func(context.Context, *config.Config) error
 	// Err is why DMRHub cannot reach its database.
 	Err error
 
@@ -87,7 +90,7 @@ const (
 // NewDatabaseFix returns a DatabaseFix for a base config whose database
 // DMRHub cannot reach because of err.
 func NewDatabaseFix(base *config.Config, locks Locks, state DatabaseState, open func(context.Context, *config.Config) (Migration, error), err error) *DatabaseFix {
-	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database), status: FixStatus{State: FixIdle}}
+	return &DatabaseFix{Base: base, Locks: locks, State: state, Open: open, Probe: db.Ping, Err: err, fixed: make(chan Fixed), usedFile: SQLiteFileUsed(base.Database), status: FixStatus{State: FixIdle}}
 }
 
 // Migration is a database whose migration lock is held. Migrate migrates
@@ -261,6 +264,29 @@ func (f *DatabaseFix) Fix(ctx context.Context, next config.Database) (FixStatus,
 	}
 	go f.migrate(context.WithoutCancel(ctx), m, &cfg)
 	return f.Status(), nil
+}
+
+// Try connects to the database of the setting next and closes it again,
+// and gives up when ctx ends or after FixTimeout. It keeps nothing and
+// migrates nothing, and refuses a setting that Fix would refuse.
+func (f *DatabaseFix) Try(ctx context.Context, next config.Database) error {
+	f.mu.Lock()
+	saved := f.saved()
+	f.mu.Unlock()
+	switch {
+	case DatabaseLocked(f.Locks):
+		return ErrDatabaseLocked
+	case saved:
+		return ErrDatabaseSaved
+	}
+	cfg := *f.Base
+	cfg.Database = next
+	ctx, cancel := context.WithTimeout(ctx, FixTimeout)
+	defer cancel()
+	if err := f.Probe(ctx, &cfg); err != nil {
+		return fmt.Errorf("DMRHub cannot reach this database: %w", err)
+	}
+	return nil
 }
 
 func (f *DatabaseFix) finish(s FixStatus) FixStatus {

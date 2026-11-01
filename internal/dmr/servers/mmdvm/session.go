@@ -292,14 +292,6 @@ func (s *Server) forget(l *link) {
 	}
 }
 
-// handlePacket handles the packet data from remoteAddr as the listener
-// does, and waits for the lookups and the repeater jobs that it started.
-func (s *Server) handlePacket(ctx context.Context, remoteAddr net.UDPAddr, data []byte) {
-	s.handleFrom(ctx, udpEndpoint(remoteAddr), data, s.clock.Now())
-	s.lookups.Wait()
-	s.records.Wait()
-}
-
 func (s *Server) handleFrom(ctx context.Context, remote endpoint, data []byte, at time.Time) {
 	if s.stopped.Load() {
 		return

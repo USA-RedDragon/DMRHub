@@ -20,8 +20,8 @@
 -->
 
 <template>
-  <div>
-    <h1>Setup</h1>
+  <div class="mx-auto max-w-[1180px]">
+    <h1 class="mb-1 text-2xl font-bold">Set up DMRHub</h1>
     <div
       v-if="closed"
       role="alert"
@@ -32,6 +32,7 @@
       <p>{{ closedText.advice }}</p>
     </div>
     <template v-else>
+      <p class="mb-5 text-muted-foreground">Check each area, then save. You can change all of it later in Admin, Setup.</p>
       <div
         v-if="fixLost"
         role="alert"
@@ -75,7 +76,7 @@
         <b class="font-semibold">The replicas do not run with the same settings.</b>
         <p>
           {{ differText }} A setting that the deployment sets on one replica stays as the deployment sets it there. Look
-          for the amber mark below.
+          for the amber mark on the tabs.
         </p>
       </div>
       <div
@@ -86,37 +87,52 @@
       >
         {{ unansweredText }}
       </div>
-      <form @submit.prevent="submit()">
-        <GeneralSettings v-model="config" :errors="errors" :secret-status="secretStatus" />
-        <br />
-        <DMRSettings
-          v-model="config.dmr"
-          :errors="errors.dmr"
-          :secret-status="secretStatus"
-          :show-transcoding-status="isAdminSetup"
-          :saves="saves"
-        />
-        <br />
-        <HTTPSettings v-model="config.http" :errors="errors.http" />
-        <br />
-        <DatabaseSettings v-model="config.database" :errors="errors.database" />
-        <br />
-        <SMTPSettings v-model="config.smtp" :errors="errors.smtp" :secret-status="secretStatus" />
-        <br />
-        <RedisSettings v-model="config.redis" :errors="errors.redis" />
-        <br />
-        <MetricsSettings v-model="config.metrics" :errors="errors.metrics" />
-        <br />
-        <PProfSettings v-model="config.pprof" :errors="errors.pprof" />
-        <br v-if="setupState.replicas.length > 1" />
-        <ReplicasCard v-if="setupState.replicas.length > 1" :replicas="setupState.replicas" :revision="setupState.revision" />
-        <div class="card-footer mt-4 flex flex-wrap items-center gap-3">
-          <ShadButton type="submit" variant="outline" size="sm">Save</ShadButton>
-          <small v-if="setupState.replicas.length > 1" class="text-muted-foreground">
-            Saving puts the settings into effect on every replica at once, without a restart.
-          </small>
-        </div>
-      </form>
+      <SetupMenu
+        :tabs="tabs"
+        :tab="tab"
+        :state="setupState"
+        :read="read"
+        :errors="shownErrors"
+        :secrets="secrets"
+        :saves="saves"
+        :marks="marks"
+        wizard
+        @set="set"
+      >
+        <template #tab>
+          <div v-if="tab.id === 'database' && databaseEditable" class="-mt-2 mb-5 flex flex-wrap items-center gap-3" data-test="database-test">
+            <ShadButton type="button" variant="outline" size="sm" :disabled="testing || saving" @click="testDatabase">
+              Test the connection
+            </ShadButton>
+            <span
+              v-if="tested.text"
+              class="text-sm break-all"
+              :class="tested.reached ? 'text-green-700 dark:text-green-400' : 'text-destructive-foreground'"
+              data-test="database-test-result"
+            >{{ tested.text }}</span>
+          </div>
+          <p
+            v-else-if="tab.id === 'database' && setupState.loaded && !databasePhase"
+            class="-mt-2 mb-5 text-sm text-green-700 dark:text-green-400"
+            data-test="database-reached"
+          >Connected.</p>
+        </template>
+        <template #savebar>
+          <div
+            class="sticky bottom-0 z-[3] mt-1 flex flex-wrap items-center justify-end gap-2 border-t bg-background py-3"
+            data-test="savebar"
+          >
+            <span
+              class="mr-auto text-sm"
+              :class="saveText.error ? 'text-destructive-foreground' : 'text-muted-foreground'"
+              data-test="savebar-message"
+            >{{ saveText.text }}</span>
+            <ShadButton type="button" size="sm" :disabled="saving || !setupState.loaded" data-test="save" @click="save">
+              Save and continue
+            </ShadButton>
+          </div>
+        </template>
+      </SetupMenu>
     </template>
   </div>
 </template>
@@ -125,122 +141,30 @@
 import type { AxiosResponse } from 'axios';
 import { defineComponent } from 'vue';
 
+import SetupMenu from '@/components/setup/menu/SetupMenu.vue';
 import { Button as ShadButton } from '@/components/ui/button';
-
-import GeneralSettings from '@/components/setup/GeneralSettings.vue';
-import RedisSettings from '@/components/setup/RedisSettings.vue';
-import DatabaseSettings from '@/components/setup/DatabaseSettings.vue';
-import HTTPSettings from '@/components/setup/HTTPSettings.vue';
-import DMRSettings from '@/components/setup/DMRSettings.vue';
-import SMTPSettings from '@/components/setup/SMTPSettings.vue';
-import MetricsSettings from '@/components/setup/MetricsSettings.vue';
-import PProfSettings from '@/components/setup/PProfSettings.vue';
-
-import ReplicasCard from '@/components/setup/ReplicasCard.vue';
-import API from '@/services/API';
-import { ambeServersError, ambeServersPayload, type AmbeServerRow } from '@/lib/codec';
+import { ambeServersError, type AmbeServerRow } from '@/lib/codec';
+import {
+  AMBE_SERVERS, allPayload, clone, getAt, setAt, tabCheckErrors, tabFields, tabOfHash, tabOfPath, tabReadOnly, wizardTabs, TABS,
+  type FieldDef, type TabDef, type TabMark, type Values,
+} from '@/lib/setupMenu';
 import {
   emptySetupState, replicaName, serverName, settingLabel, setupStateKey, setupStateOf, stateKeys, type SetupState,
 } from '@/lib/setupState';
+import API from '@/services/API';
 
-type SetupSection = Record<string, unknown>;
+type ApplyError = { replica?: string; server: string; field?: string; running: boolean; error: string };
+type SaveReplica = { id: string; self: boolean; answered: boolean };
+type ShownApplyError = { summary: string; detail: string };
+type ClosedReason = '' | 'database' | 'settings';
+type FixAnswer = { status: 'pending' | 'done' | 'failed'; phase?: unknown; error?: unknown; errors?: unknown };
 
-type SetupConfig = {
-  dmr: SetupSection;
-  http: SetupSection;
-  database: SetupSection;
-  smtp: SetupSection;
-  redis: SetupSection;
-  metrics: SetupSection;
-  pprof: SetupSection;
-  [key: string]: unknown;
-};
+const fixPollInterval = 1000;
+const fixConfirmTries = 60;
+const fixLostInterval = 5000;
 
-type SetupErrors = {
-  dmr: SetupSection;
-  http: SetupSection;
-  database: SetupSection;
-  smtp: SetupSection;
-  redis: SetupSection;
-  metrics: SetupSection;
-  pprof: SetupSection;
-  [key: string]: unknown;
-};
-
-type SecretStatus = {
-  secretSet: boolean;
-  passwordSaltSet: boolean;
-  smtpPasswordSet: boolean;
-};
-
-const createInitialConfig = (): SetupConfig => ({
-  dmr: {},
-  http: {},
-  database: {},
-  smtp: {},
-  redis: {},
-  metrics: {},
-  pprof: {},
-});
-
-const createInitialErrors = (): SetupErrors => ({
-  dmr: {},
-  http: {},
-  database: {},
-  smtp: {},
-  redis: {},
-  metrics: {},
-  pprof: {},
-});
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined => {
-  if (typeof value === 'object' && value !== null) {
-    return value as Record<string, unknown>;
-  }
-
-  return undefined;
-};
-
-type ApplyError = {
-  replica?: string;
-  server: string;
-  field?: string;
-  running: boolean;
-  error: string;
-};
-
-type SaveReplica = {
-  id: string;
-  self: boolean;
-  answered: boolean;
-};
-
-type ShownApplyError = {
-  summary: string;
-  detail: string;
-};
-
-type SaveFailure = {
-  applyErrors: ApplyError[];
-  replicas: SaveReplica[];
-};
-
-const saveFailureOf = (error: unknown): SaveFailure | undefined => {
-  const response = asRecord(asRecord(error)?.response);
-  const data = asRecord(response?.data);
-  if (response?.status !== 409 || !Array.isArray(data?.applyErrors)) {
-    return undefined;
-  }
-  return {
-    applyErrors: data.applyErrors as ApplyError[],
-    replicas: Array.isArray(data.replicas) ? (data.replicas as SaveReplica[]) : [],
-  };
-};
-
-const replicasOf = (data: unknown): SaveReplica[] => {
-  const replicas = asRecord(data)?.replicas;
-  return Array.isArray(replicas) ? (replicas as SaveReplica[]) : [];
-};
+const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
 const listNames = (names: string[]): string => {
   if (names.length <= 1) {
@@ -249,26 +173,21 @@ const listNames = (names: string[]): string => {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 };
 
-const ambeServerRows = (config: Record<string, unknown>): AmbeServerRow[] | undefined => {
-  const servers = asRecord(asRecord(config.dmr)?.transcoding)?.['ambe-servers'];
-  return Array.isArray(servers) ? (servers as AmbeServerRow[]) : undefined;
-};
-
-const localErrors = (config: Record<string, unknown>): SetupErrors | undefined => {
-  const error = ambeServersError(ambeServerRows(config) ?? []);
-  if (!error) {
-    return undefined;
+const flatErrors = (v: unknown, prefix = '', out: Record<string, string> = {}): Record<string, string> => {
+  const r = asRecord(v);
+  if (!r) {
+    return out;
   }
-  return { ...createInitialErrors(), dmr: { transcoding: { 'ambe-servers': error } } };
+  for (const [k, e] of Object.entries(r)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (typeof e === 'string') {
+      out[path] = e;
+    } else {
+      flatErrors(e, path, out);
+    }
+  }
+  return out;
 };
-
-type ClosedReason = '' | 'database' | 'settings';
-
-const fixPollInterval = 1000;
-const fixConfirmTries = 60;
-const fixLostInterval = 5000;
-
-type FixAnswer = { status: 'pending' | 'done' | 'failed'; phase?: unknown; error?: unknown };
 
 const fixAnswerOf = (data: unknown): FixAnswer | undefined => {
   const d = asRecord(data);
@@ -276,7 +195,7 @@ const fixAnswerOf = (data: unknown): FixAnswer | undefined => {
   if (status !== 'pending' && status !== 'done' && status !== 'failed') {
     return undefined;
   }
-  return { status, phase: d?.phase, error: d?.error };
+  return { status, phase: d?.phase, error: d?.error, errors: d?.errors };
 };
 
 const closedReasonOf = (data: unknown): ClosedReason => {
@@ -292,86 +211,94 @@ const showApplyError = (e: ApplyError, self: boolean): ShownApplyError => {
       detail: e.error,
     };
   }
-  const name = serverName(e.server);
   const state = e.running ? 'It keeps running with its previous settings.' : 'It is not running.';
   const of = self || !replica ? '' : ` of replica ${replica}`;
-  return {
-    summary: `The ${name} server${of} could not start with the new settings. ${state}`,
-    detail: e.error,
-  };
+  return { summary: `The ${serverName(e.server)} server${of} could not start with the new settings. ${state}`, detail: e.error };
 };
 
+const fieldsByPath: Record<string, FieldDef> = Object.fromEntries(TABS.flatMap(tabFields).map((f) => [f.path, f]));
+
 export default defineComponent({
-  components: {
-    ShadButton,
-    ReplicasCard,
-    DatabaseSettings,
-    HTTPSettings,
-    DMRSettings,
-    SMTPSettings,
-    MetricsSettings,
-    PProfSettings,
-    GeneralSettings,
-    RedisSettings,
-  },
+  components: { SetupMenu, ShadButton },
   head() {
-    return {
-      title: this.isAdminSetup ? 'Admin Setup' : 'Setup',
-    };
+    return { title: 'Setup' };
   },
   provide() {
     return { [setupStateKey as symbol]: this.setupState };
   },
-  created() {
-    if (this.isAdminSetup) {
-      this.getConfig();
-      return;
-    }
-    API.get('/setupwizard')
-      .then((res: AxiosResponse) => {
-        if (closedReasonOf(res.data)) {
-          this.closed = closedReasonOf(res.data);
-          return;
-        }
-        if (res.data?.config_valid && res.data?.first_admin_open) {
-          this.$router.replace('/setup/user');
-        }
-        this.getConfig();
-      })
-      .catch(() => {
-        this.getConfig();
-      });
-  },
-  mounted() { },
-  unmounted() {
-    clearTimeout(this.fixPoll);
-  },
-  data: function () {
+  data() {
     return {
-      config: createInitialConfig() as SetupConfig,
-      errors: createInitialErrors() as SetupErrors,
+      original: {} as Values,
+      edited: {} as Values,
+      setupState: emptySetupState() as SetupState,
+      secrets: {} as Record<string, boolean>,
+      errors: {} as Record<string, string>,
+      failMsg: '',
+      saving: false,
+      saves: 0,
+      testing: false,
+      tested: { reached: false, text: '' },
       applyErrors: [] as ShownApplyError[],
       failedReplicas: [] as string[],
       applyOK: '',
       unanswered: [] as string[],
-      setupState: emptySetupState() as SetupState,
       closed: '' as ClosedReason,
-      saves: 0,
       fixPoll: undefined as ReturnType<typeof setTimeout> | undefined,
       fixLost: false,
-      secretStatus: {
-        secretSet: false,
-        passwordSaltSet: false,
-        smtpPasswordSet: false,
-      } as SecretStatus,
     };
   },
   computed: {
-    isAdminSetup() {
-      return this.$route.path.startsWith('/admin/setup');
+    tabs(): TabDef[] {
+      return wizardTabs(this.setupState);
+    },
+    tab(): TabDef {
+      return tabOfHash(this.$route.hash, this.tabs);
+    },
+    openTabs(): TabDef[] {
+      return this.tabs.filter((t) => !tabReadOnly(t, this.setupState));
     },
     databasePhase(): boolean {
       return this.setupState.wizard?.phase === 'database';
+    },
+    databaseEditable(): boolean {
+      return this.databasePhase && this.openTabs.some((t) => t.id === 'database');
+    },
+    checked(): Record<string, string> {
+      const out: Record<string, string> = {};
+      for (const t of this.openTabs) {
+        Object.assign(out, this.localError(t));
+      }
+      return out;
+    },
+    shownErrors(): Record<string, string> {
+      return { ...this.errors, ...this.checked };
+    },
+    marks(): Record<string, TabMark> {
+      const out: Record<string, TabMark> = {};
+      for (const p of Object.keys(this.shownErrors)) {
+        const t = tabOfPath(p);
+        if (t) {
+          out[t.id] = 'error';
+        }
+      }
+      return out;
+    },
+    saveText(): { text: string; error: boolean } {
+      const paths = Object.keys(this.shownErrors);
+      if (paths.length === 0) {
+        return { text: this.failMsg, error: this.failMsg !== '' };
+      }
+      const onTabs = paths.filter((p) => tabOfPath(p));
+      if (onTabs.length === 0) {
+        return { text: `Some settings are not valid: ${listNames(paths.map(settingLabel))}.`, error: true };
+      }
+      const names = [...new Set(onTabs.map((p) => tabOfPath(p)!.name))];
+      const only = onTabs[0] as string;
+      if (onTabs.length === 1 && this.shownErrors[only] === 'Required.') {
+        return { text: `Set the ${fieldsByPath[only]?.label ?? settingLabel(only)} on the ${names[0]} tab.`, error: true };
+      }
+      const which = names.length === 1 ? `the ${names[0]} tab` : `the ${listNames(names)} tabs`;
+      return { text: `Fix the marked settings on ${which}.`, error: true };
     },
     databaseAdvice(): string {
       const w = this.setupState.wizard;
@@ -381,7 +308,7 @@ export default defineComponent({
       if (w?.store_error) {
         return `The setup wizard cannot keep a database setting here: ${w.store_error}. Set the database in the config file or the environment of the deployment, then restart DMRHub.`;
       }
-      return `Fix the database settings below and save. DMRHub tries them at once and keeps them in ${w?.database_file ?? 'its working directory'}. The other settings open once DMRHub reaches its database.`;
+      return `Fix the settings on the Database tab and save. DMRHub tries them at once and keeps them in ${w?.database_file ?? 'its working directory'}. The other tabs open once DMRHub reaches its database.`;
     },
     closedText(): { heading: string; advice: string } {
       if (this.closed === 'database') {
@@ -409,11 +336,193 @@ export default defineComponent({
       return `${n} ${n === 1 ? 'setting differs' : 'settings differ'} between replicas: ${listNames(paths)}.`;
     },
     unansweredText(): string {
-      const names = listNames(this.unanswered.map(replicaName));
-      return `Replica ${names} did not report in time. The Replicas table shows its state once it reports.`;
+      return `Replica ${listNames(this.unanswered.map(replicaName))} did not report in time.`;
     },
   },
+  watch: {
+    'tab.id'() {
+      window.scrollTo(0, 0);
+    },
+  },
+  created() {
+    API.get('/setupwizard')
+      .then((res: AxiosResponse) => {
+        const closed = closedReasonOf(res.data);
+        if (closed) {
+          this.closed = closed;
+          return;
+        }
+        if (res.data?.config_valid && res.data?.first_admin_open) {
+          this.$router.replace('/setup/user');
+        }
+        this.load();
+      })
+      .catch(() => {
+        this.load();
+      });
+  },
+  unmounted() {
+    clearTimeout(this.fixPoll);
+  },
   methods: {
+    read(path: string): unknown {
+      return getAt(this.edited, path);
+    },
+    set(path: string, value: unknown) {
+      setAt(this.edited, path, clone(value));
+      for (const [p, v] of fieldsByPath[path]?.also?.(value, this.read) ?? []) {
+        setAt(this.edited, p, clone(v));
+      }
+      delete this.errors[path];
+      this.failMsg = '';
+      if (path.startsWith('database.')) {
+        this.tested = { reached: false, text: '' };
+      }
+    },
+    localError(tab: TabDef): Record<string, string> {
+      if (tab.custom !== 'transcoding') {
+        return tabCheckErrors(tab, this.read);
+      }
+      const rows = getAt(this.edited, AMBE_SERVERS);
+      const error = ambeServersError(Array.isArray(rows) ? (rows as AmbeServerRow[]) : []);
+      return error ? { [AMBE_SERVERS]: error } : {};
+    },
+    async load() {
+      try {
+        const response: AxiosResponse = await API.get('/config');
+        const data = asRecord(response.data) ?? {};
+        const secrets = asRecord(data.secrets) ?? {};
+        this.secrets = {
+          'secret': secrets.secretSet === true,
+          'password-salt': secrets.passwordSaltSet === true,
+          'smtp.password': secrets.smtpPasswordSet === true,
+        };
+        Object.assign(this.setupState, setupStateOf(data));
+        const fresh = clone(data);
+        for (const key of stateKeys) {
+          delete fresh[key];
+        }
+        this.original = fresh;
+        this.edited = clone(fresh);
+        this.errors = {};
+      } catch (error: unknown) {
+        const closed = closedReasonOf(asRecord(asRecord(error)?.response)?.data);
+        if (closed) {
+          this.closed = closed;
+          return;
+        }
+        this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load the settings', life: 3000 });
+        return;
+      }
+      if (!this.databasePhase) {
+        await this.validate(this.original);
+      }
+    },
+    async validate(payload: Values): Promise<boolean> {
+      try {
+        const check = await API.post('/config/validate', payload);
+        if (check.data?.valid) {
+          return true;
+        }
+        this.errors = flatErrors(check.data?.errors);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    showFirstError() {
+      const paths = Object.keys(this.shownErrors);
+      if (paths.some((p) => tabOfPath(p)?.id === this.tab.id)) {
+        return;
+      }
+      const first = this.tabs.find((t) => paths.some((p) => tabOfPath(p)?.id === t.id));
+      if (first) {
+        this.$router.replace({ hash: `#${first.id}` });
+      }
+    },
+    async testDatabase() {
+      this.testing = true;
+      this.tested = { reached: false, text: '' };
+      try {
+        const res = await API.post('/setupwizard/database-test', allPayload(this.original, this.edited));
+        const data = asRecord(res.data) ?? {};
+        if (data.reached === true) {
+          this.tested = { reached: true, text: 'Connected.' };
+        } else {
+          this.tested = { reached: false, text: typeof data.error === 'string' ? data.error : 'DMRHub cannot reach this database.' };
+        }
+      } catch (error: unknown) {
+        const data = asRecord(asRecord(asRecord(error)?.response)?.data);
+        if (data?.errors) {
+          this.errors = flatErrors(data.errors);
+        }
+        this.tested = { reached: false, text: typeof data?.error === 'string' ? data.error : 'The test did not run.' };
+      } finally {
+        this.testing = false;
+      }
+    },
+    async save() {
+      if (Object.keys(this.shownErrors).length > 0) {
+        this.showFirstError();
+        return;
+      }
+      const payload = allPayload(this.original, this.edited);
+      this.saving = true;
+      try {
+        if (!await this.validate(payload)) {
+          this.showFirstError();
+          return;
+        }
+        this.errors = {};
+        const response = await API.put('/config', payload);
+        this.saves++;
+        this.applyErrors = [];
+        this.failedReplicas = [];
+        this.applyOK = '';
+        const replicas = (asRecord(response?.data)?.replicas ?? []) as SaveReplica[];
+        this.unanswered = replicas.filter((r) => !r.self && !r.answered).map((r) => r.id);
+        if (this.databasePhase) {
+          if (fixAnswerOf(response?.data)?.status === 'pending') {
+            this.pollDatabaseFix();
+            return;
+          }
+          this.afterDatabase(asRecord(response?.data)?.phase);
+          return;
+        }
+        this.$toast.add({ severity: 'success', summary: 'Success', detail: 'The settings were saved', life: 3000 });
+        this.$router.push('/setup/user');
+      } catch (error: unknown) {
+        const res = asRecord(asRecord(error)?.response);
+        const data = asRecord(res?.data);
+        if (res?.status === 409 && Array.isArray(data?.applyErrors)) {
+          const failures = data.applyErrors as ApplyError[];
+          const replicas = Array.isArray(data.replicas) ? (data.replicas as SaveReplica[]) : [];
+          const self = replicas.find((r) => r.self)?.id;
+          this.saves++;
+          this.applyErrors = failures.map((e) => showApplyError(e, !e.replica || e.replica === self));
+          this.failedReplicas = [...new Set(failures.map((e) => e.replica ?? ''))].filter((r) => r !== '' && r !== self);
+          const selfFailed = failures.some((e) => !e.replica || e.replica === self);
+          this.applyOK = self && !selfFailed && this.failedReplicas.length > 0
+            ? `Replica ${replicaName(self)} runs with the new settings.`
+            : '';
+          this.unanswered = replicas.filter((r) => !r.self && !r.answered).map((r) => r.id);
+          await this.load();
+          this.failMsg = 'The settings were saved, but some could not be put into effect.';
+          return;
+        }
+        this.saveFailed(data);
+      } finally {
+        this.saving = false;
+      }
+    },
+    saveFailed(data: Record<string, unknown> | undefined) {
+      if (data?.errors) {
+        this.errors = flatErrors(data.errors);
+        this.showFirstError();
+      }
+      this.failMsg = typeof data?.error === 'string' ? `The settings were not saved: ${data.error}` : 'The settings were not saved.';
+      this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to save the settings', life: 3000 });
+    },
     pollDatabaseFix(misses = 0) {
       API.get('/setupwizard/database-fix')
         .then((res: AxiosResponse) => {
@@ -423,7 +532,7 @@ export default defineComponent({
           } else if (answer.status === 'pending') {
             this.fixPoll = setTimeout(() => this.pollDatabaseFix(), fixPollInterval);
           } else if (answer.status === 'failed') {
-            this.saveFailed(answer.error);
+            this.saveFailed(asRecord(res.data));
           } else {
             this.afterDatabase(answer.phase);
           }
@@ -454,190 +563,19 @@ export default defineComponent({
       }
       this.fixPoll = setTimeout(() => this.pollDatabaseFix(misses + 1), fixPollInterval);
     },
-    saveFailed(error: unknown) {
-      console.log(error);
-      this.$toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: 'Failed to save configuration',
-        life: 3000,
-      });
-    },
     afterDatabase(phase: unknown) {
       if (phase === 'done') {
-        this.$toast.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'DMRHub reached its database and is starting',
-          life: 5000,
-        });
+        this.$toast.add({ severity: 'success', summary: 'Success', detail: 'DMRHub reached its database and is starting', life: 5000 });
         setTimeout(() => {
           window.location.href = '/';
         }, 3000);
         return;
       }
       this.$toast.add({
-        severity: 'success',
-        summary: 'Success',
-        detail: 'DMRHub reached its database. Check the other settings and save.',
-        life: 5000,
+        severity: 'success', summary: 'Success', detail: 'DMRHub reached its database. Check the other settings and save.', life: 5000,
       });
-      this.getConfig();
-    },
-    getConfig() {
-      API.get('/config')
-        .then((response: AxiosResponse) => {
-          const payload = response.data && response.data.config ? response.data.config : response.data;
-          this.secretStatus = response.data && response.data.secrets ? response.data.secrets : this.secretStatus;
-          Object.assign(this.setupState, setupStateOf(response.data));
-          for (const key of stateKeys) {
-            if (payload && key in payload) {
-              delete payload[key];
-            }
-          }
-          this.config = {
-            ...createInitialConfig(),
-            ...(asRecord(payload) || {}),
-          };
-        })
-        .catch((error: unknown) => {
-          const closed = closedReasonOf(asRecord(asRecord(error)?.response)?.data);
-          if (closed && !this.isAdminSetup) {
-            this.closed = closed;
-            return;
-          }
-          console.log(error);
-          this.$toast.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: 'Failed to load configuration',
-            life: 3000,
-          });
-        });
-    },
-    buildConfigPayload(): Record<string, unknown> {
-      const payload = JSON.parse(JSON.stringify(this.config || {}));
-      if (payload.secret === '') {
-        delete payload.secret;
-      }
-      if (payload['password-salt'] === '') {
-        delete payload['password-salt'];
-      }
-      const smtp = asRecord(payload.smtp);
-      if (smtp && smtp.password === '') {
-        delete smtp.password;
-      }
-      const database = asRecord(payload.database);
-      if (database && database.password === '') {
-        delete database.password;
-      }
-      const redis = asRecord(payload.redis);
-      if (redis && redis.password === '') {
-        delete redis.password;
-      }
-      const transcoding = asRecord(asRecord(payload.dmr)?.transcoding);
-      const servers = ambeServerRows(payload);
-      if (transcoding && servers) {
-        transcoding['ambe-servers'] = ambeServersPayload(servers);
-      }
-      return payload;
-    },
-    checkLocal(showToast: boolean): boolean {
-      const local = localErrors(this.config);
-      if (!local) {
-        return true;
-      }
-      this.errors = local;
-      if (showToast) {
-        this.$toast.add({
-          severity: 'error',
-          summary: 'Error',
-          detail: 'Configuration is invalid. Please correct the errors and try again.',
-          life: 3000,
-        });
-      }
-      return false;
-    },
-    async checkConfig(config: Record<string, unknown>, showToast: boolean): Promise<boolean> {
-      const response = await API.post('/config/validate', config);
-      if (response.data.valid) {
-        this.errors = createInitialErrors();
-        return true;
-      } else {
-        this.errors = response.data.errors;
-        if (showToast) {
-          this.$toast.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: 'Configuration is invalid. Please correct the errors and try again.',
-            life: 3000,
-          });
-        }
-        return false;
-      }
-    },
-    async submit() {
-      if (!this.checkLocal(true)) {
-        return;
-      }
-      const payload = this.buildConfigPayload();
-      try {
-        if (!await this.checkConfig(payload, true)) {
-          return;
-        }
-        const response = await API.put('/config', payload);
-        this.saves++;
-        this.applyErrors = [];
-        this.failedReplicas = [];
-        this.applyOK = '';
-        this.unanswered = replicasOf(response?.data).filter((r) => !r.self && !r.answered).map((r) => r.id);
-        if (this.databasePhase) {
-          if (fixAnswerOf(response?.data)?.status === 'pending') {
-            this.pollDatabaseFix();
-            return;
-          }
-          this.afterDatabase(response?.data?.phase);
-          return;
-        }
-        this.getConfig();
-        this.$toast.add({
-          severity: 'success',
-          summary: 'Success',
-          detail: 'Configuration saved successfully',
-          life: 3000,
-        });
-        if (!this.isAdminSetup) {
-          setTimeout(() => {
-            this.$router.push('/setup/user');
-          }, 500);
-        }
-      } catch (error: unknown) {
-        const failure = saveFailureOf(error);
-        if (failure) {
-          this.saves++;
-          const self = failure.replicas.find((r) => r.self)?.id;
-          this.applyErrors = failure.applyErrors.map((e) => showApplyError(e, !e.replica || e.replica === self));
-          this.failedReplicas = [...new Set(failure.applyErrors.map((e) => e.replica ?? ''))]
-            .filter((r) => r !== '' && r !== self);
-          const selfFailed = failure.applyErrors.some((e) => !e.replica || e.replica === self);
-          this.applyOK = self && !selfFailed && this.failedReplicas.length > 0
-            ? `Replica ${replicaName(self)} runs with the new settings.`
-            : '';
-          this.unanswered = failure.replicas.filter((r) => !r.self && !r.answered).map((r) => r.id);
-          this.getConfig();
-          this.$toast.add({
-            severity: 'error',
-            summary: 'Error',
-            detail: 'Configuration saved, but some settings could not be put into effect',
-            life: 5000,
-          });
-          return;
-        }
-        this.saveFailed(error);
-      }
+      this.load();
     },
   },
 });
 </script>
-
-<style scoped></style>

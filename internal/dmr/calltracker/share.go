@@ -656,7 +656,10 @@ func (s *shard) retryWaiting(now time.Time) {
 			s.waiting[r] = now.Add(touchEvery)
 			s.saveLoop(r, key, res)
 		case retryDone:
-			r.pending = nil
+			if len(r.pending) > 0 && !s.saveParts(r, slices.Clone(r.pending)) {
+				s.waiting[r] = now.Add(touchEvery)
+				continue
+			}
 			delete(s.waiting, r)
 		case retryGone:
 			if len(r.pending) > 0 && !s.saveParts(r, slices.Clone(r.pending)) {

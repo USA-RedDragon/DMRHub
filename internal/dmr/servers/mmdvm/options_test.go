@@ -21,30 +21,14 @@ package mmdvm
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/clock"
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
-	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 const (
@@ -53,105 +37,26 @@ const (
 )
 
 type optionsRig struct {
-	t    *testing.T
-	s    *Server
-	db   *gorm.DB
-	peer *net.UDPConn
-	from net.UDPAddr
+	*dialectRig
 }
 
 func newOptionsRig(t *testing.T) *optionsRig {
 	t.Helper()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	memdb.Use(&cfg)
-	database, err := db.MakeDB(&cfg)
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
-	require.NoError(t, err)
-	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps, kvStore))
-	t.Cleanup(func() {
-		h.Stop(context.Background())
-		_ = ps.Close()
-		_ = kvStore.Close()
-	})
-	for _, id := range []uint{optionsRepeater, otherRepeater} {
-		require.NoError(t, database.Create(&models.Repeater{
-			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
-			Type:                  models.RepeaterTypeMMDVM,
-			Password:              "s3cret",
-		}).Error)
-	}
+	r := newRig(t, []uint{optionsRepeater, otherRepeater})
 	for _, tg := range []uint{1, 2, 3, 91, 262, 3100} {
-		require.NoError(t, database.Create(&models.Talkgroup{ID: tg, Name: fmt.Sprintf("TG%d", tg)}).Error)
+		require.NoError(t, r.db.Create(&models.Talkgroup{ID: tg, Name: fmt.Sprintf("TG%d", tg)}).Error)
 	}
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-	peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = peer.Close() })
-	return &optionsRig{
-		t:  t,
-		db: database,
-		s: &Server{
-			clock:     clock.Real(),
-			DB:        database,
-			Server:    conn,
-			kvClient:  servers.MakeKVClient(kvStore),
-			hub:       h,
-			connected: xsync.NewMap[uint, endpoint](),
-			newSalt:   func() (uint32, error) { return 0x01020304, nil },
-		},
-		peer: peer,
-		from: *peer.LocalAddr().(*net.UDPAddr), //nolint:forcetypeassert
-	}
+	return &optionsRig{r}
 }
 
 func (r *optionsRig) read() dmrd.Command {
 	r.t.Helper()
-	buf := make([]byte, 512)
-	require.NoError(r.t, r.peer.SetReadDeadline(time.Now().Add(answerWait)))
-	n, _, err := r.peer.ReadFromUDP(buf)
-	require.NoError(r.t, err)
-	return dmrd.Classify(buf[:n], dmrd.DialectMMDVM)
-}
-
-func (r *optionsRig) send(p []byte) {
-	r.s.handlePacket(context.Background(), r.from, p)
+	return dmrd.Classify(r.next("answer"), dmrd.DialectMMDVM)
 }
 
 func (r *optionsRig) login(id uint32) {
 	r.t.Helper()
-	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
-	require.NoError(r.t, err)
-	r.send(rptl)
-	require.Equal(r.t, dmrd.CommandRPTACK, r.read())
-	token, err := dmrdauth.Token(dmrd.DialectMMDVM, 0x01020304, []byte("s3cret"))
-	require.NoError(r.t, err)
-	rptk, err := (&dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token}).AppendBinary(nil, dmrd.DialectMMDVM)
-	require.NoError(r.t, err)
-	r.send(rptk)
-	require.Equal(r.t, dmrd.CommandRPTACK, r.read())
-	var rptc dmrd.MMDVMConfig
-	rptc.Reset()
-	rptc.SetID(id)
-	require.NoError(r.t, errors.Join(
-		rptc.SetCallsign([]byte("N0CALL")),
-		rptc.SetRXFrequency(440000000),
-		rptc.SetTXFrequency(440000000),
-		rptc.SetPower(10),
-		rptc.SetColorCode(1),
-		rptc.SetLatitude([]byte("+00.0000")),
-		rptc.SetLongitude([]byte("+000.0000")),
-		rptc.SetHeight(10),
-		rptc.SetSlots(3),
-	))
-	r.send(rptc[:])
-	require.Equal(r.t, dmrd.CommandRPTACK, r.read())
-	require.Equal(r.t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State())
+	r.dialectRig.login(dmrd.DialectMMDVM, id)
 }
 
 func (r *optionsRig) options(id uint32, text string) dmrd.Command {
@@ -235,7 +140,8 @@ func TestOptionsSetStaticTalkgroups(t *testing.T) {
 			ts1, ts2 = r.statics(otherRepeater)
 			require.Equal(t, []uint{1}, ts1, "the options must not change another repeater")
 			require.Equal(t, []uint{91}, ts2, "the options must not change another repeater")
-			require.Equal(t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State(), "options must not end the session")
+			_, st, _ := r.link(r.s)
+			require.Equal(t, dmrdsession.StateRunning, st, "options must not end the session")
 		})
 	}
 }
@@ -254,11 +160,14 @@ func TestOptionsForAnotherRepeaterRejected(t *testing.T) {
 		require.Equal(t, []uint{91}, ts2)
 	}
 
+	r.s.mu.Lock()
 	l := r.s.links[r.from.String()]
 	var buf [dmrdsession.MaxOutputs]dmrdsession.Output
 	r.s.run(context.Background(), r.s.now(), l, append(buf[:0], dmrdsession.Output{
 		Kind: dmrdsession.OutputOptions, ID: otherRepeater, Packet: []byte("TS1=2;TS2=3;"),
 	}))
+	r.s.mu.Unlock()
+	r.handled(r.s)
 	for _, id := range []uint{optionsRepeater, otherRepeater} {
 		ts1, ts2 := r.statics(id)
 		require.Equal(t, []uint{1}, ts1, "an options output for another repeater must not apply")

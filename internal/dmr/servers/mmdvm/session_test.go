@@ -27,17 +27,10 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
-	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,46 +53,23 @@ func TestPendingSessionsAreCapped(t *testing.T) {
 
 func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	memdb.Use(&cfg)
-	database, err := db.MakeDB(&cfg)
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	require.NoError(t, database.Create(&models.Repeater{
-		RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860},
-		Type:                  models.RepeaterTypeMMDVM,
-		Password:              "s3cret",
-	}).Error)
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
+	fake := clock.NewFake(time.Now())
+	r := newRig(t, []uint{311860}, withClock(fake))
+	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860})
+	r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTACK)
+	l, st, _ := r.link(r.s)
+	require.NotNil(t, l)
+	require.Equal(t, dmrdsession.StateAuth, st)
 
-	s := Server{
-		clock:     clock.Real(),
-		DB:        database,
-		Server:    conn,
-		kvClient:  servers.MakeKVClient(kvStore),
-		connected: xsync.NewMap[uint, endpoint](),
-	}
-	rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860}).AppendBinary(nil, dmrd.DialectMMDVM)
-	require.NoError(t, err)
-	peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = peer.Close() })
-	from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-	s.handlePacket(context.Background(), from, rptl)
-	require.Len(t, s.links, 1)
-	require.Equal(t, dmrdsession.StateAuth, s.links[from.String()].m.State())
+	fake.Advance(dmrdsession.LoginTimeoutDefault - time.Second)
+	r.s.tick(context.Background())
+	l, _, _ = r.link(r.s)
+	require.NotNil(t, l, "the login should still be open before LoginTimeout")
 
-	s.epoch = s.epoch.Add(-(dmrdsession.LoginTimeoutDefault - time.Second))
-	s.tick(context.Background())
-	require.Len(t, s.links, 1, "the login should still be open before LoginTimeout")
-
-	s.epoch = s.epoch.Add(-2 * time.Second)
-	s.tick(context.Background())
-	require.Empty(t, s.links, "the half-open login should end after LoginTimeout")
+	fake.Advance(2 * time.Second)
+	r.s.tick(context.Background())
+	l, _, _ = r.link(r.s)
+	require.Nil(t, l, "the half-open login should end after LoginTimeout")
 }
 
 func TestConfigAcceptOrRefuse(t *testing.T) {
@@ -115,54 +85,20 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			const id = 311861
-			cfg, err := configulator.New(config.ConfigSchema()).Default()
-			require.NoError(t, err)
-			memdb.Use(&cfg)
-			database, err := db.MakeDB(&cfg)
-			require.NoError(t, err)
-			kvStore, err := kv.MakeKV(context.Background(), &cfg)
-			require.NoError(t, err)
-			require.NoError(t, database.Create(&models.Repeater{
-				RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
-				Type:                  models.RepeaterTypeMMDVM,
-				Password:              "s3cret",
-			}).Error)
-			conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = conn.Close() })
-			peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = peer.Close() })
-			from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
-			s := Server{
-				clock:     clock.Real(),
-				DB:        database,
-				Server:    conn,
-				kvClient:  servers.MakeKVClient(kvStore),
-				connected: xsync.NewMap[uint, endpoint](),
-				newSalt:   func() (uint32, error) { return 0x01020304, nil },
-			}
+			r := newDialectRig(t, id)
 			read := func() dmrd.Command {
-				buf := make([]byte, 512)
-				require.NoError(t, peer.SetReadDeadline(time.Now().Add(answerWait)))
-				n, _, err := peer.ReadFromUDP(buf)
-				require.NoError(t, err)
-				return dmrd.Classify(buf[:n], dmrd.DialectMMDVM)
+				return dmrd.Classify(r.next("answer"), dmrd.DialectMMDVM)
 			}
 
-			rptl, err := (&dmrd.Control{Command: dmrd.CommandRPTL, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
-			require.NoError(t, err)
-			s.handlePacket(context.Background(), from, rptl)
+			r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTL, ID: id})
 			require.Equal(t, dmrd.CommandRPTACK, read())
-			token, err := dmrdauth.Token(dmrd.DialectMMDVM, 0x01020304, []byte("s3cret"))
+			token, err := dmrdauth.Token(dmrd.DialectMMDVM, testSalt, []byte(testPassword))
 			require.NoError(t, err)
-			rptk, err := (&dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token}).AppendBinary(nil, dmrd.DialectMMDVM)
-			require.NoError(t, err)
-			s.handlePacket(context.Background(), from, rptk)
+			r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTK, ID: id, Token: token})
 			require.Equal(t, dmrd.CommandRPTACK, read())
 
 			if tc.forget {
-				require.NoError(t, database.Unscoped().Delete(&models.Repeater{}, id).Error)
+				require.NoError(t, r.db.Unscoped().Delete(&models.Repeater{}, id).Error)
 			}
 			var rptc dmrd.MMDVMConfig
 			rptc.Reset()
@@ -178,15 +114,15 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 				rptc.SetHeight(10),
 				rptc.SetSlots(3),
 			))
-			s.handlePacket(context.Background(), from, rptc[:])
+			r.send(rptc[:])
 			require.Equal(t, tc.want, read())
+			l, st, _ := r.link(r.s)
+			_, ok := r.s.connected.Load(id)
 			if tc.forget {
-				require.Empty(t, s.links)
-				_, ok := s.connected.Load(id)
+				require.Nil(t, l)
 				require.False(t, ok)
 			} else {
-				require.Equal(t, dmrdsession.StateRunning, s.links[from.String()].m.State())
-				_, ok := s.connected.Load(id)
+				require.Equal(t, dmrdsession.StateRunning, st)
 				require.True(t, ok)
 			}
 		})

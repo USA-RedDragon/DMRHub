@@ -25,92 +25,60 @@ import (
 	"net"
 	"testing"
 
-	"github.com/USA-RedDragon/DMRHub/internal/clock"
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator/v2"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 )
 
-// TestHandlePacketRejectsWhenStopped is a regression test for the shutdown race
-// condition. Before the fix, a repeater could receive MSTCL during shutdown,
-// disconnect, and immediately send a new RPTL login that would be accepted
-// because handlePacket had no stopped-flag check.
-func TestHandlePacketRejectsWhenStopped(t *testing.T) {
-	t.Parallel()
+// stoppedRig returns a rig whose server stopped, with a probe transport
+// that keeps what the server writes, and the endpoint of a repeater on it.
+func stoppedRig(t *testing.T) (*dialectRig, *recordProbe, endpoint) {
+	t.Helper()
+	r := newDialectRig(t, 311860)
+	probe := &recordProbe{out: make(chan []byte, 16)}
+	r.s.transports.Store(probeTransport, probe)
+	require.NoError(t, r.s.Stop(context.Background()))
+	return r, probe, endpoint{transport: probeTransport, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}}
+}
 
-	defConfig, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
-	require.NoError(t, err)
-
-	kvClient := servers.MakeKVClient(kvStore)
-
-	s := Server{
-		clock:        clock.Real(),
-		kvClient:     kvClient,
-		connected:    xsync.NewMap[uint, endpoint](),
-		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan: make(chan outgoing, channelBufferSize),
+// tookNothing fails the test when the stopped server of r answered, or
+// started a session or a lookup for, the packets that it was given.
+func tookNothing(t *testing.T, r *dialectRig, probe *recordProbe, what string) {
+	t.Helper()
+	r.handled(r.s)
+	select {
+	case pkt := <-probe.out:
+		t.Fatalf("expected no outgoing packet for %s during shutdown, got %q", what, pkt)
+	default:
 	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	require.Empty(t, r.s.links, "a session for %s during shutdown", what)
+	require.Empty(t, r.s.resolving, "a lookup for %s during shutdown", what)
+}
 
-	// Simulate server shutdown
-	s.stopped.Store(true)
+// TestHandleFromRejectsWhenStopped is a regression test for the shutdown
+// race condition. Before the fix, a repeater could receive MSTCL during
+// shutdown, disconnect, and immediately send a new RPTL login that would be
+// accepted because the packet handler had no stopped-flag check.
+func TestHandleFromRejectsWhenStopped(t *testing.T) {
+	t.Parallel()
+	r, probe, from := stoppedRig(t)
 
-	remoteAddr := net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
-
-	// Build a valid RPTL (login) packet: "RPTL" + 4-byte repeater ID
 	repeaterID := uint32(311860)
 	rptlPacket := make([]byte, 8)
 	copy(rptlPacket[:4], []byte(dmrconst.CommandRPTL))
 	binary.BigEndian.PutUint32(rptlPacket[4:], repeaterID)
 
-	// handlePacket returns after the work it starts, so a response is queued by then
-	s.handlePacket(context.Background(), remoteAddr, rptlPacket)
-
-	// Verify no response was queued (no RPTACK/MSTNAK sent)
-	select {
-	case pkt := <-s.outgoingChan:
-		t.Fatalf("expected no outgoing packet during shutdown, got %v", pkt)
-	default:
-	}
-
-	// Also verify no repeater was stored in KV
-	exists := kvClient.RepeaterExists(context.Background(), uint(repeaterID))
-	if exists {
-		t.Fatal("expected no repeater to be stored in KV during shutdown")
-	}
+	r.s.handleFrom(context.Background(), from, rptlPacket, r.s.clock.Now())
+	tookNothing(t, r, probe, "RPTL")
+	require.False(t, r.kv.RepeaterExists(context.Background(), uint(repeaterID)), "expected no repeater to be stored in KV during shutdown")
 }
 
-// TestHandlePacketRejectsAllCommandsWhenStopped verifies that all command types
-// are rejected once the stopped flag is set, not just RPTL.
-func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
+// TestHandleFromRejectsAllCommandsWhenStopped verifies that all command
+// types are rejected once the server stopped, not just RPTL.
+func TestHandleFromRejectsAllCommandsWhenStopped(t *testing.T) {
 	t.Parallel()
-
-	defConfig, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
-	require.NoError(t, err)
-
-	kvClient := servers.MakeKVClient(kvStore)
-
-	s := Server{
-		clock:        clock.Real(),
-		kvClient:     kvClient,
-		connected:    xsync.NewMap[uint, endpoint](),
-		incomingChan: make(chan models.RawDMRPacket, channelBufferSize),
-		outgoingChan: make(chan outgoing, channelBufferSize),
-	}
-
-	s.stopped.Store(true)
-
-	remoteAddr := net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+	r, probe, from := stoppedRig(t)
 	repeaterID := uint32(311860)
 
 	commands := []struct {
@@ -166,14 +134,8 @@ func TestHandlePacketRejectsAllCommandsWhenStopped(t *testing.T) {
 	for _, tc := range commands {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s.handlePacket(context.Background(), remoteAddr, tc.data)
-
-			// Verify nothing was queued
-			select {
-			case pkt := <-s.outgoingChan:
-				t.Fatalf("expected no outgoing packet for %s during shutdown, got %v", tc.name, pkt)
-			default:
-			}
+			r.s.handleFrom(context.Background(), from, tc.data, r.s.clock.Now())
+			tookNothing(t, r, probe, tc.name)
 		})
 	}
 }

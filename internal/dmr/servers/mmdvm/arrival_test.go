@@ -24,14 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
-	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
-	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,21 +40,6 @@ func TestACallIsTimedFromWhenItsBurstsCame(t *testing.T) {
 	t.Parallel()
 	const repeaterID, stream = uint32(311880), uint(76001)
 	r := newDialectRig(t, uint(repeaterID))
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
-	require.NoError(t, err)
-	ct := calltracker.NewCallTracker(r.s.DB, ps, kvStore)
-	h := hub.NewHub(r.s.DB, kvStore, ps, ct)
-	t.Cleanup(func() {
-		h.Stop(context.Background())
-		ct.Stop()
-		_ = ps.Close()
-		_ = kvStore.Close()
-	})
-	r.s.hub = h
 	r.login(dmrd.DialectMMDVM, repeaterID)
 
 	burst := func(seq uint, frame dmrconst.FrameType, value uint) []byte {

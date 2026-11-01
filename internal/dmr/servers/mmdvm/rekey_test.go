@@ -20,25 +20,24 @@
 package mmdvm
 
 import (
+	"bytes"
 	"context"
-	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/clock"
-	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// heldGetKV holds the next Get after hold is set until release closes.
+// repeaterRecordPrefix starts the KV key of the record of each repeater.
+const repeaterRecordPrefix = "mmdvm:repeater:"
+
+// heldGetKV holds the next Get of a repeater record after hold is set
+// until release closes.
 type heldGetKV struct {
 	kv.KV
 	hold    atomic.Bool
@@ -47,55 +46,32 @@ type heldGetKV struct {
 }
 
 func (h *heldGetKV) Get(ctx context.Context, key string) ([]byte, error) {
-	if h.hold.CompareAndSwap(true, false) {
+	if strings.HasPrefix(key, repeaterRecordPrefix) && h.hold.CompareAndSwap(true, false) {
 		close(h.entered)
 		<-h.release
 	}
 	return h.KV.Get(ctx, key) //nolint:wrapcheck
 }
 
-// newSharedKVRig returns a rig whose KV store another replica can share.
-func newSharedKVRig(t *testing.T, id uint) (*dialectRig, kv.KV) {
-	t.Helper()
-	r := newDialectRig(t, id)
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	r.kv = servers.MakeKVClient(store)
-	r.s.kvClient = r.kv
-	return r, store
-}
-
-// secondReplica returns another replica that shares the database and the KV
-// store of the rig, on its own socket, with the KV store under store.
-func (r *dialectRig) secondReplica(store kv.KV) *Server {
+// noPong fails the test when s answered a ping of the repeater id at the
+// peer, or holds a session of it, once s handled the packets that the rig
+// gave it.
+func (r *dialectRig) noPong(s *Server, id uint32, msg string) {
 	r.t.Helper()
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	r.handled(s)
+	marker := []byte("marker")
+	_, err := s.Server.WriteToUDP(marker, &r.from)
 	require.NoError(r.t, err)
-	r.t.Cleanup(func() { _ = conn.Close() })
-	return &Server{
-		clock:      clock.Real(),
-		DB:         r.s.DB,
-		Server:     conn,
-		kvClient:   servers.MakeKVClient(store),
-		connected:  xsync.NewMap[uint, endpoint](),
-		egressMiss: xsync.NewMap[uint, time.Time](),
-		newSalt:    func() (uint32, error) { return testSalt, nil },
-	}
-}
-
-func (r *dialectRig) noPong(s *Server, id uint32) {
-	r.t.Helper()
-	if p := r.read(200 * time.Millisecond); p != nil {
+	for {
+		p := r.next("marker")
+		if bytes.Equal(p, marker) {
+			break
+		}
 		k, err := dmrd.DecodeControl(p, dmrd.DialectMMDVM)
 		require.NoError(r.t, err)
-		assert.NotEqual(r.t, dmrd.CommandMSTPONG, k.Command, "a session that logged in with the old password answered a ping")
+		assert.NotEqual(r.t, dmrd.CommandMSTPONG, k.Command, msg)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	assert.NotContains(r.t, s.byID, id, "a session that logged in with the old password resumed")
+	assert.False(r.t, serves(s, id), msg)
 }
 
 // TestAReplicaDoesNotResumeASessionThatLoggedInWithAnOldPassword logs a
@@ -105,18 +81,18 @@ func (r *dialectRig) noPong(s *Server, id uint32) {
 func TestAReplicaDoesNotResumeASessionThatLoggedInWithAnOldPassword(t *testing.T) {
 	t.Parallel()
 	const id = 3000201
-	r, store := newSharedKVRig(t, id)
+	r := newDialectRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
-	second := r.secondReplica(store)
+	r.handled(r.s)
+	second := r.replica(r.store)
 
 	require.NoError(t, models.SetRepeaterPassword(r.s.DB, id, "n3wPassw0rd9"))
 	second.endSessions(context.Background(), id)
 
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	second.handlePacket(context.Background(), r.from, p)
-	r.noPong(second, id)
+	r.sendTo(second, p)
+	r.noPong(second, id, "a session that logged in with the old password resumed")
 	_, ok := second.resumeForEgress(context.Background(), id)
 	assert.False(t, ok, "egress resumed a session that logged in with the old password")
 }
@@ -128,22 +104,20 @@ func TestAReplicaDoesNotResumeASessionThatLoggedInWithAnOldPassword(t *testing.T
 func TestAResumeThatReadTheRecordBeforeAPasswordChangeDoesNotTakeTheSession(t *testing.T) {
 	t.Parallel()
 	const id = 3000202
-	r, store := newSharedKVRig(t, id)
+	r := newDialectRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
-	held := &heldGetKV{KV: store, entered: make(chan struct{}), release: make(chan struct{})}
-	second := r.secondReplica(held)
+	r.handled(r.s)
+	held := &heldGetKV{KV: r.store, entered: make(chan struct{}), release: make(chan struct{})}
+	second := r.replica(held)
 
 	held.hold.Store(true)
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	second.handleFrom(context.Background(), udpEndpoint(r.from), p, time.Now())
+	r.sendTo(second, p)
 	<-held.entered
 	second.endSessions(context.Background(), id)
 	close(held.release)
-	second.lookups.Wait()
-	second.records.Wait()
-	r.noPong(second, id)
+	r.noPong(second, id, "a session that logged in with the old password resumed")
 }
 
 // TestAReplicaDoesNotResumeASessionWithoutASecretCheck logs a hotspot in
@@ -153,20 +127,20 @@ func TestAResumeThatReadTheRecordBeforeAPasswordChangeDoesNotTakeTheSession(t *t
 func TestAReplicaDoesNotResumeASessionWithoutASecretCheck(t *testing.T) {
 	t.Parallel()
 	const id = 3000203
-	r, store := newSharedKVRig(t, id)
+	r := newDialectRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
+	r.handled(r.s)
 	rec, err := r.kv.GetRepeater(context.Background(), id)
 	require.NoError(t, err)
 	require.NotEmpty(t, rec.SecretCheck)
 	rec.SecretCheck = nil
 	r.kv.StoreRepeater(context.Background(), id, rec)
-	second := r.secondReplica(store)
+	second := r.replica(r.store)
 
 	_, ok := second.resumeForEgress(context.Background(), id)
 	assert.False(t, ok, "egress resumed a session without a secret check")
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	second.handlePacket(context.Background(), r.from, p)
-	r.noPong(second, id)
+	r.sendTo(second, p)
+	r.noPong(second, id, "a session without a secret check resumed")
 }

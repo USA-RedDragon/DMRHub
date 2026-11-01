@@ -60,8 +60,8 @@ func TestDMRDAfterTheSessionEndedLogsNoError(t *testing.T) {
 	r := newDialectRig(t, 319700)
 	r.login(dmrd.DialectMMDVM, 319700)
 	r.s.closeSessions(context.Background())
-	r.s.records.Wait()
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)
+	r.handled(r.s)
 	_, err := r.kv.GetRepeater(context.Background(), 319700)
 	require.Error(t, err, "the end of the session must delete the record")
 
@@ -72,6 +72,7 @@ func TestDMRDAfterTheSessionEndedLogsNoError(t *testing.T) {
 	for range 4 {
 		r.send((&models.Packet{Signature: "DMRD", Repeater: 319700, Dst: 50000, GroupCall: true}).Encode())
 	}
+	r.handled(r.s)
 	assert.NotContains(t, out.String(), "level=ERROR", out.String())
 	assert.NotContains(t, out.String(), "level=WARN", out.String())
 }

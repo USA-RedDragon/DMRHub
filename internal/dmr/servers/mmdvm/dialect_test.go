@@ -31,16 +31,19 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/calltracker"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdauth "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const (
@@ -148,23 +151,59 @@ func rptc(t *testing.T, d dmrd.Dialect, id uint32) []byte {
 	return c[:]
 }
 
+// dialectRig is a started server with a real hub and call tracker, as
+// MakeServer makes it, and a repeater at a UDP peer. The rig hands each
+// packet of the repeater to the server as its listener does, and the
+// server answers the peer.
 type dialectRig struct {
-	t    *testing.T
-	s    *Server
-	kv   *servers.KVClient
-	peer *net.UDPConn
-	from net.UDPAddr
+	t     *testing.T
+	s     *Server
+	cfg   *config.Config
+	db    *gorm.DB
+	store kv.KV
+	ps    pubsub.PubSub
+	clock clock.Clock
+	kv    *servers.KVClient
+	peer  *net.UDPConn
+	from  net.UDPAddr
+}
+
+// rigOption changes the stores or the clock of a rig before it starts its
+// server.
+type rigOption func(*dialectRig)
+
+// withKV puts wrap around the KV store of the server and its hub.
+func withKV(wrap func(kv.KV) kv.KV) rigOption {
+	return func(r *dialectRig) { r.store = wrap(r.store) }
+}
+
+// withClock runs the hub and the server on c.
+func withClock(c clock.Clock) rigOption {
+	return func(r *dialectRig) { r.clock = c }
 }
 
 func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 	t.Helper()
+	return newRig(t, ids)
+}
+
+func newRig(t *testing.T, ids []uint, opts ...rigOption) *dialectRig {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(&cfg)
+	cfg.DMR.MMDVM.Bind = "127.0.0.1"
+	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg)
 	require.NoError(t, err)
+	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = ps.Close()
+		_ = kvStore.Close()
+	})
 	for _, id := range ids {
 		require.NoError(t, database.Create(&models.Repeater{
 			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
@@ -172,32 +211,54 @@ func newDialectRig(t *testing.T, ids ...uint) *dialectRig {
 			Password:              testPassword,
 		}).Error)
 	}
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
 	peer, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = peer.Close() })
-	kvc := servers.MakeKVClient(kvStore)
-	return &dialectRig{
-		t: t,
-		s: &Server{
-			clock:      clock.Real(),
-			DB:         database,
-			Server:     conn,
-			kvClient:   kvc,
-			connected:  xsync.NewMap[uint, endpoint](),
-			egressMiss: xsync.NewMap[uint, time.Time](),
-			newSalt:    func() (uint32, error) { return testSalt, nil },
-		},
-		kv:   kvc,
-		peer: peer,
-		from: *peer.LocalAddr().(*net.UDPAddr), //nolint:forcetypeassert
+	from := *peer.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+	r := &dialectRig{
+		t:     t,
+		cfg:   &cfg,
+		db:    database,
+		store: kvStore,
+		ps:    ps,
+		clock: clock.Real(),
+		peer:  peer,
+		from:  from,
 	}
+	for _, o := range opts {
+		o(r)
+	}
+	r.kv = servers.MakeKVClient(r.store)
+	r.s = r.replica(r.store)
+	return r
+}
+
+// replica starts a server with its own hub and call tracker on the
+// database and the pubsub of the rig and on store, as a replica of a
+// rolling restart.
+func (r *dialectRig) replica(store kv.KV) *Server {
+	r.t.Helper()
+	calls := calltracker.NewCallTracker(r.db, r.ps, store)
+	r.t.Cleanup(calls.Stop)
+	h := hub.NewHub(r.db, store, r.ps, calls, hub.WithClock(r.clock))
+	s, err := MakeServer(r.cfg, h, r.db, r.ps, store, "test", "test")
+	require.NoError(r.t, err)
+	s.newSalt = func() (uint32, error) { return testSalt, nil }
+	require.NoError(r.t, s.Start(context.Background()))
+	r.t.Cleanup(func() {
+		_ = s.Stop(context.Background())
+		h.Stop(context.Background())
+	})
+	return &s
 }
 
 func (r *dialectRig) send(p []byte) {
-	r.s.handlePacket(context.Background(), r.from, p)
+	r.sendTo(r.s, p)
+}
+
+// sendTo hands p from the peer to s, as the listener of s does.
+func (r *dialectRig) sendTo(s *Server, p []byte) {
+	s.handleFrom(context.Background(), udpEndpoint(r.from), p, s.clock.Now())
 }
 
 func (r *dialectRig) control(d dmrd.Dialect, c dmrd.Control) {
@@ -206,31 +267,76 @@ func (r *dialectRig) control(d dmrd.Dialect, c dmrd.Control) {
 	r.send(p)
 }
 
-// read returns the next packet to the repeater, or nil after wait.
-func (r *dialectRig) read(wait time.Duration) []byte {
+// next returns the next packet to the peer, and fails the test when none
+// comes within answerWait.
+func (r *dialectRig) next(what string) []byte {
+	r.t.Helper()
 	buf := make([]byte, dmrdsession.MaxPacket)
-	require.NoError(r.t, r.peer.SetReadDeadline(time.Now().Add(wait)))
+	require.NoError(r.t, r.peer.SetReadDeadline(time.Now().Add(answerWait)))
 	n, _, err := r.peer.ReadFromUDP(buf)
-	if err != nil {
-		return nil
-	}
+	require.NoError(r.t, err, "no %s within %v", what, answerWait)
 	return buf[:n]
 }
 
 func (r *dialectRig) expect(d dmrd.Dialect, want dmrd.Command) dmrd.Control {
 	r.t.Helper()
-	p := r.read(time.Second)
-	require.NotNil(r.t, p, "no %s", want)
+	p := r.next(want.String())
 	k, err := dmrd.DecodeControl(p, d)
 	require.NoError(r.t, err, "%q", p)
 	require.Equal(r.t, want, k.Command, "%q", p)
 	return k
 }
 
+// handled waits until s has done the lookups and the repeater jobs that
+// the packets that the rig gave it started, for a test that checks the
+// state that they leave or that nothing happened.
+func (r *dialectRig) handled(s *Server) {
+	s.lookups.Wait()
+	s.records.Wait()
+}
+
+// expectNothing fails the test when the server sent the peer anything
+// for the packets that the rig gave it.
 func (r *dialectRig) expectNothing() {
 	r.t.Helper()
-	p := r.read(200 * time.Millisecond)
-	require.Nil(r.t, p, "unexpected %q", p)
+	r.handled(r.s)
+	r.quiet(r.s)
+}
+
+// quiet fails the test when s sent the peer anything that the rig has not
+// read. A marker that s sends after the call comes after each such packet.
+func (r *dialectRig) quiet(s *Server) {
+	r.t.Helper()
+	marker := []byte("marker")
+	_, err := s.Server.WriteToUDP(marker, &r.from)
+	require.NoError(r.t, err)
+	for {
+		p := r.next("marker")
+		if bytes.Equal(p, marker) {
+			return
+		}
+		require.Failf(r.t, "unexpected packet", "%q", p)
+	}
+}
+
+// link returns the session of s at the peer, or nil, with its state and
+// dialect, read under the lock of s.
+func (r *dialectRig) link(s *Server) (*link, dmrdsession.State, dmrd.Dialect) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l := s.links[r.from.String()]
+	if l == nil {
+		return nil, dmrdsession.StateIdle, 0
+	}
+	return l, l.m.State(), l.dialect
+}
+
+// serves reports whether s holds a session of the repeater id.
+func serves(s *Server, id uint32) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.byID[id]
+	return ok
 }
 
 func (r *dialectRig) login(d dmrd.Dialect, id uint32) {
@@ -255,7 +361,8 @@ func (r *dialectRig) loginWith(d dmrd.Dialect, id uint32, config []byte) {
 	r.expect(d, ack)
 	r.send(config)
 	r.expect(d, ack)
-	require.Equal(r.t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State())
+	_, st, _ := r.link(r.s)
+	require.Equal(r.t, dmrdsession.StateRunning, st)
 }
 
 func TestLoginWithABadColorCodeIsAccepted(t *testing.T) {
@@ -304,7 +411,8 @@ func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandMSTPING, ID: 311860})
 	assert.Equal(t, uint32(311860), r.expect(dmrd.DialectHBRP, dmrd.CommandRPTPONG).ID)
 
-	r.s.sendBeacon(311860, udpEndpoint(r.from), r.s.links[r.from.String()].dialect)
+	_, _, d := r.link(r.s)
+	r.s.sendBeacon(311860, udpEndpoint(r.from), d)
 	r.expect(dmrd.DialectHBRP, dmrd.CommandRPTSBKN)
 
 	r.s.closeSessions(context.Background())
@@ -319,7 +427,8 @@ func TestMMDVMLoginRecordsItsDialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "MMDVM", rec.Dialect)
 	assert.Equal(t, uint(3), rec.Slots)
-	r.s.sendBeacon(311861, udpEndpoint(r.from), r.s.links[r.from.String()].dialect)
+	_, _, d := r.link(r.s)
+	r.s.sendBeacon(311861, udpEndpoint(r.from), d)
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTSBKN)
 	r.s.closeSessions(context.Background())
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)
@@ -338,7 +447,8 @@ func TestHBRPRefusalsAreInHBRP(t *testing.T) {
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311862})
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTNAK)
-	require.Empty(t, r.s.links)
+	l, _, _ := r.link(r.s)
+	require.Nil(t, l)
 }
 
 func TestMixedDialectLoginIsIgnored(t *testing.T) {
@@ -365,10 +475,10 @@ func TestMixedDialectLoginIsIgnored(t *testing.T) {
 			r.expectNothing()
 			r.send(rptc(t, tc.then, 311863))
 			r.expectNothing()
-			l := r.s.links[r.from.String()]
+			l, st, d := r.link(r.s)
 			require.NotNil(t, l)
-			assert.Equal(t, tc.login, l.dialect)
-			assert.Equal(t, dmrdsession.StateAuth, l.m.State())
+			assert.Equal(t, tc.login, d)
+			assert.Equal(t, dmrdsession.StateAuth, st)
 			_, ok := r.s.connected.Load(311863)
 			assert.False(t, ok)
 		})
@@ -389,9 +499,8 @@ func TestLoginInTheOtherDialectEndsTheSession(t *testing.T) {
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
 	_, ok = r.s.connected.Load(311864)
 	assert.False(t, ok, "the old session should have ended")
-	assert.Empty(t, r.s.byID)
+	assert.False(t, serves(r.s, 311864))
 
-	r.s.newSalt = func() (uint32, error) { return testSalt, nil }
 	token, err := dmrdauth.Token(dmrd.DialectHBRP, testSalt, []byte(testPassword))
 	require.NoError(t, err)
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311864, Token: token})
@@ -439,32 +548,35 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 
 			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 311865})
 			r.expect(tc.dialect, tc.pong)
-			l := r.s.links[r.from.String()]
+			l, _, d := r.link(r.s)
 			require.NotNil(t, l)
-			assert.Equal(t, tc.dialect, l.dialect)
+			assert.Equal(t, tc.dialect, d)
 
-			r.s.closeSessions(context.Background())
-			r.s.records.Wait()
-			r.expect(tc.dialect, dmrd.CommandMSTCL)
+			end := func() {
+				r.s.closeSessions(context.Background())
+				r.expect(tc.dialect, dmrd.CommandMSTCL)
+				r.handled(r.s)
+			}
+			end()
 			store()
 			addr, ok := r.s.resumeForEgress(context.Background(), 311865)
 			require.True(t, ok)
 			assert.Equal(t, r.from.String(), addr.String())
-			l = r.s.links[r.from.String()]
+			l, _, d = r.link(r.s)
 			require.NotNil(t, l)
-			assert.Equal(t, tc.dialect, l.dialect)
+			assert.Equal(t, tc.dialect, d)
 			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 311865})
 			r.expect(tc.dialect, tc.pong)
 
-			r.s.links = nil
-			r.s.byID = nil
-			r.s.connected.Clear()
+			end()
+			b := r.replica(r.store)
 			store()
-			r.send((&models.Packet{Signature: "DMRD", Repeater: 311865, Dst: 1, GroupCall: true}).Encode())
-			l = r.s.links[r.from.String()]
+			r.sendTo(b, (&models.Packet{Signature: "DMRD", Repeater: 311865, Dst: 1, GroupCall: true}).Encode())
+			r.handled(b)
+			l, st, d := r.link(b)
 			require.NotNil(t, l, "a DMRD should resume the session")
-			assert.Equal(t, tc.dialect, l.dialect)
-			assert.Equal(t, dmrdsession.StateRunning, l.m.State())
+			assert.Equal(t, tc.dialect, d)
+			assert.Equal(t, dmrdsession.StateRunning, st)
 		})
 	}
 }
@@ -481,7 +593,8 @@ func TestRPTOFromHBRPIsIgnored(t *testing.T) {
 	r.expectNothing()
 	r.send([]byte("RPTO0004C232TS1=91;"))
 	r.expectNothing()
-	assert.Equal(t, dmrdsession.StateRunning, r.s.links[r.from.String()].m.State())
+	_, st, _ := r.link(r.s)
+	assert.Equal(t, dmrdsession.StateRunning, st)
 	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandMSTPING, ID: 311866})
 	r.expect(dmrd.DialectHBRP, dmrd.CommandRPTPONG)
 }

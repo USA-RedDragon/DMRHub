@@ -24,15 +24,13 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/USA-RedDragon/DMRHub/internal/config"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
-	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/assert"
@@ -78,15 +76,11 @@ func (p *pausedKV) Expire(ctx context.Context, key string, ttl time.Duration) er
 
 func newOutageRig(t *testing.T, id uint) (*dialectRig, *pausedKV) {
 	t.Helper()
-	r := newDialectRig(t, id)
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	paused := &pausedKV{KV: store}
-	r.kv = servers.MakeKVClient(paused)
-	r.s.kvClient = r.kv
+	var paused *pausedKV
+	r := newRig(t, []uint{id}, withKV(func(store kv.KV) kv.KV {
+		paused = &pausedKV{KV: store}
+		return paused
+	}))
 	return r, paused
 }
 
@@ -98,10 +92,10 @@ func (r *dialectRig) timeOut() {
 	r.s.epoch = r.s.epoch.Add(-dmrdsession.TimeoutDefault - time.Second)
 	r.s.mu.Unlock()
 	r.s.tick(context.Background())
-	r.s.records.Wait()
-	for r.read(100*time.Millisecond) != nil {
-	}
-	require.NotContains(r.t, r.s.links, r.from.String(), "the session did not end")
+	r.handled(r.s)
+	r.quiet(r.s)
+	l, _, _ := r.link(r.s)
+	require.Nil(r.t, l, "the session did not end")
 }
 
 func (r *dialectRig) ping(id uint32) {
@@ -119,15 +113,15 @@ func TestAHotspotResumesFromTheReplicasRecordInARedisOutage(t *testing.T) {
 	const id = 3000101
 	r, paused := newOutageRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
+	r.handled(r.s)
 	paused.paused.Store(true)
 	r.timeOut()
 
 	r.ping(id)
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
-	l := r.s.links[r.from.String()]
+	l, st, _ := r.link(r.s)
 	require.NotNil(t, l)
-	assert.Equal(t, dmrdsession.StateRunning, l.m.State())
+	assert.Equal(t, dmrdsession.StateRunning, st)
 
 	r.timeOut()
 	addr, ok := r.s.resumeForEgress(context.Background(), id)
@@ -140,9 +134,11 @@ func TestAHotspotResumesFromTheReplicasRecordInARedisOutage(t *testing.T) {
 	t.Cleanup(func() { _ = other.Close() })
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	r.s.handlePacket(context.Background(), *other.LocalAddr().(*net.UDPAddr), p) //nolint:forcetypeassert
+	otherAddr := other.LocalAddr().(*net.UDPAddr) //nolint:forcetypeassert
+	r.s.handleFrom(context.Background(), udpEndpoint(*otherAddr), p, r.s.clock.Now())
+	r.handled(r.s)
 	marker := []byte("marker")
-	_, err = other.WriteToUDP(marker, other.LocalAddr().(*net.UDPAddr)) //nolint:forcetypeassert
+	_, err = r.s.Server.WriteToUDP(marker, otherAddr)
 	require.NoError(t, err)
 	require.NoError(t, other.SetReadDeadline(time.Now().Add(answerWait)))
 	buf := make([]byte, dmrdsession.MaxPacket)
@@ -156,7 +152,7 @@ func TestAHotspotResumesFromTheReplicasRecordInARedisOutage(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEqual(t, dmrd.CommandMSTPONG, k.Command, "a ping from another address resumed the session")
 	}
-	assert.NotContains(t, r.s.byID, uint32(id), "a ping from another address resumed the session")
+	assert.False(t, serves(r.s, id), "a ping from another address resumed the session")
 }
 
 // TestAHotspotThatEndedItsSessionDoesNotResumeInARedisOutage ends the
@@ -168,23 +164,19 @@ func TestAHotspotThatEndedItsSessionDoesNotResumeInARedisOutage(t *testing.T) {
 	const id = 3000102
 	r, paused := newOutageRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
+	r.handled(r.s)
 	r.timeOut()
 	paused.paused.Store(true)
 
 	r.ping(id)
-	if p := r.read(200 * time.Millisecond); p != nil {
-		k, err := dmrd.DecodeControl(p, dmrd.DialectMMDVM)
-		require.NoError(t, err)
-		assert.NotEqual(t, dmrd.CommandMSTPONG, k.Command, "the ended session resumed")
-	}
-	assert.NotContains(t, r.s.byID, uint32(id), "the ended session resumed")
+	r.noPong(r.s, id, "the ended session resumed")
 	_, ok := r.s.resumeForEgress(context.Background(), id)
 	assert.False(t, ok, "egress resumed the ended session")
 }
 
-// heldDeleteKV holds each Delete while held is set until release closes,
-// as a slow Redis holds the delete of the record of an ended session.
+// heldDeleteKV holds each Delete of a repeater record while held is set
+// until release closes, as a slow Redis holds the delete of the record of
+// an ended session.
 type heldDeleteKV struct {
 	kv.KV
 	held    atomic.Bool
@@ -193,7 +185,7 @@ type heldDeleteKV struct {
 }
 
 func (h *heldDeleteKV) Delete(ctx context.Context, key string) error {
-	if h.held.Load() {
+	if strings.HasPrefix(key, repeaterRecordPrefix) && h.held.CompareAndSwap(true, false) {
 		close(h.entered)
 		<-h.release
 	}
@@ -207,17 +199,13 @@ func (h *heldDeleteKV) Delete(ctx context.Context, key string) error {
 func TestAnEndedSessionDoesNotResumeFromTheRecordThatItsEndDeletes(t *testing.T) {
 	t.Parallel()
 	const id = 3000103
-	r := newDialectRig(t, id)
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
-	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	held := &heldDeleteKV{KV: store, entered: make(chan struct{}), release: make(chan struct{})}
-	r.kv = servers.MakeKVClient(held)
-	r.s.kvClient = r.kv
+	var held *heldDeleteKV
+	r := newRig(t, []uint{id}, withKV(func(store kv.KV) kv.KV {
+		held = &heldDeleteKV{KV: store, entered: make(chan struct{}), release: make(chan struct{})}
+		return held
+	}))
 	r.login(dmrd.DialectMMDVM, id)
-	r.s.records.Wait()
+	r.handled(r.s)
 
 	held.held.Store(true)
 	r.s.mu.Lock()
@@ -229,7 +217,6 @@ func TestAnEndedSessionDoesNotResumeFromTheRecordThatItsEndDeletes(t *testing.T)
 	r.s.mu.Unlock()
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)
 	<-held.entered
-	held.held.Store(false)
 
 	var once sync.Once
 	release := func() { once.Do(func() { close(held.release) }) }
@@ -237,20 +224,10 @@ func TestAnEndedSessionDoesNotResumeFromTheRecordThatItsEndDeletes(t *testing.T)
 	t.Cleanup(func() { timer.Stop() })
 	p, err := (&dmrd.Control{Command: dmrd.CommandRPTPING, ID: id}).AppendBinary(nil, dmrd.DialectMMDVM)
 	require.NoError(t, err)
-	r.s.handleFrom(context.Background(), udpEndpoint(r.from), p, time.Now())
+	r.send(p)
 	go func() {
 		r.s.lookups.Wait()
 		release()
 	}()
-	r.s.lookups.Wait()
-	r.s.records.Wait()
-
-	if p := r.read(200 * time.Millisecond); p != nil {
-		k, err := dmrd.DecodeControl(p, dmrd.DialectMMDVM)
-		require.NoError(t, err)
-		assert.NotEqual(t, dmrd.CommandMSTPONG, k.Command, "the ended session answered a ping")
-	}
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	assert.NotContains(t, r.s.byID, uint32(id), "the ended session resumed")
+	r.noPong(r.s, id, "the ended session resumed")
 }

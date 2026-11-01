@@ -173,6 +173,7 @@ func (h *Hub) vetSighting(s sighting) error {
 		}
 		if ok {
 			h.tellHeard(s, &rpt)
+			h.heardForStoreForward(s)
 		} else {
 			vetted = false
 			slog.Info("Radio heard on a repeater that its user does not own; private routing follows it only in the anyone reach",

@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/messages"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/require"
@@ -54,6 +55,7 @@ type IntegrationStack struct {
 	KV               kv.KV
 	CallTracker      *calltracker.CallTracker
 	MessageStore     *messages.Store
+	StoreForward     *storeforward.Service
 	MMDVMServer      *mmdvm.Server
 	IPSCServer       *ipsc.IPSCServer
 	OpenBridgeServer *openbridge.Server
@@ -151,7 +153,15 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database, kvStore)
-	store.SetNotify(messages.NewPusher(database, ps).Push)
+	pusher := messages.NewPusher(database, ps)
+	sf := storeforward.New(database, &defConfig, "test", storeforward.WithFlush(func() {
+		ct.Flush()
+		store.Flush()
+	}))
+	store.SetNotify(func(m *models.Message) {
+		pusher.Push(m)
+		sf.Stored(m)
+	})
 	ct.SetDataObserver(store)
 
 	var hubOpts []hub.Option
@@ -159,6 +169,9 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		hubOpts = append(hubOpts, be.HubOptions...)
 	}
 	h := hub.NewHub(database, kvStore, ps, ct, hubOpts...)
+	h.SetStoreForward(sf)
+	sf.SetSender(h)
+	sf.Start()
 
 	// Create servers
 	mmdvmServer, err := mmdvm.MakeServer(&defConfig, h, database, ps, kvStore, "test", "test")
@@ -177,6 +190,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		KV:               kvStore,
 		CallTracker:      ct,
 		MessageStore:     store,
+		StoreForward:     sf,
 		MMDVMServer:      &mmdvmServer,
 		hubOptions:       hubOpts,
 		IPSCServer:       ipscServer,
@@ -190,6 +204,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		h.Stop(context.Background())
 		ct.Stop()
 		store.Stop()
+		sf.Stop()
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 		_ = ps.Close()

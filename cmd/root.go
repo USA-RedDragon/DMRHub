@@ -57,6 +57,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/radioiddrift"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/retention"
+	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
@@ -141,22 +142,42 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 
 	callTracker := calltracker.NewCallTracker(database, pubsubClient, kvStore)
 	messageStore := messages.NewStore(database, kvStore)
-	messageStore.SetNotify(messages.NewPusher(database, pubsubClient).Push)
+	messagePusher := messages.NewPusher(database, pubsubClient)
+	storeForward := storeforward.New(database, current, replicaName(), storeforward.WithFlush(func() {
+		callTracker.Flush()
+		messageStore.Flush()
+	}))
+	messageStore.SetNotify(func(m *models.Message) {
+		messagePusher.Push(m)
+		storeForward.Stored(m)
+	})
 	callTracker.SetDataObserver(messageStore)
 
 	dmrHub := hub.NewHub(database, kvStore, pubsubClient, callTracker)
 	dmrHub.SetConfig(current)
+	dmrHub.SetStoreForward(storeForward)
+	storeForward.SetSender(dmrHub)
+	storeForward.Start()
 
 	servers, err := initializeServers(ctx, live, dmrHub, callTracker, kvStore, pubsubClient, database, version, commit)
 	if err != nil {
 		return err
 	}
 	servers.messageStore = messageStore
+	servers.storeForward = storeForward
 	defer servers.shutdown(ctx)
 
 	setupShutdownHandlers(ctx, scheduler, dmrHub, servers, cleanup)
 
 	return nil
+}
+
+func replicaName() string {
+	name, err := os.Hostname()
+	if err != nil || name == "" {
+		return "dmrhub"
+	}
+	return name
 }
 
 type booted struct {
@@ -385,6 +406,7 @@ type serverManager struct {
 	netScheduler *netscheduler.NetScheduler
 	callTracker  *calltracker.CallTracker
 	messageStore *messages.Store
+	storeForward *storeforward.Service
 	purger       *retention.Purger
 	drift        *radioiddrift.Checker
 	offline      *offlinealert.Checker
@@ -478,6 +500,9 @@ func (sm *serverManager) closeResources(ctx context.Context) {
 	}
 	if sm.messageStore != nil {
 		sm.messageStore.Stop()
+	}
+	if sm.storeForward != nil {
+		sm.storeForward.Stop()
 	}
 	if sm.netScheduler != nil {
 		sm.netScheduler.Stop()

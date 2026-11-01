@@ -113,6 +113,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	isVoice, _ := utils.CheckPacketType(packet)
 
 	h.streamActive(packet.StreamID)
+	h.tapData(packet)
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		defer h.streamEnded(packet.StreamID)
 		defer h.endCodecStream(packet.StreamID)
@@ -293,6 +294,7 @@ func (h *Hub) routeToRepeater(key sourceSlot, packet models.Packet) bool {
 func (h *Hub) routeToUser(ctx context.Context, key sourceSlot, packet models.Packet) bool {
 	repeaterID, ok := h.privateTarget(ctx, packet)
 	if !ok {
+		h.notRouted(packet)
 		return false
 	}
 	if repeaterID == 0 {

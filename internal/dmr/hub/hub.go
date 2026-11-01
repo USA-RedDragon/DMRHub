@@ -233,6 +233,9 @@ type Hub struct {
 	plugins        atomic.Pointer[Plugins]
 	positionNotify atomic.Pointer[PositionNotify]
 
+	storeForward atomic.Pointer[storeForwardBox]
+	dataTaps     *xsync.Map[tapKey, chan models.Packet]
+
 	ipListsMu sync.Mutex
 	ipLists   atomic.Pointer[ipLists]
 
@@ -321,6 +324,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.slotBuckets = xsync.NewMap[slotKey, slotBucket]()
 	h.loopLogged = xsync.NewMap[uint, time.Time]()
 	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
+	h.dataTaps = xsync.NewMap[tapKey, chan models.Packet]()
 	h.dynamicUses = xsync.NewMap[repeaterSlot, dynamicUse]()
 	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
 	h.drops = xsync.NewMap[repeaterSlot, dropRecord]()

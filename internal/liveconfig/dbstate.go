@@ -86,8 +86,9 @@ func (s DatabaseState) Saved() bool {
 }
 
 // SQLiteFileUsed reports whether d is a SQLite file that has a user, so that
-// a hub used it. A file that DMRHub cannot read counts as used; no file, or a
-// file with no user table or no user, does not.
+// a hub used it. A file that DMRHub cannot read counts as used; no file, a
+// path that is not a regular file, or a file with no user table or no
+// user, does not.
 func SQLiteFileUsed(d config.Database) bool {
 	if d.Driver != config.DatabaseDriverSQLite || slices.Contains(d.ExtraParameters, "mode=memory") {
 		return false
@@ -96,7 +97,8 @@ func SQLiteFileUsed(d config.Database) bool {
 	if path == "" || path == ":memory:" {
 		return false
 	}
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+	st, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && !st.Mode().IsRegular()) {
 		return false
 	}
 	database, err := gorm.Open(sqlite.Open("file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro"), &gorm.Config{Logger: logger.Discard})

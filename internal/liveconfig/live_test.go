@@ -534,3 +534,24 @@ func TestASyncNeverGoesBackInRevision(t *testing.T) {
 	assert.Equal(t, uint64(2), (<-done).Revision, "the held sync reported an older revision")
 	assert.Equal(t, "Two", l.Current().Get().NetworkName, "the held sync put an older revision back into effect")
 }
+
+// TestSQLiteFileUsedOnlyForAFileThatMayHoldUsers checks the paths that the
+// SQLite database of a config can name. A missing path and a directory
+// hold no users, so the setup wizard can fix the database. A file that
+// SQLite cannot read may hold users, so the wizard leaves it to an admin.
+func TestSQLiteFileUsedOnlyForAFileThatMayHoldUsers(t *testing.T) {
+	t.Parallel()
+	base, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	dir := t.TempDir()
+	at := func(path string) config.Database {
+		d := base.Database
+		d.Database = path
+		return d
+	}
+	assert.False(t, liveconfig.SQLiteFileUsed(at(filepath.Join(dir, "missing.db"))), "a missing file")
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "DMRHub.db"), 0o700))
+	assert.False(t, liveconfig.SQLiteFileUsed(at(filepath.Join(dir, "DMRHub.db"))), "a directory")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "garbage.db"), []byte("not a database, but maybe one that broke"), 0o600))
+	assert.True(t, liveconfig.SQLiteFileUsed(at(filepath.Join(dir, "garbage.db"))), "a file that SQLite cannot read")
+}

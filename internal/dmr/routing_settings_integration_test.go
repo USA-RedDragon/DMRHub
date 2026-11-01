@@ -173,6 +173,7 @@ func TestDynamicTalkgroupTimesOut(t *testing.T) {
 
 		tgCall(t, c, 3100, 501)
 		waitLinked(t, links, 3100, "a call on a talkgroup links it")
+		stack.Hub.WaitForCalls()
 		fake.Advance(timeout + time.Second)
 		waitLinked(t, links, 0, "the dynamic talkgroup must unlink after the timeout")
 	})
@@ -187,6 +188,7 @@ func TestDynamicTalkgroupWithNoTimeoutStays(t *testing.T) {
 
 		tgCall(t, c, 3100, 701)
 		waitLinked(t, links, 3100, "a call on a talkgroup links it")
+		stack.Hub.WaitForCalls()
 		fake.Advance(3 * time.Second)
 		time.Sleep(drainWait)
 		require.NotNil(t, dynamicTS2(t, stack), "a timeout of 0 never unlinks")
@@ -433,10 +435,12 @@ func TestEphemeralTalkgroupLivesWhileItHasCalls(t *testing.T) {
 			tgCall(t, c, 3999, 1800+i)
 			got := testutils.Collect(listener.ReceivedPackets(), deliverWait, streamEnds(1800+i))
 			require.Positive(t, countStream(got, 1800+i), "call %d reaches the listener", i)
+			stack.Hub.WaitForCalls()
 			fake.Advance(ttl / 3)
 			_, ok := talkgroupOf(t, stack)
 			require.True(t, ok, "each call restarts the TTL of the talkgroup")
 		}
+		stack.Hub.WaitForCalls()
 		fake.Advance(ttl + time.Second)
 		waitChanged(t, changes, 3999, "the talkgroup goes after its TTL with no call")
 		_, ok := talkgroupOf(t, stack)
@@ -467,6 +471,7 @@ func TestEditedEphemeralTalkgroupStays(t *testing.T) {
 		tgCall(t, c, 3998, 1902)
 		waitChanged(t, changes, 3998, "a call to another unknown talkgroup makes it")
 
+		stack.Hub.WaitForCalls()
 		fake.Advance(ttl + time.Second)
 		waitChanged(t, changes, 3998, "the talkgroup that the hub made and nobody edited goes after its TTL")
 		_, ok := talkgroupOf(t, stack)

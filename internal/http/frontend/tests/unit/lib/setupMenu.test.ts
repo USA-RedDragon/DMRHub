@@ -124,6 +124,21 @@ describe('dirty tracking and saves', () => {
     expect((ipsc.dmr as typeof original.dmr).ipsc.port).toBe(50010);
   });
 
+  it('sends a secret only when the page changed it, and an emptied secret as empty', () => {
+    const unchanged = tabPayload(tab('general'), original, structuredClone(original));
+    expect(unchanged).not.toHaveProperty('secret');
+    expect(unchanged).not.toHaveProperty('password-salt');
+    expect(unchanged).not.toHaveProperty('hibp-api-key');
+    const changed = structuredClone(original) as Record<string, unknown>;
+    changed.secret = 'a-new-secret-of-enough-length';
+    expect(tabPayload(tab('general'), original, changed).secret).toBe('a-new-secret-of-enough-length');
+    const cleared = structuredClone(original) as Record<string, unknown>;
+    cleared['hibp-api-key'] = '';
+    const sent = tabPayload(tab('general'), original, cleared);
+    expect(sent['hibp-api-key']).toBe('');
+    expect(sent).not.toHaveProperty('secret');
+  });
+
   it('keeps the unsaved changes of the other tabs after a save', () => {
     const edited = structuredClone(original);
     edited['network-name'] = 'Other';

@@ -80,6 +80,23 @@ func TestPOSTConfigKeepsTheSecretsItLacks(t *testing.T) {
 	assert.Equal(t, "redis", got.Redis.Password)
 }
 
+// TestPOSTConfigClearsTheSecretsSetToEmpty clears each running secret that
+// a request sets to an empty value, as the Setup page does for a secret
+// that an admin empties.
+func TestPOSTConfigClearsTheSecretsSetToEmpty(t *testing.T) {
+	t.Parallel()
+	body := `{"hibp-api-key":"","smtp":{"host":"mail.example.com","password":""}}`
+	var req apimodels.POSTConfig
+	require.NoError(t, json.Unmarshal([]byte(body), &req))
+	running := config.Config{Secret: "s", HIBPAPIKey: "h"}
+	running.SMTP.Password = "smtp"
+	var got config.Config
+	req.ToConfig(&got, &running)
+	assert.Empty(t, got.HIBPAPIKey)
+	assert.Empty(t, got.SMTP.Password)
+	assert.Equal(t, "s", got.Secret, "a secret that the request lacks stays")
+}
+
 func TestPOSTConfigSetsPasswords(t *testing.T) {
 	t.Parallel()
 	body := `{

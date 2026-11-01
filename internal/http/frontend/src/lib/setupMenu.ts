@@ -1005,11 +1005,16 @@ export const tabDirty = (tab: TabDef, original: Values, edited: Values): boolean
 
 /**
  * The config to save for tab: the saved config, with the values of the page
- * for the settings of tab only.
+ * for the settings of tab only. The hub never sends a secret, so a secret
+ * goes out only when the page changed it: the hub keeps a secret that the
+ * payload lacks, and clears one that it sets to empty.
  */
 export const tabPayload = (tab: TabDef, original: Values, edited: Values): Values => {
   const out = clone(original);
   for (const p of tabPaths(tab)) {
+    if (fieldOf(tab, p)?.kind === 'secret' && same(getAt(edited, p), getAt(original, p))) {
+      continue;
+    }
     setAt(out, p, valueFor(tab, p, edited));
   }
   return out;

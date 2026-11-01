@@ -257,8 +257,9 @@ func TestResponseMatchesAcrossReplicas(t *testing.T) {
 				var msgCall, ackCall, checkCall *models.Call
 				require.Eventually(t, func() bool {
 					msgCall, ackCall, checkCall = callOfStream(t, stack, msgStream), callOfStream(t, stack, ackStream), callOfStream(t, stack, checkStream)
-					return msgCall != nil && ackCall != nil && checkCall != nil
-				}, respWait, 100*time.Millisecond, "the rows end")
+					return msgCall != nil && ackCall != nil && checkCall != nil &&
+						msgCall.Response != models.CallResponseNone && checkCall.Response != models.CallResponseNone
+				}, respWait, 100*time.Millisecond, "the rows end and take their answers")
 				stack.MessageStore.Flush()
 
 				assert.Equal(t, "sms", msgCall.SubKind)

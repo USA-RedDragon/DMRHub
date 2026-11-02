@@ -1319,13 +1319,18 @@ func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub st
 	return r
 }
 
-func (c *CallTracker) callGone(id uint) bool {
-	var n int64
-	if err := c.db.Model(&models.Call{}).Unscoped().Where("id = ?", id).Count(&n).Error; err != nil {
-		slog.Error("CallTracker: error looking for a call", "id", id, "error", err)
+func (c *CallTracker) storedRefs(call *models.Call) bool {
+	var stored models.Call
+	err := c.db.Unscoped().Select("id", "user_id", "repeater_id", "to_talkgroup_id", "to_user_id", "to_repeater_id").Omit(clause.Associations).Take(&stored, call.ID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false
 	}
-	return n == 0
+	if err != nil {
+		slog.Error("CallTracker: error reading the references of a call", "id", call.ID, "error", err)
+		return true
+	}
+	keepRefs(call, &stored)
+	return true
 }
 
 func (s *shard) newCall(t *task, kind models.CallKind, sub string) *models.Call {
@@ -1436,8 +1441,8 @@ func (s *shard) finish(r *row, at time.Time) {
 	}
 	res := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).Select("*").Omit(endOmits()...).Updates(call)
 	err := res.Error
-	if err == nil && res.RowsAffected == 0 && s.t.callGone(call.ID) {
-		r.deleted = true
+	if err == nil {
+		r.deleted = !s.t.storedRefs(call)
 	}
 	s.t.owned.Delete(call.ID)
 	if r.what != "" {

@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"context"
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	"github.com/USA-RedDragon/dmrgo/v2/sms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -167,5 +169,62 @@ func TestASaveOfACallThatADeleteRemovedEnds(t *testing.T) {
 		var calls []models.Call
 		require.NoError(t, database.Unscoped().Find(&calls).Error)
 		assert.Empty(t, calls, "a deleted call was written again")
+	})
+}
+
+// TestACallOfAUserDeletedDuringItIsPublishedWithoutTheUser deletes a user
+// while they send a voice call and while a message to them is on the air.
+// The ends of both calls must be published without the user, as the
+// database keeps them.
+func TestACallOfAUserDeletedDuringItIsPublishedWithoutTheUser(t *testing.T) {
+	t.Parallel()
+	forEveryBackend(t, func(t *testing.T, database *gorm.DB, ps pubsub.PubSub, store kv.KV) {
+		sub := ps.Subscribe("calls")
+		t.Cleanup(func() { _ = sub.Close() })
+		base := time.Now().Truncate(time.Second)
+		fake := clock.NewFake(base)
+		ct := calltracker.NewCallTracker(database, ps, store, calltracker.WithClock(fake))
+		t.Cleanup(ct.Stop)
+		voice := newSender(t, ct, userB, tgID, true, 7001)
+		voice.at = base
+		voice.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+		for i := range 12 {
+			voice.at = base.Add(time.Duration(i+1) * 60 * time.Millisecond)
+			voice.send(dmrconst.FrameVoice, uint(i%5)+1, layer2.RawBurst{})
+		}
+		msg := newSender(t, ct, userA, userB, false, 7002)
+		msg.repeater = workerApart(repeaterA)
+		msg.at = base
+		msg.data(smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userA), Destination: uint32(userB), Body: []byte("to a user who leaves")})...)
+		ct.Flush()
+		require.NoError(t, models.DeleteUser(database, userB))
+		fake.Advance(2 * time.Second)
+		voice.at = fake.Now()
+		voice.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		ct.Flush()
+		fake.Advance(5 * time.Second)
+		ct.Flush()
+		calltracker.WaitPublished(ct)
+
+		require.NoError(t, ps.Publish("calls", []byte("end")))
+		last := map[uint]models.Call{}
+		for raw := range sub.Channel() {
+			if string(raw) == "end" {
+				break
+			}
+			var c models.Call
+			require.NoError(t, json.Unmarshal(raw, &c))
+			last[c.ID] = c
+		}
+		ids := byStream(rows(t, database))
+		voiceEnd, msgEnd := last[ids[7001].ID], last[ids[7002].ID]
+		require.NotZero(t, voiceEnd.ID, "the end of the voice call was not published")
+		require.NotZero(t, msgEnd.ID, "the end of the message was not published")
+		assert.False(t, voiceEnd.Active)
+		assert.Zero(t, voiceEnd.User.ID, "the voice call is published with the deleted user")
+		assert.Empty(t, voiceEnd.User.Callsign, "the voice call is published with the deleted user")
+		assert.False(t, msgEnd.Active)
+		assert.Zero(t, msgEnd.ToUser.ID, "the message is published with the deleted user")
+		assert.Empty(t, msgEnd.ToUser.Callsign, "the message is published with the deleted user")
 	})
 }

@@ -944,6 +944,21 @@ func endOmits() []string {
 func keepRefs(out, stored *models.Call) {
 	out.UserID, out.RepeaterID = stored.UserID, stored.RepeaterID
 	out.ToTalkgroupID, out.ToUserID, out.ToRepeaterID = stored.ToTalkgroupID, stored.ToUserID, stored.ToRepeaterID
+	if out.UserID == nil {
+		out.User = models.User{}
+	}
+	if out.RepeaterID == nil {
+		out.Repeater = models.Repeater{}
+	}
+	if out.ToTalkgroupID == nil {
+		out.ToTalkgroup = models.Talkgroup{}
+	}
+	if out.ToUserID == nil {
+		out.ToUser = models.User{}
+	}
+	if out.ToRepeaterID == nil {
+		out.ToRepeater = models.Repeater{}
+	}
 }
 
 func (s *shard) adoptMerged(r *row, out, tmpl *models.Call) {

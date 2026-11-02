@@ -45,6 +45,12 @@ func WorkerOf(server string, repeater uint, slot bool) int {
 
 const VoiceHang = voiceHang
 
+// WaitPublished waits until the tracker has published every message that
+// it queued.
+func WaitPublished(c *CallTracker) {
+	c.out.Wait()
+}
+
 const SaveTimeout = saveTimeout
 
 func SaveMergedPart(c *CallTracker, call *models.Call, id string, packets uint) bool {

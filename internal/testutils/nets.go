@@ -37,6 +37,8 @@ import (
 )
 
 // SeedNet creates an active net in the database for integration testing.
+// It returns the net as the database keeps it, with its times at the
+// precision of the database, as the API reads a net.
 func (s *IntegrationStack) SeedNet(t *testing.T, talkgroupID, startedByUserID uint, description string) models.Net {
 	t.Helper()
 	net := models.Net{
@@ -46,12 +48,12 @@ func (s *IntegrationStack) SeedNet(t *testing.T, talkgroupID, startedByUserID ui
 		Description:     description,
 		Active:          true,
 	}
-	err := s.DB.Create(&net).Error
-	require.NoError(t, err)
-	return net
+	require.NoError(t, s.DB.Create(&net).Error)
+	return s.storedNet(t, net.ID)
 }
 
-// SeedEndedNet creates an ended net in the database for integration testing.
+// SeedEndedNet creates an ended net in the database for integration
+// testing. It returns the net as the database keeps it, as SeedNet does.
 func (s *IntegrationStack) SeedEndedNet(t *testing.T, talkgroupID, startedByUserID uint, description string, duration time.Duration) models.Net {
 	t.Helper()
 	startTime := time.Now().Add(-duration)
@@ -64,7 +66,13 @@ func (s *IntegrationStack) SeedEndedNet(t *testing.T, talkgroupID, startedByUser
 		Description:     description,
 		Active:          false,
 	}
-	err := s.DB.Create(&net).Error
+	require.NoError(t, s.DB.Create(&net).Error)
+	return s.storedNet(t, net.ID)
+}
+
+func (s *IntegrationStack) storedNet(t *testing.T, id uint) models.Net {
+	t.Helper()
+	net, err := models.FindNetByID(s.DB, id)
 	require.NoError(t, err)
 	return net
 }

@@ -96,6 +96,30 @@ func TestNetCheckInDuringActiveNet(t *testing.T) {
 	})
 }
 
+// TestASeededNetHasTheTimesOfTheDatabase seeds an active and an ended
+// net: each must come back with the times that the database keeps, as the
+// API reads a net, since MySQL and MariaDB keep milliseconds and
+// PostgreSQL microseconds.
+func TestASeededNetHasTheTimesOfTheDatabase(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		stack.SeedUser(t, 1000001, "N0CALL")
+		stack.SeedTalkgroup(t, 100, "TG100")
+		for _, net := range []models.Net{
+			stack.SeedNet(t, 100, 1000001, "active"),
+			stack.SeedEndedNet(t, 100, 1000001, "ended", time.Minute),
+		} {
+			stored, err := models.FindNetByID(stack.DB, net.ID)
+			require.NoError(t, err)
+			assert.True(t, stored.StartTime.Equal(net.StartTime), "net %q starts at %s, the database keeps %s", net.Description, net.StartTime, stored.StartTime)
+			if net.EndTime != nil {
+				require.NotNil(t, stored.EndTime)
+				assert.True(t, stored.EndTime.Equal(*net.EndTime), "net %q ends at %s, the database keeps %s", net.Description, *net.EndTime, *stored.EndTime)
+			}
+		}
+	})
+}
+
 // TestNetSeedEndedNetHasCheckIns verifies that an ended net's check-ins can be
 // queried correctly with the time range.
 func TestNetSeedEndedNetHasCheckIns(t *testing.T) {

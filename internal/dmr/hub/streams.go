@@ -282,7 +282,7 @@ func (h *Hub) admitStream(ctx context.Context, packet models.Packet, sourceName 
 			continue
 		}
 		w.hold(ctx, h, src, burst)
-		go h.releaseHeld(ctx, key, w)
+		h.goTracked(func() { h.releaseHeld(ctx, key, w) })
 		return
 	}
 }
@@ -302,7 +302,7 @@ func (h *Hub) cachedOwner(ctx context.Context, packet models.Packet, src streamS
 	}
 	if ok && cached.source == src && !cached.renewed.IsZero() && now.Sub(cached.renewed) < hold {
 		h.streamClaims.Store(claim, streamClaim{source: src, checked: now, renewed: cached.renewed})
-		go h.askClaim(ctx, claim, src, cached, ok)
+		h.goTracked(func() { h.askClaim(ctx, claim, src, cached, ok) })
 		return src, true
 	}
 	return streamSource{}, false
@@ -311,10 +311,10 @@ func (h *Hub) cachedOwner(ctx context.Context, packet models.Packet, src streamS
 func (h *Hub) startAsk(ctx context.Context, claim claimKey, src streamSource) *claimAsk {
 	a := &claimAsk{done: make(chan struct{})}
 	cached, known := h.streamClaims.Load(claim)
-	go func() {
+	h.goTracked(func() {
 		a.owner, a.slow = h.askClaim(ctx, claim, src, cached, known)
 		close(a.done)
-	}()
+	})
 	return a
 }
 
@@ -364,10 +364,10 @@ func (h *Hub) askClaim(ctx context.Context, claim claimKey, src streamSource, ca
 	ctx, waited, stop := h.claimWaitFor(ctx)
 	defer stop()
 	answer := make(chan claimResult, 1)
-	go func() {
+	h.goTracked(func() {
 		owner, err := h.sharedClaim(ctx, claim, src, owned, hold+recheck)
 		answer <- claimResult{owner: owner, err: err}
-	}()
+	})
 	var r claimResult
 	select {
 	case r = <-answer:

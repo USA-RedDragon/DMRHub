@@ -26,9 +26,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
@@ -130,4 +132,83 @@ func TestStopWaitsForTheJobsOfTheOutboxes(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestStopWaitsForTheRefreshOfARepeater stops a hub while it reads a
+// repeater again whose cache entry is older than repeaterCacheTTL, on a
+// goroutine of its own. Stop must return only after the read ends.
+func TestStopWaitsForTheRefreshOfARepeater(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(t, &cfg)
+		database, err := db.MakeDB(&cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+		})
+		require.NoError(t, database.Create(&models.User{ID: 1000001, Callsign: "N0CALL", Username: "n0call", Approved: true}).Error)
+		require.NoError(t, database.Create(&models.Repeater{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: 100001, Callsign: "T0001ST"},
+			OwnerID:               1000001,
+			Type:                  models.RepeaterTypeMMDVM,
+		}).Error)
+
+		var hold atomic.Bool
+		var once sync.Once
+		entered, release := make(chan struct{}), make(chan struct{})
+		require.NoError(t, database.Callback().Query().After("gorm:query").Register("hold_repeater", func(tx *gorm.DB) {
+			if hold.Load() && tx.Statement.Table == "repeaters" {
+				once.Do(func() {
+					close(entered)
+					<-release
+				})
+			}
+		}))
+
+		h := NewHub(database, nil, nil, nil)
+		_, err = h.waitRepeater(100001)
+		require.NoError(t, err)
+		time.Sleep(repeaterCacheTTL)
+		hold.Store(true)
+		_, err = h.waitRepeater(100001)
+		require.NoError(t, err)
+		<-entered
+
+		stopped := make(chan struct{})
+		go func() {
+			h.Stop(context.Background())
+			close(stopped)
+		}()
+		synctest.Wait()
+		select {
+		case <-stopped:
+			t.Error("Stop returned while the hub read a repeater again")
+		default:
+		}
+		close(release)
+		<-stopped
+	})
+}
+
+// TestStopEndsAFeedThatNoSubscriptionHolds starts the feed of a repeater
+// that no subscription holds, as an activation that races Stop leaves
+// after Stop deactivated the repeaters. Stop waits for the reader of the
+// feed, so the reader must end when the hub stops.
+func TestStopEndsAFeedThatNoSubscriptionHolds(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		ps, err := pubsub.MakePubSub(context.Background(), &cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ps.Close() })
+		h := NewHub(nil, nil, ps, nil)
+		h.subscriptionMgr.mu.Lock()
+		h.subscriptionMgr.feedOf(context.Background(), 100001)
+		h.subscriptionMgr.mu.Unlock()
+		h.Stop(context.Background())
+	})
 }

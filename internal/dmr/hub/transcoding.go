@@ -415,7 +415,8 @@ func (h *Hub) startTranscoder(ctx context.Context, st *transcode.Stream) *transc
 	t := &transcoder{h: h, st: st, in: make(chan transcodeJob, queueLen(st.Budget())), quit: make(chan struct{})}
 	h.transcoders.Add()
 	h.calls.Add()
-	go t.run(context.WithoutCancel(ctx))
+	runCtx := context.WithoutCancel(ctx)
+	h.goTracked(func() { t.run(runCtx) })
 	return t
 }
 

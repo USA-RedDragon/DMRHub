@@ -68,10 +68,10 @@ func (h *Hub) HoldIngress(ctx context.Context, server string, id uint, wait, lim
 			h.releaseIngress(src, hold)
 		})
 	}
-	go func() {
+	h.goTracked(func() {
 		<-expired
 		release()
-	}()
+	})
 	return release
 }
 
@@ -129,7 +129,7 @@ func (h *Hub) ReleaseIngress(server string, id uint, limit time.Duration) bool {
 	quit := make(chan struct{})
 	defer close(quit)
 	done := make(chan bool, 1)
-	go func() { done <- h.drainIngress(server, id, quit) }()
+	h.goTracked(func() { done <- h.drainIngress(server, id, quit) })
 	t := h.clock.NewTimer(limit)
 	defer t.Stop()
 	select {

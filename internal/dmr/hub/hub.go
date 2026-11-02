@@ -176,7 +176,7 @@ type Hub struct {
 	// sends to unblock during shutdown.
 	done     chan struct{}
 	stopOnce sync.Once
-	loops    sync.WaitGroup
+	tracked  inflight
 
 	peerEgress *streamorder.Queue[sourceSlot]
 	routing    *streamorder.Queue[sourceSlot]
@@ -351,25 +351,25 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		h.loadTalkgroups()
 		h.loadPeers()
 	}
-	h.loops.Go(h.runHeard)
-	h.loops.Go(h.runSightings)
+	h.goTracked(h.runHeard)
+	h.goTracked(h.runSightings)
 	h.subscriptionMgr = newSubscriptionManager(h)
-	h.loops.Go(h.runDynamicTimeouts)
-	h.loops.Go(h.runEphemeralTalkgroups)
+	h.goTracked(h.runDynamicTimeouts)
+	h.goTracked(h.runEphemeralTalkgroups)
 	h.repeaters = newRepeaterCache(h.clock)
 	h.origin = newOrigin()
 	if ps != nil {
 		repeaterChanges, codecChanges := ps.Subscribe(repeaterChangedTopic), ps.Subscribe(codecChangedTopic)
-		h.loops.Go(func() { h.listenRepeaterChanges(repeaterChanges) })
-		h.loops.Go(func() { h.listenCodecChanges(codecChanges) })
+		h.goTracked(func() { h.listenRepeaterChanges(repeaterChanges) })
+		h.goTracked(func() { h.listenCodecChanges(codecChanges) })
 		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic, repeaterResetTopic} {
 			sub := ps.Subscribe(topic)
-			h.loops.Go(func() { h.listenChanges(topic, sub) })
+			h.goTracked(func() { h.listenChanges(topic, sub) })
 		}
 		drops := ps.Subscribe(callDropTopic)
-		h.loops.Go(func() { h.listenDrops(drops) })
+		h.goTracked(func() { h.listenDrops(drops) })
 	}
-	h.loops.Go(h.resyncRepeaters)
+	h.goTracked(h.resyncRepeaters)
 	if ct != nil {
 		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
 			ct.Undeliverable(p, undeliverable.Sentence(target, p.Repeater, reason))
@@ -537,20 +537,31 @@ func (h *Hub) IsStopping() bool {
 }
 
 // Stop cancels all subscriptions and signals blocked deliveries to abort (used at shutdown).
-// It returns once the loops of the hub and the jobs of its outboxes have
-// ended, so that the caller may close the database and the pubsub next.
+// It returns once the goroutines of the hub and the jobs of its outboxes
+// have ended, so that the caller may close the database and the pubsub
+// next.
 func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
 		close(h.done)
-		h.loops.Wait()
+		h.tracked.Wait()
 		h.later.Wait()
 		h.outbox.Wait()
 		h.transcoders.Wait()
 		h.transcoder.Close()
 		h.events.Close()
 	})
+}
+
+// goTracked runs fn on a goroutine of its own that Stop waits for. Every
+// goroutine of the hub starts here.
+func (h *Hub) goTracked(fn func()) {
+	h.tracked.Add()
+	go func() {
+		defer h.tracked.Done()
+		fn()
+	}()
 }
 
 // NoteRepeaterEvent adds an event of kind, one of the kinds of package
@@ -584,7 +595,7 @@ func (h *Hub) SetInstanceID(id string) error {
 	if id != "" && h.pubsub != nil {
 		h.followClaimsOnce.Do(func() {
 			claims := h.pubsub.Subscribe(claimedTopic)
-			h.loops.Go(func() { h.followClaims(claims) })
+			h.goTracked(func() { h.followClaims(claims) })
 		})
 	}
 	return nil

@@ -131,7 +131,7 @@ func (h *Hub) waitRepeater(id uint) (*models.Repeater, error) {
 func (h *Hub) cachedRepeater(id uint, wait bool) (*models.Repeater, error) {
 	if e, ok := h.repeaters.entries.Load(id); ok {
 		if h.clock.Since(e.at) >= repeaterCacheTTL && e.refreshing.CompareAndSwap(false, true) {
-			go h.refreshRepeater(id, e)
+			h.goTracked(func() { h.refreshRepeater(id, e) })
 		}
 		if e.rpt == nil {
 			return nil, fmt.Errorf("finding repeater %d: %w", id, gorm.ErrRecordNotFound)

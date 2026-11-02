@@ -208,7 +208,7 @@ func (h *Hub) HandOverWait(ctx context.Context, id uint, wait, limit time.Durati
 	stop := func() { once.Do(func() { close(quit) }) }
 	start := h.clock.Now()
 	end := start.Add(max(limit, wait))
-	go func() {
+	h.goTracked(func() {
 		defer close(expired)
 		check := h.clock.NewTicker(ownerCheck)
 		defer check.Stop()
@@ -231,7 +231,7 @@ func (h *Hub) HandOverWait(ctx context.Context, id uint, wait, limit time.Durati
 				return
 			}
 		}
-	}()
+	})
 	return expired, stop
 }
 
@@ -300,7 +300,7 @@ func (h *Hub) handOff(ctx context.Context, id uint, by string, since time.Time) 
 	}
 	h.claimedMu.Unlock()
 	h.handing.Add()
-	go func() {
+	h.goTracked(func() {
 		defer h.handing.Done()
 		if owner, ok := h.owner(ctx, id); ok && owner == h.instanceID {
 			return
@@ -316,7 +316,7 @@ func (h *Hub) handOff(ctx context.Context, id uint, by string, since time.Time) 
 		if owner, ok := h.owner(ctx, id); ok && owner != h.instanceID {
 			h.deactivateRepeater(ctx, id)
 		}
-	}()
+	})
 }
 
 func (h *Hub) publishClaim(repeaterID uint, since time.Time) {
@@ -397,10 +397,10 @@ func (h *Hub) WaitMoved(ctx context.Context) int {
 // another replica claimed, or ctx ends.
 func (h *Hub) waitHanding(ctx context.Context) {
 	done := make(chan struct{})
-	go func() {
+	h.goTracked(func() {
 		h.handing.Wait()
 		close(done)
-	}()
+	})
 	select {
 	case <-done:
 	case <-ctx.Done():

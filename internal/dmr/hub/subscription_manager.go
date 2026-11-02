@@ -659,15 +659,27 @@ func (m *subscriptionManager) feedOf(ctx context.Context, repeaterID uint) *repe
 	}
 	f := &repeaterFeed{feed: m.hub.pubsub.Feed(), subs: map[string]*subscription{}}
 	m.feeds.Store(repeaterID, f)
-	go m.readFeed(context.WithoutCancel(ctx), f, repeaterID)
+	feedCtx := context.WithoutCancel(ctx)
+	m.hub.goTracked(func() { m.readFeed(feedCtx, f, repeaterID) })
 	return f
 }
 
 // readFeed delivers the messages of the feed of a repeater until it
-// closes.
+// closes, or until the hub stops, which closes it.
 func (m *subscriptionManager) readFeed(ctx context.Context, f *repeaterFeed, repeaterID uint) {
 	slog.Debug("Listening for calls on repeater", "repeaterID", repeaterID)
-	for msg := range f.feed.Channel() {
+	for {
+		var msg pubsub.Message
+		var ok bool
+		select {
+		case <-m.hub.done:
+			_ = f.feed.Close()
+			return
+		case msg, ok = <-f.feed.Channel():
+		}
+		if !ok {
+			return
+		}
 		if m.settledOn(msg.Payload) {
 			continue
 		}

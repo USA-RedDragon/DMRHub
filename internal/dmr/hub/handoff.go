@@ -93,7 +93,7 @@ func (h *Hub) barrierUnless(server string, quit <-chan struct{}) bool {
 		return true
 	}
 	done := make(chan struct{})
-	go h.deliverToServerUnless(quit, server, RoutedPacket{Barrier: done})
+	h.goTracked(func() { h.deliverToServerUnless(quit, server, RoutedPacket{Barrier: done}) })
 	select {
 	case <-done:
 		return true

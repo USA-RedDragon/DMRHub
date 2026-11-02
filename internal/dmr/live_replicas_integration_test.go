@@ -210,17 +210,24 @@ func toJSON(t *testing.T, v any) string {
 	return string(b)
 }
 
+// noMissedSaveCheck is a check for missed saves so rare that it never
+// runs within a test.
+const noMissedSaveCheck = 24 * time.Hour
+
 // TestLiveConfigReportsAReplicaThatFails saves an MMDVM port that the
 // first replica binds, so that the other replica on the same host cannot.
 // The save answers 409 with the report of the replica that failed, which
 // keeps its old port, and the config API of that replica shows the
-// setting not in effect.
+// setting not in effect. The other replica takes the save only from its
+// announcement, which comes after the first replica put the save into
+// effect: its check for missed saves could take the save from the
+// database first and bind the port before the first replica.
 func TestLiveConfigReportsAReplicaThatFails(t *testing.T) { //nolint:paralleltest // FreeUDPPort frees its port before the server binds it, so a parallel test could take it
 	for _, be := range liveBackends() { //nolint:paralleltest // as the test above
 		t.Run(be.Name, func(t *testing.T) { //nolint:paralleltest // as the test above
 			l := testutils.SetupLiveStack(t, be)
 			a := l.First()
-			b := l.SpawnLiveReplica(t, testutils.LiveOptions{Locks: liveconfig.Locks{
+			b := l.SpawnLiveReplica(t, testutils.LiveOptions{Every: noMissedSaveCheck, Locks: liveconfig.Locks{
 				"dmr.ipsc.port":       {Source: liveconfig.SourceEnv},
 				"dmr.openbridge.port": {Source: liveconfig.SourceEnv},
 			}})

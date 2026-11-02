@@ -63,6 +63,8 @@ const (
 	// stepTTL keeps the last used step of a user while a code of it can
 	// still match.
 	stepTTL = 5 * time.Minute
+	// storeWait bounds each update of the store.
+	storeWait = 5 * time.Second
 	// rateWindow is the window of the limits of tries.
 	rateWindow = 5 * time.Minute
 	// SourceTries is the most tries of codes that one radio ID sends in
@@ -165,6 +167,14 @@ func New(db *gorm.DB, store kv.KV, c clock.Clock, key func() []byte, unlockFor f
 	return &Service{db: db, store: store, clock: c, key: key, unlockFor: unlockFor}
 }
 
+// update is store.Update bounded by storeWait, so that a key that keeps
+// changing cannot hold a try or a page.
+func (s *Service) update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	ctx, cancel := context.WithTimeout(ctx, storeWait)
+	defer cancel()
+	return s.store.Update(ctx, key, ttl, fn) //nolint:wrapcheck // the callers wrap it
+}
+
 func (s *Service) unlockLength() time.Duration {
 	if s.unlockFor == nil {
 		return DefaultUnlock
@@ -231,7 +241,7 @@ func (s *Service) Begin(ctx context.Context, userID uint, issuer, account string
 	if err != nil {
 		return Setup{}, err
 	}
-	err = s.store.Update(ctx, pendingKey(userID), SetupTTL, func([]byte) ([]byte, error) { return []byte(sealed), nil })
+	err = s.update(ctx, pendingKey(userID), SetupTTL, func([]byte) ([]byte, error) { return []byte(sealed), nil })
 	if err != nil {
 		return Setup{}, fmt.Errorf("keep the on-air code setup: %w", err)
 	}
@@ -338,7 +348,7 @@ func (s *Service) use(ctx context.Context, userID uint, secret []byte, code uint
 		return 0, 0, ErrWrongCode
 	}
 	var prev int64
-	err := s.store.Update(ctx, stepKey(userID), stepTTL, func(old []byte) ([]byte, error) {
+	err := s.update(ctx, stepKey(userID), stepTTL, func(old []byte) ([]byte, error) {
 		prev = 0
 		if old != nil {
 			last, err := strconv.ParseInt(string(old), 10, 64)
@@ -364,7 +374,7 @@ func (s *Service) use(ctx context.Context, userID uint, secret []byte, code uint
 // of step, when step is still the last one marked, so that a code whose
 // unlock could not be kept works again.
 func (s *Service) unuse(ctx context.Context, userID uint, step, prev int64) error {
-	err := s.store.Update(ctx, stepKey(userID), stepTTL, func(old []byte) ([]byte, error) {
+	err := s.update(ctx, stepKey(userID), stepTTL, func(old []byte) ([]byte, error) {
 		if string(old) != strconv.FormatInt(step, 10) {
 			return nil, errNoChange
 		}
@@ -385,7 +395,7 @@ type window struct {
 // tries in rateWindow.
 func (s *Service) allow(ctx context.Context, key string, limit int) (bool, error) {
 	now := s.clock.Now().UnixNano()
-	err := s.store.Update(ctx, key, rateWindow, func(old []byte) ([]byte, error) {
+	err := s.update(ctx, key, rateWindow, func(old []byte) ([]byte, error) {
 		var w window
 		if old != nil {
 			_ = json.Unmarshal(old, &w)
@@ -472,7 +482,7 @@ func (s *Service) attempt(ctx context.Context, t Try) (Result, error) {
 // uncount takes back one try that allow counted against key in the same
 // window.
 func (s *Service) uncount(ctx context.Context, key string) error {
-	err := s.store.Update(ctx, key, rateWindow, func(old []byte) ([]byte, error) {
+	err := s.update(ctx, key, rateWindow, func(old []byte) ([]byte, error) {
 		var w window
 		if old == nil || json.Unmarshal(old, &w) != nil || w.N == 0 {
 			return nil, errNoChange
@@ -497,7 +507,7 @@ func (s *Service) grant(ctx context.Context, radio, repeater uint, slot2 bool) e
 
 func (s *Service) updateGrants(ctx context.Context, radio uint, change func([]Grant) []Grant) error {
 	now := s.clock.Now()
-	err := s.store.Update(ctx, grantsKey(radio), s.unlockLength()+Period, func(old []byte) ([]byte, error) {
+	err := s.update(ctx, grantsKey(radio), s.unlockLength()+Period, func(old []byte) ([]byte, error) {
 		var list []Grant
 		if old != nil {
 			_ = json.Unmarshal(old, &list)

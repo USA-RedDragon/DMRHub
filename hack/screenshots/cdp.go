@@ -55,6 +55,7 @@ type browser struct {
 	conn      *websocket.Conn
 	port      string
 	pending   map[string]string
+	document  string
 	requested []string
 	target    string
 	at        time.Time
@@ -240,17 +241,34 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 	case "Network.requestWillBeSent":
 		var p struct {
 			ID      string `json:"requestId"`
+			Loader  string `json:"loaderId"`
+			Type    string `json:"type"`
 			Request struct {
-				URL string `json:"url"`
+				URL    string `json:"url"`
+				Method string `json:"method"`
 			} `json:"request"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
 		b.mu.Lock()
 		if !strings.Contains(p.Request.URL, "worker") {
-			b.pending[p.ID] = time.Now().Format("15:04:05.000") + " " + p.Request.URL
+			b.pending[p.ID] = fmt.Sprintf("%s %s %s (%s, document %s)", time.Now().Format("15:04:05.000"), p.Request.Method, p.Request.URL, p.Type, p.Loader)
 		}
 		b.requested = append(b.requested, p.Request.URL)
 		b.mu.Unlock()
+	case "Page.frameNavigated":
+		var p struct {
+			Frame struct {
+				ParentID string `json:"parentId"`
+				Loader   string `json:"loaderId"`
+				URL      string `json:"url"`
+			} `json:"frame"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		if p.Frame.ParentID == "" {
+			b.mu.Lock()
+			b.document = p.Frame.Loader + " " + p.Frame.URL
+			b.mu.Unlock()
+		}
 	case "Network.responseReceived":
 		var p struct {
 			ID   string `json:"requestId"`
@@ -541,8 +559,9 @@ func (b *browser) idle(ctx context.Context) error {
 	for _, u := range b.pending {
 		urls = append(urls, u)
 	}
+	doc := b.document
 	b.mu.Unlock()
-	return fmt.Errorf("the page still loads %s: %w", strings.Join(urls, ", "), errTimeout)
+	return fmt.Errorf("the page (document %s) still loads %s: %w", doc, strings.Join(urls, ", "), errTimeout)
 }
 
 func (b *browser) settle(ctx context.Context) error {

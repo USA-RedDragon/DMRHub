@@ -176,6 +176,7 @@ type Hub struct {
 	// sends to unblock during shutdown.
 	done     chan struct{}
 	stopOnce sync.Once
+	loops    sync.WaitGroup
 
 	peerEgress *streamorder.Queue[sourceSlot]
 	routing    *streamorder.Queue[sourceSlot]
@@ -350,22 +351,25 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		h.loadTalkgroups()
 		h.loadPeers()
 	}
-	go h.runHeard()
-	go h.runSightings()
+	h.loops.Go(h.runHeard)
+	h.loops.Go(h.runSightings)
 	h.subscriptionMgr = newSubscriptionManager(h)
-	go h.runDynamicTimeouts()
-	go h.runEphemeralTalkgroups()
+	h.loops.Go(h.runDynamicTimeouts)
+	h.loops.Go(h.runEphemeralTalkgroups)
 	h.repeaters = newRepeaterCache(h.clock)
 	h.origin = newOrigin()
 	if ps != nil {
-		go h.listenRepeaterChanges(ps.Subscribe(repeaterChangedTopic))
-		go h.listenCodecChanges(ps.Subscribe(codecChangedTopic))
+		repeaterChanges, codecChanges := ps.Subscribe(repeaterChangedTopic), ps.Subscribe(codecChangedTopic)
+		h.loops.Go(func() { h.listenRepeaterChanges(repeaterChanges) })
+		h.loops.Go(func() { h.listenCodecChanges(codecChanges) })
 		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic, repeaterResetTopic} {
-			go h.listenChanges(topic, ps.Subscribe(topic))
+			sub := ps.Subscribe(topic)
+			h.loops.Go(func() { h.listenChanges(topic, sub) })
 		}
-		go h.listenDrops(ps.Subscribe(callDropTopic))
+		drops := ps.Subscribe(callDropTopic)
+		h.loops.Go(func() { h.listenDrops(drops) })
 	}
-	go h.resyncRepeaters()
+	h.loops.Go(h.resyncRepeaters)
 	if ct != nil {
 		h.SetUndeliverableFunc(func(p models.Packet, target, reason string) {
 			ct.Undeliverable(p, undeliverable.Sentence(target, p.Repeater, reason))
@@ -533,11 +537,16 @@ func (h *Hub) IsStopping() bool {
 }
 
 // Stop cancels all subscriptions and signals blocked deliveries to abort (used at shutdown).
+// It returns once the loops of the hub and the jobs of its outboxes have
+// ended, so that the caller may close the database and the pubsub next.
 func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
 		close(h.done)
+		h.loops.Wait()
+		h.later.Wait()
+		h.outbox.Wait()
 		h.transcoders.Wait()
 		h.transcoder.Close()
 		h.events.Close()
@@ -573,7 +582,10 @@ func (h *Hub) SetInstanceID(id string) error {
 	}
 	h.instanceID = id
 	if id != "" && h.pubsub != nil {
-		h.followClaimsOnce.Do(func() { go h.followClaims(h.pubsub.Subscribe(claimedTopic)) })
+		h.followClaimsOnce.Do(func() {
+			claims := h.pubsub.Subscribe(claimedTopic)
+			h.loops.Go(func() { h.followClaims(claims) })
+		})
 	}
 	return nil
 }

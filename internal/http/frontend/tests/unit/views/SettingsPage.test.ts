@@ -46,7 +46,7 @@ const privacy =
   'When SMS Storage is on, the text messages sent to and from the radio IDs that you own appear on your ' +
   'Messages page, up to the 250 newest in each box.';
 
-function serve(smsStorage: boolean, ids = [accountID, addedID]) {
+function serve(smsStorage: boolean, ids = [accountID, addedID], switches: unknown[] = []) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url === '/users/me') {
       return Promise.resolve({ data: { id: 3191868, callsign: 'KI5VMF', must_change_password: false } });
@@ -62,6 +62,9 @@ function serve(smsStorage: boolean, ids = [accountID, addedID]) {
     }
     if (url === '/users/me/tokens') {
       return Promise.resolve({ data: { tokens: [], scopes: [], expiries: [30, 90, 365, 0] } });
+    }
+    if (url === '/users/me/plugin-switches') {
+      return Promise.resolve({ data: switches });
     }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
@@ -130,6 +133,25 @@ describe('SettingsPage', () => {
     const cards = wrapper.findAll('[data-test$="-card"]').map((c) => c.attributes('data-test'));
     expect(cards.indexOf('tokens-card')).toBe(cards.indexOf('apps-card') + 1);
     expect(wrapper.find('[data-test="tokens-card"]').text()).toContain('No tokens yet.');
+  });
+
+  it('shows the switches of plugins after the radio IDs', async () => {
+    serve(false, [accountID], [
+      {
+        plugin_id: 3,
+        plugin: 'APRS',
+        key: 'aprs',
+        title: 'APRS messages',
+        description: 'Send and get APRS text messages with your radio.',
+        notice: '',
+        details: [],
+        choice: null,
+        on: false,
+      },
+    ]);
+    const wrapper = await mountPage();
+    const cards = wrapper.findAll('[data-test$="-card"], [data-test^="plugin-switch-3"]').map((c) => c.attributes('data-test'));
+    expect(cards.indexOf('plugin-switch-3-aprs')).toBe(cards.indexOf('radio-ids-card') + 1);
   });
 
   it('shows SMS Storage off with the privacy text and no dates or config keys', async () => {

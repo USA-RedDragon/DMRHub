@@ -151,6 +151,8 @@
         </CardContent>
       </Card>
 
+      <PluginSwitchesCard v-if="!mustChange" />
+
       <EmailCard v-if="!mustChange" :current="email" :verified="emailVerified" />
 
       <AppsCard v-if="!mustChange" />
@@ -182,6 +184,7 @@ import AccountCard from '@/components/users/AccountCard.vue';
 import AppsCard from '@/components/users/AppsCard.vue';
 import EmailCard from '@/components/users/EmailCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
+import PluginSwitchesCard from '@/components/users/PluginSwitchesCard.vue';
 import StoreForwardCard from '@/components/users/StoreForwardCard.vue';
 import TokensCard from '@/components/users/TokensCard.vue';
 import { badgeClass } from '@/lib/badge';

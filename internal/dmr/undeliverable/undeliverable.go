@@ -50,6 +50,7 @@ const (
 	ReasonTalkgroupRefused    = "talkgroup_refused"
 	ReasonTalkgroupRestricted = "talkgroup_restricted"
 	ReasonNotInLocalGroup     = "not_in_local_group"
+	ReasonUnlockNeeded        = "unlock_needed"
 )
 
 func sentenceFormat(reason string) string {
@@ -84,6 +85,8 @@ func sentenceFormat(reason string) string {
 		return "%s is not approved for that talkgroup."
 	case ReasonNotInLocalGroup:
 		return "%s is in no local group on that talkgroup and timeslot."
+	case ReasonUnlockNeeded:
+		return "%s needs the on-air code of this radio ID first."
 	default:
 		return "the burst could not be prepared for %s."
 	}
@@ -97,6 +100,7 @@ func Reasons() []string {
 		ReasonDataInVoice, ReasonUndecodable, ReasonSlotBusy,
 		ReasonSlotLocked, ReasonTalkgroupRefused, ReasonTalkgroupRestricted,
 		ReasonNotInLocalGroup,
+		ReasonUnlockNeeded,
 	}
 }
 

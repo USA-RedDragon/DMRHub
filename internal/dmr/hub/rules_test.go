@@ -61,6 +61,8 @@ type rulesEnv struct {
 	kv   kv.KV
 	srv  *hub.ServerHandle
 	next uint
+	// markerSrc sends the marker bursts of carried, listedUser when 0.
+	markerSrc uint
 }
 
 func newRulesHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub, kvStore kv.KV, opts ...hub.Option) *hub.Hub {
@@ -166,6 +168,9 @@ func (e *rulesEnv) carried(t *testing.T, b burst) bool {
 	p.Repeater, p.Src = b.from, b.src
 	marker := makeVoicePacket(e.markerTG(b), stream+1, true, b.slot)
 	marker.Repeater, marker.Src = b.from, listedUser
+	if e.markerSrc != 0 {
+		marker.Src = e.markerSrc
+	}
 	e.hub.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 	e.hub.RoutePacket(context.Background(), marker, models.RepeaterTypeMMDVM)
 	got := false

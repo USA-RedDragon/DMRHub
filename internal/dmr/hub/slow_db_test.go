@@ -280,3 +280,126 @@ func TestAStalledDatabaseHoldsNoBurstOfANewCall(t *testing.T) {
 		worstDelay(t, arrivals, stream+1, sendStream(h, 1000002, stream+1, false, 8), "mmdvm:100002")
 	})
 }
+
+// TestAStalledDatabaseRefusesNoRadioForTheOnAirCode sends a call from a
+// radio whose owner the hub knows already, while the database stalls the
+// read of whether the owner turned the on-air code on. The hub must carry
+// the call, as it does when it cannot find the owner, and not refuse it
+// as a locked radio.
+func TestAStalledDatabaseRefusesNoRadioForTheOnAirCode(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		slow := slowDownBy(t, database, 3*time.Second)
+
+		seedUser(t, database, testSrcID, "CALLER")
+		seedUser(t, database, 1000002, "TARGET")
+		seedRepeater(t, database, testRepeaterID, testSrcID)
+		seedRepeater(t, database, 100002, 1000002)
+		arrivals := collect(t, map[string]*hub.ServerHandle{
+			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+		})
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		time.Sleep(100 * time.Millisecond)
+
+		warm := makeVoicePacket(testSrcID, 70200, false, false)
+		warm.Src, warm.Repeater = 1000002, 100002
+		h.RoutePacket(context.Background(), warm, models.RepeaterTypeMMDVM)
+		time.Sleep(time.Second)
+		for len(arrivals) > 0 {
+			<-arrivals
+		}
+
+		slow.on.Store(true)
+		const stream = 70201
+		sendStream(h, 100002, stream, false, 8)
+		got := 0
+		unstall := time.After(4 * time.Second)
+		end := time.After(15 * time.Second)
+		for waiting := true; waiting; {
+			select {
+			case a := <-arrivals:
+				if a.rp.Packet.StreamID == stream {
+					got++
+				}
+			case <-unstall:
+				slow.on.Store(false)
+			case <-end:
+				waiting = false
+			}
+		}
+		assert.Equal(t, 8, got, "a radio of a user without an on-air code was refused while the database stalled")
+	})
+}
+
+// TestAStalledDatabaseRefusesTheRadiosOfOnAirCodeUsersOnly sends a call
+// from a radio, with no unlock, while the database stalls every read. The
+// hub forgot its answers for the owner of the radio and the on-air code of
+// that user, so it cannot read them. From what it saw before, it must refuse the
+// radio of a user with the on-air code on, and carry the radio of a user
+// without it.
+func TestAStalledDatabaseRefusesTheRadiosOfOnAirCodeUsersOnly(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		enrolled bool
+		want     int
+	}{{"on-air code on", true, 0}, {"no on-air code", false, 8}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, stalledCallBursts(t, tc.enrolled))
+		})
+	}
+}
+
+func stalledCallBursts(t *testing.T, enrolled bool) int {
+	t.Helper()
+	got := 0
+	synctest.Test(t, func(t *testing.T) {
+		h, database := makeTestHub(t)
+		slow := slowDownBy(t, database, 3*time.Second)
+
+		seedUser(t, database, testSrcID, "CALLER")
+		seedUser(t, database, 1000002, "TARGET")
+		if enrolled {
+			require.NoError(t, models.SetTOTPSecret(database, testSrcID, "v1:sealed"))
+			h.UserChanged(testSrcID)
+		}
+		seedRepeater(t, database, testRepeaterID, testSrcID)
+		seedRepeater(t, database, 100002, 1000002)
+		arrivals := collect(t, map[string]*hub.ServerHandle{
+			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
+		})
+		h.ActivateRepeater(context.Background(), testRepeaterID)
+		h.ActivateRepeater(context.Background(), 100002)
+		time.Sleep(100 * time.Millisecond)
+
+		sendStream(h, 100002, 70300, false, 2)
+		time.Sleep(time.Second)
+		h.ForgetOwnerAnswers(testSrcID)
+		for len(arrivals) > 0 {
+			<-arrivals
+		}
+
+		slow.on.Store(true)
+		const stream = 70301
+		sendStream(h, 100002, stream, false, 8)
+		got = 0
+		unstall := time.After(4 * time.Second)
+		end := time.After(15 * time.Second)
+		for waiting := true; waiting; {
+			select {
+			case a := <-arrivals:
+				if a.rp.Packet.StreamID == stream {
+					got++
+				}
+			case <-unstall:
+				slow.on.Store(false)
+			case <-end:
+				waiting = false
+			}
+		}
+	})
+	return got
+}

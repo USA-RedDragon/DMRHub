@@ -172,12 +172,18 @@ func (h *Hub) applyChange(topic string, id uint) {
 		h.noteTalkgroup(id)
 		h.watchers.call(talkgroupChangedTopic, id)
 	case userChangedTopic:
+		h.loadOnAirRadios()
 		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)
 		h.watchers.call(userChangedTopic, id)
 	case radioChangedTopic:
 		h.radioOwners.Reload(id)
 		h.radioCalls.Drop(id)
+		h.loadOnAirRadios()
+		h.unlockGrants.Reload(id)
+	case unlockChangedTopic:
+		h.unlockGrants.Reload(id)
+		h.watchers.call(unlockChangedTopic, id)
 	case peerChangedTopic:
 		h.egressTable.Reload(struct{}{})
 		h.watchers.call(peerChangedTopic, id)

@@ -160,3 +160,10 @@ func (h *Hub) StoreSighting(radio, repeater uint, at time.Time, vetted bool) err
 func (h *Hub) WaitBackground() {
 	h.later.Wait()
 }
+
+// ForgetOwnerAnswers drops the answers that the hub keeps for the owner of
+// the radio ID radio and for its unlocks, as when they were idle too long.
+func (h *Hub) ForgetOwnerAnswers(radio uint) {
+	h.radioOwners.Drop(radio)
+	h.unlockGrants.Drop(radio)
+}

@@ -44,6 +44,7 @@ func TestEveryReasonIsAPlainSentence(t *testing.T) {
 		undeliverable.ReasonTalkgroupRefused:    "IPSC repeater 314926 does not carry that talkgroup.",
 		undeliverable.ReasonTalkgroupRestricted: "IPSC repeater 314926 is not approved for that talkgroup.",
 		undeliverable.ReasonNotInLocalGroup:     "IPSC repeater 314926 is in no local group on that talkgroup and timeslot.",
+		undeliverable.ReasonUnlockNeeded:        "IPSC repeater 314926 needs the on-air code of this radio ID first.",
 	}
 	assert.Len(t, undeliverable.Reasons(), len(want))
 	for _, reason := range undeliverable.Reasons() {

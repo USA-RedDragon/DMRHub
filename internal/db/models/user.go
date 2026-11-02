@@ -191,6 +191,31 @@ func TOTPSecretOf(db *gorm.DB, id uint) (string, error) {
 	return secrets[0], nil
 }
 
+// OnAirRadios returns the radio IDs of the users whose on-air code is on,
+// their account IDs and the radio IDs that they added, with the user of
+// each.
+func OnAirRadios(db *gorm.DB) (map[uint]uint, error) {
+	var users []uint
+	if err := db.Model(&User{}).Where("totp_secret IS NOT NULL AND totp_secret <> ''").Pluck("id", &users).Error; err != nil {
+		return nil, fmt.Errorf("could not find the users with an on-air code: %w", err)
+	}
+	out := make(map[uint]uint, len(users))
+	if len(users) == 0 {
+		return out, nil
+	}
+	for _, u := range users {
+		out[u] = u
+	}
+	var added []UserRadioID
+	if err := db.Where("user_id IN ?", users).Find(&added).Error; err != nil {
+		return nil, fmt.Errorf("could not find the radio IDs of the users with an on-air code: %w", err)
+	}
+	for _, r := range added {
+		out[r.RadioID] = r.UserID
+	}
+	return out, nil
+}
+
 // UsersWithTOTP returns the users among ids whose on-air code is on.
 func UsersWithTOTP(db *gorm.DB, ids []uint) ([]uint, error) {
 	out := []uint{}

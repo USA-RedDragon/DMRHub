@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/airauth"
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/connlog"
@@ -271,6 +272,13 @@ type Hub struct {
 	owners           *lookup.Flights[uint, []byte]
 	ingressHolds     *xsync.Map[streamSource, *ingressHold]
 	ingressHeld      atomic.Int32
+
+	airAuth       *airauth.Service
+	onAirRadios   atomic.Pointer[map[uint]uint]
+	unlockGrants  *lookup.Cache[uint, []airauth.Grant]
+	unlockStreams *xsync.Map[unlockStream, time.Time]
+	lockedStreams *xsync.Map[unlockStream, time.Time]
+	unlockReplies atomic.Pointer[UnlockReplies]
 }
 
 // NewHub creates a new Hub.
@@ -355,17 +363,22 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		}
 		return models.LocalGroupRepeaterIDs(h.db, group)
 	})
+	h.unlockStreams = xsync.NewMap[unlockStream, time.Time]()
+	h.lockedStreams = xsync.NewMap[unlockStream, time.Time]()
+	h.initUnlocks()
 	h.heard = make(chan heardNote, heardQueue)
-	for _, q := range []interface{ GoWith(func(func())) }{h.outbox, h.later, h.peerEgress, h.routing, h.links, h.talkgroupIDs, h.radioOwners, h.radioCalls, h.egressTable, h.lastSeen, h.owners, h.tgRepeaters} {
+	for _, q := range []interface{ GoWith(func(func())) }{h.outbox, h.later, h.peerEgress, h.routing, h.links, h.talkgroupIDs, h.radioOwners, h.radioCalls, h.egressTable, h.lastSeen, h.owners, h.tgRepeaters, h.unlockGrants} {
 		q.GoWith(h.goTracked)
 	}
 	if h.db != nil {
 		h.loadRules()
+		h.loadOnAirRadios()
 		h.loadTalkgroups()
 		h.loadPeers()
 	}
 	h.goTracked(h.runHeard)
 	h.goTracked(h.runSightings)
+	h.goTracked(h.runOnAirReload)
 	h.subscriptionMgr = newSubscriptionManager(h)
 	h.goTracked(h.runDynamicTimeouts)
 	h.goTracked(h.runEphemeralTalkgroups)
@@ -376,7 +389,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		repeaterChanges, codecChanges := ps.Subscribe(repeaterChangedTopic), ps.Subscribe(codecChangedTopic)
 		h.goTracked(func() { h.listenRepeaterChanges(repeaterChanges) })
 		h.goTracked(func() { h.listenCodecChanges(codecChanges) })
-		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic, repeaterResetTopic} {
+		for _, topic := range []string{talkgroupChangedTopic, userChangedTopic, radioChangedTopic, peerChangedTopic, repeaterRekeyTopic, rulesChangedTopic, repeaterResetTopic, unlockChangedTopic} {
 			sub := ps.Subscribe(topic)
 			h.goTracked(func() { h.listenChanges(topic, sub) })
 		}

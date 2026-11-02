@@ -192,6 +192,9 @@ func (h *Hub) refuseIngress(packet models.Packet, sourceName string) bool {
 	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return false
 	}
+	if h.refuseLocked(packet, sourceName) {
+		return true
+	}
 	reason := h.refusal(packet.Repeater, packet.Slot, packet, false)
 	if reason == "" {
 		return false

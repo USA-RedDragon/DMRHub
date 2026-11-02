@@ -56,6 +56,7 @@ func (h *Hub) HoldLookupWaits() (end func()) {
 	h.tgRepeaters.HoldWaits(ch)
 	h.repeaters.flights.HoldWaits(ch)
 	h.owners.HoldWaits(ch)
+	h.unlockGrants.HoldWaits(ch)
 	var once sync.Once
 	return func() { once.Do(func() { close(ch) }) }
 }

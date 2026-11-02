@@ -81,6 +81,12 @@ func (h *Hub) RouteStream(ctx context.Context, packet models.Packet, sourceName 
 // RouteStreamAt is RouteStream for a packet that came at at, as
 // RoutePacketAt is.
 func (h *Hub) RouteStreamAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time, admitted func(bool)) {
+	if h.takeUnlockCall(ctx, packet, sourceName) {
+		if admitted != nil {
+			admitted(false)
+		}
+		return
+	}
 	if h.dropsIngress(&packet, sourceName) {
 		return
 	}

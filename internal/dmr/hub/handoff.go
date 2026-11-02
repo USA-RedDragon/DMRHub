@@ -75,6 +75,17 @@ func (h *Hub) settle(id uint) {
 	}
 }
 
+// Settle returns once the server named server took every packet that the
+// hub got for the repeater id before the call, as StopFor does, but leaves
+// the subscriptions of the repeater on. A server that reports early on a
+// repeater that moved to another replica calls it first, so that the
+// report holds what was on its way to the repeater when the other replica
+// subscribed it.
+func (h *Hub) Settle(server string, id uint) {
+	h.settle(id)
+	h.Barrier(server)
+}
+
 // Barrier returns once the server named server has taken every packet that
 // the hub handed it before the call, or once the server or the hub stops.
 // A server that hands a repeater over stops the subscriptions of the

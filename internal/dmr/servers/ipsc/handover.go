@@ -47,9 +47,10 @@ import (
 // for the peer until the report comes, then sends the peer both, in order
 // and each once, going on from that state.
 //
-// The draining replica sends an early report at the claim and the full one
-// once its hub stopped the subscriptions of the peer, after they got the
-// packets that were published before this replica subscribed. A packet that this replica holds goes out at the
+// The draining replica sends an early report at the claim, once its hub
+// handed it the packets that were published before this replica
+// subscribed, and the full one once its hub stopped the subscriptions of
+// the peer. A packet that this replica holds goes out at the
 // early report when it follows the last packet of its call that the
 // report knows, by sequence, as no packet that only the full report can
 // hold is then before it. The other packets of its slot wait for the full
@@ -191,8 +192,9 @@ func (m *moving) follows(p models.Packet) bool {
 
 // handOverPeer reports to the replica that claimed the peer id what this
 // one sent to it before since, when the peer moved there, and stops
-// sending to it. It reports at once what it knows, and again in full once
-// the hub stopped the subscriptions of the peer.
+// sending to it. It reports what it knows once its hub handed it what was
+// on its way to the peer, and again in full once the hub stopped the
+// subscriptions of the peer.
 func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	if id > math.MaxUint32 {
 		return
@@ -205,6 +207,7 @@ func (s *IPSCServer) handOverPeer(id uint, since time.Time) {
 	if !here || s.hub == nil {
 		return
 	}
+	s.hub.Settle(models.RepeaterTypeIPSC, id)
 	calls, lost, hangs := s.pacer.handOver(peer, since)
 	report := handoverReport{Calls: calls, Ingress: s.ingressOf(peer), Hangs: hangs, Lost: marshalPackets(nil, lost)}
 	if b, err := json.Marshal(report); err == nil {

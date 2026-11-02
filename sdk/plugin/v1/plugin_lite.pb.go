@@ -107,6 +107,139 @@ func (x PositionFormat) String() string {
 	return strconv.Itoa(int(x))
 }
 
+// Feature is a part of the protocol that a replica of the hub serves. A
+// hub older than a feature leaves it out of its Welcome, and ignores the
+// requests and subscriptions of that feature.
+type Feature int32
+
+const (
+	Feature_FEATURE_UNSPECIFIED Feature = 0
+	// StoreGet, StorePut, StoreDelete and StoreList.
+	Feature_FEATURE_STORE Feature = 1
+	// Lookup.
+	Feature_FEATURE_LOOKUP Feature = 2
+	// RepeaterQuery.
+	Feature_FEATURE_REPEATER Feature = 3
+	// Subscribe with heard.
+	Feature_FEATURE_HEARD Feature = 4
+	// Subscribe with texts.
+	Feature_FEATURE_TEXTS Feature = 5
+	// SendText.
+	Feature_FEATURE_SEND_TEXT Feature = 6
+	// Hello with switches, and Subscribe with switches.
+	Feature_FEATURE_SWITCHES Feature = 7
+	// APRSSend.
+	Feature_FEATURE_APRS Feature = 8
+	// Subscribe with aprs.
+	Feature_FEATURE_APRS_INBOX Feature = 9
+)
+
+// Enum value maps for Feature.
+var (
+	Feature_name = map[int32]string{
+		0: "FEATURE_UNSPECIFIED",
+		1: "FEATURE_STORE",
+		2: "FEATURE_LOOKUP",
+		3: "FEATURE_REPEATER",
+		4: "FEATURE_HEARD",
+		5: "FEATURE_TEXTS",
+		6: "FEATURE_SEND_TEXT",
+		7: "FEATURE_SWITCHES",
+		8: "FEATURE_APRS",
+		9: "FEATURE_APRS_INBOX",
+	}
+	Feature_value = map[string]int32{
+		"FEATURE_UNSPECIFIED": 0,
+		"FEATURE_STORE":       1,
+		"FEATURE_LOOKUP":      2,
+		"FEATURE_REPEATER":    3,
+		"FEATURE_HEARD":       4,
+		"FEATURE_TEXTS":       5,
+		"FEATURE_SEND_TEXT":   6,
+		"FEATURE_SWITCHES":    7,
+		"FEATURE_APRS":        8,
+		"FEATURE_APRS_INBOX":  9,
+	}
+)
+
+func (x Feature) Enum() *Feature {
+	p := new(Feature)
+	*p = x
+	return p
+}
+
+func (x Feature) String() string {
+	name, valid := Feature_name[int32(x)]
+	if valid {
+		return name
+	}
+	return strconv.Itoa(int(x))
+}
+
+// ErrorCode is why a request failed.
+type ErrorCode int32
+
+const (
+	ErrorCode_ERROR_CODE_UNSPECIFIED ErrorCode = 0
+	// No such key, user or repeater.
+	ErrorCode_ERROR_CODE_NOT_FOUND ErrorCode = 1
+	// The request is malformed or out of its limits.
+	ErrorCode_ERROR_CODE_INVALID ErrorCode = 2
+	// The plugin may not do this, such as send from an ID that is not its
+	// own, or from the APRS address of a user who did not turn its switch
+	// on.
+	ErrorCode_ERROR_CODE_REFUSED ErrorCode = 3
+	// The plugin's store is full.
+	ErrorCode_ERROR_CODE_FULL ErrorCode = 4
+	// The hub cannot do it now, such as when its database fails. Try again
+	// later.
+	ErrorCode_ERROR_CODE_UNAVAILABLE ErrorCode = 5
+	// The hub knows no text format that the radio sends, so it sends no
+	// text to it. See SendText.
+	ErrorCode_ERROR_CODE_NO_FORMAT ErrorCode = 6
+	// The plugin sends requests faster than the hub takes them, or more
+	// APRS messages than the hub sends for it. Try again later.
+	ErrorCode_ERROR_CODE_RATE ErrorCode = 7
+)
+
+// Enum value maps for ErrorCode.
+var (
+	ErrorCode_name = map[int32]string{
+		0: "ERROR_CODE_UNSPECIFIED",
+		1: "ERROR_CODE_NOT_FOUND",
+		2: "ERROR_CODE_INVALID",
+		3: "ERROR_CODE_REFUSED",
+		4: "ERROR_CODE_FULL",
+		5: "ERROR_CODE_UNAVAILABLE",
+		6: "ERROR_CODE_NO_FORMAT",
+		7: "ERROR_CODE_RATE",
+	}
+	ErrorCode_value = map[string]int32{
+		"ERROR_CODE_UNSPECIFIED": 0,
+		"ERROR_CODE_NOT_FOUND":   1,
+		"ERROR_CODE_INVALID":     2,
+		"ERROR_CODE_REFUSED":     3,
+		"ERROR_CODE_FULL":        4,
+		"ERROR_CODE_UNAVAILABLE": 5,
+		"ERROR_CODE_NO_FORMAT":   6,
+		"ERROR_CODE_RATE":        7,
+	}
+)
+
+func (x ErrorCode) Enum() *ErrorCode {
+	p := new(ErrorCode)
+	*p = x
+	return p
+}
+
+func (x ErrorCode) String() string {
+	name, valid := ErrorCode_name[int32(x)]
+	if valid {
+		return name
+	}
+	return strconv.Itoa(int(x))
+}
+
 // FrameType is the kind of a DMR burst.
 type FrameType int32
 
@@ -205,6 +338,7 @@ type ConnectRequest struct {
 	//	*ConnectRequest_Position
 	//	*ConnectRequest_Hello
 	//	*ConnectRequest_Net
+	//	*ConnectRequest_Request
 	Message isConnectRequest_Message `protobuf_oneof:"message"`
 }
 
@@ -256,6 +390,13 @@ func (x *ConnectRequest) GetNet() *NetRequest {
 	return nil
 }
 
+func (x *ConnectRequest) GetRequest() *Request {
+	if x, ok := x.GetMessage().(*ConnectRequest_Request); ok {
+		return x.Request
+	}
+	return nil
+}
+
 type isConnectRequest_Message interface {
 	isConnectRequest_Message()
 }
@@ -290,6 +431,12 @@ type ConnectRequest_Net struct {
 	Net *NetRequest `protobuf:"bytes,5,opt,name=net,proto3,oneof"`
 }
 
+type ConnectRequest_Request struct {
+	// A request that the hub answers with an Answer of the same id. The
+	// hub ignores a request whose feature its Welcome does not list.
+	Request *Request `protobuf:"bytes,6,opt,name=request,proto3,oneof"`
+}
+
 func (*ConnectRequest_Burst) isConnectRequest_Message() {}
 
 func (*ConnectRequest_Subscribe) isConnectRequest_Message() {}
@@ -299,6 +446,8 @@ func (*ConnectRequest_Position) isConnectRequest_Message() {}
 func (*ConnectRequest_Hello) isConnectRequest_Message() {}
 
 func (*ConnectRequest_Net) isConnectRequest_Message() {}
+
+func (*ConnectRequest_Request) isConnectRequest_Message() {}
 
 // Hello tells the hub who a plugin is, and what it asks for.
 type Hello struct {
@@ -317,6 +466,11 @@ type Hello struct {
 	// The hosts a plugin that runs inside DMRHub asks to reach. It reaches
 	// only those that an admin allows.
 	Hosts []*Host `protobuf:"bytes,6,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	// The switches that each user turns on or off for this plugin on the
+	// Settings page, at most 4. A plugin serves a user only when that user
+	// turned its switch on, such as for a service that sends the user's
+	// messages to the internet.
+	Switches []*Switch `protobuf:"bytes,7,rep,name=switches,proto3" json:"switches,omitempty"`
 }
 
 func (x *Hello) Reset() {
@@ -365,6 +519,154 @@ func (x *Hello) GetHosts() []*Host {
 		return x.Hosts
 	}
 	return nil
+}
+
+func (x *Hello) GetSwitches() []*Switch {
+	if x != nil {
+		return x.Switches
+	}
+	return nil
+}
+
+// Switch is a per-user switch of a plugin, which the Settings page shows
+// as a card with the title, the description, the switch, the details and
+// the notice.
+type Switch struct {
+	unknownFields []byte
+	// The key of the switch in Lookup and UserSwitch: 1 to 32 lowercase
+	// letters, digits, "_" or "-", one per switch of the plugin.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// The title of the card, at most 64 characters.
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// What the switch turns on, in a sentence, at most 300 characters.
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// A caution that the card shows under the details, such as who can read
+	// what the service sends, at most 300 characters.
+	Notice string `protobuf:"bytes,4,opt,name=notice,proto3" json:"notice,omitempty"`
+	// Lines that the card shows while the switch is on, at most 4.
+	Details []*SwitchDetail `protobuf:"bytes,5,rep,name=details,proto3" json:"details,omitempty"`
+	// A choice that the user makes besides on or off, such as the SSID of an
+	// APRS address.
+	Choice *SwitchChoice `protobuf:"bytes,6,opt,name=choice,proto3" json:"choice,omitempty"`
+}
+
+func (x *Switch) Reset() {
+	*x = Switch{}
+}
+
+func (*Switch) ProtoMessage() {}
+
+func (x *Switch) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *Switch) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *Switch) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *Switch) GetNotice() string {
+	if x != nil {
+		return x.Notice
+	}
+	return ""
+}
+
+func (x *Switch) GetDetails() []*SwitchDetail {
+	if x != nil {
+		return x.Details
+	}
+	return nil
+}
+
+func (x *Switch) GetChoice() *SwitchChoice {
+	if x != nil {
+		return x.Choice
+	}
+	return nil
+}
+
+// SwitchDetail is a line of the card of a switch: a label and a value. In
+// the value, the hub replaces {callsign} with the user's callsign,
+// {choice} with the user's choice and {id} with the first of the plugin's
+// IDs, and the text between backticks shows in a fixed-width font.
+type SwitchDetail struct {
+	unknownFields []byte
+	// At most 32 characters.
+	Label string `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	// At most 200 characters.
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+}
+
+func (x *SwitchDetail) Reset() {
+	*x = SwitchDetail{}
+}
+
+func (*SwitchDetail) ProtoMessage() {}
+
+func (x *SwitchDetail) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *SwitchDetail) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+// SwitchChoice is a choice that a user makes for a switch, from a list.
+type SwitchChoice struct {
+	unknownFields []byte
+	// The label of the list, at most 32 characters.
+	Label string `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	// The options, 1 to 32, each at most 16 characters.
+	Options []string `protobuf:"bytes,2,rep,name=options,proto3" json:"options,omitempty"`
+	// The option of a user who did not choose, one of options. Empty is the
+	// first option.
+	Preset string `protobuf:"bytes,3,opt,name=preset,proto3" json:"preset,omitempty"`
+}
+
+func (x *SwitchChoice) Reset() {
+	*x = SwitchChoice{}
+}
+
+func (*SwitchChoice) ProtoMessage() {}
+
+func (x *SwitchChoice) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *SwitchChoice) GetOptions() []string {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+func (x *SwitchChoice) GetPreset() string {
+	if x != nil {
+		return x.Preset
+	}
+	return ""
 }
 
 // Host is a host that a plugin asks to reach, and why.
@@ -576,6 +878,20 @@ type Subscribe struct {
 	// a Tracked with all of them, a Tracking at each change, and a Heard each
 	// time one of them is heard on a repeater.
 	Tracking bool `protobuf:"varint,1,opt,name=tracking,proto3" json:"tracking,omitempty"`
+	// Heard asks for a Heard each time the hub hears any radio on a
+	// repeater, not only the radios with tracking on.
+	Heard bool `protobuf:"varint,2,opt,name=heard,proto3" json:"heard,omitempty"`
+	// Texts asks for a Text for each text message to one of the plugin's
+	// IDs, as the hub read it. The bursts of the message still come.
+	Texts bool `protobuf:"varint,3,opt,name=texts,proto3" json:"texts,omitempty"`
+	// Switches asks for a UserSwitches with each user who turned a switch of
+	// the plugin on, and a UserSwitch at each change.
+	Switches bool `protobuf:"varint,4,opt,name=switches,proto3" json:"switches,omitempty"`
+	// The APRS addresses, as CALLSIGN-SSID, whose APRS messages the plugin
+	// gets as an APRSMessage. The hub takes only the addresses whose
+	// callsign is that of a user who turned a switch of the plugin on, and
+	// drops an address when its user turns the switches off.
+	Aprs []string `protobuf:"bytes,5,rep,name=aprs,proto3" json:"aprs,omitempty"`
 }
 
 func (x *Subscribe) Reset() {
@@ -589,6 +905,34 @@ func (x *Subscribe) GetTracking() bool {
 		return x.Tracking
 	}
 	return false
+}
+
+func (x *Subscribe) GetHeard() bool {
+	if x != nil {
+		return x.Heard
+	}
+	return false
+}
+
+func (x *Subscribe) GetTexts() bool {
+	if x != nil {
+		return x.Texts
+	}
+	return false
+}
+
+func (x *Subscribe) GetSwitches() bool {
+	if x != nil {
+		return x.Switches
+	}
+	return false
+}
+
+func (x *Subscribe) GetAprs() []string {
+	if x != nil {
+		return x.Aprs
+	}
+	return nil
 }
 
 // Position is a position that a radio reported. The hub keeps it only when
@@ -711,6 +1055,11 @@ type ConnectResponse struct {
 	//	*ConnectResponse_Heard
 	//	*ConnectResponse_Draining
 	//	*ConnectResponse_Net
+	//	*ConnectResponse_Answer
+	//	*ConnectResponse_Text
+	//	*ConnectResponse_UserSwitches
+	//	*ConnectResponse_UserSwitch
+	//	*ConnectResponse_Aprs
 	Message isConnectResponse_Message `protobuf_oneof:"message"`
 }
 
@@ -790,6 +1139,41 @@ func (x *ConnectResponse) GetNet() *NetResponse {
 	return nil
 }
 
+func (x *ConnectResponse) GetAnswer() *Answer {
+	if x, ok := x.GetMessage().(*ConnectResponse_Answer); ok {
+		return x.Answer
+	}
+	return nil
+}
+
+func (x *ConnectResponse) GetText() *Text {
+	if x, ok := x.GetMessage().(*ConnectResponse_Text); ok {
+		return x.Text
+	}
+	return nil
+}
+
+func (x *ConnectResponse) GetUserSwitches() *UserSwitches {
+	if x, ok := x.GetMessage().(*ConnectResponse_UserSwitches); ok {
+		return x.UserSwitches
+	}
+	return nil
+}
+
+func (x *ConnectResponse) GetUserSwitch() *UserSwitch {
+	if x, ok := x.GetMessage().(*ConnectResponse_UserSwitch); ok {
+		return x.UserSwitch
+	}
+	return nil
+}
+
+func (x *ConnectResponse) GetAprs() *APRSMessage {
+	if x, ok := x.GetMessage().(*ConnectResponse_Aprs); ok {
+		return x.Aprs
+	}
+	return nil
+}
+
 type isConnectResponse_Message interface {
 	isConnectResponse_Message()
 }
@@ -826,7 +1210,8 @@ type ConnectResponse_Tracking struct {
 }
 
 type ConnectResponse_Heard struct {
-	// A radio with tracking on was heard on a repeater.
+	// A radio with tracking on was heard on a repeater, or any radio after a
+	// Subscribe with heard.
 	Heard *Heard `protobuf:"bytes,7,opt,name=heard,proto3,oneof"`
 }
 
@@ -838,6 +1223,35 @@ type ConnectResponse_Draining struct {
 type ConnectResponse_Net struct {
 	// The answer to a NetRequest of a plugin that runs inside DMRHub.
 	Net *NetResponse `protobuf:"bytes,9,opt,name=net,proto3,oneof"`
+}
+
+type ConnectResponse_Answer struct {
+	// The answer to a Request.
+	Answer *Answer `protobuf:"bytes,10,opt,name=answer,proto3,oneof"`
+}
+
+type ConnectResponse_Text struct {
+	// A text message to one of the plugin's IDs, after a Subscribe with
+	// texts.
+	Text *Text `protobuf:"bytes,11,opt,name=text,proto3,oneof"`
+}
+
+type ConnectResponse_UserSwitches struct {
+	// Each user who turned a switch of the plugin on, after a Subscribe
+	// with switches.
+	UserSwitches *UserSwitches `protobuf:"bytes,12,opt,name=user_switches,json=userSwitches,proto3,oneof"`
+}
+
+type ConnectResponse_UserSwitch struct {
+	// A user turned a switch of the plugin on or off, or changed its
+	// choice, after a Subscribe with switches.
+	UserSwitch *UserSwitch `protobuf:"bytes,13,opt,name=user_switch,json=userSwitch,proto3,oneof"`
+}
+
+type ConnectResponse_Aprs struct {
+	// An APRS message to one of the addresses that the plugin subscribed
+	// to.
+	Aprs *APRSMessage `protobuf:"bytes,14,opt,name=aprs,proto3,oneof"`
 }
 
 func (*ConnectResponse_Welcome) isConnectResponse_Message() {}
@@ -857,6 +1271,1011 @@ func (*ConnectResponse_Heard) isConnectResponse_Message() {}
 func (*ConnectResponse_Draining) isConnectResponse_Message() {}
 
 func (*ConnectResponse_Net) isConnectResponse_Message() {}
+
+func (*ConnectResponse_Answer) isConnectResponse_Message() {}
+
+func (*ConnectResponse_Text) isConnectResponse_Message() {}
+
+func (*ConnectResponse_UserSwitches) isConnectResponse_Message() {}
+
+func (*ConnectResponse_UserSwitch) isConnectResponse_Message() {}
+
+func (*ConnectResponse_Aprs) isConnectResponse_Message() {}
+
+// Request is a request of a plugin that the hub answers with an Answer.
+type Request struct {
+	unknownFields []byte
+	// The plugin's number of the request, which the Answer carries.
+	Id uint32 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Types that are assignable to Op:
+	//	*Request_StoreGet
+	//	*Request_StorePut
+	//	*Request_StoreDelete
+	//	*Request_StoreList
+	//	*Request_Lookup
+	//	*Request_Repeater
+	//	*Request_SendText
+	//	*Request_AprsSend
+	Op isRequest_Op `protobuf_oneof:"op"`
+}
+
+func (x *Request) Reset() {
+	*x = Request{}
+}
+
+func (*Request) ProtoMessage() {}
+
+func (x *Request) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (m *Request) GetOp() isRequest_Op {
+	if m != nil {
+		return m.Op
+	}
+	return nil
+}
+
+func (x *Request) GetStoreGet() *StoreGet {
+	if x, ok := x.GetOp().(*Request_StoreGet); ok {
+		return x.StoreGet
+	}
+	return nil
+}
+
+func (x *Request) GetStorePut() *StorePut {
+	if x, ok := x.GetOp().(*Request_StorePut); ok {
+		return x.StorePut
+	}
+	return nil
+}
+
+func (x *Request) GetStoreDelete() *StoreDelete {
+	if x, ok := x.GetOp().(*Request_StoreDelete); ok {
+		return x.StoreDelete
+	}
+	return nil
+}
+
+func (x *Request) GetStoreList() *StoreList {
+	if x, ok := x.GetOp().(*Request_StoreList); ok {
+		return x.StoreList
+	}
+	return nil
+}
+
+func (x *Request) GetLookup() *Lookup {
+	if x, ok := x.GetOp().(*Request_Lookup); ok {
+		return x.Lookup
+	}
+	return nil
+}
+
+func (x *Request) GetRepeater() *RepeaterQuery {
+	if x, ok := x.GetOp().(*Request_Repeater); ok {
+		return x.Repeater
+	}
+	return nil
+}
+
+func (x *Request) GetSendText() *SendText {
+	if x, ok := x.GetOp().(*Request_SendText); ok {
+		return x.SendText
+	}
+	return nil
+}
+
+func (x *Request) GetAprsSend() *APRSSend {
+	if x, ok := x.GetOp().(*Request_AprsSend); ok {
+		return x.AprsSend
+	}
+	return nil
+}
+
+type isRequest_Op interface {
+	isRequest_Op()
+}
+
+type Request_StoreGet struct {
+	StoreGet *StoreGet `protobuf:"bytes,2,opt,name=store_get,json=storeGet,proto3,oneof"`
+}
+
+type Request_StorePut struct {
+	StorePut *StorePut `protobuf:"bytes,3,opt,name=store_put,json=storePut,proto3,oneof"`
+}
+
+type Request_StoreDelete struct {
+	StoreDelete *StoreDelete `protobuf:"bytes,4,opt,name=store_delete,json=storeDelete,proto3,oneof"`
+}
+
+type Request_StoreList struct {
+	StoreList *StoreList `protobuf:"bytes,5,opt,name=store_list,json=storeList,proto3,oneof"`
+}
+
+type Request_Lookup struct {
+	Lookup *Lookup `protobuf:"bytes,6,opt,name=lookup,proto3,oneof"`
+}
+
+type Request_Repeater struct {
+	Repeater *RepeaterQuery `protobuf:"bytes,7,opt,name=repeater,proto3,oneof"`
+}
+
+type Request_SendText struct {
+	SendText *SendText `protobuf:"bytes,8,opt,name=send_text,json=sendText,proto3,oneof"`
+}
+
+type Request_AprsSend struct {
+	AprsSend *APRSSend `protobuf:"bytes,9,opt,name=aprs_send,json=aprsSend,proto3,oneof"`
+}
+
+func (*Request_StoreGet) isRequest_Op() {}
+
+func (*Request_StorePut) isRequest_Op() {}
+
+func (*Request_StoreDelete) isRequest_Op() {}
+
+func (*Request_StoreList) isRequest_Op() {}
+
+func (*Request_Lookup) isRequest_Op() {}
+
+func (*Request_Repeater) isRequest_Op() {}
+
+func (*Request_SendText) isRequest_Op() {}
+
+func (*Request_AprsSend) isRequest_Op() {}
+
+// Answer answers a Request.
+type Answer struct {
+	unknownFields []byte
+	// The id of the Request.
+	Id uint32 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// ERROR_CODE_UNSPECIFIED when the request worked.
+	Code ErrorCode `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
+	// Why the request failed, for a log.
+	Error string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	// Types that are assignable to Result:
+	//	*Answer_StoreValue
+	//	*Answer_StoreEntries
+	//	*Answer_User
+	//	*Answer_Repeater
+	//	*Answer_TextSent
+	Result isAnswer_Result `protobuf_oneof:"result"`
+}
+
+func (x *Answer) Reset() {
+	*x = Answer{}
+}
+
+func (*Answer) ProtoMessage() {}
+
+func (x *Answer) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Answer) GetCode() ErrorCode {
+	if x != nil {
+		return x.Code
+	}
+	return ErrorCode_ERROR_CODE_UNSPECIFIED
+}
+
+func (x *Answer) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (m *Answer) GetResult() isAnswer_Result {
+	if m != nil {
+		return m.Result
+	}
+	return nil
+}
+
+func (x *Answer) GetStoreValue() *StoreValue {
+	if x, ok := x.GetResult().(*Answer_StoreValue); ok {
+		return x.StoreValue
+	}
+	return nil
+}
+
+func (x *Answer) GetStoreEntries() *StoreEntries {
+	if x, ok := x.GetResult().(*Answer_StoreEntries); ok {
+		return x.StoreEntries
+	}
+	return nil
+}
+
+func (x *Answer) GetUser() *User {
+	if x, ok := x.GetResult().(*Answer_User); ok {
+		return x.User
+	}
+	return nil
+}
+
+func (x *Answer) GetRepeater() *RepeaterInfo {
+	if x, ok := x.GetResult().(*Answer_Repeater); ok {
+		return x.Repeater
+	}
+	return nil
+}
+
+func (x *Answer) GetTextSent() *TextSent {
+	if x, ok := x.GetResult().(*Answer_TextSent); ok {
+		return x.TextSent
+	}
+	return nil
+}
+
+type isAnswer_Result interface {
+	isAnswer_Result()
+}
+
+type Answer_StoreValue struct {
+	StoreValue *StoreValue `protobuf:"bytes,4,opt,name=store_value,json=storeValue,proto3,oneof"`
+}
+
+type Answer_StoreEntries struct {
+	StoreEntries *StoreEntries `protobuf:"bytes,5,opt,name=store_entries,json=storeEntries,proto3,oneof"`
+}
+
+type Answer_User struct {
+	User *User `protobuf:"bytes,6,opt,name=user,proto3,oneof"`
+}
+
+type Answer_Repeater struct {
+	Repeater *RepeaterInfo `protobuf:"bytes,7,opt,name=repeater,proto3,oneof"`
+}
+
+type Answer_TextSent struct {
+	TextSent *TextSent `protobuf:"bytes,8,opt,name=text_sent,json=textSent,proto3,oneof"`
+}
+
+func (*Answer_StoreValue) isAnswer_Result() {}
+
+func (*Answer_StoreEntries) isAnswer_Result() {}
+
+func (*Answer_User) isAnswer_Result() {}
+
+func (*Answer_Repeater) isAnswer_Result() {}
+
+func (*Answer_TextSent) isAnswer_Result() {}
+
+// StoreGet asks for the value of a key in the plugin's store. Each plugin
+// has its own store in the hub's database, which every replica of the hub
+// shares and which lasts until the plugin is deleted.
+type StoreGet struct {
+	unknownFields []byte
+	// 1 to 255 bytes.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+}
+
+func (x *StoreGet) Reset() {
+	*x = StoreGet{}
+}
+
+func (*StoreGet) ProtoMessage() {}
+
+func (x *StoreGet) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+// StorePut sets the value of a key in the plugin's store. A store holds at
+// most 10000 keys.
+type StorePut struct {
+	unknownFields []byte
+	// 1 to 255 bytes.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// At most 16384 bytes.
+	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// When set, the hub drops the key this many seconds later.
+	TtlSeconds *uint32 `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3,oneof" json:"ttlSeconds,omitempty"`
+}
+
+func (x *StorePut) Reset() {
+	*x = StorePut{}
+}
+
+func (*StorePut) ProtoMessage() {}
+
+func (x *StorePut) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *StorePut) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *StorePut) GetTtlSeconds() uint32 {
+	if x != nil && x.TtlSeconds != nil {
+		return *x.TtlSeconds
+	}
+	return 0
+}
+
+// StoreDelete drops a key from the plugin's store. The Answer has no error
+// when the key was not there.
+type StoreDelete struct {
+	unknownFields []byte
+	// 1 to 255 bytes.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+}
+
+func (x *StoreDelete) Reset() {
+	*x = StoreDelete{}
+}
+
+func (*StoreDelete) ProtoMessage() {}
+
+func (x *StoreDelete) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+// StoreList asks for the keys of the plugin's store that start with
+// prefix, in byte order, with their values.
+type StoreList struct {
+	unknownFields []byte
+	Prefix        string `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	// Only the keys after this one, to go on from the last key of an earlier
+	// answer.
+	After string `protobuf:"bytes,2,opt,name=after,proto3" json:"after,omitempty"`
+	// At most this many keys, 1 to 100. 0 is 100.
+	Limit uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+}
+
+func (x *StoreList) Reset() {
+	*x = StoreList{}
+}
+
+func (*StoreList) ProtoMessage() {}
+
+func (x *StoreList) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+func (x *StoreList) GetAfter() string {
+	if x != nil {
+		return x.After
+	}
+	return ""
+}
+
+func (x *StoreList) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// StoreValue is the value of a key.
+type StoreValue struct {
+	unknownFields []byte
+	Value         []byte `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	// When the hub drops the key, in milliseconds since 1970 UTC.
+	ExpiresAt *int64 `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expiresAt,omitempty"`
+}
+
+func (x *StoreValue) Reset() {
+	*x = StoreValue{}
+}
+
+func (*StoreValue) ProtoMessage() {}
+
+func (x *StoreValue) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *StoreValue) GetExpiresAt() int64 {
+	if x != nil && x.ExpiresAt != nil {
+		return *x.ExpiresAt
+	}
+	return 0
+}
+
+// StoreEntries is the keys that a StoreList found.
+type StoreEntries struct {
+	unknownFields []byte
+	Entries       []*StoreEntry `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	// More keys follow the last one.
+	More bool `protobuf:"varint,2,opt,name=more,proto3" json:"more,omitempty"`
+}
+
+func (x *StoreEntries) Reset() {
+	*x = StoreEntries{}
+}
+
+func (*StoreEntries) ProtoMessage() {}
+
+func (x *StoreEntries) GetEntries() []*StoreEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+func (x *StoreEntries) GetMore() bool {
+	if x != nil {
+		return x.More
+	}
+	return false
+}
+
+// StoreEntry is a key and its value.
+type StoreEntry struct {
+	unknownFields []byte
+	Key           string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	ExpiresAt     *int64 `protobuf:"varint,3,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expiresAt,omitempty"`
+}
+
+func (x *StoreEntry) Reset() {
+	*x = StoreEntry{}
+}
+
+func (*StoreEntry) ProtoMessage() {}
+
+func (x *StoreEntry) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *StoreEntry) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *StoreEntry) GetExpiresAt() int64 {
+	if x != nil && x.ExpiresAt != nil {
+		return *x.ExpiresAt
+	}
+	return 0
+}
+
+// Lookup asks for the user who owns a radio ID, or who has a callsign.
+// Only approved users who are not suspended are found.
+type Lookup struct {
+	unknownFields []byte
+	// Types that are assignable to By:
+	//	*Lookup_Radio
+	//	*Lookup_Callsign
+	By isLookup_By `protobuf_oneof:"by"`
+}
+
+func (x *Lookup) Reset() {
+	*x = Lookup{}
+}
+
+func (*Lookup) ProtoMessage() {}
+
+func (m *Lookup) GetBy() isLookup_By {
+	if m != nil {
+		return m.By
+	}
+	return nil
+}
+
+func (x *Lookup) GetRadio() uint32 {
+	if x, ok := x.GetBy().(*Lookup_Radio); ok {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *Lookup) GetCallsign() string {
+	if x, ok := x.GetBy().(*Lookup_Callsign); ok {
+		return x.Callsign
+	}
+	return ""
+}
+
+type isLookup_By interface {
+	isLookup_By()
+}
+
+type Lookup_Radio struct {
+	Radio uint32 `protobuf:"varint,1,opt,name=radio,proto3,oneof"`
+}
+
+type Lookup_Callsign struct {
+	Callsign string `protobuf:"bytes,2,opt,name=callsign,proto3,oneof"`
+}
+
+func (*Lookup_Radio) isLookup_By() {}
+
+func (*Lookup_Callsign) isLookup_By() {}
+
+// User is a user of the hub.
+type User struct {
+	unknownFields []byte
+	// The account ID, which is also the user's first radio ID.
+	UserId   uint32 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"userId,omitempty"`
+	Callsign string `protobuf:"bytes,2,opt,name=callsign,proto3" json:"callsign,omitempty"`
+	// All the user's radio IDs: the account ID, then the IDs the user added.
+	Radios []uint32 `protobuf:"varint,3,rep,packed,name=radios,proto3" json:"radios,omitempty"`
+	// Each switch of the plugin, as the user set it.
+	Switches []*UserSwitch `protobuf:"bytes,4,rep,name=switches,proto3" json:"switches,omitempty"`
+}
+
+func (x *User) Reset() {
+	*x = User{}
+}
+
+func (*User) ProtoMessage() {}
+
+func (x *User) GetUserId() uint32 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *User) GetCallsign() string {
+	if x != nil {
+		return x.Callsign
+	}
+	return ""
+}
+
+func (x *User) GetRadios() []uint32 {
+	if x != nil {
+		return x.Radios
+	}
+	return nil
+}
+
+func (x *User) GetSwitches() []*UserSwitch {
+	if x != nil {
+		return x.Switches
+	}
+	return nil
+}
+
+// UserSwitch is a switch of the plugin for one user.
+type UserSwitch struct {
+	unknownFields []byte
+	UserId        uint32 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"userId,omitempty"`
+	Callsign      string `protobuf:"bytes,2,opt,name=callsign,proto3" json:"callsign,omitempty"`
+	// The key of the Switch.
+	Key string `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	On  bool   `protobuf:"varint,4,opt,name=on,proto3" json:"on,omitempty"`
+	// The option that the user chose, or the preset, or empty for a switch
+	// with no choice.
+	Choice string `protobuf:"bytes,5,opt,name=choice,proto3" json:"choice,omitempty"`
+}
+
+func (x *UserSwitch) Reset() {
+	*x = UserSwitch{}
+}
+
+func (*UserSwitch) ProtoMessage() {}
+
+func (x *UserSwitch) GetUserId() uint32 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *UserSwitch) GetCallsign() string {
+	if x != nil {
+		return x.Callsign
+	}
+	return ""
+}
+
+func (x *UserSwitch) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *UserSwitch) GetOn() bool {
+	if x != nil {
+		return x.On
+	}
+	return false
+}
+
+func (x *UserSwitch) GetChoice() string {
+	if x != nil {
+		return x.Choice
+	}
+	return ""
+}
+
+// UserSwitches is each user who turned a switch of the plugin on.
+type UserSwitches struct {
+	unknownFields []byte
+	Switches      []*UserSwitch `protobuf:"bytes,1,rep,name=switches,proto3" json:"switches,omitempty"`
+}
+
+func (x *UserSwitches) Reset() {
+	*x = UserSwitches{}
+}
+
+func (*UserSwitches) ProtoMessage() {}
+
+func (x *UserSwitches) GetSwitches() []*UserSwitch {
+	if x != nil {
+		return x.Switches
+	}
+	return nil
+}
+
+// RepeaterQuery asks for the talkgroups of a repeater or hotspot, such as
+// the one in the repeater field of a burst.
+type RepeaterQuery struct {
+	unknownFields []byte
+	Repeater      uint32 `protobuf:"varint,1,opt,name=repeater,proto3" json:"repeater,omitempty"`
+}
+
+func (x *RepeaterQuery) Reset() {
+	*x = RepeaterQuery{}
+}
+
+func (*RepeaterQuery) ProtoMessage() {}
+
+func (x *RepeaterQuery) GetRepeater() uint32 {
+	if x != nil {
+		return x.Repeater
+	}
+	return 0
+}
+
+// RepeaterInfo is the talkgroups of a repeater or hotspot.
+type RepeaterInfo struct {
+	unknownFields []byte
+	Repeater      uint32 `protobuf:"varint,1,opt,name=repeater,proto3" json:"repeater,omitempty"`
+	Callsign      string `protobuf:"bytes,2,opt,name=callsign,proto3" json:"callsign,omitempty"`
+	// Timeslot 1, then timeslot 2.
+	Slots []*SlotInfo `protobuf:"bytes,3,rep,name=slots,proto3" json:"slots,omitempty"`
+}
+
+func (x *RepeaterInfo) Reset() {
+	*x = RepeaterInfo{}
+}
+
+func (*RepeaterInfo) ProtoMessage() {}
+
+func (x *RepeaterInfo) GetRepeater() uint32 {
+	if x != nil {
+		return x.Repeater
+	}
+	return 0
+}
+
+func (x *RepeaterInfo) GetCallsign() string {
+	if x != nil {
+		return x.Callsign
+	}
+	return ""
+}
+
+func (x *RepeaterInfo) GetSlots() []*SlotInfo {
+	if x != nil {
+		return x.Slots
+	}
+	return nil
+}
+
+// SlotInfo is the talkgroups of a timeslot.
+type SlotInfo struct {
+	unknownFields []byte
+	// 1 or 2.
+	Slot uint32 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`
+	// The talkgroups that the owner linked for good.
+	StaticTalkgroups []uint32 `protobuf:"varint,2,rep,packed,name=static_talkgroups,json=staticTalkgroups,proto3" json:"staticTalkgroups,omitempty"`
+	// The talkgroup that a radio linked last by keying up on it, when there
+	// is one.
+	DynamicTalkgroup *uint32 `protobuf:"varint,3,opt,name=dynamic_talkgroup,json=dynamicTalkgroup,proto3,oneof" json:"dynamicTalkgroup,omitempty"`
+}
+
+func (x *SlotInfo) Reset() {
+	*x = SlotInfo{}
+}
+
+func (*SlotInfo) ProtoMessage() {}
+
+func (x *SlotInfo) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
+}
+
+func (x *SlotInfo) GetStaticTalkgroups() []uint32 {
+	if x != nil {
+		return x.StaticTalkgroups
+	}
+	return nil
+}
+
+func (x *SlotInfo) GetDynamicTalkgroup() uint32 {
+	if x != nil && x.DynamicTalkgroup != nil {
+		return *x.DynamicTalkgroup
+	}
+	return 0
+}
+
+// SendText asks the hub to send a private text message to a radio. The
+// plugin gives the text, not the bursts: the hub builds the message in the
+// exact format of the last text that the radio itself sent (header type,
+// rate, encoding and service), because a format that a radio does not
+// send can lock it up. With no such text, the hub sends nothing and
+// answers ERROR_CODE_NO_FORMAT. The responses of the radio come to the
+// plugin as bursts from the radio to source.
+type SendText struct {
+	unknownFields []byte
+	// One of the plugin's IDs.
+	Source uint32 `protobuf:"varint,1,opt,name=source,proto3" json:"source,omitempty"`
+	Radio  uint32 `protobuf:"varint,2,opt,name=radio,proto3" json:"radio,omitempty"`
+	// The text, at most 500 characters.
+	Body string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+}
+
+func (x *SendText) Reset() {
+	*x = SendText{}
+}
+
+func (*SendText) ProtoMessage() {}
+
+func (x *SendText) GetSource() uint32 {
+	if x != nil {
+		return x.Source
+	}
+	return 0
+}
+
+func (x *SendText) GetRadio() uint32 {
+	if x != nil {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *SendText) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+// TextSent answers a SendText that the hub sent.
+type TextSent struct {
+	unknownFields []byte
+	// The name of the format, such as "TMS" or "AnyTone".
+	Format string `protobuf:"bytes,1,opt,name=format,proto3" json:"format,omitempty"`
+}
+
+func (x *TextSent) Reset() {
+	*x = TextSent{}
+}
+
+func (*TextSent) ProtoMessage() {}
+
+func (x *TextSent) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+// Text is a text message to one of the plugin's IDs, as the hub read it.
+type Text struct {
+	unknownFields []byte
+	// The hub's number of the message. A stream gets a Text once per number;
+	// while the plugin moves to another replica, both streams can send it.
+	Id          uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Source      uint32 `protobuf:"varint,2,opt,name=source,proto3" json:"source,omitempty"`
+	Destination uint32 `protobuf:"varint,3,opt,name=destination,proto3" json:"destination,omitempty"`
+	// A message to a talkgroup among the plugin's IDs.
+	Group bool `protobuf:"varint,4,opt,name=group,proto3" json:"group,omitempty"`
+	// The timeslot, 1 or 2.
+	Slot uint32 `protobuf:"varint,5,opt,name=slot,proto3" json:"slot,omitempty"`
+	// The repeater or hotspot the message came from.
+	Repeater uint32 `protobuf:"varint,6,opt,name=repeater,proto3" json:"repeater,omitempty"`
+	// The name of the format, such as "TMS", "ETSI IP", "Hytera" or "AnyTone".
+	Format string `protobuf:"bytes,7,opt,name=format,proto3" json:"format,omitempty"`
+	Body   string `protobuf:"bytes,8,opt,name=body,proto3" json:"body,omitempty"`
+	// When the hub got the message, in milliseconds since 1970 UTC.
+	At int64 `protobuf:"varint,9,opt,name=at,proto3" json:"at,omitempty"`
+}
+
+func (x *Text) Reset() {
+	*x = Text{}
+}
+
+func (*Text) ProtoMessage() {}
+
+func (x *Text) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Text) GetSource() uint32 {
+	if x != nil {
+		return x.Source
+	}
+	return 0
+}
+
+func (x *Text) GetDestination() uint32 {
+	if x != nil {
+		return x.Destination
+	}
+	return 0
+}
+
+func (x *Text) GetGroup() bool {
+	if x != nil {
+		return x.Group
+	}
+	return false
+}
+
+func (x *Text) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
+}
+
+func (x *Text) GetRepeater() uint32 {
+	if x != nil {
+		return x.Repeater
+	}
+	return 0
+}
+
+func (x *Text) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *Text) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *Text) GetAt() int64 {
+	if x != nil {
+		return x.At
+	}
+	return 0
+}
+
+// APRSSend asks the hub to send an APRS message on its APRS-IS login. The
+// hub answers once it handed the message to the replica that holds the
+// login; APRS-IS does not say whether the addressee got it. A hub with
+// FEATURE_APRS_INBOX gives the ack as an APRSMessage. A hub with no APRS-IS
+// login answers ERROR_CODE_UNAVAILABLE.
+type APRSSend struct {
+	unknownFields []byte
+	// The sender as CALLSIGN-SSID or CALLSIGN. The callsign is that of a
+	// user who turned a switch of the plugin on.
+	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// At most 9 characters.
+	Addressee string `protobuf:"bytes,2,opt,name=addressee,proto3" json:"addressee,omitempty"`
+	// At most 67 characters, with none of "|", "~" or "{".
+	Text string `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	// The message number, 1 to 5 letters or digits, or empty for a message
+	// that wants no ack, such as an ack.
+	Number string `protobuf:"bytes,4,opt,name=number,proto3" json:"number,omitempty"`
+}
+
+func (x *APRSSend) Reset() {
+	*x = APRSSend{}
+}
+
+func (*APRSSend) ProtoMessage() {}
+
+func (x *APRSSend) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *APRSSend) GetAddressee() string {
+	if x != nil {
+		return x.Addressee
+	}
+	return ""
+}
+
+func (x *APRSSend) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *APRSSend) GetNumber() string {
+	if x != nil {
+		return x.Number
+	}
+	return ""
+}
+
+// APRSMessage is an APRS message from APRS-IS.
+type APRSMessage struct {
+	unknownFields []byte
+	Source        string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Addressee     string `protobuf:"bytes,2,opt,name=addressee,proto3" json:"addressee,omitempty"`
+	Text          string `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	// Empty when the sender wants no ack.
+	Number string `protobuf:"bytes,4,opt,name=number,proto3" json:"number,omitempty"`
+}
+
+func (x *APRSMessage) Reset() {
+	*x = APRSMessage{}
+}
+
+func (*APRSMessage) ProtoMessage() {}
+
+func (x *APRSMessage) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *APRSMessage) GetAddressee() string {
+	if x != nil {
+		return x.Addressee
+	}
+	return ""
+}
+
+func (x *APRSMessage) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *APRSMessage) GetNumber() string {
+	if x != nil {
+		return x.Number
+	}
+	return ""
+}
 
 // Draining tells a plugin that the replica of the hub that holds its stream
 // stops soon. The plugin connects again while it keeps this stream: another
@@ -928,8 +2347,9 @@ func (x *Tracking) GetIntervalSeconds() uint32 {
 	return 0
 }
 
-// Heard tells that a radio with tracking on was heard on a repeater, where
-// the hub now sends the private calls to it.
+// Heard tells that a radio with tracking on, or any radio after a
+// Subscribe with heard, was heard on a repeater, where the hub now sends
+// the private calls to it.
 type Heard struct {
 	unknownFields []byte
 	Radio         uint32 `protobuf:"varint,1,opt,name=radio,proto3" json:"radio,omitempty"`
@@ -982,6 +2402,10 @@ type Welcome struct {
 	unknownFields []byte
 	Name          string     `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Ranges        []*IDRange `protobuf:"bytes,2,rep,name=ranges,proto3" json:"ranges,omitempty"`
+	// What this replica of the hub serves besides bursts, tracking, positions
+	// and the network. During an upgrade, replicas of two versions can serve
+	// the same plugin one after the other.
+	Features []Feature `protobuf:"varint,3,rep,packed,name=features,proto3" json:"features,omitempty"`
 }
 
 func (x *Welcome) Reset() {
@@ -1000,6 +2424,13 @@ func (x *Welcome) GetName() string {
 func (x *Welcome) GetRanges() []*IDRange {
 	if x != nil {
 		return x.Ranges
+	}
+	return nil
+}
+
+func (x *Welcome) GetFeatures() []Feature {
+	if x != nil {
+		return x.Features
 	}
 	return nil
 }
@@ -1263,6 +2694,19 @@ func (m *ConnectRequest_Net) CloneOneofVT() isConnectRequest_Message {
 	return m.CloneVT()
 }
 
+func (m *ConnectRequest_Request) CloneVT() *ConnectRequest_Request {
+	if m == nil {
+		return (*ConnectRequest_Request)(nil)
+	}
+	r := new(ConnectRequest_Request)
+	r.Request = protobuf_go_lite.CloneVTValue(m.Request)
+	return r
+}
+
+func (m *ConnectRequest_Request) CloneOneofVT() isConnectRequest_Message {
+	return m.CloneVT()
+}
+
 func (m *Hello) CloneVT() *Hello {
 	if m == nil {
 		return (*Hello)(nil)
@@ -1274,6 +2718,7 @@ func (m *Hello) CloneVT() *Hello {
 	r.Description = m.Description
 	r.Ids = protobuf_go_lite.CloneVTSlice(m.Ids)
 	r.Hosts = protobuf_go_lite.CloneVTSlice(m.Hosts)
+	r.Switches = protobuf_go_lite.CloneVTSlice(m.Switches)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = slices.Clone(m.unknownFields)
 	}
@@ -1281,6 +2726,62 @@ func (m *Hello) CloneVT() *Hello {
 }
 
 func (m *Hello) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Switch) CloneVT() *Switch {
+	if m == nil {
+		return (*Switch)(nil)
+	}
+	r := new(Switch)
+	r.Key = m.Key
+	r.Title = m.Title
+	r.Description = m.Description
+	r.Notice = m.Notice
+	r.Details = protobuf_go_lite.CloneVTSlice(m.Details)
+	r.Choice = protobuf_go_lite.CloneVTValue(m.Choice)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *Switch) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *SwitchDetail) CloneVT() *SwitchDetail {
+	if m == nil {
+		return (*SwitchDetail)(nil)
+	}
+	r := new(SwitchDetail)
+	r.Label = m.Label
+	r.Value = m.Value
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *SwitchDetail) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *SwitchChoice) CloneVT() *SwitchChoice {
+	if m == nil {
+		return (*SwitchChoice)(nil)
+	}
+	r := new(SwitchChoice)
+	r.Label = m.Label
+	r.Preset = m.Preset
+	r.Options = protobuf_go_lite.CloneSlice(m.Options)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *SwitchChoice) CloneMessageVT() protobuf_go_lite.CloneMessage {
 	return m.CloneVT()
 }
 
@@ -1414,6 +2915,10 @@ func (m *Subscribe) CloneVT() *Subscribe {
 	}
 	r := new(Subscribe)
 	r.Tracking = m.Tracking
+	r.Heard = m.Heard
+	r.Texts = m.Texts
+	r.Switches = m.Switches
+	r.Aprs = protobuf_go_lite.CloneSlice(m.Aprs)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = slices.Clone(m.unknownFields)
 	}
@@ -1587,6 +3092,647 @@ func (m *ConnectResponse_Net) CloneOneofVT() isConnectResponse_Message {
 	return m.CloneVT()
 }
 
+func (m *ConnectResponse_Answer) CloneVT() *ConnectResponse_Answer {
+	if m == nil {
+		return (*ConnectResponse_Answer)(nil)
+	}
+	r := new(ConnectResponse_Answer)
+	r.Answer = protobuf_go_lite.CloneVTValue(m.Answer)
+	return r
+}
+
+func (m *ConnectResponse_Answer) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_Text) CloneVT() *ConnectResponse_Text {
+	if m == nil {
+		return (*ConnectResponse_Text)(nil)
+	}
+	r := new(ConnectResponse_Text)
+	r.Text = protobuf_go_lite.CloneVTValue(m.Text)
+	return r
+}
+
+func (m *ConnectResponse_Text) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_UserSwitches) CloneVT() *ConnectResponse_UserSwitches {
+	if m == nil {
+		return (*ConnectResponse_UserSwitches)(nil)
+	}
+	r := new(ConnectResponse_UserSwitches)
+	r.UserSwitches = protobuf_go_lite.CloneVTValue(m.UserSwitches)
+	return r
+}
+
+func (m *ConnectResponse_UserSwitches) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_UserSwitch) CloneVT() *ConnectResponse_UserSwitch {
+	if m == nil {
+		return (*ConnectResponse_UserSwitch)(nil)
+	}
+	r := new(ConnectResponse_UserSwitch)
+	r.UserSwitch = protobuf_go_lite.CloneVTValue(m.UserSwitch)
+	return r
+}
+
+func (m *ConnectResponse_UserSwitch) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_Aprs) CloneVT() *ConnectResponse_Aprs {
+	if m == nil {
+		return (*ConnectResponse_Aprs)(nil)
+	}
+	r := new(ConnectResponse_Aprs)
+	r.Aprs = protobuf_go_lite.CloneVTValue(m.Aprs)
+	return r
+}
+
+func (m *ConnectResponse_Aprs) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *Request) CloneVT() *Request {
+	if m == nil {
+		return (*Request)(nil)
+	}
+	r := new(Request)
+	r.Id = m.Id
+	if m.Op != nil {
+		r.Op = m.Op.(interface{ CloneOneofVT() isRequest_Op }).CloneOneofVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *Request) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Request_StoreGet) CloneVT() *Request_StoreGet {
+	if m == nil {
+		return (*Request_StoreGet)(nil)
+	}
+	r := new(Request_StoreGet)
+	r.StoreGet = protobuf_go_lite.CloneVTValue(m.StoreGet)
+	return r
+}
+
+func (m *Request_StoreGet) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_StorePut) CloneVT() *Request_StorePut {
+	if m == nil {
+		return (*Request_StorePut)(nil)
+	}
+	r := new(Request_StorePut)
+	r.StorePut = protobuf_go_lite.CloneVTValue(m.StorePut)
+	return r
+}
+
+func (m *Request_StorePut) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_StoreDelete) CloneVT() *Request_StoreDelete {
+	if m == nil {
+		return (*Request_StoreDelete)(nil)
+	}
+	r := new(Request_StoreDelete)
+	r.StoreDelete = protobuf_go_lite.CloneVTValue(m.StoreDelete)
+	return r
+}
+
+func (m *Request_StoreDelete) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_StoreList) CloneVT() *Request_StoreList {
+	if m == nil {
+		return (*Request_StoreList)(nil)
+	}
+	r := new(Request_StoreList)
+	r.StoreList = protobuf_go_lite.CloneVTValue(m.StoreList)
+	return r
+}
+
+func (m *Request_StoreList) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_Lookup) CloneVT() *Request_Lookup {
+	if m == nil {
+		return (*Request_Lookup)(nil)
+	}
+	r := new(Request_Lookup)
+	r.Lookup = protobuf_go_lite.CloneVTValue(m.Lookup)
+	return r
+}
+
+func (m *Request_Lookup) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_Repeater) CloneVT() *Request_Repeater {
+	if m == nil {
+		return (*Request_Repeater)(nil)
+	}
+	r := new(Request_Repeater)
+	r.Repeater = protobuf_go_lite.CloneVTValue(m.Repeater)
+	return r
+}
+
+func (m *Request_Repeater) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_SendText) CloneVT() *Request_SendText {
+	if m == nil {
+		return (*Request_SendText)(nil)
+	}
+	r := new(Request_SendText)
+	r.SendText = protobuf_go_lite.CloneVTValue(m.SendText)
+	return r
+}
+
+func (m *Request_SendText) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Request_AprsSend) CloneVT() *Request_AprsSend {
+	if m == nil {
+		return (*Request_AprsSend)(nil)
+	}
+	r := new(Request_AprsSend)
+	r.AprsSend = protobuf_go_lite.CloneVTValue(m.AprsSend)
+	return r
+}
+
+func (m *Request_AprsSend) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
+func (m *Answer) CloneVT() *Answer {
+	if m == nil {
+		return (*Answer)(nil)
+	}
+	r := new(Answer)
+	r.Id = m.Id
+	r.Code = m.Code
+	r.Error = m.Error
+	if m.Result != nil {
+		r.Result = m.Result.(interface{ CloneOneofVT() isAnswer_Result }).CloneOneofVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *Answer) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Answer_StoreValue) CloneVT() *Answer_StoreValue {
+	if m == nil {
+		return (*Answer_StoreValue)(nil)
+	}
+	r := new(Answer_StoreValue)
+	r.StoreValue = protobuf_go_lite.CloneVTValue(m.StoreValue)
+	return r
+}
+
+func (m *Answer_StoreValue) CloneOneofVT() isAnswer_Result {
+	return m.CloneVT()
+}
+
+func (m *Answer_StoreEntries) CloneVT() *Answer_StoreEntries {
+	if m == nil {
+		return (*Answer_StoreEntries)(nil)
+	}
+	r := new(Answer_StoreEntries)
+	r.StoreEntries = protobuf_go_lite.CloneVTValue(m.StoreEntries)
+	return r
+}
+
+func (m *Answer_StoreEntries) CloneOneofVT() isAnswer_Result {
+	return m.CloneVT()
+}
+
+func (m *Answer_User) CloneVT() *Answer_User {
+	if m == nil {
+		return (*Answer_User)(nil)
+	}
+	r := new(Answer_User)
+	r.User = protobuf_go_lite.CloneVTValue(m.User)
+	return r
+}
+
+func (m *Answer_User) CloneOneofVT() isAnswer_Result {
+	return m.CloneVT()
+}
+
+func (m *Answer_Repeater) CloneVT() *Answer_Repeater {
+	if m == nil {
+		return (*Answer_Repeater)(nil)
+	}
+	r := new(Answer_Repeater)
+	r.Repeater = protobuf_go_lite.CloneVTValue(m.Repeater)
+	return r
+}
+
+func (m *Answer_Repeater) CloneOneofVT() isAnswer_Result {
+	return m.CloneVT()
+}
+
+func (m *Answer_TextSent) CloneVT() *Answer_TextSent {
+	if m == nil {
+		return (*Answer_TextSent)(nil)
+	}
+	r := new(Answer_TextSent)
+	r.TextSent = protobuf_go_lite.CloneVTValue(m.TextSent)
+	return r
+}
+
+func (m *Answer_TextSent) CloneOneofVT() isAnswer_Result {
+	return m.CloneVT()
+}
+
+func (m *StoreGet) CloneVT() *StoreGet {
+	if m == nil {
+		return (*StoreGet)(nil)
+	}
+	r := new(StoreGet)
+	r.Key = m.Key
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreGet) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StorePut) CloneVT() *StorePut {
+	if m == nil {
+		return (*StorePut)(nil)
+	}
+	r := new(StorePut)
+	r.Key = m.Key
+	r.Value = protobuf_go_lite.CloneBytes(m.Value)
+	r.TtlSeconds = protobuf_go_lite.ClonePtr(m.TtlSeconds)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StorePut) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StoreDelete) CloneVT() *StoreDelete {
+	if m == nil {
+		return (*StoreDelete)(nil)
+	}
+	r := new(StoreDelete)
+	r.Key = m.Key
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreDelete) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StoreList) CloneVT() *StoreList {
+	if m == nil {
+		return (*StoreList)(nil)
+	}
+	r := new(StoreList)
+	r.Prefix = m.Prefix
+	r.After = m.After
+	r.Limit = m.Limit
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreList) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StoreValue) CloneVT() *StoreValue {
+	if m == nil {
+		return (*StoreValue)(nil)
+	}
+	r := new(StoreValue)
+	r.Value = protobuf_go_lite.CloneBytes(m.Value)
+	r.ExpiresAt = protobuf_go_lite.ClonePtr(m.ExpiresAt)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreValue) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StoreEntries) CloneVT() *StoreEntries {
+	if m == nil {
+		return (*StoreEntries)(nil)
+	}
+	r := new(StoreEntries)
+	r.More = m.More
+	r.Entries = protobuf_go_lite.CloneVTSlice(m.Entries)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreEntries) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *StoreEntry) CloneVT() *StoreEntry {
+	if m == nil {
+		return (*StoreEntry)(nil)
+	}
+	r := new(StoreEntry)
+	r.Key = m.Key
+	r.Value = protobuf_go_lite.CloneBytes(m.Value)
+	r.ExpiresAt = protobuf_go_lite.ClonePtr(m.ExpiresAt)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *StoreEntry) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Lookup) CloneVT() *Lookup {
+	if m == nil {
+		return (*Lookup)(nil)
+	}
+	r := new(Lookup)
+	if m.By != nil {
+		r.By = m.By.(interface{ CloneOneofVT() isLookup_By }).CloneOneofVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *Lookup) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Lookup_Radio) CloneVT() *Lookup_Radio {
+	if m == nil {
+		return (*Lookup_Radio)(nil)
+	}
+	r := new(Lookup_Radio)
+	r.Radio = m.Radio
+	return r
+}
+
+func (m *Lookup_Radio) CloneOneofVT() isLookup_By {
+	return m.CloneVT()
+}
+
+func (m *Lookup_Callsign) CloneVT() *Lookup_Callsign {
+	if m == nil {
+		return (*Lookup_Callsign)(nil)
+	}
+	r := new(Lookup_Callsign)
+	r.Callsign = m.Callsign
+	return r
+}
+
+func (m *Lookup_Callsign) CloneOneofVT() isLookup_By {
+	return m.CloneVT()
+}
+
+func (m *User) CloneVT() *User {
+	if m == nil {
+		return (*User)(nil)
+	}
+	r := new(User)
+	r.UserId = m.UserId
+	r.Callsign = m.Callsign
+	r.Radios = protobuf_go_lite.CloneSlice(m.Radios)
+	r.Switches = protobuf_go_lite.CloneVTSlice(m.Switches)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *User) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *UserSwitch) CloneVT() *UserSwitch {
+	if m == nil {
+		return (*UserSwitch)(nil)
+	}
+	r := new(UserSwitch)
+	r.UserId = m.UserId
+	r.Callsign = m.Callsign
+	r.Key = m.Key
+	r.On = m.On
+	r.Choice = m.Choice
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *UserSwitch) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *UserSwitches) CloneVT() *UserSwitches {
+	if m == nil {
+		return (*UserSwitches)(nil)
+	}
+	r := new(UserSwitches)
+	r.Switches = protobuf_go_lite.CloneVTSlice(m.Switches)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *UserSwitches) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *RepeaterQuery) CloneVT() *RepeaterQuery {
+	if m == nil {
+		return (*RepeaterQuery)(nil)
+	}
+	r := new(RepeaterQuery)
+	r.Repeater = m.Repeater
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *RepeaterQuery) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *RepeaterInfo) CloneVT() *RepeaterInfo {
+	if m == nil {
+		return (*RepeaterInfo)(nil)
+	}
+	r := new(RepeaterInfo)
+	r.Repeater = m.Repeater
+	r.Callsign = m.Callsign
+	r.Slots = protobuf_go_lite.CloneVTSlice(m.Slots)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *RepeaterInfo) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *SlotInfo) CloneVT() *SlotInfo {
+	if m == nil {
+		return (*SlotInfo)(nil)
+	}
+	r := new(SlotInfo)
+	r.Slot = m.Slot
+	r.StaticTalkgroups = protobuf_go_lite.CloneSlice(m.StaticTalkgroups)
+	r.DynamicTalkgroup = protobuf_go_lite.ClonePtr(m.DynamicTalkgroup)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *SlotInfo) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *SendText) CloneVT() *SendText {
+	if m == nil {
+		return (*SendText)(nil)
+	}
+	r := new(SendText)
+	r.Source = m.Source
+	r.Radio = m.Radio
+	r.Body = m.Body
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *SendText) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *TextSent) CloneVT() *TextSent {
+	if m == nil {
+		return (*TextSent)(nil)
+	}
+	r := new(TextSent)
+	r.Format = m.Format
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *TextSent) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *Text) CloneVT() *Text {
+	if m == nil {
+		return (*Text)(nil)
+	}
+	r := new(Text)
+	r.Id = m.Id
+	r.Source = m.Source
+	r.Destination = m.Destination
+	r.Group = m.Group
+	r.Slot = m.Slot
+	r.Repeater = m.Repeater
+	r.Format = m.Format
+	r.Body = m.Body
+	r.At = m.At
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *Text) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *APRSSend) CloneVT() *APRSSend {
+	if m == nil {
+		return (*APRSSend)(nil)
+	}
+	r := new(APRSSend)
+	r.Source = m.Source
+	r.Addressee = m.Addressee
+	r.Text = m.Text
+	r.Number = m.Number
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *APRSSend) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *APRSMessage) CloneVT() *APRSMessage {
+	if m == nil {
+		return (*APRSMessage)(nil)
+	}
+	r := new(APRSMessage)
+	r.Source = m.Source
+	r.Addressee = m.Addressee
+	r.Text = m.Text
+	r.Number = m.Number
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *APRSMessage) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
 func (m *Draining) CloneVT() *Draining {
 	if m == nil {
 		return (*Draining)(nil)
@@ -1662,6 +3808,7 @@ func (m *Welcome) CloneVT() *Welcome {
 	r := new(Welcome)
 	r.Name = m.Name
 	r.Ranges = protobuf_go_lite.CloneVTSlice(m.Ranges)
+	r.Features = protobuf_go_lite.CloneSlice(m.Features)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = slices.Clone(m.unknownFields)
 	}
@@ -1903,6 +4050,29 @@ func (m *ConnectRequest_Net) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *ConnectRequest_Request) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectRequest_Request) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Request != nil {
+		size, err := m.Request.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
 func (m *Hello) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -1931,6 +4101,18 @@ func (m *Hello) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	_ = l
 	if m.unknownFields != nil {
 		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Switches) > 0 {
+		for iNdEx := len(m.Switches) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Switches[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x3a
+		}
 	}
 	if len(m.Hosts) > 0 {
 		for iNdEx := len(m.Hosts) - 1; iNdEx >= 0; iNdEx-- {
@@ -1973,6 +4155,171 @@ func (m *Hello) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if len(m.Name) > 0 {
 		i = protobuf_go_lite.EncodeString(dAtA, i, m.Name)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Switch) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Switch) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Switch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.Choice != nil {
+		size, err := m.Choice.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.Details) > 0 {
+		for iNdEx := len(m.Details) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Details[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.Notice) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Notice)
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Description) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Description)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Title) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Title)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SwitchDetail) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SwitchDetail) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SwitchDetail) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Value) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Value)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Label) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Label)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SwitchChoice) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SwitchChoice) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SwitchChoice) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Preset) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Preset)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Options) > 0 {
+		for iNdEx := len(m.Options) - 1; iNdEx >= 0; iNdEx-- {
+			i = protobuf_go_lite.EncodeString(dAtA, i, m.Options[iNdEx])
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Label) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Label)
 		i--
 		dAtA[i] = 0xa
 	}
@@ -2248,6 +4595,28 @@ func (m *Subscribe) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	_ = l
 	if m.unknownFields != nil {
 		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Aprs) > 0 {
+		for iNdEx := len(m.Aprs) - 1; iNdEx >= 0; iNdEx-- {
+			i = protobuf_go_lite.EncodeString(dAtA, i, m.Aprs[iNdEx])
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if m.Switches {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.Switches)
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Texts {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.Texts)
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Heard {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.Heard)
+		i--
+		dAtA[i] = 0x10
 	}
 	if m.Tracking {
 		i = protobuf_go_lite.EncodeBool(dAtA, i, m.Tracking)
@@ -2592,6 +4961,1456 @@ func (m *ConnectResponse_Net) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *ConnectResponse_Answer) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_Answer) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Answer != nil {
+		size, err := m.Answer.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x52
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_Text) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_Text) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Text != nil {
+		size, err := m.Text.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x5a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_UserSwitches) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_UserSwitches) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UserSwitches != nil {
+		size, err := m.UserSwitches.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_UserSwitch) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_UserSwitch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UserSwitch != nil {
+		size, err := m.UserSwitch.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x6a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_Aprs) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_Aprs) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Aprs != nil {
+		size, err := m.Aprs.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Request) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if vtmsg, ok := m.Op.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if m.Id != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Request_StoreGet) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_StoreGet) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreGet != nil {
+		size, err := m.StoreGet.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_StorePut) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_StorePut) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StorePut != nil {
+		size, err := m.StorePut.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_StoreDelete) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_StoreDelete) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreDelete != nil {
+		size, err := m.StoreDelete.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_StoreList) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_StoreList) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreList != nil {
+		size, err := m.StoreList.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_Lookup) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_Lookup) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Lookup != nil {
+		size, err := m.Lookup.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_Repeater) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_Repeater) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Repeater != nil {
+		size, err := m.Repeater.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_SendText) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_SendText) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SendText != nil {
+		size, err := m.SendText.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Request_AprsSend) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_AprsSend) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AprsSend != nil {
+		size, err := m.AprsSend.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x4a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x4a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Answer) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Answer) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if vtmsg, ok := m.Result.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if len(m.Error) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Error)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Code != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Code))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Id != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Answer_StoreValue) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer_StoreValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreValue != nil {
+		size, err := m.StoreValue.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Answer_StoreEntries) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer_StoreEntries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StoreEntries != nil {
+		size, err := m.StoreEntries.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Answer_User) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer_User) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.User != nil {
+		size, err := m.User.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Answer_Repeater) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer_Repeater) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Repeater != nil {
+		size, err := m.Repeater.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Answer_TextSent) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Answer_TextSent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.TextSent != nil {
+		size, err := m.TextSent.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
+func (m *StoreGet) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreGet) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreGet) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StorePut) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StorePut) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StorePut) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.TtlSeconds != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.TtlSeconds))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Value) > 0 {
+		i = protobuf_go_lite.EncodeBytes(dAtA, i, m.Value)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StoreDelete) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreDelete) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreDelete) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StoreList) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreList) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreList) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.Limit != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.After) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.After)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Prefix) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Prefix)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StoreValue) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreValue) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.ExpiresAt != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.ExpiresAt))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Value) > 0 {
+		i = protobuf_go_lite.EncodeBytes(dAtA, i, m.Value)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StoreEntries) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreEntries) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreEntries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.More {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.More)
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Entries) > 0 {
+		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Entries[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StoreEntry) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StoreEntry) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *StoreEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.ExpiresAt != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.ExpiresAt))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.Value) > 0 {
+		i = protobuf_go_lite.EncodeBytes(dAtA, i, m.Value)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Lookup) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Lookup) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Lookup) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if vtmsg, ok := m.By.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Lookup_Radio) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Lookup_Radio) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
+	i--
+	dAtA[i] = 0x8
+	return len(dAtA) - i, nil
+}
+func (m *Lookup_Callsign) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Lookup_Callsign) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protobuf_go_lite.EncodeString(dAtA, i, m.Callsign)
+	i--
+	dAtA[i] = 0x12
+	return len(dAtA) - i, nil
+}
+func (m *User) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *User) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *User) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Switches) > 0 {
+		for iNdEx := len(m.Switches) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Switches[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.Radios) > 0 {
+		i = protobuf_go_lite.EncodeVarintPacked(dAtA, i, m.Radios)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Callsign) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Callsign)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.UserId != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.UserId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *UserSwitch) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *UserSwitch) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *UserSwitch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Choice) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Choice)
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.On {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.On)
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Key) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Key)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Callsign) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Callsign)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.UserId != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.UserId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *UserSwitches) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *UserSwitches) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *UserSwitches) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Switches) > 0 {
+		for iNdEx := len(m.Switches) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Switches[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RepeaterQuery) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RepeaterQuery) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *RepeaterQuery) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.Repeater != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Repeater))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RepeaterInfo) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RepeaterInfo) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *RepeaterInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Slots) > 0 {
+		for iNdEx := len(m.Slots) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.Slots[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Callsign) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Callsign)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Repeater != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Repeater))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SlotInfo) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SlotInfo) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SlotInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.DynamicTalkgroup != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.DynamicTalkgroup))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.StaticTalkgroups) > 0 {
+		i = protobuf_go_lite.EncodeVarintPacked(dAtA, i, m.StaticTalkgroups)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Slot != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Slot))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SendText) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SendText) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SendText) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Body) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Body)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Radio != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Source != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Source))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *TextSent) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TextSent) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TextSent) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Format) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Format)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Text) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Text) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Text) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.At != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.At))
+		i--
+		dAtA[i] = 0x48
+	}
+	if len(m.Body) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Body)
+		i--
+		dAtA[i] = 0x42
+	}
+	if len(m.Format) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Format)
+		i--
+		dAtA[i] = 0x3a
+	}
+	if m.Repeater != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Repeater))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Slot != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Slot))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.Group {
+		i = protobuf_go_lite.EncodeBool(dAtA, i, m.Group)
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Destination != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Destination))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Source != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Source))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Id != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *APRSSend) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *APRSSend) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *APRSSend) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Number) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Number)
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Text) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Text)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Addressee) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Addressee)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Source) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Source)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *APRSMessage) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *APRSMessage) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *APRSMessage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Number) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Number)
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Text) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Text)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Addressee) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Addressee)
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Source) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Source)
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Draining) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -2795,6 +6614,11 @@ func (m *Welcome) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	_ = l
 	if m.unknownFields != nil {
 		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Features) > 0 {
+		i = protobuf_go_lite.EncodeVarintPacked(dAtA, i, m.Features)
+		i--
+		dAtA[i] = 0x1a
 	}
 	if len(m.Ranges) > 0 {
 		for iNdEx := len(m.Ranges) - 1; iNdEx >= 0; iNdEx-- {
@@ -3109,6 +6933,20 @@ func (m *ConnectRequest_Net) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ConnectRequest_Request) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Request != nil {
+		l = m.Request.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *Hello) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -3127,6 +6965,57 @@ func (m *Hello) SizeVT() (n int) {
 		l = e.SizeVT()
 		n += protobuf_go_lite.SizeMessage(1, l)
 	}
+	for _, e := range m.Switches {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Switch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Title)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Description)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Notice)
+	for _, e := range m.Details {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	if m.Choice != nil {
+		l = m.Choice.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SwitchDetail) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Label)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Value)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SwitchChoice) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Label)
+	n += protobuf_go_lite.SizeStringSlice(1, m.Options)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Preset)
 	n += len(m.unknownFields)
 	return n
 }
@@ -3231,6 +7120,10 @@ func (m *Subscribe) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += protobuf_go_lite.SizeBoolNonZero(1, m.Tracking)
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.Heard)
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.Texts)
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.Switches)
+	n += protobuf_go_lite.SizeStringSlice(1, m.Aprs)
 	n += len(m.unknownFields)
 	return n
 }
@@ -3395,6 +7288,564 @@ func (m *ConnectResponse_Net) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ConnectResponse_Answer) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Answer != nil {
+		l = m.Answer.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_Text) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Text != nil {
+		l = m.Text.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_UserSwitches) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UserSwitches != nil {
+		l = m.UserSwitches.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_UserSwitch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UserSwitch != nil {
+		l = m.UserSwitch.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_Aprs) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Aprs != nil {
+		l = m.Aprs.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Id)
+	if vtmsg, ok := m.Op.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Request_StoreGet) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreGet != nil {
+		l = m.StoreGet.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_StorePut) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StorePut != nil {
+		l = m.StorePut.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_StoreDelete) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreDelete != nil {
+		l = m.StoreDelete.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_StoreList) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreList != nil {
+		l = m.StoreList.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_Lookup) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Lookup != nil {
+		l = m.Lookup.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_Repeater) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Repeater != nil {
+		l = m.Repeater.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_SendText) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SendText != nil {
+		l = m.SendText.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Request_AprsSend) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AprsSend != nil {
+		l = m.AprsSend.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Answer) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Id)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Code)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Error)
+	if vtmsg, ok := m.Result.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Answer_StoreValue) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreValue != nil {
+		l = m.StoreValue.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Answer_StoreEntries) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StoreEntries != nil {
+		l = m.StoreEntries.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Answer_User) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.User != nil {
+		l = m.User.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Answer_Repeater) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Repeater != nil {
+		l = m.Repeater.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *Answer_TextSent) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TextSent != nil {
+		l = m.TextSent.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *StoreGet) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StorePut) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += protobuf_go_lite.SizeBytesNonEmpty(1, m.Value)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.TtlSeconds)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StoreDelete) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StoreList) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Prefix)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.After)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Limit)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StoreValue) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeBytesNonEmpty(1, m.Value)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.ExpiresAt)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StoreEntries) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	for _, e := range m.Entries {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.More)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *StoreEntry) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += protobuf_go_lite.SizeBytesNonEmpty(1, m.Value)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.ExpiresAt)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Lookup) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if vtmsg, ok := m.By.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Lookup_Radio) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintValue(1, m.Radio)
+	return n
+}
+func (m *Lookup_Callsign) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringValue(1, m.Callsign)
+	return n
+}
+func (m *User) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.UserId)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Callsign)
+	n += protobuf_go_lite.SizeVarintPacked(1, m.Radios)
+	for _, e := range m.Switches {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *UserSwitch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.UserId)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Callsign)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Key)
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.On)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Choice)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *UserSwitches) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	for _, e := range m.Switches {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *RepeaterQuery) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Repeater)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *RepeaterInfo) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Repeater)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Callsign)
+	for _, e := range m.Slots {
+		l = e.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SlotInfo) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Slot)
+	n += protobuf_go_lite.SizeVarintPacked(1, m.StaticTalkgroups)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.DynamicTalkgroup)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SendText) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Source)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Body)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *TextSent) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Format)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *Text) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Id)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Source)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Destination)
+	n += protobuf_go_lite.SizeBoolNonZero(1, m.Group)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Slot)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Repeater)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Format)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Body)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.At)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *APRSSend) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Source)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Addressee)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Text)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Number)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *APRSMessage) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Source)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Addressee)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Text)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Number)
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *Draining) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -3457,6 +7908,7 @@ func (m *Welcome) SizeVT() (n int) {
 		l = e.SizeVT()
 		n += protobuf_go_lite.SizeMessage(1, l)
 	}
+	n += protobuf_go_lite.SizeVarintPacked(1, m.Features)
 	n += len(m.unknownFields)
 	return n
 }
@@ -3639,6 +8091,26 @@ func (m *ConnectRequest) UnmarshalVT(dAtA []byte) error {
 				m.Message = &ConnectRequest_Net{Net: v}
 			}
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Request", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectRequest_Request); ok {
+				if err := oneof.Request.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &Request{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectRequest_Request{Request: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
@@ -3747,6 +8219,263 @@ func (m *Hello) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Switches", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Switches = append(m.Switches, &Switch{})
+			if err := m.Switches[len(m.Switches)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Switch) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Switch: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Switch: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Title", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Title = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Description", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Description = v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Notice", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Notice = v
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Details", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Details = append(m.Details, &SwitchDetail{})
+			if err := m.Details[len(m.Details)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Choice", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if m.Choice == nil {
+				m.Choice = &SwitchChoice{}
+			}
+			if err := m.Choice.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SwitchDetail) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SwitchDetail: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SwitchDetail: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Label", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Label = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Value = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SwitchChoice) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SwitchChoice: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SwitchChoice: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Label", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Label = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Options = append(m.Options, v)
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Preset", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Preset = v
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
@@ -4103,6 +8832,46 @@ func (m *Subscribe) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			m.Tracking = bool(v)
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Heard", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Heard = bool(v)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Texts", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Texts = bool(v)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Switches", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Switches = bool(v)
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Aprs", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Aprs = append(m.Aprs, v)
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
@@ -4491,6 +9260,1869 @@ func (m *ConnectResponse) UnmarshalVT(dAtA []byte) error {
 				m.Message = &ConnectResponse_Net{Net: v}
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Answer", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_Answer); ok {
+				if err := oneof.Answer.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &Answer{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_Answer{Answer: v}
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Text", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_Text); ok {
+				if err := oneof.Text.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &Text{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_Text{Text: v}
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserSwitches", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_UserSwitches); ok {
+				if err := oneof.UserSwitches.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UserSwitches{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_UserSwitches{UserSwitches: v}
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserSwitch", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_UserSwitch); ok {
+				if err := oneof.UserSwitch.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UserSwitch{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_UserSwitch{UserSwitch: v}
+			}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Aprs", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_Aprs); ok {
+				if err := oneof.Aprs.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &APRSMessage{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_Aprs{Aprs: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Request) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Request: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Request: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			m.Id, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreGet", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_StoreGet); ok {
+				if err := oneof.StoreGet.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StoreGet{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_StoreGet{StoreGet: v}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StorePut", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_StorePut); ok {
+				if err := oneof.StorePut.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StorePut{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_StorePut{StorePut: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreDelete", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_StoreDelete); ok {
+				if err := oneof.StoreDelete.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StoreDelete{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_StoreDelete{StoreDelete: v}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreList", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_StoreList); ok {
+				if err := oneof.StoreList.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StoreList{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_StoreList{StoreList: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Lookup", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_Lookup); ok {
+				if err := oneof.Lookup.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &Lookup{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_Lookup{Lookup: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Repeater", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_Repeater); ok {
+				if err := oneof.Repeater.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RepeaterQuery{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_Repeater{Repeater: v}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SendText", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_SendText); ok {
+				if err := oneof.SendText.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SendText{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_SendText{SendText: v}
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AprsSend", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_AprsSend); ok {
+				if err := oneof.AprsSend.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &APRSSend{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_AprsSend{AprsSend: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Answer) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Answer: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Answer: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			m.Id, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
+			}
+			m.Code = 0
+			var _v uint64
+			_v, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+			m.Code = ErrorCode(_v)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Error = v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreValue", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Result.(*Answer_StoreValue); ok {
+				if err := oneof.StoreValue.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StoreValue{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Result = &Answer_StoreValue{StoreValue: v}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StoreEntries", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Result.(*Answer_StoreEntries); ok {
+				if err := oneof.StoreEntries.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &StoreEntries{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Result = &Answer_StoreEntries{StoreEntries: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field User", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Result.(*Answer_User); ok {
+				if err := oneof.User.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &User{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Result = &Answer_User{User: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Repeater", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Result.(*Answer_Repeater); ok {
+				if err := oneof.Repeater.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &RepeaterInfo{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Result = &Answer_Repeater{Repeater: v}
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TextSent", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Result.(*Answer_TextSent); ok {
+				if err := oneof.TextSent.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &TextSent{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Result = &Answer_TextSent{TextSent: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreGet) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreGet: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreGet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StorePut) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StorePut: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StorePut: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			m.Value, iNdEx, err = protobuf_go_lite.DecodeBytesAppend(m.Value, dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TtlSeconds", wireType)
+			}
+			var v uint32
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.TtlSeconds = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreDelete) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreDelete: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreDelete: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreList) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreList: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreList: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Prefix", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Prefix = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field After", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.After = v
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			m.Limit, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreValue) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreValue: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreValue: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			m.Value, iNdEx, err = protobuf_go_lite.DecodeBytesAppend(m.Value, dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
+			}
+			var v int64
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.ExpiresAt = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreEntries) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreEntries: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreEntries: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Entries = append(m.Entries, &StoreEntry{})
+			if err := m.Entries[len(m.Entries)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field More", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.More = bool(v)
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StoreEntry) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StoreEntry: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StoreEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			m.Value, iNdEx, err = protobuf_go_lite.DecodeBytesAppend(m.Value, dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
+			}
+			var v int64
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.ExpiresAt = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Lookup) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Lookup: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Lookup: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radio", wireType)
+			}
+			var v uint32
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.By = &Lookup_Radio{Radio: v}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Callsign", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.By = &Lookup_Callsign{Callsign: v}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *User) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: User: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: User: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserId", wireType)
+			}
+			m.UserId = 0
+			m.UserId, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Callsign", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Callsign = v
+		case 3:
+			if wireType == 0 {
+				var v uint32
+				v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+				if err != nil {
+					return err
+				}
+				m.Radios = append(m.Radios, v)
+			} else if wireType == 2 {
+				packedStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+				if err != nil {
+					return err
+				}
+				iNdEx = packedStart
+				var elementCount int
+				elementCount = protobuf_go_lite.PackedVarintElementCount(dAtA[iNdEx:postIndex])
+				if elementCount != 0 && len(m.Radios) == 0 {
+					m.Radios = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+					if err != nil {
+						return err
+					}
+					m.Radios = append(m.Radios, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radios", wireType)
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Switches", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Switches = append(m.Switches, &UserSwitch{})
+			if err := m.Switches[len(m.Switches)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *UserSwitch) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: UserSwitch: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: UserSwitch: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserId", wireType)
+			}
+			m.UserId = 0
+			m.UserId, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Callsign", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Callsign = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Key = v
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field On", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.On = bool(v)
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Choice", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Choice = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *UserSwitches) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: UserSwitches: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: UserSwitches: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Switches", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Switches = append(m.Switches, &UserSwitch{})
+			if err := m.Switches[len(m.Switches)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RepeaterQuery) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RepeaterQuery: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RepeaterQuery: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Repeater", wireType)
+			}
+			m.Repeater = 0
+			m.Repeater, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RepeaterInfo) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RepeaterInfo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RepeaterInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Repeater", wireType)
+			}
+			m.Repeater = 0
+			m.Repeater, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Callsign", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Callsign = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Slots", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Slots = append(m.Slots, &SlotInfo{})
+			if err := m.Slots[len(m.Slots)-1].UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SlotInfo) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SlotInfo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SlotInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Slot", wireType)
+			}
+			m.Slot = 0
+			m.Slot, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType == 0 {
+				var v uint32
+				v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+				if err != nil {
+					return err
+				}
+				m.StaticTalkgroups = append(m.StaticTalkgroups, v)
+			} else if wireType == 2 {
+				packedStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+				if err != nil {
+					return err
+				}
+				iNdEx = packedStart
+				var elementCount int
+				elementCount = protobuf_go_lite.PackedVarintElementCount(dAtA[iNdEx:postIndex])
+				if elementCount != 0 && len(m.StaticTalkgroups) == 0 {
+					m.StaticTalkgroups = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+					if err != nil {
+						return err
+					}
+					m.StaticTalkgroups = append(m.StaticTalkgroups, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field StaticTalkgroups", wireType)
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DynamicTalkgroup", wireType)
+			}
+			var v uint32
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.DynamicTalkgroup = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SendText) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SendText: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SendText: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Source", wireType)
+			}
+			m.Source = 0
+			m.Source, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radio", wireType)
+			}
+			m.Radio = 0
+			m.Radio, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Body", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Body = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TextSent) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TextSent: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TextSent: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Format", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Format = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Text) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Text: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Text: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			m.Id, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Source", wireType)
+			}
+			m.Source = 0
+			m.Source, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Destination", wireType)
+			}
+			m.Destination = 0
+			m.Destination, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Group", wireType)
+			}
+			var v bool
+			v, iNdEx, err = protobuf_go_lite.DecodeVarintBool(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Group = bool(v)
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Slot", wireType)
+			}
+			m.Slot = 0
+			m.Slot, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Repeater", wireType)
+			}
+			m.Repeater = 0
+			m.Repeater, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Format", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Format = v
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Body", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Body = v
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field At", wireType)
+			}
+			m.At = 0
+			m.At, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *APRSSend) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: APRSSend: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: APRSSend: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Source", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Source = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Addressee", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Addressee = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Text", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Text = v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Number", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Number = v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *APRSMessage) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: APRSMessage: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: APRSMessage: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Source", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Source = v
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Addressee", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Addressee = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Text", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Text = v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Number", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Number = v
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
@@ -4802,6 +11434,40 @@ func (m *Welcome) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType == 0 {
+				var v Feature
+				var _v uint64
+				_v, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+				v = Feature(_v)
+				if err != nil {
+					return err
+				}
+				m.Features = append(m.Features, v)
+			} else if wireType == 2 {
+				packedStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+				if err != nil {
+					return err
+				}
+				iNdEx = packedStart
+				var elementCount int
+				elementCount = protobuf_go_lite.PackedVarintElementCount(dAtA[iNdEx:postIndex])
+				if elementCount != 0 && len(m.Features) == 0 {
+					m.Features = make([]Feature, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v Feature
+					var _v uint64
+					_v, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+					v = Feature(_v)
+					if err != nil {
+						return err
+					}
+					m.Features = append(m.Features, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Features", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])

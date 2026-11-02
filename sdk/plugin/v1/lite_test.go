@@ -57,6 +57,30 @@ var lites = map[protoreflect.FullName]func() lite{
 	"dmrhub.plugin.v1.IDRange":         func() lite { return &pluginv1.IDRange{} },
 	"dmrhub.plugin.v1.Burst":           func() lite { return &pluginv1.Burst{} },
 	"dmrhub.plugin.v1.Refusal":         func() lite { return &pluginv1.Refusal{} },
+	"dmrhub.plugin.v1.Switch":          func() lite { return &pluginv1.Switch{} },
+	"dmrhub.plugin.v1.SwitchDetail":    func() lite { return &pluginv1.SwitchDetail{} },
+	"dmrhub.plugin.v1.SwitchChoice":    func() lite { return &pluginv1.SwitchChoice{} },
+	"dmrhub.plugin.v1.Request":         func() lite { return &pluginv1.Request{} },
+	"dmrhub.plugin.v1.Answer":          func() lite { return &pluginv1.Answer{} },
+	"dmrhub.plugin.v1.StoreGet":        func() lite { return &pluginv1.StoreGet{} },
+	"dmrhub.plugin.v1.StorePut":        func() lite { return &pluginv1.StorePut{} },
+	"dmrhub.plugin.v1.StoreDelete":     func() lite { return &pluginv1.StoreDelete{} },
+	"dmrhub.plugin.v1.StoreList":       func() lite { return &pluginv1.StoreList{} },
+	"dmrhub.plugin.v1.StoreValue":      func() lite { return &pluginv1.StoreValue{} },
+	"dmrhub.plugin.v1.StoreEntries":    func() lite { return &pluginv1.StoreEntries{} },
+	"dmrhub.plugin.v1.StoreEntry":      func() lite { return &pluginv1.StoreEntry{} },
+	"dmrhub.plugin.v1.Lookup":          func() lite { return &pluginv1.Lookup{} },
+	"dmrhub.plugin.v1.User":            func() lite { return &pluginv1.User{} },
+	"dmrhub.plugin.v1.UserSwitch":      func() lite { return &pluginv1.UserSwitch{} },
+	"dmrhub.plugin.v1.UserSwitches":    func() lite { return &pluginv1.UserSwitches{} },
+	"dmrhub.plugin.v1.RepeaterQuery":   func() lite { return &pluginv1.RepeaterQuery{} },
+	"dmrhub.plugin.v1.RepeaterInfo":    func() lite { return &pluginv1.RepeaterInfo{} },
+	"dmrhub.plugin.v1.SlotInfo":        func() lite { return &pluginv1.SlotInfo{} },
+	"dmrhub.plugin.v1.SendText":        func() lite { return &pluginv1.SendText{} },
+	"dmrhub.plugin.v1.TextSent":        func() lite { return &pluginv1.TextSent{} },
+	"dmrhub.plugin.v1.Text":            func() lite { return &pluginv1.Text{} },
+	"dmrhub.plugin.v1.APRSSend":        func() lite { return &pluginv1.APRSSend{} },
+	"dmrhub.plugin.v1.APRSMessage":     func() lite { return &pluginv1.APRSMessage{} },
 }
 
 func messages(t testing.TB) []protoreflect.MessageDescriptor {
@@ -130,6 +154,8 @@ func scalar(r *rand.Rand, fd protoreflect.FieldDescriptor) protoreflect.Value {
 		return protoreflect.ValueOfUint32(r.Uint32() >> r.IntN(32))
 	case protoreflect.Int64Kind:
 		return protoreflect.ValueOfInt64(int64(r.Uint64()) >> r.IntN(64))
+	case protoreflect.Uint64Kind:
+		return protoreflect.ValueOfUint64(r.Uint64() >> r.IntN(64))
 	case protoreflect.DoubleKind:
 		switch r.IntN(6) {
 		case 0:

@@ -41,6 +41,9 @@ message ConnectRequest {
     // DMRHub. The hub ignores it from a plugin that runs as its own
     // program, which reaches the network by itself.
     NetRequest net = 5;
+    // A request that the hub answers with an Answer of the same id. The
+    // hub ignores a request whose feature its Welcome does not list.
+    Request request = 6;
   }
 }
 
@@ -60,6 +63,54 @@ message Hello {
   // The hosts a plugin that runs inside DMRHub asks to reach. It reaches
   // only those that an admin allows.
   repeated Host hosts = 6;
+  // The switches that each user turns on or off for this plugin on the
+  // Settings page, at most 4. A plugin serves a user only when that user
+  // turned its switch on, such as for a service that sends the user's
+  // messages to the internet.
+  repeated Switch switches = 7;
+}
+
+// Switch is a per-user switch of a plugin, which the Settings page shows
+// as a card with the title, the description, the switch, the details and
+// the notice.
+message Switch {
+  // The key of the switch in Lookup and UserSwitch: 1 to 32 lowercase
+  // letters, digits, "_" or "-", one per switch of the plugin.
+  string key = 1;
+  // The title of the card, at most 64 characters.
+  string title = 2;
+  // What the switch turns on, in a sentence, at most 300 characters.
+  string description = 3;
+  // A caution that the card shows under the details, such as who can read
+  // what the service sends, at most 300 characters.
+  string notice = 4;
+  // Lines that the card shows while the switch is on, at most 4.
+  repeated SwitchDetail details = 5;
+  // A choice that the user makes besides on or off, such as the SSID of an
+  // APRS address.
+  SwitchChoice choice = 6;
+}
+
+// SwitchDetail is a line of the card of a switch: a label and a value. In
+// the value, the hub replaces {callsign} with the user's callsign,
+// {choice} with the user's choice and {id} with the first of the plugin's
+// IDs, and the text between backticks shows in a fixed-width font.
+message SwitchDetail {
+  // At most 32 characters.
+  string label = 1;
+  // At most 200 characters.
+  string value = 2;
+}
+
+// SwitchChoice is a choice that a user makes for a switch, from a list.
+message SwitchChoice {
+  // The label of the list, at most 32 characters.
+  string label = 1;
+  // The options, 1 to 32, each at most 16 characters.
+  repeated string options = 2;
+  // The option of a user who did not choose, one of options. Empty is the
+  // first option.
+  string preset = 3;
 }
 
 // Host is a host that a plugin asks to reach, and why.
@@ -124,6 +175,20 @@ message Subscribe {
   // a Tracked with all of them, a Tracking at each change, and a Heard each
   // time one of them is heard on a repeater.
   bool tracking = 1;
+  // Heard asks for a Heard each time the hub hears any radio on a
+  // repeater, not only the radios with tracking on.
+  bool heard = 2;
+  // Texts asks for a Text for each text message to one of the plugin's
+  // IDs, as the hub read it. The bursts of the message still come.
+  bool texts = 3;
+  // Switches asks for a UserSwitches with each user who turned a switch of
+  // the plugin on, and a UserSwitch at each change.
+  bool switches = 4;
+  // The APRS addresses, as CALLSIGN-SSID, whose APRS messages the plugin
+  // gets as an APRSMessage. The hub takes only the addresses whose
+  // callsign is that of a user who turned a switch of the plugin on, and
+  // drops an address when its user turns the switches off.
+  repeated string aprs = 5;
 }
 
 // PositionFormat is how a radio reported a position.
@@ -173,13 +238,298 @@ message ConnectResponse {
     // An owner turned tracking of a radio on or off, or changed how often
     // it reports.
     Tracking tracking = 6;
-    // A radio with tracking on was heard on a repeater.
+    // A radio with tracking on was heard on a repeater, or any radio after a
+    // Subscribe with heard.
     Heard heard = 7;
     // The hub stops soon.
     Draining draining = 8;
     // The answer to a NetRequest of a plugin that runs inside DMRHub.
     NetResponse net = 9;
+    // The answer to a Request.
+    Answer answer = 10;
+    // A text message to one of the plugin's IDs, after a Subscribe with
+    // texts.
+    Text text = 11;
+    // Each user who turned a switch of the plugin on, after a Subscribe
+    // with switches.
+    UserSwitches user_switches = 12;
+    // A user turned a switch of the plugin on or off, or changed its
+    // choice, after a Subscribe with switches.
+    UserSwitch user_switch = 13;
+    // An APRS message to one of the addresses that the plugin subscribed
+    // to.
+    APRSMessage aprs = 14;
   }
+}
+
+// Feature is a part of the protocol that a replica of the hub serves. A
+// hub older than a feature leaves it out of its Welcome, and ignores the
+// requests and subscriptions of that feature.
+enum Feature {
+  FEATURE_UNSPECIFIED = 0;
+  // StoreGet, StorePut, StoreDelete and StoreList.
+  FEATURE_STORE = 1;
+  // Lookup.
+  FEATURE_LOOKUP = 2;
+  // RepeaterQuery.
+  FEATURE_REPEATER = 3;
+  // Subscribe with heard.
+  FEATURE_HEARD = 4;
+  // Subscribe with texts.
+  FEATURE_TEXTS = 5;
+  // SendText.
+  FEATURE_SEND_TEXT = 6;
+  // Hello with switches, and Subscribe with switches.
+  FEATURE_SWITCHES = 7;
+  // APRSSend.
+  FEATURE_APRS = 8;
+  // Subscribe with aprs.
+  FEATURE_APRS_INBOX = 9;
+}
+
+// Request is a request of a plugin that the hub answers with an Answer.
+message Request {
+  // The plugin's number of the request, which the Answer carries.
+  uint32 id = 1;
+  oneof op {
+    StoreGet store_get = 2;
+    StorePut store_put = 3;
+    StoreDelete store_delete = 4;
+    StoreList store_list = 5;
+    Lookup lookup = 6;
+    RepeaterQuery repeater = 7;
+    SendText send_text = 8;
+    APRSSend aprs_send = 9;
+  }
+}
+
+// ErrorCode is why a request failed.
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  // No such key, user or repeater.
+  ERROR_CODE_NOT_FOUND = 1;
+  // The request is malformed or out of its limits.
+  ERROR_CODE_INVALID = 2;
+  // The plugin may not do this, such as send from an ID that is not its
+  // own, or from the APRS address of a user who did not turn its switch
+  // on.
+  ERROR_CODE_REFUSED = 3;
+  // The plugin's store is full.
+  ERROR_CODE_FULL = 4;
+  // The hub cannot do it now, such as when its database fails. Try again
+  // later.
+  ERROR_CODE_UNAVAILABLE = 5;
+  // The hub knows no text format that the radio sends, so it sends no
+  // text to it. See SendText.
+  ERROR_CODE_NO_FORMAT = 6;
+  // The plugin sends requests faster than the hub takes them, or more
+  // APRS messages than the hub sends for it. Try again later.
+  ERROR_CODE_RATE = 7;
+}
+
+// Answer answers a Request.
+message Answer {
+  // The id of the Request.
+  uint32 id = 1;
+  // ERROR_CODE_UNSPECIFIED when the request worked.
+  ErrorCode code = 2;
+  // Why the request failed, for a log.
+  string error = 3;
+  oneof result {
+    StoreValue store_value = 4;
+    StoreEntries store_entries = 5;
+    User user = 6;
+    RepeaterInfo repeater = 7;
+    TextSent text_sent = 8;
+  }
+}
+
+// StoreGet asks for the value of a key in the plugin's store. Each plugin
+// has its own store in the hub's database, which every replica of the hub
+// shares and which lasts until the plugin is deleted.
+message StoreGet {
+  // 1 to 255 bytes.
+  string key = 1;
+}
+
+// StorePut sets the value of a key in the plugin's store. A store holds at
+// most 10000 keys.
+message StorePut {
+  // 1 to 255 bytes.
+  string key = 1;
+  // At most 16384 bytes.
+  bytes value = 2;
+  // When set, the hub drops the key this many seconds later.
+  optional uint32 ttl_seconds = 3;
+}
+
+// StoreDelete drops a key from the plugin's store. The Answer has no error
+// when the key was not there.
+message StoreDelete {
+  // 1 to 255 bytes.
+  string key = 1;
+}
+
+// StoreList asks for the keys of the plugin's store that start with
+// prefix, in byte order, with their values.
+message StoreList {
+  string prefix = 1;
+  // Only the keys after this one, to go on from the last key of an earlier
+  // answer.
+  string after = 2;
+  // At most this many keys, 1 to 100. 0 is 100.
+  uint32 limit = 3;
+}
+
+// StoreValue is the value of a key.
+message StoreValue {
+  bytes value = 1;
+  // When the hub drops the key, in milliseconds since 1970 UTC.
+  optional int64 expires_at = 2;
+}
+
+// StoreEntries is the keys that a StoreList found.
+message StoreEntries {
+  repeated StoreEntry entries = 1;
+  // More keys follow the last one.
+  bool more = 2;
+}
+
+// StoreEntry is a key and its value.
+message StoreEntry {
+  string key = 1;
+  bytes value = 2;
+  optional int64 expires_at = 3;
+}
+
+// Lookup asks for the user who owns a radio ID, or who has a callsign.
+// Only approved users who are not suspended are found.
+message Lookup {
+  oneof by {
+    uint32 radio = 1;
+    string callsign = 2;
+  }
+}
+
+// User is a user of the hub.
+message User {
+  // The account ID, which is also the user's first radio ID.
+  uint32 user_id = 1;
+  string callsign = 2;
+  // All the user's radio IDs: the account ID, then the IDs the user added.
+  repeated uint32 radios = 3;
+  // Each switch of the plugin, as the user set it.
+  repeated UserSwitch switches = 4;
+}
+
+// UserSwitch is a switch of the plugin for one user.
+message UserSwitch {
+  uint32 user_id = 1;
+  string callsign = 2;
+  // The key of the Switch.
+  string key = 3;
+  bool on = 4;
+  // The option that the user chose, or the preset, or empty for a switch
+  // with no choice.
+  string choice = 5;
+}
+
+// UserSwitches is each user who turned a switch of the plugin on.
+message UserSwitches {
+  repeated UserSwitch switches = 1;
+}
+
+// RepeaterQuery asks for the talkgroups of a repeater or hotspot, such as
+// the one in the repeater field of a burst.
+message RepeaterQuery {
+  uint32 repeater = 1;
+}
+
+// RepeaterInfo is the talkgroups of a repeater or hotspot.
+message RepeaterInfo {
+  uint32 repeater = 1;
+  string callsign = 2;
+  // Timeslot 1, then timeslot 2.
+  repeated SlotInfo slots = 3;
+}
+
+// SlotInfo is the talkgroups of a timeslot.
+message SlotInfo {
+  // 1 or 2.
+  uint32 slot = 1;
+  // The talkgroups that the owner linked for good.
+  repeated uint32 static_talkgroups = 2;
+  // The talkgroup that a radio linked last by keying up on it, when there
+  // is one.
+  optional uint32 dynamic_talkgroup = 3;
+}
+
+// SendText asks the hub to send a private text message to a radio. The
+// plugin gives the text, not the bursts: the hub builds the message in the
+// exact format of the last text that the radio itself sent (header type,
+// rate, encoding and service), because a format that a radio does not
+// send can lock it up. With no such text, the hub sends nothing and
+// answers ERROR_CODE_NO_FORMAT. The responses of the radio come to the
+// plugin as bursts from the radio to source.
+message SendText {
+  // One of the plugin's IDs.
+  uint32 source = 1;
+  uint32 radio = 2;
+  // The text, at most 500 characters.
+  string body = 3;
+}
+
+// TextSent answers a SendText that the hub sent.
+message TextSent {
+  // The name of the format, such as "TMS" or "AnyTone".
+  string format = 1;
+}
+
+// Text is a text message to one of the plugin's IDs, as the hub read it.
+message Text {
+  // The hub's number of the message. A stream gets a Text once per number;
+  // while the plugin moves to another replica, both streams can send it.
+  uint64 id = 1;
+  uint32 source = 2;
+  uint32 destination = 3;
+  // A message to a talkgroup among the plugin's IDs.
+  bool group = 4;
+  // The timeslot, 1 or 2.
+  uint32 slot = 5;
+  // The repeater or hotspot the message came from.
+  uint32 repeater = 6;
+  // The name of the format, such as "TMS", "ETSI IP", "Hytera" or "AnyTone".
+  string format = 7;
+  string body = 8;
+  // When the hub got the message, in milliseconds since 1970 UTC.
+  int64 at = 9;
+}
+
+// APRSSend asks the hub to send an APRS message on its APRS-IS login. The
+// hub answers once it handed the message to the replica that holds the
+// login; APRS-IS does not say whether the addressee got it. A hub with
+// FEATURE_APRS_INBOX gives the ack as an APRSMessage. A hub with no APRS-IS
+// login answers ERROR_CODE_UNAVAILABLE.
+message APRSSend {
+  // The sender as CALLSIGN-SSID or CALLSIGN. The callsign is that of a
+  // user who turned a switch of the plugin on.
+  string source = 1;
+  // At most 9 characters.
+  string addressee = 2;
+  // At most 67 characters, with none of "|", "~" or "{".
+  string text = 3;
+  // The message number, 1 to 5 letters or digits, or empty for a message
+  // that wants no ack, such as an ack.
+  string number = 4;
+}
+
+// APRSMessage is an APRS message from APRS-IS.
+message APRSMessage {
+  string source = 1;
+  string addressee = 2;
+  string text = 3;
+  // Empty when the sender wants no ack.
+  string number = 4;
 }
 
 // Draining tells a plugin that the replica of the hub that holds its stream
@@ -202,8 +552,9 @@ message Tracking {
   uint32 interval_seconds = 3;
 }
 
-// Heard tells that a radio with tracking on was heard on a repeater, where
-// the hub now sends the private calls to it.
+// Heard tells that a radio with tracking on, or any radio after a
+// Subscribe with heard, was heard on a repeater, where the hub now sends
+// the private calls to it.
 message Heard {
   uint32 radio = 1;
   // The timeslot it was heard on, 1 or 2.
@@ -220,6 +571,10 @@ message Heard {
 message Welcome {
   string name = 1;
   repeated IDRange ranges = 2;
+  // What this replica of the hub serves besides bursts, tracking, positions
+  // and the network. During an upgrade, replicas of two versions can serve
+  // the same plugin one after the other.
+  repeated Feature features = 3;
 }
 
 // Ranges is the plugin's IDs after an admin changed them.

@@ -24,6 +24,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"path"
@@ -38,16 +39,17 @@ const (
 	cacheDay        = "public, max-age=86400"
 	notFoundPage    = "404.html"
 	shellPrefix     = "docs/_shell/"
+	assetsPrefix    = "docs/_assets/"
 )
 
 type file struct {
-	data    []byte
-	zstd    []byte
+	zstd    bool
 	etag    string
 	modTime time.Time
 }
 
 type site struct {
+	fsys  fs.FS
 	files map[string]*file
 	dirs  map[string]bool
 }
@@ -76,22 +78,38 @@ func contentType(name string) string {
 		return "font/woff2"
 	case ".txt":
 		return "text/plain; charset=utf-8"
+	case ".json":
+		return "application/json"
 	}
 	return "application/octet-stream"
 }
 
 func cacheControl(name string) string {
 	switch {
-	case strings.HasPrefix(name, shellPrefix):
+	case strings.HasPrefix(name, shellPrefix), strings.HasPrefix(name, assetsPrefix):
 		return cacheImmutable
-	case strings.HasSuffix(name, ".html"), strings.HasSuffix(name, ".xml"):
+	case strings.HasSuffix(name, ".html"), strings.HasSuffix(name, ".xml"), strings.HasSuffix(name, ".json"):
 		return cacheRevalidate
 	}
 	return cacheDay
 }
 
+func hashFile(fsys fs.FS, name string) (string, int64, error) {
+	f, err := fsys.Open(name)
+	if err != nil {
+		return "", 0, fmt.Errorf("open %s: %w", name, err)
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return "", 0, fmt.Errorf("read %s: %w", name, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)[:8]), n, nil
+}
+
 func loadSite(fsys fs.FS) (*site, error) {
-	s := &site{files: map[string]*file{}, dirs: map[string]bool{}}
+	s := &site{fsys: fsys, files: map[string]*file{}, dirs: map[string]bool{}}
 	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -103,18 +121,17 @@ func loadSite(fsys fs.FS) (*site, error) {
 		if strings.HasSuffix(name, ".zst") {
 			return nil
 		}
-		data, err := fs.ReadFile(fsys, name)
+		sum, size, err := hashFile(fsys, name)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", name, err)
+			return err
 		}
 		info, err := d.Info()
 		if err != nil {
 			return fmt.Errorf("stat %s: %w", name, err)
 		}
-		sum := sha256.Sum256(data)
-		f := &file{data: data, etag: `"` + hex.EncodeToString(sum[:8]) + `"`, modTime: info.ModTime()}
-		if z, err := fs.ReadFile(fsys, name+".zst"); err == nil && len(z) < len(data) {
-			f.zstd = z
+		f := &file{etag: `"` + sum + `"`, modTime: info.ModTime()}
+		if z, err := fs.Stat(fsys, name+".zst"); err == nil && z.Size() < size {
+			f.zstd = true
 		}
 		s.files[name] = f
 		return nil
@@ -193,13 +210,19 @@ func (s *site) serve(w http.ResponseWriter, r *http.Request, name string, status
 		return
 	}
 	h.Set("Content-Type", contentType(name))
-	body, etag := f.data, f.etag
-	if f.zstd != nil {
+	read, etag := name, f.etag
+	if f.zstd {
 		h.Set("Vary", "Accept-Encoding")
 		if acceptsZstd(r.Header.Get("Accept-Encoding")) {
 			h.Set("Content-Encoding", "zstd")
-			body, etag = f.zstd, strings.TrimSuffix(f.etag, `"`)+`-zstd"`
+			read, etag = name+".zst", strings.TrimSuffix(f.etag, `"`)+`-zstd"`
 		}
+	}
+	body, err := fs.ReadFile(s.fsys, read)
+	if err != nil {
+		h.Del("Content-Encoding")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 	if status != http.StatusOK {
 		h.Set("Cache-Control", "no-store")

@@ -20,8 +20,11 @@
 package main
 
 import (
+	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 )
@@ -39,6 +42,11 @@ func testSite(t *testing.T) *site {
 		"docs/_shell/font.0123456789ab.woff2":  {Data: []byte("font")},
 		"docs/Screenshots/lastheard.png":       {Data: []byte("png")},
 		"docs/dmrgo/machines/states/trunk.svg": {Data: []byte("<svg/>")},
+		"docs/_assets/0123456789abcdef.png":    {Data: []byte("png")},
+		"docs/versions.json":                   {Data: []byte(`{"versions":[]}`)},
+		"docs/main/faq/index.html":             {Data: []byte("main faq")},
+		"docs/v1.3.26/index.html":              {Data: []byte("old home")},
+		"docs/dmrgo/v2.0.9/start/index.html":   {Data: []byte("old start")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +79,14 @@ func TestServe(t *testing.T) {
 		{path: "/docs/_shell/font.0123456789ab.woff2", status: http.StatusOK, ctype: "font/woff2", cache: cacheImmutable},
 		{path: "/docs/Screenshots/lastheard.png", status: http.StatusOK, ctype: "image/png", cache: cacheDay},
 		{path: "/docs/dmrgo/machines/states/trunk.svg", status: http.StatusOK, ctype: "image/svg+xml"},
+		{path: "/docs/_assets/0123456789abcdef.png", status: http.StatusOK, ctype: "image/png", cache: cacheImmutable},
+		{path: "/docs/versions.json", status: http.StatusOK, ctype: "application/json", cache: cacheRevalidate, body: `{"versions":[]}`},
+		{path: "/docs/main/faq", status: http.StatusMovedPermanently, location: "/docs/main/faq/"},
+		{path: "/docs/main/faq/", status: http.StatusOK, body: "main faq"},
+		{path: "/docs/v1.3.26/", status: http.StatusOK, body: "old home"},
+		{path: "/docs/v1.3.26/api-tokens/", status: http.StatusNotFound, body: "missing"},
+		{method: http.MethodHead, path: "/docs/v1.3.26/api-tokens/", status: http.StatusNotFound},
+		{path: "/docs/dmrgo/v2.0.9/start/", status: http.StatusOK, body: "old start"},
 		{path: "/docs/_shell/", status: http.StatusNotFound, body: "missing", cache: "no-store"},
 		{path: "/docs/nope/", status: http.StatusNotFound, body: "missing"},
 		{path: "/docs/dmrgo/machines/states", status: http.StatusNotFound},
@@ -136,6 +152,41 @@ func TestNotModified(t *testing.T) {
 	s.ServeHTTP(w, req)
 	if w.Code != http.StatusNotModified {
 		t.Fatalf("status %d, want 304", w.Code)
+	}
+}
+
+type countFS struct {
+	fs.FS
+	opens atomic.Int64
+}
+
+func (c *countFS) Open(name string) (fs.File, error) {
+	c.opens.Add(1)
+	f, err := c.FS.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", name, err)
+	}
+	return f, nil
+}
+
+func TestServeReadsFromDisk(t *testing.T) {
+	t.Parallel()
+	fsys := &countFS{FS: fstest.MapFS{
+		"index.html":          {Data: []byte("home")},
+		"docs/faq/index.html": {Data: []byte("faq")},
+	}}
+	s, err := loadSite(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := fsys.opens.Load()
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs/faq/", nil))
+	if w.Body.String() != "faq" {
+		t.Fatalf("body %q, want %q", w.Body.String(), "faq")
+	}
+	if fsys.opens.Load() == before {
+		t.Fatal("the server answered from memory, not from the site directory")
 	}
 }
 

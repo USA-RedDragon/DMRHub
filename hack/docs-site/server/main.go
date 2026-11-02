@@ -19,10 +19,13 @@
 
 // Command docs-server serves the dmrhub.net docs site that
 // hack/docs-site/build.py writes: the DMRHub docs home at /, the other
-// pages under /docs/, and /docs/sitemap.xml. /docs/ redirects to /, and a
-// page address without its trailing slash redirects to the address with
-// it. When the client accepts zstd and the site has a .zst copy of a
-// file, the server sends that copy.
+// pages under /docs/, each docs version under /docs/<version>/ and
+// /docs/dmrgo/<version>/, the version lists in versions.json, and
+// /docs/sitemap.xml. /docs/ redirects to /, and a page address without
+// its trailing slash redirects to the address with it. When the client
+// accepts zstd and the site has a .zst copy of a file, the server sends
+// that copy. The server lists the files at start and reads each file
+// from the site directory when a client asks for it.
 package main
 
 import (

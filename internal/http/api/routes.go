@@ -29,6 +29,7 @@ import (
 	v1AuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/auth"
 	v1ConfigControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/config"
 	v1LastheardControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/lastheard"
+	v1LocalGroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/localgroups"
 	v1MessagesControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/messages"
 	v1NetsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/nets"
 	v1OAuthControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/oauth"
@@ -136,6 +137,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Repeaters.GET("/:id/rules", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETRepeaterRules)
 	v1Repeaters.PATCH("/:id/rules", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.PATCHRepeaterRules)
 	v1Repeaters.GET("/:id/rules/user", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.GETRepeaterRuleUser)
+	v1Repeaters.GET("/:id/localgroups", middleware.RequireLogin(), userSuspension, v1LocalGroupsControllers.GETRepeaterLocalGroups)
 	v1Repeaters.GET("/:id", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.GETRepeater)
 	v1Repeaters.PATCH("/:id", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.PATCHRepeater)
 	v1Repeaters.POST("/:id/rotate-password", middleware.RequireRepeaterOwnerOrAdmin(), userSuspension, v1RepeatersControllers.POSTRepeaterRotatePassword)
@@ -152,6 +154,18 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Repeaters.DELETE("/:id/cosysops/:user", middleware.RequireRepeaterSysop(), userSuspension, v1RepeatersControllers.DELETECosysop)
 	v1Repeaters.POST("/:id/cosysop-invite/accept", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTCosysopAccept)
 	v1Repeaters.POST("/:id/cosysop-invite/decline", middleware.RequireLogin(), userSuspension, v1RepeatersControllers.POSTCosysopDecline)
+
+	v1LocalGroups := group.Group("/localgroups")
+	v1LocalGroups.Use(middleware.RequireLogin(), userSuspension)
+	v1LocalGroups.GET("", v1LocalGroupsControllers.GETLocalGroups)
+	v1LocalGroups.POST("", v1LocalGroupsControllers.POSTLocalGroup)
+	v1LocalGroups.GET("/:id", v1LocalGroupsControllers.GETLocalGroup)
+	v1LocalGroups.PATCH("/:id", v1LocalGroupsControllers.PATCHLocalGroup)
+	v1LocalGroups.DELETE("/:id", v1LocalGroupsControllers.DELETELocalGroup)
+	v1LocalGroups.POST("/:id/repeaters", v1LocalGroupsControllers.POSTLocalGroupRepeater)
+	v1LocalGroups.PATCH("/:id/repeaters/:repeater", v1LocalGroupsControllers.PATCHLocalGroupRepeater)
+	v1LocalGroups.DELETE("/:id/repeaters/:repeater", v1LocalGroupsControllers.DELETELocalGroupRepeater)
+	v1LocalGroups.POST("/:id/repeaters/:repeater/accept", v1LocalGroupsControllers.POSTLocalGroupRepeaterAccept)
 
 	v1Talkgroups := group.Group("/talkgroups")
 	// Paginated

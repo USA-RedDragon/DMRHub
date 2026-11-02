@@ -346,3 +346,16 @@ func deleteLocalGroupsOwnedBy(tx *gorm.DB, userID uint) error {
 	}
 	return nil
 }
+
+// LocalGroupRepeatersOfOwner returns the repeaters in the local groups of
+// the user, or asked to join them.
+func LocalGroupRepeatersOfOwner(db *gorm.DB, userID uint) ([]uint, error) {
+	var ids []uint
+	err := db.Model(&LocalGroupMember{}).Distinct("repeater_id").
+		Where("local_group_id IN (?)", db.Model(&LocalGroup{}).Select("id").Where("owner_id = ?", userID)).
+		Pluck("repeater_id", &ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("could not list the repeaters of the local groups of user %d: %w", userID, err)
+	}
+	return ids, nil
+}

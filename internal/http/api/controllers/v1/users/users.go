@@ -954,6 +954,13 @@ func DELETEUser(c *gin.Context) {
 		return
 	}
 
+	grouped, err := models.LocalGroupRepeatersOfOwner(db, uint(idUint64))
+	if err != nil {
+		slog.Error("Error listing the repeaters of the local groups of a user", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrDeletingUser})
+		return
+	}
+
 	err = models.DeleteUser(db, uint(idUint64))
 	if err != nil {
 		slog.Error("Error deleting user", "error", err)
@@ -963,6 +970,9 @@ func DELETEUser(c *gin.Context) {
 	if dmrHub, ok := c.MustGet("Hub").(*hub.Hub); ok && dmrHub != nil {
 		for _, r := range repeaters {
 			dmrHub.ReloadRepeater(c.Request.Context(), r.ID)
+		}
+		for _, id := range grouped {
+			dmrHub.ReloadRepeater(c.Request.Context(), id)
 		}
 		for _, p := range peers {
 			dmrHub.PeerChanged(p.ID)

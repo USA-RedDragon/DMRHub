@@ -284,6 +284,14 @@ func (n *c2Net) nextStream() uint {
 	return n.stream
 }
 
+const (
+	c2ListenIdx = iota
+	c2UserIdx
+	c2TalkerIdx
+	c2OBIdx
+	c2OBEnhancedIdx
+)
+
 type c2Got struct {
 	listen, user, talker, ob, obEnhanced []models.Packet
 	ipsc                                 []testutils.IPSCBurst
@@ -301,7 +309,12 @@ func (e enhancedDrainer) Drain(d time.Duration) []models.Packet {
 	return out
 }
 
-func (n *c2Net) drain(c call, slot2 bool) c2Got {
+// drain drains the receivers of the Codec2 network until the target of c,
+// the listening hotspot of a group call or the hotspot of the user of a
+// private call, and each receiver of also, by its index in the order of
+// c2Got, got the end of the call, and every other receiver that got a part
+// of it got its end too.
+func (n *c2Net) drain(c call, slot2 bool, also ...int) c2Got {
 	var g c2Got
 	done := make(chan []testutils.IPSCBurst, 1)
 	go func() {
@@ -311,8 +324,21 @@ func (n *c2Net) drain(c call, slot2 bool) c2Got {
 		}
 		done <- n.ipsc.Receive(deliverWait, ipscCallEnds(c))
 	}()
-	got := drainUntil(callEnded(c), n.listen, n.user, n.talker, n.ob, enhancedDrainer{n.obEnhanced})
-	g.listen, g.user, g.talker, g.ob, g.obEnhanced = got[0], got[1], got[2], got[3], got[4]
+	target := c2ListenIdx
+	if !c.group {
+		target = c2UserIdx
+	}
+	ended := callEnded(c)
+	must := append([]int{target}, also...)
+	got := drainUntil(func(out [][]models.Packet) bool {
+		for _, i := range must {
+			if !ended(out[i : i+1]) {
+				return false
+			}
+		}
+		return ended(out)
+	}, n.listen, n.user, n.talker, n.ob, enhancedDrainer{n.obEnhanced})
+	g.listen, g.user, g.talker, g.ob, g.obEnhanced = got[c2ListenIdx], got[c2UserIdx], got[c2TalkerIdx], got[c2OBIdx], got[c2OBEnhancedIdx]
 	g.ipsc = <-done
 	return g
 }
@@ -456,7 +482,11 @@ func runC2FromMMDVM(t *testing.T, n *c2Net, tc c2Case) {
 		cc := newC2Call(t, tc.c, tc.slot2, 6*c2Superframes, uint64(stream))
 		sent := cc.tx.packets(stream)
 		sendC2(t, n.talker.SendDMRD, sent)
-		g := n.drain(tc.c, tc.slot2)
+		var also []int
+		if tc.name == "group-ts1" {
+			also = []int{c2OBIdx, c2OBEnhancedIdx}
+		}
+		g := n.drain(tc.c, tc.slot2, also...)
 		to, rpt := g.listen, uint(c2ListenRpt)
 		if !tc.c.group {
 			to, rpt = g.user, c2UserRpt

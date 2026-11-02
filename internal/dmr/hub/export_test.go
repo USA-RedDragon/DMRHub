@@ -36,7 +36,14 @@ func (h *Hub) HoldSource(packet models.Packet, sourceName string) (release func(
 }
 
 func (h *Hub) SwitchDynamicTalkgroup(ctx context.Context, packet models.Packet) {
-	h.switchDynamicTalkgroup(ctx, packet, h.clock.Now())
+	h.switchDynamicTalkgroup(ctx, packet, h.clock.Now(), h.clock.Now(), h.sessionEpoch(packet.Repeater))
+}
+
+// ExpireDynamicAfter unlinks tg from the timeslot of the repeater as the
+// timeout sweep does, and calls between after the sweep read the
+// repeater and before it writes.
+func (h *Hub) ExpireDynamicAfter(id uint, slot bool, tg uint, between func()) {
+	h.unlinkDynamicIfAfter(id, slot, tg, between)
 }
 
 // ForgetCachedRepeater drops the cached repeater, so that the next delivery

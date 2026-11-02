@@ -219,6 +219,8 @@ type Hub struct {
 	configSet         chan struct{}
 	dynamicSet        chan struct{}
 	dynamicUses       *xsync.Map[repeaterSlot, dynamicUse]
+	dynamicChanges    *xsync.Map[repeaterSlot, time.Time]
+	sessionEpochs     *xsync.Map[uint, uint64]
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
 	drops             *xsync.Map[repeaterSlot, dropRecord]
 	slotRefused       *xsync.Map[slotStream, time.Time]
@@ -326,6 +328,8 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.privateDropLogged = xsync.NewMap[uint, time.Time]()
 	h.dataTaps = xsync.NewMap[tapKey, chan models.Packet]()
 	h.dynamicUses = xsync.NewMap[repeaterSlot, dynamicUse]()
+	h.dynamicChanges = xsync.NewMap[repeaterSlot, time.Time]()
+	h.sessionEpochs = xsync.NewMap[uint, uint64]()
 	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
 	h.drops = xsync.NewMap[repeaterSlot, dropRecord]()
 	h.slotRefused = xsync.NewMap[slotStream, time.Time]()
@@ -694,9 +698,13 @@ func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
 // ActivateRepeaterSince is ActivateRepeater for a repeater whose packet
 // that the server got at since made it active. The claim tells the
 // replica that served the repeater before since, so that it can hand over
-// what it sent after it, which a repeater that moved never got.
+// what it sent after it, which a repeater that moved never got. It starts
+// a new session epoch of the repeater, so that a link change that the
+// replica that served it before makes late changes nothing that this one
+// changed.
 func (h *Hub) ActivateRepeaterSince(ctx context.Context, repeaterID uint, since time.Time) {
 	h.claimedAt.Store(repeaterID, since)
+	h.bumpSessionEpoch(repeaterID)
 	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 	h.claimPeerOwnership(ctx, repeaterID, since)

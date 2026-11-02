@@ -28,39 +28,205 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
-func (h *Hub) queueLink(ctx context.Context, repeaterID uint, fn func()) {
-	if !h.links.Do(ctx, repeaterID, fn) && ctx.Err() == nil {
-		slog.Warn("Dropping a talkgroup link change of a backed-up repeater", "repeaterID", repeaterID)
+func (h *Hub) queueLink(ctx context.Context, repeaterID uint, fn func()) bool {
+	if !h.links.Do(ctx, repeaterID, fn) {
+		if ctx.Err() == nil {
+			slog.Warn("Dropping a talkgroup link change of a backed-up repeater", "repeaterID", repeaterID)
+		}
+		return false
+	}
+	return true
+}
+
+func (h *Hub) changeDynamic(ctx context.Context, repeaterID uint, slot bool, at time.Time, change func()) {
+	done := make(chan struct{})
+	if !h.queueLink(ctx, repeaterID, func() {
+		defer close(done)
+		h.noteDynamicChange(repeaterID, slot, at)
+		change()
+	}) {
+		return
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+	case <-h.done:
 	}
 }
 
+func (h *Hub) noteDynamicChange(repeaterID uint, slot bool, at time.Time) {
+	h.dynamicChanges.Compute(repeaterSlot{repeater: repeaterID, slot: slot}, func(cur time.Time, loaded bool) (time.Time, xsync.ComputeOp) {
+		if loaded && !at.After(cur) {
+			return cur, xsync.CancelOp
+		}
+		return at, xsync.UpdateOp
+	})
+}
+
+func (h *Hub) changedSince(repeaterID uint, slot bool, came time.Time) bool {
+	at, ok := h.dynamicChanges.Load(repeaterSlot{repeater: repeaterID, slot: slot})
+	return ok && !at.Before(came)
+}
+
+func (h *Hub) bumpSessionEpoch(repeaterID uint) {
+	if h.db == nil {
+		return
+	}
+	var epoch uint64
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Exec("UPDATE repeaters SET session_epoch = session_epoch + 1 WHERE id = ? AND deleted_at IS NULL", repeaterID)
+		if res.Error != nil {
+			return res.Error
+		}
+		return tx.Raw("SELECT session_epoch FROM repeaters WHERE id = ? AND deleted_at IS NULL", repeaterID).Scan(&epoch).Error
+	})
+	if err != nil {
+		slog.Error("Cannot raise the session epoch of a repeater", "repeaterID", repeaterID, "error", err)
+		h.sessionEpochs.Delete(repeaterID)
+		return
+	}
+	h.sessionEpochs.Store(repeaterID, epoch)
+}
+
+func (h *Hub) sessionEpoch(repeaterID uint) uint64 {
+	epoch, _ := h.sessionEpochs.Load(repeaterID)
+	return epoch
+}
+
+type dynamicSeen struct {
+	tg    *uint
+	epoch uint64
+}
+
+func seenOf(r *models.Repeater, slot bool) dynamicSeen {
+	if slot {
+		return dynamicSeen{tg: r.TS2DynamicTalkgroupID, epoch: r.TS2LinkEpoch}
+	}
+	return dynamicSeen{tg: r.TS1DynamicTalkgroupID, epoch: r.TS1LinkEpoch}
+}
+
+func dynamicColumns(slot bool) (string, string) {
+	if slot {
+		return "ts2_dynamic_talkgroup_id", "ts2_link_epoch"
+	}
+	return "ts1_dynamic_talkgroup_id", "ts1_link_epoch"
+}
+
+func sameTG(a, b *uint) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+func (h *Hub) readDynamic(repeaterID uint, slot bool) (dynamicSeen, error) {
+	column, epochColumn := dynamicColumns(slot)
+	var got struct {
+		TG    *uint
+		Epoch uint64
+	}
+	if err := h.db.Raw("SELECT "+column+" AS tg, "+epochColumn+" AS epoch FROM repeaters WHERE id = ? AND deleted_at IS NULL", repeaterID).Scan(&got).Error; err != nil {
+		return dynamicSeen{}, fmt.Errorf("reading the dynamic talkgroup of repeater %d: %w", repeaterID, err)
+	}
+	return dynamicSeen{tg: got.TG, epoch: got.Epoch}, nil
+}
+
+func (h *Hub) writeDynamic(repeaterID uint, slot bool, tg *uint, epoch uint64) bool {
+	if epoch == 0 {
+		seen, err := h.readDynamic(repeaterID, slot)
+		if err != nil {
+			slog.Error("Error reading the dynamic talkgroup of a repeater", "repeaterID", repeaterID, "error", err)
+			return false
+		}
+		return h.writeDynamicSeen(repeaterID, slot, tg, seen)
+	}
+	column, epochColumn := dynamicColumns(slot)
+	res := h.db.Exec("UPDATE repeaters SET "+column+" = ?, "+epochColumn+" = ? WHERE id = ? AND deleted_at IS NULL AND "+epochColumn+" <= ?", tgValue(tg), epoch, repeaterID, epoch)
+	return h.dynamicWritten(res, repeaterID, slot, tg, epoch)
+}
+
+func (h *Hub) writeDynamicSeen(repeaterID uint, slot bool, tg *uint, seen dynamicSeen) bool {
+	column, epochColumn := dynamicColumns(slot)
+	q := "UPDATE repeaters SET " + column + " = ? WHERE id = ? AND deleted_at IS NULL AND " + epochColumn + " = ? AND "
+	args := []any{tgValue(tg), repeaterID, seen.epoch}
+	if seen.tg == nil {
+		q += column + " IS NULL"
+	} else {
+		q += column + " = ?"
+		args = append(args, *seen.tg)
+	}
+	return h.dynamicWritten(h.db.Exec(q, args...), repeaterID, slot, tg, seen.epoch)
+}
+
+func tgValue(tg *uint) any {
+	if tg == nil {
+		return nil
+	}
+	return *tg
+}
+
+func (h *Hub) dynamicWritten(res *gorm.DB, repeaterID uint, slot bool, tg *uint, epoch uint64) bool {
+	if res.Error != nil {
+		slog.Error("Error saving the dynamic talkgroup of a repeater", "repeaterID", repeaterID, "error", res.Error)
+		return false
+	}
+	if res.RowsAffected > 0 {
+		return true
+	}
+	got, err := h.readDynamic(repeaterID, slot)
+	if err != nil {
+		slog.Error("Error reading the dynamic talkgroup of a repeater", "repeaterID", repeaterID, "error", err)
+		return false
+	}
+	return sameTG(got.tg, tg) && got.epoch == epoch
+}
+
 // doUnlink handles talkgroup unlinking (TG 4000).
-func (h *Hub) doUnlink(ctx context.Context, packet models.Packet) {
+func (h *Hub) doUnlink(ctx context.Context, packet models.Packet, came time.Time, epoch uint64) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.doUnlink")
 	defer span.End()
 
-	h.UnlinkDynamicTalkgroup(ctx, packet.Repeater, packet.Slot)
+	h.noteDynamicChange(packet.Repeater, packet.Slot, came)
+	h.unlinkDynamic(packet.Repeater, packet.Slot, epoch)
 }
 
 // UnlinkDynamicTalkgroup clears the dynamic talkgroup of a timeslot of the
 // repeater, as a voice call to TG 4000 on that timeslot does. slot true is
 // TS2.
-func (h *Hub) UnlinkDynamicTalkgroup(_ context.Context, repeaterID uint, slot bool) {
+func (h *Hub) UnlinkDynamicTalkgroup(ctx context.Context, repeaterID uint, slot bool) {
+	h.UnlinkDynamicTalkgroupAt(ctx, repeaterID, slot, h.clock.Now())
+}
+
+// UnlinkDynamicTalkgroupAt is UnlinkDynamicTalkgroup for a change that came
+// at at, such as when the repeater options that ask for it came. It runs
+// after the link changes that the hub queued for the repeater. A burst of
+// a call that came here at or before at, or that came to a replica that
+// served an earlier session of the repeater, links nothing on the
+// timeslot after it.
+func (h *Hub) UnlinkDynamicTalkgroupAt(ctx context.Context, repeaterID uint, slot bool, at time.Time) {
+	epoch := h.sessionEpoch(repeaterID)
+	h.changeDynamic(ctx, repeaterID, slot, at, func() { h.unlinkDynamic(repeaterID, slot, epoch) })
+}
+
+func (h *Hub) unlinkDynamic(repeaterID uint, slot bool, epoch uint64) {
 	dbRepeater, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater for unlink", "error", err)
 		return
 	}
 
-	h.unlinkTimeslot(&dbRepeater, slot)
+	h.unlinkTimeslot(&dbRepeater, slot, epoch)
 }
 
 // unlinkDynamicIf clears the dynamic talkgroup of a timeslot of the
 // repeater when it is tg.
 func (h *Hub) unlinkDynamicIf(repeaterID uint, slot bool, tg uint) {
+	h.unlinkDynamicIfAfter(repeaterID, slot, tg, nil)
+}
+
+func (h *Hub) unlinkDynamicIfAfter(repeaterID uint, slot bool, tg uint, between func()) {
 	dbRepeater, err := models.FindRepeaterByID(h.db, repeaterID)
 	if err != nil {
 		slog.Error("Error finding repeater for unlink", "error", err)
@@ -73,53 +239,44 @@ func (h *Hub) unlinkDynamicIf(repeaterID uint, slot bool, tg uint) {
 	if current == nil || *current != tg {
 		return
 	}
-	h.unlinkTimeslot(&dbRepeater, slot)
+	if between != nil {
+		between()
+	}
+	h.clearTimeslot(dbRepeater.ID, slot, current, h.writeDynamicSeen(dbRepeater.ID, slot, nil, seenOf(&dbRepeater, slot)))
 }
 
 // unlinkTimeslot clears the dynamic talkgroup for the given timeslot on a repeater.
 // slot=true means TS2, slot=false means TS1.
-func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool) {
-	var dynamicTGID **uint
-	var dynamicTG *models.Talkgroup
-	var tsField string
-	var assocName string
-	var ts dmrconst.Timeslot
+func (h *Hub) unlinkTimeslot(repeater *models.Repeater, slot bool, epoch uint64) {
+	current := seenOf(repeater, slot).tg
+	h.clearTimeslot(repeater.ID, slot, current, h.writeDynamic(repeater.ID, slot, nil, epoch))
+}
 
+func (h *Hub) clearTimeslot(repeaterID uint, slot bool, current *uint, cleared bool) {
+	ts := dmrconst.TimeslotOne
 	if slot {
-		dynamicTGID = &repeater.TS2DynamicTalkgroupID
-		dynamicTG = &repeater.TS2DynamicTalkgroup
-		tsField = "TS2DynamicTalkgroupID"
-		assocName = "TS2DynamicTalkgroup"
 		ts = dmrconst.TimeslotTwo
-	} else {
-		dynamicTGID = &repeater.TS1DynamicTalkgroupID
-		dynamicTG = &repeater.TS1DynamicTalkgroup
-		tsField = "TS1DynamicTalkgroupID"
-		assocName = "TS1DynamicTalkgroup"
-		ts = dmrconst.TimeslotOne
 	}
-
-	slog.Info("Unlinking timeslot", "timeslot", ts, "repeaterID", repeater.ID)
-	if *dynamicTGID != nil {
-		oldTGID := **dynamicTGID
-		h.db.Model(repeater).Select(tsField).Updates(map[string]interface{}{tsField: nil})
-		err := h.db.Model(repeater).Association(assocName).Delete(dynamicTG)
-		if err != nil {
-			slog.Error("Error deleting dynamic talkgroup association", "association", assocName, "error", err)
-		}
-		h.reloadRepeater(repeater.ID)
-		h.unsubscribeTalkgroup(repeater.ID, oldTGID, ts)
-		h.announceRepeaterChange(repeater.ID)
+	slog.Info("Unlinking timeslot", "timeslot", ts, "repeaterID", repeaterID)
+	h.reloadRepeater(repeaterID)
+	if !cleared {
+		slog.Info("Not unlinking a timeslot whose link changed since it was read", "timeslot", ts, "repeaterID", repeaterID)
+		return
 	}
+	if current == nil {
+		return
+	}
+	h.unsubscribeTalkgroup(repeaterID, *current, ts)
+	h.announceRepeaterChange(repeaterID)
 }
 
 // switchDynamicTalkgroup updates the dynamic talkgroup assignment for a repeater
 // when it transmits a group call on a talkgroup it isn't currently linked to.
-func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet, at time.Time) {
+func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet, at, came time.Time, epoch uint64) {
 	_, span := otel.Tracer("DMRHub").Start(ctx, "Hub.switchDynamicTalkgroup")
 	defer span.End()
 
-	h.linkDynamic(ctx, packet.Repeater, packet.Dst, packet.Slot, at)
+	h.linkDynamic(ctx, packet.Repeater, packet.Dst, packet.Slot, at, came, epoch)
 }
 
 // LinkDynamicTalkgroup links the talkgroup as the dynamic talkgroup of a
@@ -127,12 +284,24 @@ func (h *Hub) switchDynamicTalkgroup(ctx context.Context, packet models.Packet, 
 // timeslot does, and restarts its timeout. slot true is TS2. It links
 // nothing while dynamic links are off.
 func (h *Hub) LinkDynamicTalkgroup(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool) {
-	h.linkDynamic(ctx, repeaterID, talkgroupID, slot, h.clock.Now())
+	h.LinkDynamicTalkgroupAt(ctx, repeaterID, talkgroupID, slot, h.clock.Now())
+}
+
+// LinkDynamicTalkgroupAt is LinkDynamicTalkgroup for a change that came at
+// at, such as when the repeater options that ask for it came. It runs after
+// the link changes that the hub queued for the repeater. A burst of a call
+// that came here at or before at, or that came to a replica that served an
+// earlier session of the repeater, links nothing on the timeslot after it.
+func (h *Hub) LinkDynamicTalkgroupAt(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool, at time.Time) {
+	epoch := h.sessionEpoch(repeaterID)
+	h.changeDynamic(ctx, repeaterID, slot, at, func() {
+		h.linkDynamic(ctx, repeaterID, talkgroupID, slot, at, time.Time{}, epoch)
+	})
 }
 
 // linkDynamic is LinkDynamicTalkgroup for a call that the hub routed at at,
 // which restarts the timeout from at.
-func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool, at time.Time) {
+func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint, slot bool, at, came time.Time, epoch uint64) {
 	if h.routingConfig().DisableDynamicLinks {
 		slog.Debug("Not linking a dynamic talkgroup, since dynamic links are off", "repeaterID", repeaterID, "talkgroupID", talkgroupID)
 		return
@@ -143,9 +312,9 @@ func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint
 		return
 	}
 
-	currentDynTGID, column, ts := repeater.TS1DynamicTalkgroupID, "ts1_dynamic_talkgroup_id", 1
+	currentDynTGID, ts := repeater.TS1DynamicTalkgroupID, 1
 	if slot {
-		currentDynTGID, column, ts = repeater.TS2DynamicTalkgroupID, "ts2_dynamic_talkgroup_id", 2
+		currentDynTGID, ts = repeater.TS2DynamicTalkgroupID, 2
 	}
 	if currentDynTGID != nil && *currentDynTGID == talkgroupID {
 		h.noteDynamicUse(repeaterID, slot, talkgroupID, at)
@@ -153,6 +322,10 @@ func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint
 	}
 	if !h.mayLink(repeaterID, talkgroupID) {
 		slog.Info("Not linking a restricted talkgroup to a repeater that it does not approve", "repeaterID", repeaterID, "talkgroupID", talkgroupID)
+		return
+	}
+	if !came.IsZero() && h.changedSince(repeaterID, slot, came) {
+		slog.Info("Not linking the talkgroup of a call that came before a later change of the dynamic talkgroup", "repeaterID", repeaterID, "talkgroupID", talkgroupID, "timeslot", ts)
 		return
 	}
 
@@ -163,8 +336,9 @@ func (h *Hub) linkDynamic(ctx context.Context, repeaterID uint, talkgroupID uint
 	}
 
 	slog.Info("Dynamically Linking timeslot", "timeslot", ts, "repeaterID", repeaterID, "talkgroupID", talkgroupID)
-	if err := h.db.Model(&models.Repeater{}).Where("id = ?", repeater.ID).UpdateColumn(column, talkgroup.ID).Error; err != nil {
-		slog.Error("Error saving repeater", "error", err)
+	if !h.writeDynamic(repeater.ID, slot, &talkgroup.ID, epoch) {
+		slog.Info("Not linking the talkgroup of a call from an earlier session of the repeater", "repeaterID", repeaterID, "talkgroupID", talkgroupID, "timeslot", ts)
+		h.reloadRepeater(repeater.ID)
 		return
 	}
 	h.noteDynamicUse(repeaterID, slot, talkgroupID, at)

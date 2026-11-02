@@ -91,6 +91,7 @@ func (h *Hub) RouteStreamAt(ctx context.Context, packet models.Packet, sourceNam
 }
 
 func (h *Hub) routeStreamAt(ctx context.Context, packet models.Packet, sourceName string, at time.Time, admitted func(bool)) {
+	epoch := h.sessionEpoch(packet.Repeater)
 	h.admitStream(ctx, packet, sourceName, func(ok bool) {
 		ok = ok && h.admitRouting(packet, sourceName)
 		if admitted != nil {
@@ -100,13 +101,13 @@ func (h *Hub) routeStreamAt(ctx context.Context, packet models.Packet, sourceNam
 			return
 		}
 		h.trackCall(ctx, &packet, sourceName, at)
-		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName) }) && ctx.Err() == nil {
+		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName, at, epoch) }) && ctx.Err() == nil {
 			slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
 		}
 	})
 }
 
-func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName string) {
+func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName string, came time.Time, epoch uint64) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Hub.RoutePacket")
 	defer span.End()
 
@@ -128,7 +129,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 	sc := h.observeCodec(ctx, &packet, sourceName)
 
-	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName) {
+	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName, came, epoch) {
 		return
 	}
 
@@ -139,7 +140,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer && !h.routingConfig().DisableDynamicLinks {
 		link, at := packet, h.clock.Now()
-		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link, at) })
+		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link, at, came, epoch) })
 	}
 
 	tx, ticket := h.prepareCopy(ctx, &packet, sc, sourceName)
@@ -181,7 +182,7 @@ func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName strin
 // Returns true if the packet was consumed (no further routing needed).
 // Packets from network peers are not handled: their Repeater field is a
 // peer ID, not a repeater to play back to or unlink.
-func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string) bool {
+func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string, came time.Time, epoch uint64) bool {
 	if h.toPlugin(packet, sourceName) {
 		return true
 	}
@@ -189,7 +190,7 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 		return false
 	}
 	if packet.Dst == 4000 && isVoice {
-		h.queueLink(ctx, packet.Repeater, func() { h.doUnlink(ctx, packet) })
+		h.queueLink(ctx, packet.Repeater, func() { h.doUnlink(ctx, packet, came, epoch) })
 		return true
 	}
 

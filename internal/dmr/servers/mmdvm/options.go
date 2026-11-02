@@ -26,6 +26,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/connlog"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -49,7 +50,7 @@ import (
 // session still runs. Options that the full records queue of the repeater
 // cannot take get no RPTACK, so that the repeater sends them again.
 func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack []byte) {
-	ep := l.ep
+	ep, at := l.ep, l.heard
 	sendAck := func() {
 		if ack != nil {
 			s.write(ep, ack)
@@ -83,8 +84,8 @@ func (s *Server) options(ctx context.Context, l *link, o dmrdsession.Output, ack
 	if !s.records.Do(id, func() {
 		defer s.ackLater(l, o.ID, ack)
 		statics := s.applyStatics(ctx, id, text)
-		dial1 := s.dial(ctx, id, false, parsed.DialTS1)
-		dial2 := s.dial(ctx, id, true, parsed.DialTS2)
+		dial1 := s.dial(ctx, id, false, parsed.DialTS1, at)
+		dial2 := s.dial(ctx, id, true, parsed.DialTS2, at)
 		if !statics && !dial1 && !dial2 {
 			slog.Info("No repeater options that DMRHub applies", "repeaterID", id)
 		}
@@ -140,7 +141,7 @@ func (s *Server) applyStatics(ctx context.Context, id uint, text []byte) bool {
 // 0, an empty value or a value that FreeDMR refuses as a default dial
 // unlinks the slot, as FreeDMR resets the dial of the slot then. It
 // reports whether it applied v.
-func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionValue) bool {
+func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionValue, at time.Time) bool {
 	if v.State == dmrd.OptionAbsent || s.hub == nil {
 		return false
 	}
@@ -150,7 +151,7 @@ func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionVal
 	}
 	if v.State == dmrd.OptionClear || !dialable(v.Value) {
 		slog.Info("Unlinking the dynamic talkgroup for the default dial of repeater options", "repeaterID", id, "slot", slot, "dial", v.Value)
-		s.hub.UnlinkDynamicTalkgroup(ctx, id, slot2)
+		s.hub.UnlinkDynamicTalkgroupAt(ctx, id, slot2, at)
 		return true
 	}
 	exists, err := models.TalkgroupIDExists(s.DB, uint(v.Value))
@@ -164,7 +165,7 @@ func (s *Server) dial(ctx context.Context, id uint, slot2 bool, v dmrd.OptionVal
 		return false
 	}
 	slog.Info("Linking the default dial of repeater options", "repeaterID", id, "slot", slot, "talkgroupID", v.Value)
-	s.hub.LinkDynamicTalkgroup(ctx, id, uint(v.Value), slot2)
+	s.hub.LinkDynamicTalkgroupAt(ctx, id, uint(v.Value), slot2, at)
 	return true
 }
 

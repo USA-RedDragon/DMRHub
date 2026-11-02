@@ -20,35 +20,68 @@
 -->
 
 <template>
-  <div>
-    <h1>Repeaters</h1>
+  <div class="space-y-4">
+    <h1 id="repeaters-heading">Repeaters</h1>
+    <div v-if="loggedIn" class="flex flex-wrap items-center justify-between gap-2">
+      <SegmentPicker
+        name="repeaters-view"
+        labelled-by="repeaters-heading"
+        :options="views"
+        :model-value="view"
+        @update:model-value="setView"
+      />
+      <ShadButton v-if="view === 'local'" as-child size="sm" class="no-underline" data-test="new-local-group">
+        <RouterLink to="/localgroups/new">New local group</RouterLink>
+      </ShadButton>
+    </div>
     <CosysopInvites @accepted="reload += 1" />
-    <RepeaterTable :key="reload" />
+    <LocalGroupTable v-if="view === 'local'" />
+    <RepeaterTable v-else :key="reload" />
   </div>
 </template>
 
 <script lang="ts">
 import CosysopInvites from '@/components/CosysopInvites.vue';
+import { RouterLink } from 'vue-router';
+import { Button as ShadButton } from '@/components/ui/button';
+import LocalGroupTable from '@/components/LocalGroupTable.vue';
 import RepeaterTable from '@/components/RepeaterTable.vue';
+import SegmentPicker from '@/components/SegmentPicker.vue';
+import { useUserStore } from '@/store';
+
+const VIEWS = [
+  { value: 'mine', label: 'My repeaters' },
+  { value: 'local', label: 'Local groups' },
+];
 
 export default {
   components: {
     CosysopInvites,
+    LocalGroupTable,
     RepeaterTable,
+    RouterLink,
+    SegmentPicker,
+    ShadButton,
   },
   head: {
     title: 'Repeaters',
   },
-  created() {},
-  mounted() {},
-  unmounted() {},
   data: function() {
-    return {
-      reload: 0,
-    };
+    return { views: VIEWS, reload: 0 };
   },
-  methods: {},
-  computed: {},
+  computed: {
+    view(): string {
+      return this.$route.query.view === 'local' ? 'local' : 'mine';
+    },
+    loggedIn(): boolean {
+      return useUserStore().loggedIn;
+    },
+  },
+  methods: {
+    setView(v: string) {
+      this.$router.replace({ query: v === 'local' ? { view: 'local' } : {} });
+    },
+  },
 };
 </script>
 

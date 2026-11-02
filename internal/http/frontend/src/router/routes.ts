@@ -139,6 +139,11 @@ export function routes(): DMRRoute[] {
       component: () => import('@/views/repeaters/RepeaterDetailsPage.vue'),
     },
     {
+      path: '/localgroups/:id',
+      name: 'LocalGroup',
+      component: () => import('@/views/repeaters/LocalGroupPage.vue'),
+    },
+    {
       path: '/repeaters/:id/connect',
       name: 'RepeaterConnect',
       component: () => import('@/views/repeaters/RepeaterConnectPage.vue'),

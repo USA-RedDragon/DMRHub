@@ -50,6 +50,12 @@ function person(u: { id: number; callsign: string }) {
 }
 
 function destination(call: CallRow) {
+  if (call.is_to_local_group && call.to_local_group) {
+    return h('span', { class: 'inline-flex flex-wrap items-baseline gap-x-1.5', 'data-test': 'local-group' }, [
+      h('span', { class: 'font-medium' }, call.to_local_group.name),
+      h('span', { class: 'text-xs text-muted-foreground' }, `local TG ${call.destination_id}`),
+    ]);
+  }
   if (call.is_to_talkgroup) {
     return h(Talkgroup, { talkgroup: call.to_talkgroup });
   }

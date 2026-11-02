@@ -82,6 +82,26 @@
         </CardHeader>
       </Card>
 
+      <div
+        v-for="ask in asks"
+        :key="`ask-${ask.id}`"
+        class="flex flex-col gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4"
+        :data-test="`local-ask-${ask.id}`"
+      >
+        <p class="text-sm font-semibold">
+          {{ ask.asked_by.callsign || ask.owner.callsign }} asks to add this repeater to the local group {{ ask.name }}.
+        </p>
+        <p class="text-sm">
+          Calls to TG {{ ask.talkgroup }} on timeslot {{ ask.slot }} here then go to the
+          {{ ask.repeaters === 1 ? 'repeater' : `${ask.repeaters} repeaters` }} of the group.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <ShadButton type="button" size="sm" :disabled="localBusy" data-test="local-accept" @click="acceptAsk(ask.id)">Add it</ShadButton>
+          <ShadButton type="button" variant="outline" size="sm" :disabled="localBusy" data-test="local-decline" @click="declineAsk(ask.id)">Say no</ShadButton>
+          <span v-if="localError" class="text-sm text-destructive">{{ localError }}</span>
+        </div>
+      </div>
+
       <ShadDialog :open="resetOpen" @update:open="resetOpen = $event">
         <DialogContent data-test="reset-dialog">
           <DialogTitle>Reset the connection of {{ repeater.callsign || 'Repeater' }} — {{ repeater.id }}?</DialogTitle>
@@ -313,6 +333,12 @@
                     >Drop</ShadButton>
                     <span v-else class="text-sm text-muted-foreground">None</span>
                   </div>
+                  <div v-for="g in localOn(1)" :key="`local-${g.id}`" class="flex items-center gap-2" :data-test="`ts1-local`">
+                    <span class="text-xs text-muted-foreground w-16">Local:</span>
+                    <span class="font-medium">TG {{ g.talkgroup }}</span>
+                    <RouterLink v-if="loggedIn" :to="`/localgroups/${g.id}`" class="text-primary underline">{{ g.name }}</RouterLink>
+                    <span v-else>{{ g.name }}</span>
+                  </div>
                 </div>
               </div>
               <Separator />
@@ -339,6 +365,12 @@
                       @click="dropDynamic(2)"
                     >Drop</ShadButton>
                     <span v-else class="text-sm text-muted-foreground">None</span>
+                  </div>
+                  <div v-for="g in localOn(2)" :key="`local-${g.id}`" class="flex items-center gap-2" :data-test="`ts2-local`">
+                    <span class="text-xs text-muted-foreground w-16">Local:</span>
+                    <span class="font-medium">TG {{ g.talkgroup }}</span>
+                    <RouterLink v-if="loggedIn" :to="`/localgroups/${g.id}`" class="text-primary underline">{{ g.name }}</RouterLink>
+                    <span v-else>{{ g.name }}</span>
                   </div>
                 </div>
               </div>
@@ -413,6 +445,7 @@ import {
 } from '@/lib/transmissions';
 
 import API from '@/services/API';
+import { acceptLocalGroup, removeLocalGroupRepeater, repeaterLocalGroups, type RepeaterLocalGroup } from '@/services/localGroups';
 import { errorText } from '@/services/settings';
 import { getWebsocketURI } from '@/services/util';
 import { useUserStore } from '@/store';
@@ -522,6 +555,7 @@ export default {
       this.fetchRepeater();
       this.fetchCosysops();
       this.fetchLastheard();
+      this.fetchLocalGroups();
       this.socket = ws.connect(getWebsocketURI() + '/calls', this.onWebsocketMessage);
       this.timeInterval = setInterval(() => { this.now = Date.now(); }, 30000);
     }
@@ -559,6 +593,9 @@ export default {
       resetOpen: false,
       resetting: false,
       resetMessage: '',
+      localGroups: [] as RepeaterLocalGroup[],
+      localBusy: false,
+      localError: '',
     };
   },
   watch: {
@@ -571,6 +608,12 @@ export default {
     },
   },
   computed: {
+    asks(): RepeaterLocalGroup[] {
+      return this.canEditCodec ? this.localGroups.filter((g) => g.state === 'asked') : [];
+    },
+    loggedIn(): boolean {
+      return useUserStore().loggedIn;
+    },
     isOnline(): boolean {
       if (!this.repeater || !this.hasTimestamp(this.repeater.last_ping_time)) return false;
       return this.now - new Date(this.repeater.last_ping_time).getTime() < SESSION_TIMEOUT_MS;
@@ -625,6 +668,35 @@ export default {
     },
   },
   methods: {
+    localOn(slot: 1 | 2): RepeaterLocalGroup[] {
+      return this.localGroups.filter((g) => g.state === 'member' && g.slot === slot);
+    },
+    async fetchLocalGroups() {
+      if (!useUserStore().loggedIn) return;
+      try {
+        this.localGroups = await repeaterLocalGroups(this.repeaterID);
+      } catch {
+        this.localGroups = [];
+      }
+    },
+    async answerAsk(fn: () => Promise<unknown>) {
+      this.localBusy = true;
+      this.localError = '';
+      try {
+        await fn();
+        await this.fetchLocalGroups();
+      } catch (err) {
+        this.localError = errorText(err, 'Could not answer the request');
+      } finally {
+        this.localBusy = false;
+      }
+    },
+    acceptAsk(group: number) {
+      return this.answerAsk(() => acceptLocalGroup(group, this.repeaterID));
+    },
+    declineAsk(group: number) {
+      return this.answerAsk(() => removeLocalGroupRepeater(group, this.repeaterID));
+    },
     hasTimestamp(value: string | undefined): boolean {
       if (!value) return false;
       const d = new Date(value);

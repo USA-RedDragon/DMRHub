@@ -18,7 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 vi.mock('@/services/API', () => ({
@@ -32,6 +32,7 @@ vi.mock('@/services/API', () => ({
 import AppHeader from '@/components/AppHeader.vue';
 import source from '@/components/AppHeader.vue?raw';
 import { routes, setupwizardRoutes } from '@/router/routes';
+import { useUserStore } from '@/store';
 
 describe('AppHeader', () => {
   it('links only to pages that exist', () => {
@@ -99,5 +100,22 @@ describe('AppHeader', () => {
       expect(wrapper.find('button').exists()).toBe(false);
       wrapper.unmount();
     }
+  });
+
+  it('marks Repeaters on the page of a local group', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: routes() });
+    await router.push('/localgroups/5');
+    await router.isReady();
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useUserStore().loggedIn = true;
+    const wrapper = mount(AppHeader, { global: { plugins: [router, pinia] } });
+    await flushPromises();
+    const links = wrapper.findAll('a').filter((a) => a.text().trim() === 'Repeaters');
+    expect(links.length).toBeGreaterThan(0);
+    for (const a of links) {
+      expect(a.classes()).toContain('active');
+    }
+    wrapper.unmount();
   });
 });

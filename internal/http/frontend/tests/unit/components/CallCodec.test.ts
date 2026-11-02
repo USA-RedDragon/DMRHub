@@ -104,3 +104,14 @@ describe('lastHeardColumns', () => {
     }
   });
 });
+
+describe('lastHeardColumns destination', () => {
+  it('names the local group of a call to a local talkgroup', () => {
+    const column = lastHeardColumns().find((c) => c.header === 'Destination')!;
+    const cell = column.cell as (ctx: { row: { original: CallRow } }) => unknown;
+    const vnode = cell({ row: { original: call({ destination_id: 8, is_to_local_group: true, to_local_group: { id: 5, name: 'North Texas' } }) } });
+    const wrapper = mount({ render: () => vnode });
+    expect(wrapper.text()).toBe('North Texaslocal TG 8');
+    expect(wrapper.find('[data-test="local-group"]').exists()).toBe(true);
+  });
+});

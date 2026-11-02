@@ -22,7 +22,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
 vi.mock('@/services/API', () => ({
-  default: { get: vi.fn(), patch: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 vi.mock('@/services/ws', () => ({
   default: { connect: vi.fn(() => ({ close: vi.fn() })) },
@@ -198,5 +198,71 @@ describe('RepeaterDetailsPage sysop actions', () => {
     expect(w.find('[data-test="reset-connection"]').exists()).toBe(false);
     expect(mockAPI.get).not.toHaveBeenCalledWith('/repeaters/310000101/on-air');
     w.unmount();
+  });
+});
+
+describe('RepeaterDetailsPage local groups', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const repeater = {
+    id: 319186801, callsign: 'KP4DJT', type: 'mmdvm', last_ping_time: '2026-11-01T12:00:00Z', connected_time: '2026-11-01T12:00:00Z', created_at: '2026-10-01T12:00:00Z',
+    ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
+    latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
+    owner: { id: 3191869, callsign: 'KP4DJT' },
+  };
+  const groups = [
+    { id: 5, name: 'North Texas', talkgroup: 8, slot: 2, state: 'member', owner: { id: 1, callsign: 'W5DFW' }, asked_by: { id: 1, callsign: 'W5DFW' }, repeaters: 4 },
+    { id: 6, name: 'Club hotspots', talkgroup: 9, slot: 1, state: 'asked', owner: { id: 2, callsign: 'KI5VMF' }, asked_by: { id: 2, callsign: 'KI5VMF' }, repeaters: 2 },
+  ];
+
+  async function mountAs(userID: number, role: string | null) {
+    const mock = API as unknown as { get: Mock; post: Mock };
+    mock.get.mockImplementation((url: string) => {
+      if (url.startsWith('/lastheard')) return Promise.resolve({ data: { calls: [], total: 0 } });
+      if (url.endsWith('/localgroups')) return Promise.resolve({ data: groups });
+      if (url.endsWith('/cosysops')) {
+        if (role === null) return Promise.reject({ response: { status: 403 } });
+        return Promise.resolve({ data: { owner: repeater.owner, role, cosysops: [] } });
+      }
+      if (url.endsWith('/on-air')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: repeater });
+    });
+    mock.post.mockResolvedValue({ data: {} });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const user = useUserStore();
+    user.loggedIn = true;
+    user.id = userID;
+    const wrapper = mount(RepeaterDetailsPage, {
+      global: {
+        plugins: [pinia],
+        mocks: { $route: { params: { id: '319186801' } }, $toast: { add: vi.fn() } },
+        stubs: { RouterLink: { template: '<a><slot /></a>' }, RepeaterRulesCard: true },
+      },
+    });
+    await flushPromises();
+    return { wrapper, post: mock.post };
+  }
+
+  it('shows the local talkgroup of each timeslot', async () => {
+    const { wrapper } = await mountAs(42, null);
+    const local = wrapper.find('[data-test="ts2-local"]');
+    expect(local.text()).toMatch(/Local:\s*TG 8\s*North Texas/);
+    expect(wrapper.find('[data-test="ts1-local"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="local-ask-6"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('asks the owner to add the repeater to a group, and adds it', async () => {
+    const { wrapper, post } = await mountAs(3191869, 'owner');
+    const ask = wrapper.find('[data-test="local-ask-6"]');
+    expect(ask.text()).toContain('KI5VMF asks to add this repeater to the local group Club hotspots.');
+    expect(ask.text()).toContain('Calls to TG 9 on timeslot 1 here then go to the 2 repeaters of the group.');
+    await ask.find('[data-test="local-accept"]').trigger('click');
+    await flushPromises();
+    expect(post).toHaveBeenCalledWith('/localgroups/6/repeaters/319186801/accept');
+    wrapper.unmount();
   });
 });

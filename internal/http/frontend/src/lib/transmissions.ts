@@ -54,6 +54,8 @@ export type CallRow = {
   to_repeater: { id: number; callsign: string };
   is_to_user: boolean;
   to_user: { id: number; callsign: string };
+  is_to_local_group?: boolean;
+  to_local_group?: { id: number; name: string };
   destination_id: number;
   duration: string | number;
   ber: string | number;

@@ -60,7 +60,7 @@
               v-if="userStore.loggedIn"
               to="/repeaters"
               class="mobile-nav-link"
-              :class="{ active: route.path === '/repeaters' }"
+              :class="{ active: route.path === '/repeaters' || route.path.startsWith('/localgroups/') }"
               @click="mobileOpen = false"
             >
               <Antenna class="h-4 w-4" />
@@ -356,7 +356,7 @@
           v-if="userStore.loggedIn"
           to="/repeaters"
           class="desktop-nav-link"
-          :class="{ active: route.path === '/repeaters' }"
+          :class="{ active: route.path === '/repeaters' || route.path.startsWith('/localgroups/') }"
         >
           Repeaters
         </router-link>

@@ -24,6 +24,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -314,7 +316,8 @@ func (PluginUserSwitch) TableName() string {
 
 // SetPluginSwitches replaces the switches that plugin declares with specs,
 // in their order. The users keep their settings of a switch that goes and
-// comes back.
+// comes back. Replicas that set the same switches at once all succeed. It
+// returns ErrPluginNotFound when there is no such plugin.
 func SetPluginSwitches(db *gorm.DB, plugin uint, specs []PluginSwitchSpec) error {
 	if len(specs) > MaxPluginSwitches {
 		return fmt.Errorf("%w: more than %d switches", ErrPluginSwitch, MaxPluginSwitches)
@@ -335,17 +338,46 @@ func SetPluginSwitches(db *gorm.DB, plugin uint, specs []PluginSwitchSpec) error
 		}
 		rows = append(rows, PluginSwitch{PluginID: plugin, Key: specs[i].Key, Position: i, Spec: string(b)})
 	}
+	keys := make([]string, 0, len(rows))
+	for _, r := range rows {
+		keys = append(keys, r.Key)
+	}
+	slices.SortFunc(rows, func(a, b PluginSwitch) int { return strings.Compare(a.Key, b.Key) })
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("plugin_id = ?", plugin).Delete(&PluginSwitch{}).Error; err != nil {
-			return fmt.Errorf("could not drop the switches: %w", err)
-		}
-		if len(rows) == 0 {
-			return nil
-		}
-		return tx.Create(&rows).Error
+		return putSwitches(tx, plugin, keys, rows)
 	})
 	if err != nil {
 		return fmt.Errorf("could not set the switches of plugin %d: %w", plugin, err)
+	}
+	return nil
+}
+
+// switchKeyColumn is the column of the key of a switch, which gorm quotes,
+// as MySQL reserves its name.
+const switchKeyColumn = "key"
+
+// putSwitches locks the row of plugin first, so that the saves of its
+// switches on several replicas go one after the other.
+func putSwitches(tx *gorm.DB, plugin uint, keys []string, rows []PluginSwitch) error {
+	var locked []Plugin
+	if err := tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Select("id").Where("id = ?", plugin).Find(&locked).Error; err != nil {
+		return fmt.Errorf("could not lock the plugin: %w", err)
+	}
+	if len(locked) == 0 {
+		return ErrPluginNotFound
+	}
+	drop := tx.Where("plugin_id = ?", plugin)
+	if len(keys) > 0 {
+		drop = drop.Not(map[string]any{switchKeyColumn: keys})
+	}
+	if err := drop.Delete(&PluginSwitch{}).Error; err != nil {
+		return fmt.Errorf("could not drop the switches: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&rows).Error; err != nil {
+		return fmt.Errorf("could not write the switches: %w", err)
 	}
 	return nil
 }

@@ -145,6 +145,8 @@ func TestAPluginDeclaresValidSwitchesOnly(t *testing.T) {
 	t.Parallel()
 	database, cleanup := openDB(t)
 	defer cleanup()
+	p, _, err := models.CreatePlugin(database, "APRS", []models.PluginRange{rng(4700, 4700)}, time.Now())
+	require.NoError(t, err)
 	ok := aprsSwitch()
 	bad := []func(s *models.PluginSwitchSpec){
 		func(s *models.PluginSwitchSpec) { s.Key = "" },
@@ -160,21 +162,22 @@ func TestAPluginDeclaresValidSwitchesOnly(t *testing.T) {
 		c := *s.Choice
 		s.Choice = &c
 		f(&s)
-		require.ErrorIs(t, models.SetPluginSwitches(database, 1, []models.PluginSwitchSpec{s}), models.ErrPluginSwitch, i)
+		require.ErrorIs(t, models.SetPluginSwitches(database, p.ID, []models.PluginSwitchSpec{s}), models.ErrPluginSwitch, i)
 	}
-	require.ErrorIs(t, models.SetPluginSwitches(database, 1, []models.PluginSwitchSpec{ok, ok}), models.ErrPluginSwitch)
+	require.ErrorIs(t, models.SetPluginSwitches(database, p.ID, []models.PluginSwitchSpec{ok, ok}), models.ErrPluginSwitch)
 	five := make([]models.PluginSwitchSpec, 5)
 	for i := range five {
 		five[i] = models.PluginSwitchSpec{Key: fmt.Sprintf("s%d", i), Title: "S"}
 	}
-	require.ErrorIs(t, models.SetPluginSwitches(database, 1, five), models.ErrPluginSwitch)
+	require.ErrorIs(t, models.SetPluginSwitches(database, p.ID, five), models.ErrPluginSwitch)
 
-	require.NoError(t, models.SetPluginSwitches(database, 1, []models.PluginSwitchSpec{ok, {Key: "notice", Title: "Mail notice"}}))
-	got, err := models.PluginSwitchesOf(database, 1)
+	require.NoError(t, models.SetPluginSwitches(database, p.ID, []models.PluginSwitchSpec{ok, {Key: "notice", Title: "Mail notice"}}))
+	got, err := models.PluginSwitchesOf(database, p.ID)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.Equal(t, ok, got[0])
 	assert.Equal(t, "notice", got[1].Key)
+	require.ErrorIs(t, models.SetPluginSwitches(database, p.ID+1, []models.PluginSwitchSpec{ok}), models.ErrPluginNotFound)
 }
 
 func TestAUserSetsAPluginSwitchAndThePluginSeesTheUsersWhoTurnedItOn(t *testing.T) {
@@ -241,5 +244,32 @@ func TestAUserSetsAPluginSwitchAndThePluginSeesTheUsersWhoTurnedItOn(t *testing.
 		var n int64
 		require.NoError(t, database.Model(&models.PluginUserSwitch{}).Count(&n).Error)
 		assert.Zero(t, n)
+	})
+}
+
+func TestTwoReplicasSaveTheSameSwitchesOfAPluginAtOnce(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
+		specs := []models.PluginSwitchSpec{aprsSwitch(), {Key: "notice", Title: "Mail notice"}}
+		for round := range 20 {
+			p, _, err := models.CreatePlugin(database, fmt.Sprintf("Plugin %d", round), []models.PluginRange{rng(uint(4700+round), uint(4700+round))}, time.Now())
+			require.NoError(t, err)
+			plugin := p.ID
+			start := make(chan struct{})
+			errs := make(chan error, 2)
+			for range 2 {
+				go func() {
+					<-start
+					errs <- models.SetPluginSwitches(database, plugin, specs)
+				}()
+			}
+			close(start)
+			for range 2 {
+				require.NoError(t, <-errs, "round %d", round)
+			}
+			got, err := models.PluginSwitchesOf(database, plugin)
+			require.NoError(t, err)
+			assert.Equal(t, specs, got)
+		}
 	})
 }

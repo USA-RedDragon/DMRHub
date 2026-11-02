@@ -62,7 +62,7 @@ func TestAddPluginSDKAddsTheStoreAndSwitchTablesAndDropsThem(t *testing.T) {
 			for _, table := range tables {
 				assert.True(t, m.HasTable(table))
 			}
-			require.NoError(t, models.SetPluginSwitches(database, 1, []models.PluginSwitchSpec{{Key: "aprs", Title: "APRS messages"}}))
+			require.NoError(t, database.Create(&models.PluginUserSwitch{PluginID: 1, UserID: 1, Key: "aprs", On: true}).Error)
 			assert.True(t, m.HasColumn(&models.PluginUserSwitch{}, "is_on"))
 
 			require.NoError(t, migration.Rollback(database, &cfg, "202611020200"))

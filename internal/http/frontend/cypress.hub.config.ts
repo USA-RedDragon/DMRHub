@@ -19,6 +19,7 @@
 
 import { defineConfig } from 'cypress';
 import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -44,6 +45,27 @@ const fakeBrowser = () => {
     fs.writeFileSync(path.join(dir, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   }
   return dir;
+};
+
+const base32 = (s: string): Buffer => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const c of s.replace(/[\s=]/g, '').toUpperCase()) {
+    bits += alphabet.indexOf(c).toString(2).padStart(5, '0');
+  }
+  const out: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    out.push(parseInt(bits.slice(i, i + 8), 2));
+  }
+  return Buffer.from(out);
+};
+
+const totp = (key: string, step: number): string => {
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(step));
+  const sum = createHmac('sha1', base32(key)).update(msg).digest();
+  const off = sum[sum.length - 1]! & 0x0f;
+  return String((sum.readUInt32BE(off) & 0x7fffffff) % 1000000).padStart(6, '0');
 };
 
 const waitFor = (hub: Hub, pattern: RegExp, from: number, timeout: number): Promise<string> => new Promise((resolve, reject) => {
@@ -87,6 +109,9 @@ export default defineConfig({
     supportFile: false,
     setupNodeEvents(on) {
       on('task', {
+        totp({ key, steps }: { key: string; steps: number }) {
+          return totp(key, Math.floor(Date.now() / 30000) + steps);
+        },
         placeholderStart() {
           if (placeholder) {
             return null;

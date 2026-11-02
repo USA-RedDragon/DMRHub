@@ -11,6 +11,7 @@ This page lists the pages of the docs site in reading order, by section. The sit
   - [Connect a hotspot](guides/connect-hotspot.md)
   - [Link a repeater](guides/link-repeater.md)
   - [Pick your talkgroups](guides/talkgroups.md)
+  - [Make a local group](guides/local-groups.md)
   - [Test with the parrot](guides/parrot.md)
   - [Make a private call](guides/private-calls.md)
   - [Send text messages](guides/text-messages.md)

@@ -75,6 +75,8 @@ func hooks() map[string]hook {
 		"open-call":     openCall,
 		"end-call":      endCall,
 		"held":          holdText,
+		"local-groups":  seedLocalGroups,
+		"local-call":    playCalls(localGroupCall()),
 	}
 }
 
@@ -106,6 +108,7 @@ func configure(ctx context.Context, r *runner) error {
 	set("dmr.disable-radio-id-validation", true)
 	set("dmr.radio-id-url", "http://127.0.0.1:9/users.json")
 	set("dmr.repeater-id-url", "http://127.0.0.1:9/rptrs.json")
+	set("dmr.routing.local-talkgroups", []uint{9})
 	return wizard.do(ctx, http.MethodPut, "/api/v1/config", cfg, nil)
 }
 
@@ -689,4 +692,30 @@ func seedUnassigned(_ context.Context, r *runner) error {
 		}
 	}
 	return nil
+}
+
+func seedLocalGroups(ctx context.Context, r *runner) error {
+	var dallas, plano struct {
+		ID uint `json:"id"`
+	}
+	n0, n3 := r.api("n0call"), r.api("n3call")
+	if err := n0.do(ctx, http.MethodPost, "/api/v1/localgroups", map[string]any{"name": "Dallas Local", "talkgroup": 9}, &dallas); err != nil {
+		return err
+	}
+	for _, id := range []uint{310001, 300000201, 300000301} {
+		if err := n0.do(ctx, http.MethodPost, fmt.Sprintf("/api/v1/localgroups/%d/repeaters", dallas.ID), map[string]any{"repeater_id": id, "slot": 2}, nil); err != nil {
+			return err
+		}
+	}
+	if err := r.api("n1call").do(ctx, http.MethodPost, fmt.Sprintf("/api/v1/localgroups/%d/repeaters/300000201/accept", dallas.ID), nil, nil); err != nil {
+		return err
+	}
+	if err := n3.do(ctx, http.MethodPost, "/api/v1/localgroups", map[string]any{"name": "Plano Hotspots", "talkgroup": 9}, &plano); err != nil {
+		return err
+	}
+	return n3.do(ctx, http.MethodPost, fmt.Sprintf("/api/v1/localgroups/%d/repeaters", plano.ID), map[string]any{"repeater_id": 300000401, "slot": 2}, nil)
+}
+
+func localGroupCall() []call {
+	return []call{{repeater: 310001, src: 3000001, dst: 9, group: true, slot2: true, frames: 35}}
 }

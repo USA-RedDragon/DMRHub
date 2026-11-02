@@ -12,6 +12,7 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | Who may transmit | The radios whose transmissions DMRHub takes from repeaters and hotspots: `any`, `radioid` or `members`. See [Who may transmit](#who-may-transmit). | `any` | `dmr.routing.transmit` |
 | Longest transmission | The longest voice call that DMRHub routes. DMRHub drops the rest of a longer call. On the Setup page, **Limit transmission length** turns it on at 180 seconds. `0s` is no limit. | `0s` | `dmr.routing.max-transmission` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
+| Local talkgroups | The talkgroups that users make local groups on. See [Local talkgroups](#local-talkgroups). | `8`, `9` | `dmr.routing.local-talkgroups` |
 
 ## Dynamic talkgroups
 
@@ -55,3 +56,16 @@ Two radios can key up the same talkgroup at the same time, on two hotspots or re
 The setting applies to each timeslot of each hotspot and repeater, so it also applies when calls on two talkgroups reach the same timeslot. The replica that serves the hotspot or repeater decides, so the setting works the same with any number of replicas. It does not apply to private calls.
 
 A Motorola repeater on IPSC gets one call at a time on a timeslot with either setting. With `mix`, DMRHub queues the bursts of a second call for it and sends them after the first call ends, and drops a call that waits too long and reports it as undeliverable (slot busy).
+
+## Local talkgroups
+
+Users make local groups of hotspots and repeaters on the local talkgroups, as [Make a local group](../guides/local-groups.md) tells. A group call to a local talkgroup on a repeater in a group on it, on the timeslot of the repeater in the group, goes to the other repeaters of the group, and nowhere else. On any other repeater or timeslot it goes nowhere, and DMRHub reports it as undeliverable. A call to a local talkgroup from an OpenBridge peer or a plugin goes nowhere. A call to a local talkgroup makes no talkgroup and links no dynamic talkgroup.
+
+Set the local talkgroups under **Talkgroups** on the Routing tab, one for each line. Each must be a number from 1 to 16777215, other than 4000. An empty list turns local groups off; the groups stay, and take calls again when their talkgroup is local again.
+
+![The Talkgroups card of the Routing tab, with the local talkgroups](../Screenshots/admin-setup-local-talkgroups.png)
+
+A local talkgroup cannot also be a network talkgroup: while a number is local, a call to it never reaches the network talkgroup of that number. When DMRHub is upgraded to the version with local groups, and the network already has a talkgroup 8 or 9, DMRHub saves the local talkgroups in Setup without that number, so the network talkgroup keeps working. It does not do so when the admins saved the local talkgroups before.
+
+Each replica routes the calls of a group from the repeaters that it serves, and delivers them to the repeaters of the group that it serves, so a group works across replicas, and a repeater that moves to another replica stays in its groups.
+

@@ -428,3 +428,37 @@ shots:
     as: n0call
     route: /admin/setup#messages
     wait: Hold messages for (days)
+  - name: local-groups-list.png
+    phase: main
+    as: n0call
+    needs: [seed, local-groups]
+    route: /repeaters?view=local
+    wait: Plano Hotspots
+  - name: local-group.png
+    phase: main
+    as: n0call
+    route: /localgroups/1
+    wait: Waiting for the owner
+  - name: local-group-ask.png
+    phase: main
+    as: n2call
+    route: /repeaters/300000301
+    wait: asks to add this repeater
+  - name: local-group-subscriptions.png
+    phase: main
+    as: n1call
+    route: /repeaters/300000201
+    wait: Dallas Local
+    clip: card Talkgroup Subscriptions
+  - name: local-group-lastheard.png
+    phase: main
+    as: n0call
+    needs: [local-call]
+    route: /lastheard
+    wait: Dallas Local
+  - name: admin-setup-local-talkgroups.png
+    phase: main
+    as: n0call
+    route: /admin/setup#routing
+    wait: Local talkgroups
+    clip: card Talkgroups

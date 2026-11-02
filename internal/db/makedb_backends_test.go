@@ -158,9 +158,10 @@ var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 // peer rules, the private call switches of the peers, the routing rules,
 // the talkgroups that DMRHub made by itself, the failed logins, the
 // invites, the message access log, the parts of moved calls, the
-// personal API tokens, and the co-sysops, the connection logs, the
-// offline alerts and the session and link epochs of the repeaters.
-var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private|routing_rule|auto_created|last_call_at|login_failures|invites|message_access|call_parts|personal_tokens|repeater_cosysops|repeater_events|offline_alerts|session_epoch|link_epoch")
+// personal API tokens, the co-sysops, the connection logs, the offline
+// alerts and the session and link epochs of the repeaters, and the rate
+// and the held texts of store and forward.
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private|routing_rule|auto_created|last_call_at|login_failures|invites|message_access|call_parts|personal_tokens|repeater_cosysops|repeater_events|offline_alerts|session_epoch|link_epoch|held_messages|store_forward|add .rate.|proprietary")
 
 func (r *recorder) ddl() []string {
 	r.mu.Lock()

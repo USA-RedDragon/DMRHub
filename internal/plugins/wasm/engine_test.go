@@ -229,6 +229,26 @@ func TestTheHubKeepsTheSwitchesOfAPluginInside(t *testing.T) {
 	})
 }
 
+// TestAPluginInsideUsesItsStore runs a plugin, built with each compiler,
+// that makes requests of the hub while it handles a burst.
+func TestAPluginInsideUsesItsStore(t *testing.T) {
+	t.Parallel()
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		r := newRig(t)
+		_, p := r.run(t, engine, "Store", guestOf(t, compiler, "store"), nil, models.PluginRange{First: 9200, Last: 9200})
+		pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 7, Seq: 1, Slot: true}
+		pkt.DMRData[0] = 41
+		require.NoError(t, r.registry.Deliver(p.ID, pkt))
+		got := r.next(t)
+		assert.Equal(t, uint(9200), got.Src)
+		assert.Equal(t, byte(42), got.DMRData[0])
+		e, ok, err := models.PluginStoreGet(r.db, p.ID, "k", time.Now())
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, []byte{42}, e.Value)
+	})
+}
+
 func TestStopEndsAPluginThatWaitsForTheHub(t *testing.T) {
 	t.Parallel()
 	eachCompiler(t, func(t *testing.T, compiler string) {

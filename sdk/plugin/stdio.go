@@ -49,6 +49,8 @@ type stdio struct {
 	done  chan struct{}
 	conns map[uint32]*tunnel
 	next  uint32
+	calls calls
+	on    callStream
 }
 
 func newStdio(r io.Reader, w io.Writer) *stdio {
@@ -63,6 +65,7 @@ func (s *stdio) read(r io.Reader) {
 	for {
 		m := &pluginv1.ConnectResponse{}
 		if err := ReadFrame(br, m, MaxHubMessage); err != nil {
+			s.calls.fail(nil)
 			s.mu.Lock()
 			s.err = err
 			close(s.done)
@@ -72,6 +75,10 @@ func (s *stdio) read(r io.Reader) {
 		}
 		if n := m.GetNet(); n != nil {
 			s.answer(n)
+			continue
+		}
+		if a := m.GetAnswer(); a != nil {
+			s.calls.answer(a)
 			continue
 		}
 		s.mu.Lock()

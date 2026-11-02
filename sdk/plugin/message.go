@@ -30,3 +30,11 @@ func unmarshal(b []byte, m Message) error {
 func cloneHello(h *pluginv1.Hello) *pluginv1.Hello {
 	return proto.CloneOf(h)
 }
+
+func cloneSubscribe(s *pluginv1.Subscribe) *pluginv1.Subscribe {
+	return proto.CloneOf(s)
+}
+
+func cloneRequest(r *pluginv1.Request) *pluginv1.Request {
+	return proto.CloneOf(r)
+}

@@ -112,7 +112,7 @@ func buildGuests() {
 	)
 	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
 	for _, c := range compilers {
-		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic"} {
+		for _, g := range []string{"echo", "spin", "hog", "files", "netprobe", "silent", "deaf", "early", "panic", "store"} {
 			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()

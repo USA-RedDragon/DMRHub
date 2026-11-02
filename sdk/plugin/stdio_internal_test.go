@@ -259,3 +259,29 @@ func TestReadFrameRefusesAnOversizedLength(t *testing.T) {
 		t.Fatalf("ReadFrame = %v, want ErrFrameTooLarge", err)
 	}
 }
+
+func TestStdioHandsAnswersToTheirRequestsNotToRecv(t *testing.T) {
+	t.Parallel()
+	h := newFakeHost(t)
+	id, ch, ok := h.s.calls.add(&h.s.on)
+	if !ok {
+		t.Fatal("no request on a new stdio")
+	}
+	h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Answer{Answer: &pluginv1.Answer{Id: id, Code: pluginv1.ErrorCode_ERROR_CODE_FULL}}})
+	h.write(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{Sequence: 4}}})
+	if m, err := h.s.recv(); err != nil || m.GetBurst().GetSequence() != 4 {
+		t.Fatalf("recv = %v, %v, want the burst", m, err)
+	}
+	if _, err := h.s.calls.await(context.Background(), id, ch); !errors.Is(err, ErrFull) {
+		t.Fatalf("await = %v, want ErrFull", err)
+	}
+
+	id, ch, _ = h.s.calls.add(&h.s.on)
+	_ = h.out.Close()
+	if _, err := h.s.calls.await(context.Background(), id, ch); !errors.Is(err, ErrLost) {
+		t.Fatalf("await after the hub closed = %v, want ErrLost", err)
+	}
+	if _, _, ok := h.s.calls.add(&h.s.on); ok {
+		t.Fatal("a request after the hub closed waits")
+	}
+}

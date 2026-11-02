@@ -34,3 +34,11 @@ func unmarshal(b []byte, m Message) error {
 func cloneHello(h *pluginv1.Hello) *pluginv1.Hello {
 	return h.CloneVT()
 }
+
+func cloneSubscribe(s *pluginv1.Subscribe) *pluginv1.Subscribe {
+	return s.CloneVT()
+}
+
+func cloneRequest(r *pluginv1.Request) *pluginv1.Request {
+	return r.CloneVT()
+}

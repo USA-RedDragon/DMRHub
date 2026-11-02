@@ -92,6 +92,7 @@ type Conn struct {
 	stop    context.CancelFunc
 	welcome *pluginv1.Welcome
 	events  chan event
+	inbox   chan event
 	done    chan struct{}
 	once    sync.Once
 
@@ -101,10 +102,12 @@ type Conn struct {
 	moving bool
 	failed error
 	seen   map[burstKey]seenBurst
+	texts  map[uint64]seenBurst
 	pruned time.Time
 
-	sendMu   sync.Mutex
-	tracking bool
+	sendMu sync.Mutex
+	sub    *pluginv1.Subscribe
+	calls  calls
 
 	moveFor   time.Duration
 	moveEvery time.Duration
@@ -112,6 +115,7 @@ type Conn struct {
 
 // leg is one stream to the hub, on its own connection.
 type leg struct {
+	calls   callStream
 	conn    *grpc.ClientConn
 	stream  pluginv1.PluginService_ConnectClient
 	cancel  context.CancelFunc
@@ -182,9 +186,10 @@ func Dial(ctx context.Context, o Options) (*Conn, error) {
 		return nil, err
 	}
 	c := &Conn{
-		dial: dial, stop: stop, welcome: first.welcome, events: make(chan event), done: make(chan struct{}),
+		dial: dial, stop: stop, welcome: first.welcome, events: make(chan event), inbox: make(chan event), done: make(chan struct{}),
 		cur: first, legs: []*leg{first}, seen: map[burstKey]seenBurst{}, moveFor: moveFor, moveEvery: moveEvery,
 	}
+	go c.pump()
 	go c.read(first)
 	return c, nil
 }
@@ -229,12 +234,42 @@ func dialLeg(ctx context.Context, o Options, wait time.Duration) (*leg, error) {
 	return l, nil
 }
 
-// read hands the messages of l to Recv until l ends.
+// pump queues the events of the legs for Recv, so that a leg reads on,
+// and gets the answers to requests, while the plugin is not in Recv.
+func (c *Conn) pump() {
+	var queue []event
+	for {
+		var out chan event
+		var next event
+		if len(queue) > 0 {
+			out, next = c.events, queue[0]
+		}
+		select {
+		case e := <-c.inbox:
+			queue = append(queue, e)
+		case out <- next:
+			queue[0] = event{}
+			queue = queue[1:]
+		case <-c.done:
+			return
+		}
+	}
+}
+
+// read hands the messages of l to Recv until l ends, and the answers to
+// their requests.
 func (c *Conn) read(l *leg) {
 	for {
 		m, err := l.stream.Recv()
+		if a := m.GetAnswer(); err == nil && a != nil {
+			c.calls.answer(a)
+			continue
+		}
+		if err != nil {
+			c.calls.fail(&l.calls)
+		}
 		select {
-		case c.events <- event{leg: l, msg: m, err: err}:
+		case c.inbox <- event{leg: l, msg: m, err: err}:
 		case <-c.done:
 			return
 		}
@@ -304,6 +339,10 @@ func (c *Conn) handle(e event) (*pluginv1.ConnectResponse, bool) {
 		if c.sameBurst(e.leg, e.msg.GetBurst()) {
 			return nil, false
 		}
+	case e.msg.GetText() != nil:
+		if c.sameText(e.leg, e.msg.GetText().GetId()) {
+			return nil, false
+		}
 	}
 	return e.msg, true
 }
@@ -322,6 +361,23 @@ func (c *Conn) sameBurst(l *leg, b *pluginv1.Burst) bool {
 	}
 	if len(c.legs) > 1 || c.moving {
 		c.seen[k] = seenBurst{leg: l, at: now}
+	}
+	return false
+}
+
+// sameText reports whether another leg gave the text id a short time ago,
+// as sameBurst does for bursts.
+func (c *Conn) sameText(l *leg, id uint64) bool {
+	now := time.Now()
+	maps.DeleteFunc(c.texts, func(_ uint64, s seenBurst) bool { return now.Sub(s.at) >= sameBurstFor })
+	if got, ok := c.texts[id]; ok && got.leg != l {
+		return true
+	}
+	if len(c.legs) > 1 || c.moving {
+		if c.texts == nil {
+			c.texts = map[uint64]seenBurst{}
+		}
+		c.texts[id] = seenBurst{leg: l, at: now}
 	}
 	return false
 }
@@ -352,8 +408,8 @@ func (c *Conn) move() {
 	}
 	if l != nil {
 		c.sendMu.Lock()
-		if c.tracking {
-			_ = l.stream.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: &pluginv1.Subscribe{Tracking: true}}})
+		if c.sub != nil {
+			_ = l.stream.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: served(l.welcome, c.sub)}})
 		}
 		c.mu.Lock()
 		closed := false
@@ -373,7 +429,7 @@ func (c *Conn) move() {
 		go c.read(l)
 	}
 	select {
-	case c.events <- event{moved: true}:
+	case c.inbox <- event{moved: true}:
 	case <-c.done:
 	}
 }
@@ -385,12 +441,74 @@ func (c *Conn) Send(b *pluginv1.Burst) error {
 
 // SubscribeTracking asks the hub for the radios whose owners turned
 // position tracking on, and for where they are heard, or, with on false,
-// stops that.
+// stops that. It keeps the rest of the last Subscribe.
 func (c *Conn) SubscribeTracking(on bool) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	c.tracking = on
-	return c.sendLocked(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: &pluginv1.Subscribe{Tracking: on}}})
+	sub := &pluginv1.Subscribe{}
+	if c.sub != nil {
+		sub = cloneSubscribe(c.sub)
+	}
+	sub.Tracking = on
+	c.sub = sub
+	return c.sendLocked(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: sub}})
+}
+
+// Subscribe asks the hub for what sub names besides the calls to the
+// plugin's IDs, in place of the last Subscribe. It returns ErrUnsupported
+// when the hub does not serve a part of sub; Has tells beforehand. When
+// the plugin moves to another replica of the hub, Conn subscribes there
+// again to the parts of sub that the replica serves.
+func (c *Conn) Subscribe(sub *pluginv1.Subscribe) error {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	for _, f := range subscribeFeatures(sub) {
+		if !c.Has(f) {
+			return fmt.Errorf("%w: %s", ErrUnsupported, f)
+		}
+	}
+	c.sub = cloneSubscribe(sub)
+	return c.sendLocked(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: c.sub}})
+}
+
+// Has reports whether the replica of the hub that holds the plugin's
+// stream serves f. After a move to another replica, which can be of
+// another version during an upgrade, the answer can change, so check it
+// again before relying on f.
+func (c *Conn) Has(f pluginv1.Feature) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return hasFeature(c.cur.welcome, f)
+}
+
+// Request sends r with a new id and returns the hub's answer. It returns
+// an *AnswerError when the hub answered with an error, ErrUnsupported when
+// the hub does not serve r, and ErrLost when the stream ended before the
+// answer. It is safe to call from several goroutines, also while another
+// goroutine waits in Recv.
+func (c *Conn) Request(ctx context.Context, r *pluginv1.Request) (*pluginv1.Answer, error) {
+	c.sendMu.Lock()
+	c.mu.Lock()
+	l := c.cur
+	c.mu.Unlock()
+	if f := featureOf(r); !hasFeature(l.welcome, f) {
+		c.sendMu.Unlock()
+		return nil, fmt.Errorf("%w: %s", ErrUnsupported, f)
+	}
+	id, ch, ok := c.calls.add(&l.calls)
+	if !ok {
+		c.sendMu.Unlock()
+		return nil, ErrLost
+	}
+	r = cloneRequest(r)
+	r.Id = id
+	err := l.stream.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Request{Request: r}})
+	c.sendMu.Unlock()
+	if err != nil {
+		c.calls.drop(id)
+		return nil, fmt.Errorf("could not send to the hub: %w", err)
+	}
+	return c.calls.await(ctx, id, ch)
 }
 
 // SendPosition gives the hub a position that a radio reported to one of
@@ -426,6 +544,7 @@ func (c *Conn) Close() error {
 	})
 	legs := slices.Clone(c.legs)
 	c.mu.Unlock()
+	c.calls.fail(nil)
 	if first {
 		for _, l := range legs {
 			_ = l.stream.CloseSend()

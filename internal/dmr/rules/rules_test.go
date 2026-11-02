@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -41,7 +42,8 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	createOwner(t, database)
 
 	cleanup := func() {
 		sqlDB, _ := database.DB()
@@ -50,17 +52,25 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	return database, cleanup
 }
 
+const ownerID = 3191868
+
+func createOwner(tb testing.TB, database *gorm.DB) {
+	tb.Helper()
+	require.NoError(tb, database.Create(&models.User{ID: ownerID, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
+}
+
 func TestPeerShouldEgressNoEgress(t *testing.T) {
 	t.Parallel()
 	database, cleanup := makeTestDB(t)
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      1,
 		Egress:  false,
 		Ingress: false,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	packet := &models.Packet{
 		Src: 100,
@@ -78,11 +88,12 @@ func TestPeerShouldEgressWithMatchingRule(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      2,
 		Egress:  true,
 		Ingress: false,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	rule := models.PeerRule{
 		PeerID:       2,
@@ -90,7 +101,7 @@ func TestPeerShouldEgressWithMatchingRule(t *testing.T) {
 		SubjectIDMin: 100,
 		SubjectIDMax: 200,
 	}
-	database.Create(&rule)
+	require.NoError(t, database.Create(&rule).Error)
 
 	packet := &models.Packet{
 		Src: 150,
@@ -108,11 +119,12 @@ func TestPeerShouldEgressNoMatchingRule(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      3,
 		Egress:  true,
 		Ingress: false,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	rule := models.PeerRule{
 		PeerID:       3,
@@ -120,7 +132,7 @@ func TestPeerShouldEgressNoMatchingRule(t *testing.T) {
 		SubjectIDMin: 100,
 		SubjectIDMax: 200,
 	}
-	database.Create(&rule)
+	require.NoError(t, database.Create(&rule).Error)
 
 	packet := &models.Packet{
 		Src: 500,
@@ -138,11 +150,12 @@ func TestPeerShouldIngressNoIngress(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      4,
 		Egress:  false,
 		Ingress: false,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	packet := &models.Packet{
 		Src: 100,
@@ -160,11 +173,12 @@ func TestPeerShouldIngressWithMatchingRule(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      5,
 		Egress:  false,
 		Ingress: true,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	rule := models.PeerRule{
 		PeerID:       5,
@@ -172,7 +186,7 @@ func TestPeerShouldIngressWithMatchingRule(t *testing.T) {
 		SubjectIDMin: 100,
 		SubjectIDMax: 300,
 	}
-	database.Create(&rule)
+	require.NoError(t, database.Create(&rule).Error)
 
 	packet := &models.Packet{
 		Src: 500,
@@ -190,11 +204,12 @@ func TestPeerShouldIngressNoMatchingRule(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
+		OwnerID: ownerID,
 		ID:      6,
 		Egress:  false,
 		Ingress: true,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	rule := models.PeerRule{
 		PeerID:       6,
@@ -202,7 +217,7 @@ func TestPeerShouldIngressNoMatchingRule(t *testing.T) {
 		SubjectIDMin: 100,
 		SubjectIDMax: 200,
 	}
-	database.Create(&rule)
+	require.NoError(t, database.Create(&rule).Error)
 
 	packet := &models.Packet{
 		Src: 500,
@@ -220,10 +235,11 @@ func TestPeerShouldEgressBoundaryValues(t *testing.T) {
 	defer cleanup()
 
 	peer := models.Peer{
-		ID:     7,
-		Egress: true,
+		OwnerID: ownerID,
+		ID:      7,
+		Egress:  true,
 	}
-	database.Create(&peer)
+	require.NoError(t, database.Create(&peer).Error)
 
 	rule := models.PeerRule{
 		PeerID:       7,
@@ -231,7 +247,7 @@ func TestPeerShouldEgressBoundaryValues(t *testing.T) {
 		SubjectIDMin: 100,
 		SubjectIDMax: 200,
 	}
-	database.Create(&rule)
+	require.NoError(t, database.Create(&rule).Error)
 
 	packetLow := &models.Packet{Src: 100, Dst: 300}
 	resultLow, err := rules.PeerShouldEgress(database, peer, packetLow)
@@ -278,8 +294,8 @@ func FuzzPeerRuleEgressMatch(f *testing.F) {
 		database, cleanup := makeTestDB(t)
 		defer cleanup()
 
-		peer := models.Peer{ID: 1000, Egress: true}
-		database.Create(&peer)
+		peer := models.Peer{OwnerID: ownerID, ID: 1000, Egress: true}
+		require.NoError(t, database.Create(&peer).Error)
 
 		rule := models.PeerRule{
 			PeerID:       1000,
@@ -287,7 +303,7 @@ func FuzzPeerRuleEgressMatch(f *testing.F) {
 			SubjectIDMin: ruleMin,
 			SubjectIDMax: ruleMax,
 		}
-		database.Create(&rule)
+		require.NoError(t, database.Create(&rule).Error)
 
 		packet := &models.Packet{Src: src, Dst: 1}
 		result, err := rules.PeerShouldEgress(database, peer, packet)
@@ -323,8 +339,8 @@ func FuzzPeerRuleIngressMatch(f *testing.F) {
 		database, cleanup := makeTestDB(t)
 		defer cleanup()
 
-		peer := models.Peer{ID: 2000, Ingress: true}
-		database.Create(&peer)
+		peer := models.Peer{OwnerID: ownerID, ID: 2000, Ingress: true}
+		require.NoError(t, database.Create(&peer).Error)
 
 		rule := models.PeerRule{
 			PeerID:       2000,
@@ -332,7 +348,7 @@ func FuzzPeerRuleIngressMatch(f *testing.F) {
 			SubjectIDMin: ruleMin,
 			SubjectIDMax: ruleMax,
 		}
-		database.Create(&rule)
+		require.NoError(t, database.Create(&rule).Error)
 
 		packet := &models.Packet{Src: 1, Dst: dst}
 		result, err := rules.PeerShouldIngress(database, &peer, packet)
@@ -379,18 +395,19 @@ func benchmarkPeerShouldEgress(b *testing.B, numRules uint) {
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 	}()
+	createOwner(b, database)
 
-	peer := models.Peer{ID: 9000, Egress: true}
-	database.Create(&peer)
+	peer := models.Peer{OwnerID: ownerID, ID: 9000, Egress: true}
+	require.NoError(b, database.Create(&peer).Error)
 
 	for i := uint(0); i < numRules; i++ {
 		base := i * 1000
-		database.Create(&models.PeerRule{
+		require.NoError(b, database.Create(&models.PeerRule{
 			PeerID:       9000,
 			Direction:    false,
 			SubjectIDMin: base,
 			SubjectIDMax: base + 999,
-		})
+		}).Error)
 	}
 
 	// Packet Src matches the LAST rule, worst case for linear scan
@@ -430,18 +447,19 @@ func benchmarkPeerShouldIngress(b *testing.B, numRules uint) {
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 	}()
+	createOwner(b, database)
 
-	peer := models.Peer{ID: 9001, Ingress: true}
-	database.Create(&peer)
+	peer := models.Peer{OwnerID: ownerID, ID: 9001, Ingress: true}
+	require.NoError(b, database.Create(&peer).Error)
 
 	for i := uint(0); i < numRules; i++ {
 		base := i * 1000
-		database.Create(&models.PeerRule{
+		require.NoError(b, database.Create(&models.PeerRule{
 			PeerID:       9001,
 			Direction:    true,
 			SubjectIDMin: base,
 			SubjectIDMax: base + 999,
-		})
+		}).Error)
 	}
 
 	packet := &models.Packet{Src: 1, Dst: (numRules - 1) * 1000}

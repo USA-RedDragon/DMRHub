@@ -73,7 +73,7 @@ func TestTheInMemoryStoreTimesListsAndUpdatesOnItsClock(t *testing.T) {
 	store, err := kv.MakeKV(context.Background(), &config.Config{}, kv.WithClock(fake))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
-	ctx := t.Context()
+	ctx := bounded(t)
 
 	require.NoError(t, store.RPushTrim(ctx, "list", []byte("a"), 10, time.Minute))
 	require.NoError(t, store.Update(ctx, "updated", time.Minute, func([]byte) ([]byte, error) { return []byte("u"), nil }))

@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -256,7 +255,7 @@ func TestKVRPushTrimRefusesAKeepBelowOne(t *testing.T) {
 func TestKVUpdateSetsTheValueAndTTL(t *testing.T) {
 	t.Parallel()
 	forEachStore(t, func(t *testing.T, store kv.KV) {
-		ctx := context.Background()
+		ctx := bounded(t)
 		var seen [][]byte
 		for _, v := range []string{"a", "b"} {
 			require.NoError(t, store.Update(ctx, "up", time.Minute, func(old []byte) ([]byte, error) {
@@ -278,7 +277,7 @@ func TestKVUpdateSetsTheValueAndTTL(t *testing.T) {
 func TestKVUpdateWithAnErrorChangesNothing(t *testing.T) {
 	t.Parallel()
 	forEachStore(t, func(t *testing.T, store kv.KV) {
-		ctx := context.Background()
+		ctx := bounded(t)
 		require.NoError(t, store.Set(ctx, "up", []byte("a")))
 		boom := errors.New("boom")
 		err := store.Update(ctx, "up", time.Minute, func([]byte) ([]byte, error) { return []byte("b"), boom })
@@ -294,10 +293,9 @@ func TestKVUpdateWithAnErrorChangesNothing(t *testing.T) {
 func TestKVUpdateIsOneStep(t *testing.T) {
 	t.Parallel()
 	forEachStore(t, func(t *testing.T, store kv.KV) {
-		ctx := context.Background()
+		ctx := bounded(t)
 		const writers, each = 8, 25
 		var wg sync.WaitGroup
-		var failed atomic.Int64
 		for range writers {
 			wg.Go(func() {
 				for range each {
@@ -305,10 +303,6 @@ func TestKVUpdateIsOneStep(t *testing.T) {
 						n, _ := strconv.Atoi(string(old))
 						return strconv.AppendInt(nil, int64(n+1), 10), nil
 					})
-					if errors.Is(err, kv.ErrConflict) {
-						failed.Add(1)
-						continue
-					}
 					assert.NoError(t, err)
 				}
 			})
@@ -316,66 +310,121 @@ func TestKVUpdateIsOneStep(t *testing.T) {
 		wg.Wait()
 		got, err := store.Get(ctx, "count")
 		require.NoError(t, err)
-		assert.Equal(t, strconv.Itoa(writers*each-int(failed.Load())), string(got), "%d updates ran out of tries", failed.Load())
+		assert.Equal(t, strconv.Itoa(writers*each), string(got))
 	})
 }
 
-// TestKVUpdateRunsOutOfTriesOnRedis changes the key from within fn on
-// every try, so that each try finds the key changed. Update must give up
-// with ErrConflict and leave the other writer's value.
-func TestKVUpdateRunsOutOfTriesOnRedis(t *testing.T) {
+// TestKVUpdateOutlastsAKeyThatChangesOnManyTriesOnRedis changes the key
+// from within fn on its first 24 runs, more than any fixed count of tries
+// that a busy key can use up. Update must keep trying while its context
+// lasts and store the result of the run that found the key unchanged.
+func TestKVUpdateOutlastsAKeyThatChangesOnManyTriesOnRedis(t *testing.T) {
 	t.Parallel()
-	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	store := redisStore(t)
+	ctx := bounded(t)
+	const changes = 24
+	runs := 0
+	err := store.Update(ctx, "fight", time.Minute, func([]byte) ([]byte, error) {
+		runs++
+		if runs <= changes {
+			require.NoError(t, store.Set(ctx, "fight", []byte("theirs")))
+		}
+		return []byte("mine"), nil
+	})
 	require.NoError(t, err)
-	testutils.PostgresRedisBackend().Setup(t, &cfg)
-	store, err := kv.MakeKV(t.Context(), &cfg)
+	assert.Equal(t, changes+1, runs)
+	got, err := store.Get(ctx, "fight")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	ctx := context.Background()
-	tries := 0
-	err = store.Update(ctx, "fight", time.Minute, func([]byte) ([]byte, error) {
-		tries++
-		require.NoError(t, store.Set(ctx, "fight", []byte("theirs")))
+	assert.Equal(t, []byte("mine"), got)
+}
+
+// TestKVUpdateGivesUpWhenItsContextEndsOnRedis changes the key from within
+// fn on every run and ends the context of Update on the fifth run. Update
+// must return ErrConflict with the error of the context and leave the
+// other writer's value.
+func TestKVUpdateGivesUpWhenItsContextEndsOnRedis(t *testing.T) {
+	t.Parallel()
+	store := redisStore(t)
+	ctx, cancel := context.WithCancel(bounded(t))
+	defer cancel()
+	runs := 0
+	err := store.Update(ctx, "fight", time.Minute, func([]byte) ([]byte, error) {
+		runs++
+		require.NoError(t, store.Set(context.Background(), "fight", []byte("theirs")))
+		if runs == 5 {
+			cancel()
+		}
 		return []byte("mine"), nil
 	})
 	require.ErrorIs(t, err, kv.ErrConflict)
-	assert.Equal(t, kv.UpdateTries, tries)
-	got, err := store.Get(ctx, "fight")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 5, runs)
+	got, err := store.Get(context.Background(), "fight")
 	require.NoError(t, err)
 	assert.Equal(t, []byte("theirs"), got)
 }
 
-// TestKVUpdateOutlastsManyWritersOnRedis has 32 writers update one key on
-// Redis at once. Every update must get through within its tries.
-func TestKVUpdateOutlastsManyWritersOnRedis(t *testing.T) {
+// TestKVUpdateRefusesAContextWithoutADeadline checks that Update on each
+// store refuses a ctx that could let it try forever, and changes nothing.
+func TestKVUpdateRefusesAContextWithoutADeadline(t *testing.T) {
 	t.Parallel()
+	forEachStore(t, func(t *testing.T, store kv.KV) {
+		ctx := t.Context()
+		require.NoError(t, store.Set(ctx, "up", []byte("a")))
+		runs := 0
+		err := store.Update(ctx, "up", time.Minute, func([]byte) ([]byte, error) { runs++; return []byte("b"), nil })
+		require.ErrorIs(t, err, kv.ErrNoDeadline)
+		assert.Zero(t, runs)
+		got, err := store.Get(ctx, "up")
+		require.NoError(t, err)
+		assert.Equal(t, []byte("a"), got)
+	})
+}
+
+// bounded returns the context of t with the deadline of the test, the
+// bound that Update needs.
+func bounded(t *testing.T) context.Context {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		deadline = time.Now().AddDate(1, 0, 0)
+	}
+	ctx, cancel := context.WithDeadline(t.Context(), deadline)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func redisStore(t *testing.T) kv.KV {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	testutils.PostgresRedisBackend().Setup(t, &cfg)
 	store, err := kv.MakeKV(t.Context(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// TestKVUpdateOutlastsManyWritersOnRedis has 32 writers update one key on
+// Redis at once. Every update must get through.
+func TestKVUpdateOutlastsManyWritersOnRedis(t *testing.T) {
+	t.Parallel()
+	store := redisStore(t)
 	const writers, each = 32, 25
 	var wg sync.WaitGroup
-	var conflicts atomic.Int64
 	for range writers {
 		wg.Go(func() {
 			for range each {
-				err := store.Update(context.Background(), "many", time.Minute, func(old []byte) ([]byte, error) {
+				err := store.Update(bounded(t), "many", time.Minute, func(old []byte) ([]byte, error) {
 					n, _ := strconv.Atoi(string(old))
 					return strconv.AppendInt(nil, int64(n+1), 10), nil
 				})
-				if errors.Is(err, kv.ErrConflict) {
-					conflicts.Add(1)
-					continue
-				}
 				assert.NoError(t, err)
 			}
 		})
 	}
 	wg.Wait()
-	assert.Zero(t, conflicts.Load(), "updates ran out of tries")
 	got, err := store.Get(context.Background(), "many")
 	require.NoError(t, err)
-	assert.Equal(t, strconv.Itoa(writers*each-int(conflicts.Load())), string(got))
+	assert.Equal(t, strconv.Itoa(writers*each), string(got))
 }

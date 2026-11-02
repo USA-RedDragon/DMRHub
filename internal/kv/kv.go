@@ -36,12 +36,12 @@ var ErrNotFound = errors.New("not found")
 // ErrKeep is the error of an RPushTrim that would keep no element.
 var ErrKeep = errors.New("keep must be at least 1")
 
-// ErrConflict is the error of an Update that found the key changed by
-// another writer on each of its tries.
+// ErrConflict is the error of an Update whose context ended while it
+// waited to try again after another writer changed the key.
 var ErrConflict = errors.New("the key changed on every try")
 
-// updateTries is how many times Update tries on Redis before ErrConflict.
-const updateTries = 16
+// ErrNoDeadline is the error of an Update whose context has no deadline.
+var ErrNoDeadline = errors.New("update needs a context with a deadline")
 
 type KV interface {
 	Has(ctx context.Context, key string) (bool, error)
@@ -70,11 +70,13 @@ type KV interface {
 	// Update sets key to the value that fn returns for its current value,
 	// nil for a key that does not exist or has expired, and sets its TTL
 	// to ttl, in one step. fn must be pure: on Redis it runs again each
-	// time another writer changes the key first, up to 16 times, so the
-	// caller uses only the result of the last run before Update returns
-	// nil, the run that was stored. An error of fn stops Update, which
-	// returns it and changes nothing. After the last try Update returns
-	// ErrConflict and changes nothing.
+	// time another writer changes the key first, for as long as ctx lasts,
+	// so the caller uses only the result of the last run before Update
+	// returns nil, the run that was stored. A ctx without a deadline is
+	// ErrNoDeadline on every store, so that no caller tries forever. An
+	// error of fn stops Update, which returns it and changes nothing.
+	// When ctx ends while Update waits to try again, Update returns
+	// ErrConflict with the error of ctx and changes nothing.
 	Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error
 	Close() error
 }

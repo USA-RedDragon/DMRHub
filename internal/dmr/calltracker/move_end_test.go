@@ -231,7 +231,7 @@ func (f *stallKV) Update(ctx context.Context, key string, ttl time.Duration, fn 
 	if f.arm.CompareAndSwap(true, false) {
 		close(f.held)
 		<-f.release
-		return f.KV.Update(context.WithoutCancel(ctx), key, ttl, fn) //nolint:wrapcheck
+		return f.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
 	}
 	return f.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
 }

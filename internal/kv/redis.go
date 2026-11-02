@@ -219,10 +219,13 @@ type fnError struct{ err error }
 func (e fnError) Error() string { return e.err.Error() }
 
 func (kv *redisKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
-	for try := range updateTries {
+	if _, ok := ctx.Deadline(); !ok {
+		return fmt.Errorf("redis update %s: %w", key, ErrNoDeadline)
+	}
+	for try := 0; ; try++ {
 		if try > 0 {
 			if err := backoff(ctx, try); err != nil {
-				return fmt.Errorf("redis update %s: %w", key, err)
+				return fmt.Errorf("redis update %s: %w: %w", key, ErrConflict, err)
 			}
 		}
 		err := kv.client.Watch(ctx, func(tx *redis.Tx) error {
@@ -255,14 +258,13 @@ func (kv *redisKV) Update(ctx context.Context, key string, ttl time.Duration, fn
 			return fmt.Errorf("redis update %s: %w", key, err)
 		}
 	}
-	return fmt.Errorf("redis update %s: %w", key, ErrConflict)
 }
 
 // backoff waits a random time below a limit that doubles with each try,
 // from 1 ms up to 256 ms, so that writers that changed one key at once try
 // again at different times.
 func backoff(ctx context.Context, try int) error {
-	limit := min(time.Millisecond<<(try-1), 256*time.Millisecond)
+	limit := time.Millisecond << min(try-1, 8)
 	t := time.NewTimer(rand.N(limit) + 1) //nolint:gosec
 	defer t.Stop()
 	select {

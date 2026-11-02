@@ -321,7 +321,10 @@ func (kv inMemoryKV) DeleteIfEqual(_ context.Context, key string, value []byte) 
 	return deleted, nil
 }
 
-func (kv inMemoryKV) Update(_ context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+func (kv inMemoryKV) Update(ctx context.Context, key string, ttl time.Duration, fn func(old []byte) ([]byte, error)) error {
+	if _, ok := ctx.Deadline(); !ok {
+		return fmt.Errorf("memory update %s: %w", key, ErrNoDeadline)
+	}
 	start := time.Now()
 	defer func() {
 		kv.metrics.RecordKVOperation("update", kvStatusSuccess, time.Since(start).Seconds())

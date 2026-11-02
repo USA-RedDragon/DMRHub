@@ -8,6 +8,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 
 - [Create an account](guides/create-account.md)
 - [Manage your account](guides/account.md): password, radio IDs, apps and theme
+- [Lock your radio ID with an on-air code](guides/on-air-code.md) so that nobody else can transmit with it
 
 ## Hotspots and repeaters
 

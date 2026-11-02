@@ -95,6 +95,12 @@ In the **Logins** card of the **Accounts** tab:
 
 On the **Users** page, turn on the **Suspend?** box of the user. A suspended user cannot log in, and DMRHub refuses the API calls of their open sessions. Turn the box off to let the user in again. You cannot suspend yourself.
 
+## Turn off the on-air code of a user
+
+A user who lost the authenticator app of their [on-air code](../guides/on-air-code.md) cannot unlock their radio IDs or turn the code off. On the **Users** page, click **Turn off on-air code** in the row of the user, and confirm. The button shows only for users whose on-air code is on. The radio IDs of the user work on the air again at once, and the user can set up the code again in **Settings**.
+
+![The Users page with the Turn off on-air code button in the row of a user](../Screenshots/admin-users-on-air-code.png)
+
 ## Reset the password of a user
 
 1. On the **Users** page, click **Reset password** in the row of the user.

@@ -11,6 +11,7 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | Ephemeral TTL | The time with no call after which DMRHub deletes a talkgroup that it made by itself, such as `24h`, when ephemeral talkgroups are on. | `24h` | `dmr.routing.ephemeral-ttl` |
 | Who may transmit | The radios whose transmissions DMRHub takes from repeaters and hotspots: `any`, `radioid` or `members`. See [Who may transmit](#who-may-transmit). | `any` | `dmr.routing.transmit` |
 | Longest transmission | The longest voice call that DMRHub routes. DMRHub drops the rest of a longer call. On the Setup page, **Limit transmission length** turns it on at 180 seconds. `0s` is no limit. | `0s` | `dmr.routing.max-transmission` |
+| On-air unlock | How long a right [on-air code](../guides/on-air-code.md) unlocks a radio ID on the timeslot of the hotspot or repeater that it came through, such as `24h`. On the Setup page, in hours. | `24h` | `dmr.routing.on-air-unlock` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 | Local talkgroups | The talkgroups that users make local groups on. See [Local talkgroups](#local-talkgroups). | `8`, `9` | `dmr.routing.local-talkgroups` |
 

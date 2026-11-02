@@ -57,6 +57,10 @@ Some plugins of the network serve you only after you turn on their switch on Set
 
 The cards show only the plugins that an admin turned on, and the name of the plugin of each. When you turn on a switch, you also let that plugin send APRS messages from your callsign. Turn on only the switches of services that you use.
 
+## On-air code
+
+The **On-air code** card locks your radio IDs on the air until you unlock them with a code from an authenticator app, as a private call to 9 and the code. See [Lock your radio ID with an on-air code](on-air-code.md).
+
 ## Theme
 
 Use **Theme** at the bottom of each page to pick **Light**, **Dark** or **System**. Your browser remembers the choice.

@@ -23,6 +23,7 @@ This page lists the pages of the docs site in reading order, by section. The sit
   - [Look after your hotspot or repeater](guides/sysop-tools.md)
   - [Use DMRHub Radio](guides/browser-radio.md)
   - [Manage your account](guides/account.md)
+  - [Lock your radio ID with an on-air code](guides/on-air-code.md)
 - Admin guides
   - [Set up a server](setup.md)
   - [Install DMRHub](admin/install.md)

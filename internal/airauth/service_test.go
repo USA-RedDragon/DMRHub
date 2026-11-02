@@ -46,9 +46,9 @@ import (
 const (
 	owner    = uint(1000001)
 	other    = uint(1000002)
-	radio    = uint(3191868)
-	repeater = uint(319186801)
-	hotspot  = uint(311888)
+	radio    = uint(1000101)
+	repeater = uint(100101)
+	hotspot  = uint(100102)
 )
 
 type env struct {
@@ -73,7 +73,7 @@ func newEnv(t *testing.T) *env {
 	store, err := kv.MakeKV(context.Background(), &config.Config{}, kv.WithClock(fake))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
-	for _, u := range []models.User{{ID: owner, Callsign: "KP4DJT", Username: "kp4djt"}, {ID: other, Callsign: "W5DFW", Username: "w5dfw"}} {
+	for _, u := range []models.User{{ID: owner, Callsign: "N0CODE", Username: "n0code"}, {ID: other, Callsign: "N1CODE", Username: "n1code"}} {
 		require.NoError(t, db.Create(&u).Error)
 	}
 	require.NoError(t, db.Create(&models.UserRadioID{UserID: owner, RadioID: radio, VerifiedAt: fake.Now()}).Error)
@@ -89,7 +89,7 @@ func (e *env) service() *airauth.Service {
 
 func (e *env) enroll(t *testing.T) []byte {
 	t.Helper()
-	setup, err := e.svc.Begin(context.Background(), owner, "DMRHub", "kp4djt")
+	setup, err := e.svc.Begin(context.Background(), owner, "DMRHub", "n0code")
 	require.NoError(t, err)
 	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Key)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestSetupTurnsOnOnlyWithARightCodeAndKeepsTheSecretSealed(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	ctx := context.Background()
-	setup, err := e.svc.Begin(ctx, owner, "DMRHub", "kp4djt")
+	setup, err := e.svc.Begin(ctx, owner, "DMRHub", "n0code")
 	require.NoError(t, err)
 	assert.Contains(t, setup.URI, setup.Key)
 	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Key)
@@ -128,7 +128,7 @@ func TestSetupTurnsOnOnlyWithARightCodeAndKeepsTheSecretSealed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, secret, got)
 
-	_, err = e.svc.Begin(ctx, owner, "DMRHub", "kp4djt")
+	_, err = e.svc.Begin(ctx, owner, "DMRHub", "n0code")
 	require.ErrorIs(t, err, airauth.ErrOn, "a second setup must not replace the secret without turning it off")
 	require.ErrorIs(t, e.svc.Confirm(ctx, owner, e.code(secret, 0)), airauth.ErrNoSetup)
 }
@@ -136,7 +136,7 @@ func TestSetupTurnsOnOnlyWithARightCodeAndKeepsTheSecretSealed(t *testing.T) {
 func TestASetupEndsAfterItsTime(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	setup, err := e.svc.Begin(context.Background(), owner, "DMRHub", "kp4djt")
+	setup, err := e.svc.Begin(context.Background(), owner, "DMRHub", "n0code")
 	require.NoError(t, err)
 	secret, _ := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Key)
 	e.clock.Advance(airauth.SetupTTL + time.Second)
@@ -341,9 +341,9 @@ func TestATryThatCannotFinishIsLoggedAndNotCountedAsAWrongCode(t *testing.T) { /
 				assert.Equal(t, airauth.Unavailable, e.svc.Attempt(ctx, airauth.Try{Src: radio, Owner: owner, Code: code, Repeater: repeater}))
 			}
 			out := logs.String()
-			assert.Contains(t, out, `msg="On-air code try could not finish" src=3191868 error=`)
+			assert.Contains(t, out, `msg="On-air code try could not finish" src=1000101 error=`)
 			assert.Contains(t, out, "store down")
-			assert.Contains(t, out, `msg="On-air code try" src=3191868 result=error`)
+			assert.Contains(t, out, `msg="On-air code try" src=1000101 result=error`)
 			assert.NotContains(t, out, fmt.Sprintf("%06d", code))
 			assert.NotContains(t, out, fmt.Sprintf("9%06d", code))
 

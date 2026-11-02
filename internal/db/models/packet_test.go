@@ -329,7 +329,7 @@ func TestEqualDifferentPackets(t *testing.T) {
 
 func TestPacketStringLeavesOutAnOnAirCode(t *testing.T) {
 	t.Parallel()
-	p := models.Packet{Src: 3191868, Dst: 9482913, Repeater: 319186801, StreamID: 77}
+	p := models.Packet{Src: 1000101, Dst: 9482913, Repeater: 100101, StreamID: 77}
 	p.DMRData[0] = 0x5A
 	got := p.String()
 	for _, secret := range []string{"9482913", "482913", "90 "} {
@@ -337,7 +337,7 @@ func TestPacketStringLeavesOutAnOnAirCode(t *testing.T) {
 			t.Errorf("String() = %q holds %q", got, secret)
 		}
 	}
-	if !strings.Contains(got, "3191868") {
+	if !strings.Contains(got, "1000101") {
 		t.Errorf("String() = %q lost the source", got)
 	}
 	p.GroupCall = true

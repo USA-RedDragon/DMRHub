@@ -54,10 +54,10 @@ type onAirState struct {
 }
 
 const (
-	onAirUser     = uint(3191868)
-	onAirRadio    = uint(3191869)
-	onAirOther    = uint(3191870)
-	onAirRepeater = uint(319186801)
+	onAirUser     = uint(1000201)
+	onAirRadio    = uint(1000202)
+	onAirOther    = uint(1000203)
+	onAirRepeater = uint(100201)
 )
 
 // newOnAirEnv returns a router with two users, the session of the first,
@@ -69,11 +69,11 @@ func newOnAirEnv(t *testing.T) (*oauthEnv, testutils.CookieJar, time.Time) {
 	now := time.Now()
 	e.tdb.Hub().SetUnlockClock(clock.NewFake(now))
 	db := e.tdb.DB()
-	testutils.SeedAccount(t, db, onAirUser, "KP4DJT", "kp4djt")
-	testutils.SeedAccount(t, db, onAirOther, "W5DFW", "w5dfw")
+	testutils.SeedAccount(t, db, onAirUser, "N0CODE", "n0code")
+	testutils.SeedAccount(t, db, onAirOther, "N1CODE", "n1code")
 	require.NoError(t, db.Create(&models.UserRadioID{UserID: onAirUser, RadioID: onAirRadio, VerifiedAt: time.Now()}).Error)
-	require.NoError(t, db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: onAirRepeater, Callsign: "KP4DJT"}, OwnerID: onAirUser, Type: models.RepeaterTypeMMDVM}).Error)
-	return e, testutils.Login(t, e.router, "kp4djt"), now
+	require.NoError(t, db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: onAirRepeater, Callsign: "N0CODE"}, OwnerID: onAirUser, Type: models.RepeaterTypeMMDVM}).Error)
+	return e, testutils.Login(t, e.router, "n0code"), now
 }
 
 func readOnAir(t *testing.T, e *oauthEnv, jar testutils.CookieJar) onAirState {
@@ -108,7 +108,7 @@ func setUpOnAir(t *testing.T, e *oauthEnv, jar testutils.CookieJar) []byte {
 		}
 	}
 	assert.Greater(t, dark, b.Dx()*b.Dy()/5, "the modules must fill the image, not one corner of it")
-	assert.True(t, strings.HasPrefix(setup.URI, "otpauth://totp/DMRHub:KP4DJT?"), setup.URI)
+	assert.True(t, strings.HasPrefix(setup.URI, "otpauth://totp/DMRHub:N0CODE?"), setup.URI)
 	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Key)
 	require.NoError(t, err)
 	return secret
@@ -164,7 +164,7 @@ func TestTheOnAirCodeIsForTheSignedInUserOnly(t *testing.T) {
 		{http.MethodPost, "/api/v1/users/me/totp/setup"},
 		{http.MethodPost, "/api/v1/users/me/totp"},
 		{http.MethodDelete, "/api/v1/users/me/totp"},
-		{http.MethodDelete, "/api/v1/users/me/totp/unlocks/3191869/319186801/1"},
+		{http.MethodDelete, "/api/v1/users/me/totp/unlocks/1000202/100201/1"},
 	} {
 		assert.Equal(t, http.StatusForbidden, e.bearer(t, r.method, r.path, made.Secret).Code, "%s %s with a full access token", r.method, r.path)
 	}
@@ -179,7 +179,7 @@ func TestTheUnlocksAreListedAndLockedOneByOne(t *testing.T) {
 	svc := e.tdb.Hub().OnAirCodes()
 	ctx := context.Background()
 	require.Equal(t, airauth.Granted, svc.Attempt(ctx, airauth.Try{Src: onAirRadio, Owner: onAirUser, Code: airauth.Code(secret, airauth.Step(now)), Repeater: onAirRepeater, Slot2: true}))
-	require.Equal(t, airauth.Granted, svc.Attempt(ctx, airauth.Try{Src: onAirUser, Owner: onAirUser, Code: airauth.Code(secret, airauth.Step(now)+1), Repeater: 311888}))
+	require.Equal(t, airauth.Granted, svc.Attempt(ctx, airauth.Try{Src: onAirUser, Owner: onAirUser, Code: airauth.Code(secret, airauth.Step(now)+1), Repeater: 100202}))
 
 	state := readOnAir(t, e, jar)
 	require.Len(t, state.Unlocks, 2)
@@ -189,20 +189,20 @@ func TestTheUnlocksAreListedAndLockedOneByOne(t *testing.T) {
 	}
 	u := state.Unlocks[byRadio[onAirRadio]]
 	assert.Equal(t, onAirRepeater, u.Repeater)
-	assert.Equal(t, "KP4DJT", u.Callsign)
+	assert.Equal(t, "N0CODE", u.Callsign)
 	assert.Equal(t, uint8(2), u.Slot)
 
-	other := testutils.Login(t, e.router, "w5dfw")
-	w := testutils.Do(t, e.router, other, http.MethodDelete, "/api/v1/users/me/totp/unlocks/3191869/319186801/2", nil)
+	other := testutils.Login(t, e.router, "n1code")
+	w := testutils.Do(t, e.router, other, http.MethodDelete, "/api/v1/users/me/totp/unlocks/1000202/100201/2", nil)
 	assert.Equal(t, http.StatusNotFound, w.Code, "a user cannot lock the radio of another")
 	assert.Len(t, readOnAir(t, e, jar).Unlocks, 2)
 
-	w = testutils.Do(t, e.router, jar, http.MethodDelete, "/api/v1/users/me/totp/unlocks/3191869/319186801/2", nil)
+	w = testutils.Do(t, e.router, jar, http.MethodDelete, "/api/v1/users/me/totp/unlocks/1000202/100201/2", nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	state = readOnAir(t, e, jar)
 	require.Len(t, state.Unlocks, 1)
 	assert.Equal(t, onAirUser, state.Unlocks[0].Radio)
-	assert.Equal(t, http.StatusBadRequest, testutils.Do(t, e.router, jar, http.MethodDelete, "/api/v1/users/me/totp/unlocks/3191869/319186801/3", nil).Code)
+	assert.Equal(t, http.StatusBadRequest, testutils.Do(t, e.router, jar, http.MethodDelete, "/api/v1/users/me/totp/unlocks/1000202/100201/3", nil).Code)
 }
 
 func TestTurningTheOnAirCodeOffNeedsACodeOrAnAdmin(t *testing.T) {
@@ -219,10 +219,10 @@ func TestTurningTheOnAirCodeOffNeedsACodeOrAnAdmin(t *testing.T) {
 
 	secret = setUpOnAir(t, e, jar)
 	require.Equal(t, http.StatusOK, testutils.Do(t, e.router, jar, http.MethodPost, "/api/v1/users/me/totp", map[string]any{"code": stepCode(secret, now, 1)}).Code)
-	other := testutils.Login(t, e.router, "w5dfw")
-	assert.Equal(t, http.StatusForbidden, testutils.Do(t, e.router, other, http.MethodDelete, "/api/v1/users/3191868/totp", nil).Code)
+	other := testutils.Login(t, e.router, "n1code")
+	assert.Equal(t, http.StatusForbidden, testutils.Do(t, e.router, other, http.MethodDelete, "/api/v1/users/1000201/totp", nil).Code)
 	assert.True(t, readOnAir(t, e, jar).On)
-	w = testutils.Do(t, e.router, e.jar, http.MethodDelete, "/api/v1/users/3191868/totp", nil)
+	w = testutils.Do(t, e.router, e.jar, http.MethodDelete, "/api/v1/users/1000201/totp", nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.False(t, readOnAir(t, e, jar).On, "an admin turns it off for a user who lost their app")
 }

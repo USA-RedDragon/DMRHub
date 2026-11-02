@@ -119,7 +119,7 @@ func TestLogTargetHidesOnlyTheCodesOfPrivateCalls(t *testing.T) {
 	if got := dmrconst.LogTarget(true, 9482913); got != uint(9482913) {
 		t.Errorf("LogTarget of a talkgroup = %v", got)
 	}
-	if got := dmrconst.LogTarget(false, 3191868); got != uint(3191868) {
+	if got := dmrconst.LogTarget(false, 1000101); got != uint(1000101) {
 		t.Errorf("LogTarget of a private call to a radio = %v", got)
 	}
 }

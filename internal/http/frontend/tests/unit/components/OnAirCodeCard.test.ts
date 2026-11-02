@@ -32,10 +32,10 @@ import OnAirCodeCard from '@/components/users/OnAirCodeCard.vue';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock; delete: Mock };
 
-const unlock = { radio: 3191868, repeater: 319186801, callsign: 'KP4DJT', slot: 2, until: '2026-11-02T09:41:00Z' };
+const unlock = { radio: 1000101, repeater: 100101, callsign: 'N0CODE', slot: 2, until: '2026-11-02T09:41:00Z' };
 const off = { on: false, unlock_seconds: 86400, unlocks: [] };
 const on = { on: true, unlock_seconds: 86400, unlocks: [unlock] };
-const setup = { key: 'JBSWY3DPEHPK3PXPKQ4DJTRA', uri: 'otpauth://totp/DMRHub:KP4DJT?secret=JBSWY3DPEHPK3PXPKQ4DJTRA', qr: 'data:image/png;base64,AAAA' };
+const setup = { key: 'JBSWY3DPEHPK3PXPKQ4DJTRA', uri: 'otpauth://totp/DMRHub:N0CODE?secret=JBSWY3DPEHPK3PXPKQ4DJTRA', qr: 'data:image/png;base64,AAAA' };
 
 describe('OnAirCodeCard', () => {
   beforeEach(() => {
@@ -96,12 +96,12 @@ describe('OnAirCodeCard', () => {
     mockAPI.delete.mockResolvedValue({ data: { ...on, unlocks: [] } });
     const wrapper = mount(OnAirCodeCard);
     await flushPromises();
-    const row = wrapper.find('[data-test="unlock-3191868-319186801-2"]');
-    expect(row.text()).toContain('3191868');
-    expect(row.text()).toContain('KP4DJT 319186801, TS2');
+    const row = wrapper.find('[data-test="unlock-1000101-100101-2"]');
+    expect(row.text()).toContain('1000101');
+    expect(row.text()).toContain('N0CODE 100101, TS2');
     await row.find('[data-test="lock"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.delete).toHaveBeenCalledWith('/users/me/totp/unlocks/3191868/319186801/2');
+    expect(mockAPI.delete).toHaveBeenCalledWith('/users/me/totp/unlocks/1000101/100101/2');
     expect(wrapper.find('[data-test="on-air-none"]').text()).toBe('No radio is unlocked now.');
   });
 

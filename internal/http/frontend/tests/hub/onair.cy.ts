@@ -49,9 +49,9 @@ describe('On-air code on two replicas', () => {
           expect(wizard, 'the first admin page must open').to.eq(true);
           cy.visit(hub);
           cy.location('pathname', { timeout: 20000 }).should('eq', '/setup/user');
-          cy.get('#dmr_id').type('3191868');
+          cy.get('#dmr_id').type('1000201');
           cy.get('#username').type('admin');
-          cy.get('#callsign').type('KI5VMF');
+          cy.get('#callsign').type('N2CODE');
           cy.get('#password').type(password);
           cy.get('#confirmPassword').type(password);
           cy.contains('button', 'Create User').click();

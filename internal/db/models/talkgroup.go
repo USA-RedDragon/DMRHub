@@ -76,9 +76,18 @@ func FindTalkgroupsByIDs(db *gorm.DB, ids []uint) ([]Talkgroup, error) {
 	return talkgroups, err
 }
 
+// DeleteTalkgroup deletes the talkgroup id, its calls and its routing
+// rules, takes it off the repeaters, and returns the repeaters that had it.
+// It locks the talkgroup row first, so that a row that refers to it and
+// that another connection inserts meanwhile waits for the delete and does
+// not stop it.
 func DeleteTalkgroup(db *gorm.DB, id uint) ([]uint, error) {
 	var affectedRepeaterIDs []uint
 	err := db.Transaction(func(tx *gorm.DB) error {
+		var locked []Talkgroup
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Select("id").Where("id = ?", id).Find(&locked).Error; err != nil {
+			return fmt.Errorf("lock the talkgroup: %w", err)
+		}
 		// Delete calls where IsToTalkgroup is true and IsToTalkgroupID is id
 		tx.Unscoped().Where("is_to_talkgroup = ? AND to_talkgroup_id = ?", true, id).Delete(&Call{})
 

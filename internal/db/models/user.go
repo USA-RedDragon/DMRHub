@@ -218,10 +218,17 @@ func CountUserUnapproved(db *gorm.DB) (int, error) {
 // their peers with their rules, and the slots open to them close to them.
 // Their co-sysop roles and invites, sessions, app grants, password reset
 // links and tracked positions end. Their other calls, nets and scheduled nets stay without the user.
+// It locks the user and their repeaters first, so that a row that refers
+// to them and that another connection inserts meanwhile waits for the
+// delete and does not stop it.
 func DeleteUser(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
+		var users []User
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Select("id").Where("id = ?", id).Find(&users).Error; err != nil {
+			return fmt.Errorf("could not lock the user: %w", err)
+		}
 		var repeaters []Repeater
-		if err := tx.Unscoped().Where("owner_id = ?", id).Find(&repeaters).Error; err != nil {
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Where("owner_id = ?", id).Find(&repeaters).Error; err != nil {
 			return fmt.Errorf("could not list the repeaters: %w", err)
 		}
 		for i := range repeaters {

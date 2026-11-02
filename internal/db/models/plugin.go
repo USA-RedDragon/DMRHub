@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"gorm.io/gorm"
 )
 
@@ -137,6 +138,22 @@ func (e *PluginIDError) Unwrap() error {
 	return ErrPluginRange
 }
 
+// PluginIDReservedError is returned, with ErrPluginRange, for a range
+// with an ID that the hub keeps for itself, such as the on-air codes.
+type PluginIDReservedError struct {
+	// ID is the first of the IDs that the hub keeps.
+	ID uint
+}
+
+func (e *PluginIDReservedError) Error() string {
+	return fmt.Sprintf("%v: the hub keeps %d", ErrPluginRange, e.ID)
+}
+
+// Unwrap returns ErrPluginRange.
+func (e *PluginIDReservedError) Unwrap() error {
+	return ErrPluginRange
+}
+
 // PluginIDTakenError is returned, with ErrPluginRange, for an ID that
 // another plugin that is on has.
 type PluginIDTakenError struct {
@@ -173,6 +190,8 @@ func checkPluginRanges(tx *gorm.DB, self uint, ranges []PluginRange, on bool) er
 			return &PluginIDError{ID: r.Last}
 		case r.First > r.Last:
 			return &PluginIDError{ID: r.First}
+		case r.First <= dmrconst.UnlockLast && r.Last >= dmrconst.UnlockFirst:
+			return &PluginIDReservedError{ID: max(r.First, dmrconst.UnlockFirst)}
 		}
 		if i > 0 && r.First <= sorted[i-1].Last {
 			return fmt.Errorf("%w: %d to %d overlaps %d to %d", ErrPluginRange, r.First, r.Last, sorted[i-1].First, sorted[i-1].Last)

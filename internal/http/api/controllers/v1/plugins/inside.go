@@ -163,7 +163,10 @@ func startProblem(err error, l wasm.Limits) uploadProblem {
 func rangeProblem(err error, asked bool) string {
 	var bad *models.PluginIDError
 	var taken *models.PluginIDTakenError
+	var reserved *models.PluginIDReservedError
 	switch {
+	case errors.As(err, &reserved):
+		return fmt.Sprintf("%d is kept for the on-air codes. DMRHub keeps 9000000 to 9999999 for them.", reserved.ID)
 	case errors.As(err, &taken):
 		return fmt.Sprintf("%d is already used by %s. Change the IDs, or turn %s off first.", taken.ID, taken.By, taken.By)
 	case errors.As(err, &bad) && asked:

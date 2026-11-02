@@ -80,10 +80,16 @@ func TestPluginRangesAreValidAndNeverOverlap(t *testing.T) {
 		"overlap itself": {rng(1, 10), rng(10, 20)},
 		"overlap other":  {rng(310005, 310020)},
 		"inside other":   {rng(9998, 9998)},
+		"on-air codes":   {rng(8999990, 9000000)},
 	} {
 		_, _, err := models.CreatePlugin(database, "B-"+name, ranges, time.Now())
 		assert.ErrorIs(t, err, models.ErrPluginRange, name)
 	}
+	_, _, err = models.CreatePlugin(database, "codes", []models.PluginRange{rng(9482913, 9482913)}, time.Now())
+	var reserved *models.PluginIDReservedError
+	require.ErrorAs(t, err, &reserved)
+	assert.Equal(t, uint(9482913), reserved.ID)
+	assert.NoError(t, models.CheckPluginRanges(database, 0, []models.PluginRange{rng(8999990, 8999999), rng(10000000, 10000009)}, true), "the IDs next to the on-air codes are free")
 	many := make([]models.PluginRange, models.MaxPluginRanges+1)
 	for i := range many {
 		many[i] = rng(uint(1000+i*10), uint(1000+i*10))

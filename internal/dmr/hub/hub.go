@@ -588,10 +588,16 @@ func (h *Hub) claimPeerOwnership(ctx context.Context, repeaterID uint, since tim
 // still here, such as at a ping, since the record expires after
 // peerOwnerTTL. It writes the record again only when it expired, and
 // never over the claim of another replica, which took the repeater over.
+// A renewal is worth its wait while the record it renews lasts, so it
+// waits for the KV store at most peerOwnerTTL. Each call to the store has
+// its own bound, so only a key that keeps changing can make it wait that
+// long.
 func (h *Hub) RenewOwnership(ctx context.Context, repeaterID uint) {
 	if h.instanceID == "" {
 		return
 	}
+	ctx, cancel := clock.WithTimeout(ctx, h.clock, peerOwnerTTL)
+	defer cancel()
 	mine := []byte(h.instanceID)
 	err := h.kv.Update(ctx, ownerKey(repeaterID), peerOwnerTTL, func(old []byte) ([]byte, error) {
 		if old != nil && !bytes.Equal(old, mine) {

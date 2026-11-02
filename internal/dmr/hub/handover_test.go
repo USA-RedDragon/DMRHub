@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/DMRHub/internal/consts"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -51,6 +52,13 @@ type replica struct {
 // each registered as a replica.
 func replicas(t *testing.T, n int) ([]replica, *gorm.DB, kv.KV) {
 	t.Helper()
+	return replicasOn(t, n, nil)
+}
+
+// replicasOn is replicas whose hubs use the KV store through wrap, when
+// wrap is not nil.
+func replicasOn(t *testing.T, n int, wrap func(kv.KV) kv.KV) ([]replica, *gorm.DB, kv.KV) {
+	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(&cfg)
@@ -69,7 +77,11 @@ func replicas(t *testing.T, n int) ([]replica, *gorm.DB, kv.KV) {
 	out := make([]replica, n)
 	for i := range out {
 		id := fmt.Sprintf("replica-%d", i+1)
-		h := hub.NewHub(database, store, ps, nil)
+		hubStore := store
+		if wrap != nil {
+			hubStore = wrap(store)
+		}
+		h := hub.NewHub(database, hubStore, ps, nil)
 		require.NoError(t, h.SetInstanceID(id))
 		r := servers.NewInstanceRegistry(context.Background(), store, id)
 		t.Cleanup(func() {
@@ -195,6 +207,41 @@ func TestRenewOwnershipWritesTheClaimAgain(t *testing.T) {
 		require.False(t, r[1].hub.OwnerLeaving(ctx, 100001), "a claim that expired names no owner")
 		r[0].hub.RenewOwnership(ctx, 100001)
 		assert.True(t, r[1].hub.OwnerLeaving(ctx, 100001), "a renewed claim names its owner")
+	})
+}
+
+// heldUpdateKV holds each Update until release is closed, and then fails
+// it when its context ended meanwhile, as a call to Redis past its
+// deadline does.
+type heldUpdateKV struct {
+	kv.KV
+	release chan struct{}
+}
+
+func (h heldUpdateKV) Update(ctx context.Context, key string, ttl time.Duration, fn func([]byte) ([]byte, error)) error {
+	<-h.release
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("held update %s: %w", key, err)
+	}
+	return h.KV.Update(ctx, key, ttl, fn) //nolint:wrapcheck
+}
+
+// TestARenewalOutlastsAStoreAsSlowAsItsCallBound has the KV store answer
+// the renewal of a repeater after consts.RedisCallTimeout, the bound of one
+// call to Redis, and checks that the renewal still writes the claim.
+func TestARenewalOutlastsAStoreAsSlowAsItsCallBound(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		r, _, store := replicasOn(t, 1, func(s kv.KV) kv.KV { return heldUpdateKV{KV: s, release: release} })
+		go func() {
+			time.Sleep(consts.RedisCallTimeout)
+			close(release)
+		}()
+		r[0].hub.RenewOwnership(context.Background(), 100001)
+		owner, err := store.Get(context.Background(), "dmrhub:peer_owner:100001")
+		require.NoError(t, err, "the renewal gave up before the store answered")
+		assert.Equal(t, "replica-1", string(owner))
 	})
 }
 

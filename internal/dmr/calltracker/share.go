@@ -899,12 +899,13 @@ func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voice
 		}
 		fresh := slices.DeleteFunc(slices.Clone(parts), func(d voiceDelta) bool { return slices.Contains(stored, d.ID) })
 		out = mergeVoice(call, &base, base.StartTime, fresh)
+		keepRefs(&out, &base)
 		if len(fresh) == 0 {
 			return nil
 		}
 		changed = true
 		if err := tx.Model(&models.Call{}).Where("id = ?", out.ID).
-			Select("*").Omit("id", "created_at", "deleted_at", clause.Associations).Updates(&out).Error; err != nil {
+			Select("*").Omit(endOmits()...).Updates(&out).Error; err != nil {
 			return fmt.Errorf("saving the call: %w", err)
 		}
 		added := make([]models.CallPart, 0, len(fresh))
@@ -926,6 +927,15 @@ func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voice
 		return out, false, false, late.Load()
 	}
 	return out, changed, true, false
+}
+
+func endOmits() []string {
+	return []string{"id", "created_at", "deleted_at", clause.Associations, "user_id", "repeater_id", "to_talkgroup_id", "to_user_id", "to_repeater_id"}
+}
+
+func keepRefs(out, stored *models.Call) {
+	out.UserID, out.RepeaterID = stored.UserID, stored.RepeaterID
+	out.ToTalkgroupID, out.ToUserID, out.ToRepeaterID = stored.ToTalkgroupID, stored.ToUserID, stored.ToRepeaterID
 }
 
 func (s *shard) adoptMerged(r *row, out, tmpl *models.Call) {

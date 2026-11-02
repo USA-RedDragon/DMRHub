@@ -1425,7 +1425,7 @@ func (s *shard) finish(r *row, at time.Time) {
 			call.Response = resp
 		}
 	}
-	err := s.t.db.Omit(clause.Associations).Save(call).Error
+	err := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).Select("*").Omit(endOmits()...).Updates(call).Error
 	s.t.owned.Delete(call.ID)
 	if r.what != "" {
 		s.t.homes.Store(call.ID, homeRow{shard: s.idx, until: s.t.clock.Now().Add(responseWindow + matchLag)})

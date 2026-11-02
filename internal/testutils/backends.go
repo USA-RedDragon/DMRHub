@@ -141,13 +141,16 @@ func warm() {
 
 func closeShared(ctx context.Context) error {
 	shared.mu.Lock()
-	all := shared.all
-	shared.all = nil
+	all, leaves := shared.all, shared.leaves
+	shared.all, shared.leaves = nil, nil
 	shared.mu.Unlock()
-	errs := make([]error, len(all))
+	errs := make([]error, len(all)+len(leaves))
 	var wg sync.WaitGroup
 	for i, r := range all {
 		wg.Go(func() { errs[i] = r.Close(ctx) })
+	}
+	for i, leave := range leaves {
+		wg.Go(func() { errs[len(all)+i] = leave(ctx) })
 	}
 	wg.Wait()
 	return errors.Join(errs...)
@@ -172,8 +175,9 @@ var shared struct { //nolint:gochecknoglobals // the containers that the tests o
 
 	seq atomic.Int64
 
-	mu  sync.Mutex
-	all []dockertest.ClosableResource
+	mu     sync.Mutex
+	all    []dockertest.ClosableResource
+	leaves []func(context.Context) error
 
 	redis spares
 }
@@ -351,33 +355,14 @@ func (f *mysqlFamily) start(ctx context.Context, pool dockertest.Pool, fast bool
 		return 0, err
 	}
 	port, _ := strconv.Atoi(res.GetPort("3306/tcp"))
-	if err := pool.Retry(ctx, 0, func() error {
-		db, err := gorm.Open(mysql.Open(mysqlDSN(port, "testdb")), &gorm.Config{Logger: logger.Discard})
-		if err != nil {
-			return fmt.Errorf("opening %s probe: %w", f.name, err)
-		}
-		sqlDB, err := db.DB()
-		if err != nil {
-			return fmt.Errorf("opening %s probe: %w", f.name, err)
-		}
-		pctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		pingErr := sqlDB.PingContext(pctx)
-		if closeErr := sqlDB.Close(); closeErr != nil {
-			return fmt.Errorf("closing %s probe: %w", f.name, closeErr)
-		}
-		if pingErr != nil {
-			return fmt.Errorf("pinging %s: %w", f.name, pingErr)
-		}
-		return nil
-	}); err != nil {
+	if err := pool.Retry(ctx, 0, func() error { return pingMySQL(ctx, f.name, port) }); err != nil {
 		return 0, fmt.Errorf("%s not ready: %w", f.name, err)
 	}
 	return port, nil
 }
 
 func newDatabaseName() string {
-	return fmt.Sprintf("t%d", shared.seq.Add(1))
+	return fmt.Sprintf("t%d_%d", os.Getpid(), shared.seq.Add(1))
 }
 
 func ensurePostgres() error {
@@ -576,12 +561,69 @@ func clearRedis(port int) error {
 
 func (f *mysqlFamily) ensure(pool dockertest.Pool) error {
 	f.once.Do(func() {
-		if f.port, f.err = f.start(context.Background(), pool, true); f.err != nil {
+		if f.port, f.err = f.joinRun(pool); f.err != nil {
 			return
 		}
 		f.admin, f.err = sql.Open("mysql", mysqlDSN(f.port, ""))
 	})
 	return f.err
+}
+
+// joinRun joins the server of f that the test processes of the run share,
+// and waits until it answers.
+func (f *mysqlFamily) joinRun(pool dockertest.Pool) (int, error) {
+	ctx := context.Background()
+	cli, err := newDockerClient()
+	if err != nil {
+		return 0, err
+	}
+	id, leave, err := joinShared(ctx, cli, runSharedSpec{
+		kind: f.name, image: f.image, tag: f.tag, port: "3306/tcp", cmd: f.fast,
+		env: []string{f.envPrefix + "_ROOT_PASSWORD=test", f.envPrefix + "_DATABASE=testdb", f.envPrefix + "_INITDB_SKIP_TZINFO=1"},
+	})
+	if err != nil {
+		_ = cli.Close()
+		return 0, err
+	}
+	shared.mu.Lock()
+	shared.leaves = append(shared.leaves, func(ctx context.Context) error {
+		defer func() { _ = cli.Close() }()
+		return leave(ctx)
+	})
+	shared.mu.Unlock()
+	var port int
+	if err := pool.Retry(ctx, 0, func() error {
+		if port == 0 {
+			if port, err = sharedPort(ctx, cli, id, "3306/tcp"); err != nil || port == 0 {
+				return fmt.Errorf("the port of %s: %w", f.name, err)
+			}
+		}
+		return pingMySQL(ctx, f.name, port)
+	}); err != nil {
+		return 0, fmt.Errorf("%s not ready: %w", f.name, err)
+	}
+	return port, nil
+}
+
+func pingMySQL(ctx context.Context, name string, port int) error {
+	db, err := gorm.Open(mysql.Open(mysqlDSN(port, "testdb")), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		return fmt.Errorf("opening %s probe: %w", name, err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("opening %s probe: %w", name, err)
+	}
+	pctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	pingErr := sqlDB.PingContext(pctx)
+	if closeErr := sqlDB.Close(); closeErr != nil {
+		return fmt.Errorf("closing %s probe: %w", name, closeErr)
+	}
+	if pingErr != nil {
+		return fmt.Errorf("pinging %s: %w", name, pingErr)
+	}
+	return nil
 }
 
 // shared gives t a database of its own on the one server of the family

@@ -83,3 +83,37 @@ type RadioIDList struct {
 type RadioIDPost struct {
 	ID uint `json:"id" binding:"required"`
 }
+
+// PluginSwitch is a switch that a plugin declares, as the Settings page
+// shows it to the logged-in user. Details holds the user's values.
+type PluginSwitch struct {
+	PluginID    uint                 `json:"plugin_id"`
+	Plugin      string               `json:"plugin"`
+	Key         string               `json:"key"`
+	Title       string               `json:"title"`
+	Description string               `json:"description"`
+	Notice      string               `json:"notice"`
+	Details     []PluginSwitchDetail `json:"details"`
+	Choice      *PluginSwitchChoice  `json:"choice"`
+	On          bool                 `json:"on"`
+}
+
+// PluginSwitchDetail is a line of the card of a switch.
+type PluginSwitchDetail struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// PluginSwitchChoice is the choice of a switch and the user's option.
+type PluginSwitchChoice struct {
+	Label   string   `json:"label"`
+	Options []string `json:"options"`
+	Value   string   `json:"value"`
+}
+
+// PluginSwitchPut turns a switch of a plugin on or off, with an option of
+// its choice, or the preset when empty.
+type PluginSwitchPut struct {
+	On     *bool  `json:"on" binding:"required"`
+	Choice string `json:"choice"`
+}

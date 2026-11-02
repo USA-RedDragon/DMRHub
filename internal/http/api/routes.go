@@ -196,6 +196,8 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.POST("/me/tokens/:id/rotate", middleware.RequireLogin(), userSuspension, v1OAuthControllers.POSTRotatePersonalToken)
 	v1Users.PUT("/me/settings/store-forward", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserStoreForward)
 	v1Users.GET("/me/held-texts", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyHeldTexts)
+	v1Users.GET("/me/plugin-switches", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyPluginSwitches)
+	v1Users.PUT("/me/plugin-switches/:plugin/:key", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTMyPluginSwitch)
 	v1Users.GET("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyRadioIDs)
 	v1Users.POST("/me/radio-ids", middleware.RequireLogin(), userSuspension, v1UsersControllers.POSTMyRadioID)
 	v1Users.DELETE("/me/radio-ids/:radio_id", middleware.RequireLogin(), userSuspension, v1UsersControllers.DELETEMyRadioID)

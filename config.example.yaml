@@ -295,6 +295,8 @@ dmr:
     transmit: "any"
     # Longest voice transmission that DMRHub routes, such as 3m. DMRHub drops the rest of a longer one. 0 is no limit
     max-transmission: "0s"
+    # How long a right on-air code unlocks a radio ID on the repeater or hotspot timeslot that it came through, such as 24h. Users who turn the on-air code on in Settings unlock their radio IDs with a private call to 9 and the 6 digits of the code
+    on-air-unlock: "24h"
     # What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)
     contention: "mix"
     # Talkgroup numbers that users can make local groups on. A group call to one of them goes only to the other repeaters of the local group of the repeater on that number and timeslot, and never to a network talkgroup or an OpenBridge peer. On a repeater in no such group, the call goes nowhere

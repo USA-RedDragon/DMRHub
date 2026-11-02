@@ -661,6 +661,11 @@ var ErrInvalidMaxTransmission = errors.New("the longest transmission must be 0 f
 
 const fieldMaxTransmission = "dmr.routing.max-transmission"
 
+// ErrInvalidOnAirUnlock indicates a negative on-air unlock length.
+var ErrInvalidOnAirUnlock = errors.New("the on-air unlock must be a positive time, such as 24h")
+
+const fieldOnAirUnlock = "dmr.routing.on-air-unlock"
+
 // ErrInvalidEphemeralTTL indicates an ephemeral talkgroup TTL that is not positive.
 var ErrInvalidEphemeralTTL = errors.New("the ephemeral TTL must be a positive time, such as 24h")
 
@@ -703,6 +708,9 @@ func (r Routing) ValidateWithFields() (errs []ValidationError) {
 	}
 	if r.MaxTransmission < 0 {
 		errs = append(errs, ValidationError{Field: fieldMaxTransmission, Err: ErrInvalidMaxTransmission})
+	}
+	if r.OnAirUnlock < 0 {
+		errs = append(errs, ValidationError{Field: fieldOnAirUnlock, Err: ErrInvalidOnAirUnlock})
 	}
 	if r.Transmit != "" && r.Transmit != TransmitAny && r.Transmit != TransmitRadioID && r.Transmit != TransmitMembers {
 		errs = append(errs, ValidationError{Field: "dmr.routing.transmit", Err: ErrInvalidTransmit})

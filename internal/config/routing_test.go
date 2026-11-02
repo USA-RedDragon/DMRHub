@@ -35,7 +35,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}}
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}, OnAirUnlock: 24 * time.Hour}
 	if !reflect.DeepEqual(cfg.DMR.Routing, want) {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
@@ -61,6 +61,7 @@ func TestRoutingValidate(t *testing.T) {
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{4000}}, config.ErrInvalidLocalTalkgroup},
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{1 << 24}}, config.ErrInvalidLocalTalkgroup},
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{8, 9, 8}}, config.ErrInvalidLocalTalkgroup},
+		{"dmr.routing.on-air-unlock", config.Routing{OnAirUnlock: -time.Hour}, config.ErrInvalidOnAirUnlock},
 	} {
 		cfg := makeValidConfig()
 		cfg.DMR.Routing = c.r

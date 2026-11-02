@@ -329,7 +329,8 @@ func (c *IPSCClient) Downs() int {
 	return int(c.downs.Load())
 }
 
-// Heard returns the number of datagrams that the client got.
+// Heard returns the number of datagrams that the client got from its
+// master. The client ignores a datagram from any other address.
 func (c *IPSCClient) Heard() int {
 	return int(c.heard.Load())
 }
@@ -444,6 +445,9 @@ func (c *IPSCClient) rx() {
 		c.mu.Unlock()
 		if mark {
 			close(read)
+			continue
+		}
+		if !from.IP.Equal(c.master.IP) || from.Port != c.master.Port {
 			continue
 		}
 		c.heard.Add(1)

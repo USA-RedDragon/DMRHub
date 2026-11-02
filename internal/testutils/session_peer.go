@@ -31,9 +31,17 @@ import (
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 )
 
-// ErrSessionPeerTimeout is the error of SessionPeer.WaitReady when the
-// login does not complete in time.
-var ErrSessionPeerTimeout = errors.New("session peer login timed out")
+var (
+	// ErrSessionPeerTimeout is the error of SessionPeer.WaitReady when the
+	// login does not complete in time.
+	ErrSessionPeerTimeout = errors.New("session peer login timed out")
+	// ErrSessionPeerNotConnected is the error of SessionPeer.Settle before
+	// Connect.
+	ErrSessionPeerNotConnected = errors.New("session peer not connected")
+	// ErrSessionPeerNotSettled is the error of SessionPeer.Settle when the
+	// peer closes before it read the datagrams that came before.
+	ErrSessionPeerNotSettled = errors.New("session peer closed before it read the datagrams that came before")
+)
 
 // Heard is a packet that a test client got, and when it came.
 type Heard struct {
@@ -43,7 +51,8 @@ type Heard struct {
 
 // SessionPeer is a repeater that logs in with the dmrgo session Peer: in
 // the MMDVM network protocol as DMRGateway does, with RPTO options when it
-// has them, or in HBRP.
+// has them, or in HBRP. It takes datagrams only from the address of its
+// master and ignores the rest.
 type SessionPeer struct {
 	ID      uint32
 	Dialect dmrd.Dialect
@@ -62,6 +71,7 @@ type SessionPeer struct {
 	paused   time.Duration
 	rxAt     time.Time
 	heard    []Heard
+	marks    map[string]chan struct{}
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -165,9 +175,9 @@ func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, opti
 
 // Connect starts the login with the master at addr.
 func (p *SessionPeer) Connect(addr string) error {
-	target, err := net.ResolveUDPAddr("udp", addr)
+	target, err := resolveMaster(addr)
 	if err != nil {
-		return fmt.Errorf("resolve addr: %w", err)
+		return err
 	}
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -183,9 +193,9 @@ func (p *SessionPeer) Connect(addr string) error {
 // Retarget sends everything from now on to addr from the same socket, as
 // when a load balancer moves the repeater to another replica.
 func (p *SessionPeer) Retarget(addr string) error {
-	target, err := net.ResolveUDPAddr("udp", addr)
+	target, err := resolveMaster(addr)
 	if err != nil {
-		return fmt.Errorf("resolve addr: %w", err)
+		return err
 	}
 	p.mu.Lock()
 	p.target = target
@@ -303,6 +313,56 @@ func (p *SessionPeer) Receive(within time.Duration, done func([]models.Packet) b
 	return Collect(p.packets, within, done)
 }
 
+func resolveMaster(addr string) (*net.UDPAddr, error) {
+	target, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve addr: %w", err)
+	}
+	if target.IP == nil || target.IP.IsUnspecified() {
+		target.IP = net.IPv4(127, 0, 0, 1)
+	}
+	return target, nil
+}
+
+// Settle returns once the peer read every datagram that reached its
+// socket before the call. It returns an error when the peer closes first.
+func (p *SessionPeer) Settle() error {
+	if p.conn == nil {
+		return ErrSessionPeerNotConnected
+	}
+	to, ok := p.conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return ErrSessionPeerNotConnected
+	}
+	mark, err := net.DialUDP("udp", nil, to)
+	if err != nil {
+		return fmt.Errorf("opening the settle socket: %w", err)
+	}
+	defer func() { _ = mark.Close() }()
+	key := mark.LocalAddr().String()
+	read := make(chan struct{})
+	p.mu.Lock()
+	if p.marks == nil {
+		p.marks = map[string]chan struct{}{}
+	}
+	p.marks[key] = read
+	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		delete(p.marks, key)
+		p.mu.Unlock()
+	}()
+	if _, err := mark.Write([]byte{0}); err != nil {
+		return fmt.Errorf("sending the settle mark: %w", err)
+	}
+	select {
+	case <-read:
+		return nil
+	case <-p.done:
+		return ErrSessionPeerNotSettled
+	}
+}
+
 // Close ends the session and closes the socket.
 func (p *SessionPeer) Close() {
 	p.stopOnce.Do(func() {
@@ -350,12 +410,21 @@ func (p *SessionPeer) rx() {
 	defer p.wg.Done()
 	buf := make([]byte, dmrdsession.MaxPacket)
 	for {
-		n, _, err := p.conn.ReadFromUDP(buf)
+		n, from, err := p.conn.ReadFromUDP(buf)
 		if err != nil {
 			return
 		}
 		at := time.Now()
 		p.mu.Lock()
+		if read, mark := p.marks[from.String()]; mark {
+			close(read)
+			p.mu.Unlock()
+			continue
+		}
+		if !from.IP.Equal(p.target.IP) || from.Port != p.target.Port {
+			p.mu.Unlock()
+			continue
+		}
 		p.rxAt = at
 		var out [dmrdsession.MaxOutputs]dmrdsession.Output
 		p.run(p.peer.Packet(p.sessionTime(), buf[:n], out[:0]))

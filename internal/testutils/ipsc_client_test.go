@@ -49,3 +49,24 @@ func TestIPSCClientSettleCountsWhatCameBefore(t *testing.T) {
 	require.NoError(t, c.Settle())
 	require.Equal(t, 3, c.Heard())
 }
+
+func TestIPSCClientCountsOnlyTheDatagramsOfItsMaster(t *testing.T) {
+	t.Parallel()
+	master := listenLoopback(t)
+	foreign := listenLoopback(t)
+	c := NewIPSCClient(200001, "")
+	require.NoError(t, c.ConnectWithoutRegistration(master.LocalAddr().String()))
+	t.Cleanup(c.Close)
+	to, ok := c.conn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+
+	_, err := foreign.WriteToUDP([]byte{0x00}, to)
+	require.NoError(t, err)
+	require.NoError(t, c.Settle())
+	require.Zero(t, c.Heard(), "the client counted a datagram from a socket that is not its master")
+
+	_, err = master.WriteToUDP([]byte{0x00}, to)
+	require.NoError(t, err)
+	require.NoError(t, c.Settle())
+	require.Equal(t, 1, c.Heard())
+}

@@ -126,6 +126,19 @@ func (a actor) manages(g models.LocalGroup) bool {
 	return a.admin || g.OwnerID == a.user.ID
 }
 
+// runs reports whether a runs the repeater whose owner is owner: as its
+// owner or as a co-sysop.
+func (a actor) runs(db *gorm.DB, repeaterID, owner uint) (bool, error) {
+	if owner == a.user.ID {
+		return true, nil
+	}
+	co, err := models.IsRepeaterCosysop(db, repeaterID, a.user.ID)
+	if err != nil {
+		return false, err //nolint:wrapcheck // IsRepeaterCosysop wraps its errors
+	}
+	return co, nil
+}
+
 // ownerOf returns the owner of the repeater, or false when it does not
 // exist.
 func ownerOf(db *gorm.DB, repeaterID uint) (uint, bool, error) {
@@ -165,7 +178,7 @@ func GETLocalGroups(c *gin.Context) {
 	}
 	q := db.Model(&models.LocalGroup{}).Order("talkgroup, name, id")
 	if !a.admin {
-		mine, err := models.LocalGroupsWithRepeatersOf(db, a.user.ID)
+		mine, err := models.LocalGroupsWithRepeatersRunBy(db, a.user.ID)
 		if err != nil {
 			fail(c, err, "Error listing local groups")
 			return
@@ -333,8 +346,13 @@ func POSTLocalGroupRepeater(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{errorKey: msgNoRepeater})
 		return
 	}
+	runs, err := a.runs(db, body.RepeaterID, owner)
+	if err != nil {
+		fail(c, err, "Error finding the co-sysops of a repeater")
+		return
+	}
 	state := models.LocalMemberAsked
-	if owner == g.OwnerID || owner == a.user.ID {
+	if owner == g.OwnerID || runs {
 		state = models.LocalMemberIn
 	}
 	err = models.AddLocalGroupMember(db, models.LocalGroupMember{LocalGroupID: g.ID, RepeaterID: body.RepeaterID, Slot: slot, State: state, AskedByID: a.user.ID})
@@ -399,7 +417,12 @@ func PATCHLocalGroupRepeater(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !a.manages(g) && owner != a.user.ID {
+	runs, err := a.runs(db, rid, owner)
+	if err != nil {
+		fail(c, err, "Error finding the co-sysops of a repeater")
+		return
+	}
+	if !a.manages(g) && !runs {
 		c.JSON(http.StatusForbidden, gin.H{errorKey: msgNotYours})
 		return
 	}
@@ -430,7 +453,12 @@ func DELETELocalGroupRepeater(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !a.manages(g) && owner != a.user.ID {
+	runs, err := a.runs(db, rid, owner)
+	if err != nil {
+		fail(c, err, "Error finding the co-sysops of a repeater")
+		return
+	}
+	if !a.manages(g) && !runs {
 		c.JSON(http.StatusForbidden, gin.H{errorKey: msgNotYours})
 		return
 	}
@@ -452,7 +480,12 @@ func POSTLocalGroupRepeaterAccept(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if !a.admin && owner != a.user.ID {
+	runs, err := a.runs(db, rid, owner)
+	if err != nil {
+		fail(c, err, "Error finding the co-sysops of a repeater")
+		return
+	}
+	if !a.admin && !runs {
 		c.JSON(http.StatusForbidden, gin.H{errorKey: msgNotRepeaterMine})
 		return
 	}
@@ -488,9 +521,14 @@ func GETRepeaterLocalGroups(c *gin.Context) {
 		fail(c, err, "Error listing the local groups of a repeater")
 		return
 	}
+	runs, err := a.runs(db, rid, owner)
+	if err != nil {
+		fail(c, err, "Error finding the co-sysops of a repeater")
+		return
+	}
 	out := []apimodels.RepeaterLocalGroup{}
 	for _, r := range rows {
-		if r.State != models.LocalMemberIn && !a.admin && owner != a.user.ID {
+		if r.State != models.LocalMemberIn && !a.admin && !runs {
 			continue
 		}
 		g, err := models.FindLocalGroup(db, r.LocalGroupID)
@@ -562,13 +600,17 @@ func view(db *gorm.DB, a actor, g models.LocalGroup, full bool) (apimodels.Local
 		if err := db.Select("id", "callsign", "owner_id").First(&rpt, m.RepeaterID).Error; err != nil {
 			return apimodels.LocalGroup{}, err //nolint:wrapcheck // the caller logs it
 		}
-		if rpt.OwnerID == a.user.ID {
+		runs, err := a.runs(db, rpt.ID, rpt.OwnerID)
+		if err != nil {
+			return apimodels.LocalGroup{}, err
+		}
+		if runs {
 			v.Involved = true
 		}
 		if full {
 			v.Repeaters = append(v.Repeaters, apimodels.LocalGroupRepeater{
 				ID: rpt.ID, Callsign: rpt.Callsign, Owner: userRef(db, rpt.OwnerID), Slot: m.Slot, State: m.State,
-				Mine: rpt.OwnerID == a.user.ID,
+				Mine: runs,
 			})
 		}
 	}

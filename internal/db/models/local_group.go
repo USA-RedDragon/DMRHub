@@ -303,12 +303,14 @@ func LocalGroupsOwnedBy(db *gorm.DB, userID uint) ([]uint, error) {
 	return ids, nil
 }
 
-// LocalGroupsWithRepeatersOf returns the IDs of the local groups that a
-// repeater of the user is in or asked to join.
-func LocalGroupsWithRepeatersOf(db *gorm.DB, userID uint) ([]uint, error) {
+// LocalGroupsWithRepeatersRunBy returns the IDs of the local groups that a
+// repeater that the user owns or is a co-sysop of is in or asked to join.
+func LocalGroupsWithRepeatersRunBy(db *gorm.DB, userID uint) ([]uint, error) {
 	var ids []uint
 	err := db.Model(&LocalGroupMember{}).Distinct("local_group_id").
-		Where("repeater_id IN (?)", db.Model(&Repeater{}).Select("id").Where("owner_id = ?", userID)).
+		Where("repeater_id IN (?) OR repeater_id IN (?)",
+			db.Model(&Repeater{}).Select("id").Where("owner_id = ?", userID),
+			db.Model(&RepeaterCosysop{}).Select("repeater_id").Where("user_id = ? AND accepted_at IS NOT NULL", userID)).
 		Pluck("local_group_id", &ids).Error
 	if err != nil {
 		return nil, fmt.Errorf("could not list the local groups of the repeaters of user %d: %w", userID, err)

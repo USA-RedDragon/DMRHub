@@ -31,7 +31,7 @@ Your own hotspots and repeaters join at once. A repeater of another owner shows 
 
 ## Say yes or no to a group
 
-When the owner of a group adds your repeater, the page of your repeater asks you. Click **Add it** to join the group, or **Say no**. You can change the timeslot of your repeater on the page of the group, or take it out of the group with **Remove**, at any time.
+When the owner of a group adds your repeater, the page of your repeater asks you. Click **Add it** to join the group, or **Say no**. You can change the timeslot of your repeater on the page of the group, or take it out of the group with **Remove**, at any time. A co-sysop of the repeater can do the same as its owner, and a repeater that you are a co-sysop of joins your own groups at once.
 
 ![The page of a hotspot with a request to join a local group](../Screenshots/local-group-ask.png)
 

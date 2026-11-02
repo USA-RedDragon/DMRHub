@@ -41,8 +41,8 @@ type LocalGroupRepeaterPatch struct {
 }
 
 // LocalGroupRepeater is a repeater in a local group. State is member, or
-// asked while its owner has not said yes. Mine marks a repeater of the
-// viewer.
+// asked while its owner has not said yes. Mine marks a repeater that the
+// viewer owns or is a co-sysop of.
 type LocalGroupRepeater struct {
 	ID       uint           `json:"id"`
 	Callsign string         `json:"callsign"`
@@ -54,8 +54,8 @@ type LocalGroupRepeater struct {
 
 // LocalGroup is a local group as a viewer sees it. Members counts the
 // repeaters in it. Mine marks a group of the viewer, CanManage one the
-// viewer can change, and Involved one that a repeater of the viewer is in
-// or asked to join.
+// viewer can change, and Involved one that a repeater that the viewer owns
+// or is a co-sysop of is in or asked to join.
 type LocalGroup struct {
 	ID        uint                 `json:"id"`
 	Name      string               `json:"name"`

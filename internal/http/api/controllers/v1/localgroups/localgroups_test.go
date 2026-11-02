@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -217,6 +218,53 @@ func TestARepeaterIsInOneGroupForEachLocalTalkgroupThroughTheAPI(t *testing.T) {
 			code, _ = e.do(t, http.MethodGet, "/localgroups", e.other, "", &list)
 			require.Equal(t, http.StatusOK, code)
 			assert.Empty(t, list.Groups)
+		})
+	}
+}
+
+func TestACosysopManagesTheLocalGroupsOfItsRepeater(t *testing.T) {
+	t.Parallel()
+	for _, be := range backends()[:2] {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, be)
+			_, _, cosysop := testutils.CreateAndLoginUser(t, e.router, apimodels.UserRegistration{DMRId: 3191870, Callsign: "N5ARL", Username: "cosysop", Password: "password"})
+			now := time.Now()
+			require.NoError(t, e.tdb.DB().Create(&models.RepeaterCosysop{RepeaterID: otherHotspot, UserID: 3191870, InvitedBy: 3191869, InvitedAt: now, ExpiresAt: now.Add(time.Hour), AcceptedAt: &now}).Error)
+
+			g := e.create(t, e.owner, "North Texas", 8)
+			path := fmt.Sprintf("/localgroups/%d", g.ID)
+			code, msg := e.do(t, http.MethodPost, path+"/repeaters", e.owner, fmt.Sprintf(`{"repeater_id":%d}`, otherHotspot), nil)
+			require.Equal(t, http.StatusOK, code, msg)
+
+			var asks []apimodels.RepeaterLocalGroup
+			code, msg = e.do(t, http.MethodGet, fmt.Sprintf("/repeaters/%d/localgroups", otherHotspot), cosysop, "", &asks)
+			require.Equal(t, http.StatusOK, code, msg)
+			require.Len(t, asks, 1, "a co-sysop sees the request to add the repeater")
+
+			var list apimodels.LocalGroupList
+			code, _ = e.do(t, http.MethodGet, "/localgroups", cosysop, "", &list)
+			require.Equal(t, http.StatusOK, code)
+			require.Len(t, list.Groups, 1, "a co-sysop sees the groups of the repeater")
+			assert.True(t, list.Groups[0].Involved)
+
+			code, msg = e.do(t, http.MethodPost, fmt.Sprintf("%s/repeaters/%d/accept", path, otherHotspot), cosysop, "", &g)
+			require.Equal(t, http.StatusOK, code, msg)
+			require.Len(t, g.Repeaters, 1)
+			assert.Equal(t, models.LocalMemberIn, g.Repeaters[0].State)
+			assert.True(t, g.Repeaters[0].Mine, "the repeater counts as the co-sysop's own")
+
+			code, msg = e.do(t, http.MethodPatch, fmt.Sprintf("%s/repeaters/%d", path, otherHotspot), cosysop, `{"slot":1}`, &g)
+			require.Equal(t, http.StatusOK, code, msg)
+			code, _ = e.do(t, http.MethodPatch, path, cosysop, `{"name":"Mine now","talkgroup":8}`, nil)
+			assert.Equal(t, http.StatusForbidden, code, "a co-sysop of a member does not manage the group")
+			code, msg = e.do(t, http.MethodDelete, fmt.Sprintf("%s/repeaters/%d", path, otherHotspot), cosysop, "", nil)
+			require.Equal(t, http.StatusOK, code, msg)
+
+			mine := e.create(t, cosysop, "Club", 9)
+			code, msg = e.do(t, http.MethodPost, fmt.Sprintf("/localgroups/%d/repeaters", mine.ID), cosysop, fmt.Sprintf(`{"repeater_id":%d}`, otherHotspot), &mine)
+			require.Equal(t, http.StatusOK, code, msg)
+			assert.Equal(t, models.LocalMemberIn, mine.Repeaters[0].State, "a co-sysop adds the repeater to a group of its own at once")
 		})
 	}
 }

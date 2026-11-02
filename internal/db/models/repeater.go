@@ -114,6 +114,9 @@ type Repeater struct {
 	TS2DynamicTalkgroupID *uint          `json:"-" msg:"-"`
 	TS1DynamicTalkgroup   Talkgroup      `json:"ts1_dynamic_talkgroup" gorm:"foreignKey:TS1DynamicTalkgroupID" msg:"-"`
 	TS2DynamicTalkgroup   Talkgroup      `json:"ts2_dynamic_talkgroup" gorm:"foreignKey:TS2DynamicTalkgroupID" msg:"-"`
+	SessionEpoch          uint64         `json:"-" gorm:"not null;default:0;<-:false" msg:"-"`
+	TS1LinkEpoch          uint64         `json:"-" gorm:"not null;default:0;<-:false" msg:"-"`
+	TS2LinkEpoch          uint64         `json:"-" gorm:"not null;default:0;<-:false" msg:"-"`
 	Owner                 User           `json:"owner" gorm:"foreignKey:OwnerID" msg:"-"`
 	OwnerID               uint           `json:"-" msg:"-"`
 	SimplexRepeater       bool           `json:"simplex_repeater" msg:"simplex_repeater"`

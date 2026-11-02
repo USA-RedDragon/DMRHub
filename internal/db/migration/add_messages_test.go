@@ -34,6 +34,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// messageOf202610222000 is a message as migration 202610222000 makes its
+// table, without the columns that later migrations add, which the test
+// does not run again.
+type messageOf202610222000 struct {
+	ID            uint `gorm:"primarykey"`
+	ReceivedAt    time.Time
+	SourceID      uint
+	DestinationID uint
+	Format        string
+	ChecksumOK    bool
+}
+
+func (messageOf202610222000) TableName() string { return "messages" }
+
 func TestAddMessagesKeepsUsersWithSMSStorageOff(t *testing.T) {
 	t.Parallel()
 	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
@@ -69,7 +83,7 @@ func TestAddMessagesKeepsUsersWithSMSStorageOff(t *testing.T) {
 			require.NoError(t, database.First(&got, 3191868).Error)
 			assert.False(t, got.SMSStorageEnabled)
 			assert.Nil(t, got.SMSStorageSince)
-			require.NoError(t, database.Create(&models.Message{ReceivedAt: time.Now(), SourceID: 1, DestinationID: 3191868, Format: models.MessageFormatIP}).Error)
+			require.NoError(t, database.Create(&messageOf202610222000{ReceivedAt: time.Now(), SourceID: 1, DestinationID: 3191868, Format: string(models.MessageFormatIP)}).Error)
 			require.NoError(t, database.Create(&models.UserRadioID{UserID: 3191868, RadioID: 3191877, VerifiedAt: time.Now()}).Error)
 		})
 	}

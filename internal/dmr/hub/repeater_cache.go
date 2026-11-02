@@ -48,6 +48,7 @@ const (
 type cachedRepeater struct {
 	rpt        *models.Repeater
 	at         time.Time
+	gen        uint64
 	refreshing *atomic.Bool
 }
 
@@ -87,8 +88,15 @@ func (c *repeaterCache) store(id uint, rpt *models.Repeater, gen uint64, now tim
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.gen == gen {
-		c.entries.Store(id, cachedRepeater{rpt: rpt, at: now, refreshing: &atomic.Bool{}})
+		c.entries.Store(id, cachedRepeater{rpt: rpt, at: now, gen: gen, refreshing: &atomic.Bool{}})
+		return
 	}
+	c.entries.Compute(id, func(cur cachedRepeater, loaded bool) (cachedRepeater, xsync.ComputeOp) {
+		if loaded && cur.gen < gen {
+			return cur, xsync.DeleteOp
+		}
+		return cur, xsync.CancelOp
+	})
 }
 
 func (c *repeaterCache) drop(id uint) {
@@ -164,7 +172,7 @@ func (h *Hub) refreshRepeater(id uint, old cachedRepeater) {
 		slog.Error("Cannot reload a repeater, keeping the old one", "repeaterID", id, "error", err)
 		h.repeaters.entries.Compute(id, func(cur cachedRepeater, loaded bool) (cachedRepeater, xsync.ComputeOp) {
 			if loaded && cur.refreshing == old.refreshing {
-				return cachedRepeater{rpt: cur.rpt, at: h.clock.Now(), refreshing: &atomic.Bool{}}, xsync.UpdateOp
+				return cachedRepeater{rpt: cur.rpt, at: h.clock.Now(), gen: cur.gen, refreshing: &atomic.Bool{}}, xsync.UpdateOp
 			}
 			return cur, xsync.CancelOp
 		})

@@ -189,6 +189,12 @@ dmr:
     transmissions: 0
     # Days to keep the raw DMR bursts of each transmission. 0 keeps them forever
     bursts: 0
+  # Text messages between radios
+  messages:
+    # Days that store and forward keeps a text for a radio that is off the air. 0 is 7
+    hold-days: 7
+    # Most texts that store and forward keeps for one user. 0 is 50
+    hold-max: 50
   # Position tracking of the radios whose owners turn it on
   positions:
     # Shortest report interval, in minutes, that an owner can pick for a radio: 5, 10, 15, 30 or 60

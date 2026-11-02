@@ -106,5 +106,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_store_forward_migration_202611011810(db, cfg),
 		add_repeater_link_epochs_migration_202611012200(db, cfg),
 		add_local_groups_migration_202611020100(db, cfg),
+		keep_network_local_numbers_migration_202611020110(db, cfg),
 	}
 }

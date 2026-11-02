@@ -121,9 +121,13 @@ func startBrowser(ctx context.Context, chromium, dir, timeZone string, status []
 }
 
 func (b *browser) openPage(ctx context.Context) error {
-	if b.conn != nil {
-		_ = b.conn.Close(websocket.StatusNormalClosure, "")
-		b.conn = nil
+	b.scans.Wait()
+	b.mu.Lock()
+	old := b.conn
+	b.conn = nil
+	b.mu.Unlock()
+	if old != nil {
+		_ = old.Close(websocket.StatusNormalClosure, "")
 		if _, err := b.devTools(ctx, http.MethodGet, "/json/close/"+b.target); err != nil {
 			return err
 		}
@@ -320,8 +324,15 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 	}
 }
 
+var errNoPage = errors.New("the page is closed")
+
 func (b *browser) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	b.mu.Lock()
+	conn := b.conn
+	if conn == nil {
+		b.mu.Unlock()
+		return nil, fmt.Errorf("%s: %w", method, errNoPage)
+	}
 	b.nextID++
 	id := b.nextID
 	ch := make(chan cdpReply, 1)
@@ -337,7 +348,7 @@ func (b *browser) call(ctx context.Context, method string, params any) (json.Raw
 	}
 	cctx, cancel := context.WithTimeout(ctx, cdpTimeout)
 	defer cancel()
-	if err := b.conn.Write(cctx, websocket.MessageText, data); err != nil {
+	if err := conn.Write(cctx, websocket.MessageText, data); err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
 	select {

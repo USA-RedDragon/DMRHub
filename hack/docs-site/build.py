@@ -18,8 +18,6 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 SHELL = HERE / "shell"
 
-GO_HIDDEN = ("docs/rx/", "docs/tx/", "docs/targets/gnuradio.md", "docs/start/05-receive-on-a-radio.md", "docs/guides/receive-sdr-fm.md")
-
 ICONS = {
     "menu": '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
     "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -73,13 +71,12 @@ class Item:
 
 
 class Site:
-    def __init__(self, key, name, root, docdir, github, hidden=(), version="main", tag=None, repo=None):
+    def __init__(self, key, name, root, docdir, github, version="main", tag=None, repo=None):
         self.key = key
         self.name = name
         self.root = root.resolve()
         self.docdir = docdir
         self.github = github
-        self.hidden = hidden
         self.version = version
         self.tag = tag
         self.repo = repo
@@ -97,9 +94,6 @@ class Site:
 
     def label(self):
         return f"{self.name} {self.version}"
-
-    def is_hidden(self, p):
-        return any(p == h or (h.endswith("/") and p.startswith(h)) for h in self.hidden)
 
     def page_url(self, src):
         if src == "README.md":
@@ -137,8 +131,6 @@ class Site:
             if not indent:
                 cur = (None, [])
                 self.sections.append(cur)
-            if self.is_hidden(src):
-                continue
             if not (self.root / src).is_file():
                 sys.exit(f"{navfile}: {title} links to {src}, which does not exist")
             it = Item(title, src, cur[0])
@@ -148,7 +140,7 @@ class Site:
         self.sections = [s for s in self.sections if s[1]]
         for f in sorted((self.root / self.docdir).rglob("*.md")):
             src = f.relative_to(self.root).as_posix()
-            if src in self.pages or src == f"{self.docdir}/nav.md" or src.startswith(f"{self.docdir}/site/") or self.is_hidden(src):
+            if src in self.pages or src == f"{self.docdir}/nav.md" or src.startswith(f"{self.docdir}/site/"):
                 continue
             it = Item(None, src, None)
             it.url = self.page_url(src)
@@ -234,7 +226,7 @@ class Builder:
         self.html_cache = {}
         self.versions_json = {}
 
-    def versions(self, key, name, main_root, repo, docdir, base, home, github, hidden=()):
+    def versions(self, key, name, main_root, repo, docdir, base, home, github):
         repo = pathlib.Path(repo).resolve()
         tags = [] if self.args.no_releases else releases(repo, docdir)
         roots = [("main", pathlib.Path(main_root), None)]
@@ -252,9 +244,9 @@ class Builder:
         entries += [{"name": t, "label": t, "prefix": base + t + "/", "home": base + t + "/"} for t in reversed(tags[:-1])]
         made = []
         for version, root, tag in roots:
-            made.append((Site(key, name, root, docdir, github, hidden, version, tag, repo), base + version + "/", base + version + "/"))
+            made.append((Site(key, name, root, docdir, github, version, tag, repo), base + version + "/", base + version + "/"))
         r, t = {v: (r, t) for v, r, t in roots}[latest]
-        default = Site(key, name, r, docdir, github, hidden, latest, t, repo)
+        default = Site(key, name, r, docdir, github, latest, t, repo)
         made.insert(0, (default, base, home))
         main = made[1][0]
         for site, prefix, h in made:
@@ -388,8 +380,6 @@ class Builder:
             p = self.resolve(here, file) if file else src
             if p is None:
                 return m.group(0)
-            if site.is_hidden(p):
-                return inner
             if p in site.pages:
                 url = site.pages[p].url + frag
             elif (site.root / p).is_dir():
@@ -592,7 +582,7 @@ class Builder:
         a = self.args
         self.hub = self.versions("hub", "DMRHub", a.hub, a.hub_repo or a.hub, "doc", "/docs/", "/", "https://github.com/USA-RedDragon/DMRHub")
         if a.dmrgo:
-            self.go = self.versions("dmrgo", "dmrgo", a.dmrgo, a.dmrgo_repo or a.dmrgo, "docs", "/docs/dmrgo/", "/docs/dmrgo/", "https://github.com/USA-RedDragon/dmrgo", GO_HIDDEN)
+            self.go = self.versions("dmrgo", "dmrgo", a.dmrgo, a.dmrgo_repo or a.dmrgo, "docs", "/docs/dmrgo/", "/docs/dmrgo/", "https://github.com/USA-RedDragon/dmrgo")
         for site in self.trees:
             try:
                 site.load_nav()

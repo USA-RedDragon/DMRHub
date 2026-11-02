@@ -416,25 +416,30 @@ func (s *Server) consumeEgress(sub pubsub.Subscription) {
 			if !ok {
 				return
 			}
-			var j egressJob
-			if err := json.Unmarshal(msg, &j); err != nil {
-				slog.Error("Error decoding OpenBridge egress", "error", err)
-				continue
-			}
-			if j.Kind != "" {
-				s.controlMessage(j)
-				continue
-			}
-			if !s.sends() {
-				continue
-			}
-			packet, ok := models.UnpackPacket(j.Packet)
-			if !ok {
-				continue
-			}
-			s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
+			s.egressMessage(msg)
 		}
 	}
+}
+
+// egressMessage takes one message of the egress topic.
+func (s *Server) egressMessage(msg []byte) {
+	var j egressJob
+	if err := json.Unmarshal(msg, &j); err != nil {
+		slog.Error("Error decoding OpenBridge egress", "error", err)
+		return
+	}
+	if j.Kind != "" {
+		s.controlMessage(j)
+		return
+	}
+	if !s.sends() {
+		return
+	}
+	packet, ok := models.UnpackPacket(j.Packet)
+	if !ok {
+		return
+	}
+	s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
 }
 
 func (s *Server) controlMessage(j egressJob) {

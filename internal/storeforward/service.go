@@ -389,24 +389,35 @@ func (s *Service) Sweep(now time.Time) {
 // the format. It returns ErrNoFormat when the radio has no owner or sent
 // no such text, and the errors of FormatOf.
 func RadioFormat(db *gorm.DB, radio uint) (*Format, error) {
+	_, f, err := RadioText(db, radio)
+	return f, err
+}
+
+// RadioText returns the text that RadioFormat reads the format of the radio
+// from, with that format.
+func RadioText(db *gorm.DB, radio uint) (*models.Message, *Format, error) {
 	owner, ok, err := models.RadioIDOwner(db, radio)
 	if err != nil {
-		return nil, fmt.Errorf("storeforward: finding the owner of radio %d: %w", radio, err)
+		return nil, nil, fmt.Errorf("storeforward: finding the owner of radio %d: %w", radio, err)
 	}
 	if !ok {
-		return nil, ErrNoFormat
+		return nil, nil, ErrNoFormat
 	}
 	var m models.Message
 	err = db.Where("source_id = ? AND is_group = ? AND format IN ?", radio, false, TextFormats()).
 		Where("repeater_id IN (SELECT id FROM repeaters WHERE owner_id = ? OR trusted = ?)", owner, true).
 		Order("received_at DESC").Order("id DESC").Take(&m).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNoFormat
+		return nil, nil, ErrNoFormat
 	}
 	if err != nil {
-		return nil, fmt.Errorf("storeforward: finding the last text of radio %d: %w", radio, err)
+		return nil, nil, fmt.Errorf("storeforward: finding the last text of radio %d: %w", radio, err)
 	}
-	return FormatOf(&m)
+	f, err := FormatOf(&m)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &m, f, nil
 }
 
 // Heard sends the texts held for radio, which the hub heard on the

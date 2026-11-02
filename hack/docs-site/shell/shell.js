@@ -58,6 +58,28 @@
     if (e.key === "/" && t !== "INPUT" && t !== "TEXTAREA") { var i = document.querySelector(".only-desk .search input"); if (i && i.offsetParent) { e.preventDefault(); i.focus(); } }
   });
 
+  var lists = {};
+  function option(e, cur) {
+    return '<option value="' + esc(e.name) + '" data-prefix="' + esc(e.prefix) + '" data-home="' + esc(e.home) + '"' + (e.name === cur ? " selected" : "") + ">" + esc(e.label) + "</option>";
+  }
+  document.querySelectorAll(".vpick select").forEach(function (sel) {
+    var prefix = sel.getAttribute("data-prefix"), home = sel.getAttribute("data-home"), cur = sel.value, url = sel.getAttribute("data-versions");
+    lists[url] = lists[url] || fetch(url, { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; });
+    lists[url].then(function (v) {
+      if (!v || !v.versions || !v.versions.length) { return; }
+      var html = v.versions.map(function (e) { return option(e, cur); }).join("");
+      if (!v.versions.some(function (e) { return e.name === cur; })) { html = sel.options[sel.selectedIndex].outerHTML + html; }
+      sel.innerHTML = html;
+    }).catch(function () {});
+    sel.addEventListener("change", function () {
+      var o = sel.options[sel.selectedIndex], to = o.getAttribute("data-home"), p = location.pathname;
+      var rel = p === home ? "" : p.indexOf(prefix) === 0 ? p.slice(prefix.length) : "";
+      if (!rel) { location.href = to; return; }
+      var page = o.getAttribute("data-prefix") + rel;
+      fetch(page, { method: "HEAD" }).then(function (r) { location.href = r.ok ? page + location.hash : to; }, function () { location.href = to; });
+    });
+  });
+
   var links = Array.prototype.slice.call(document.querySelectorAll(".onpage a"));
   if (links.length) {
     var heads = links.map(function (a) { return document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1))); });

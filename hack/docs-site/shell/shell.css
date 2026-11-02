@@ -141,6 +141,12 @@ details[open] > summary.label svg.i { transform: none; }
 .product .name b { font-family: var(--font-mono); font-size: 22px; font-weight: 700; letter-spacing: 0; }
 .product .ver { font-size: 12px; font-weight: 500; padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted-foreground); }
 .product p { margin: 2px 0 0; font-size: 13px; color: var(--muted-foreground); }
+.product.hub { padding-top: 0; }
+.vpick { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 13px; color: var(--muted-foreground); }
+.vpick select { flex: 1; min-width: 0; font: inherit; color: var(--foreground); background: var(--background); border: 1px solid var(--input); border-radius: 6px; padding: 4px 6px; cursor: pointer; }
+.vpick select:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.vbanner { margin: 0 0 20px; padding: 10px 14px; font-size: 14px; color: var(--warn-fg); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px; }
+.vbanner a { color: inherit; font-weight: 600; text-decoration: underline; }
 
 main { min-width: 0; padding: 24px 0 48px; }
 .doc .crumbs, .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; font-size: 14px; color: var(--muted-foreground); }

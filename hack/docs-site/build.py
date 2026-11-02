@@ -12,6 +12,8 @@ import shutil
 import string
 import subprocess
 import sys
+import tarfile
+import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 SHELL = HERE / "shell"
@@ -47,6 +49,8 @@ GO_LEDE = "Decode and encode DMR bursts and PDUs as defined in ETSI TS 102 361 p
 
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:")
 
+RELEASE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+
 
 def icon(name, extra=""):
     return f'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"{extra}>{ICONS[name]}</svg>'
@@ -69,17 +73,30 @@ class Item:
 
 
 class Site:
-    def __init__(self, key, name, root, docdir, prefix, github, hidden=()):
+    def __init__(self, key, name, root, docdir, github, hidden=(), version="main", tag=None, repo=None):
         self.key = key
         self.name = name
         self.root = root.resolve()
         self.docdir = docdir
-        self.prefix = prefix
         self.github = github
         self.hidden = hidden
+        self.version = version
+        self.tag = tag
+        self.repo = repo
+        self.prefix = None
+        self.home = None
+        self.default = None
+        self.main = None
+        self.latest = None
+        self.entries = []
+        self.versions_url = None
         self.sections = []
         self.pages = {}
         self.lastmod = {}
+        self.rels = set()
+
+    def label(self):
+        return f"{self.name} {self.version}"
 
     def is_hidden(self, p):
         return any(p == h or (h.endswith("/") and p.startswith(h)) for h in self.hidden)
@@ -94,8 +111,11 @@ class Site:
             parts[-1] = re.sub(r"^\d+-", "", parts[-1])
         return self.prefix + "".join(p + "/" for p in parts)
 
-    def asset_url(self, src):
-        return self.prefix + src.removeprefix(self.docdir + "/")
+    def rel(self, url):
+        return "" if url == self.home else url.removeprefix(self.prefix)
+
+    def url_of(self, rel):
+        return self.home if rel == "" else self.prefix + rel
 
     def load_nav(self):
         navfile = self.root / self.docdir / "nav.md"
@@ -138,6 +158,7 @@ class Site:
             if it.url in urls:
                 sys.exit(f"{it.src} and {urls[it.url]} both make {it.url}")
             urls[it.url] = it.src
+        self.rels = {""} | {self.rel(u) for u in urls}
 
     def flat(self):
         return [it for _, items in self.sections for it in items]
@@ -147,8 +168,12 @@ class Site:
 
     def load_lastmod(self):
         try:
-            top = subprocess.run(["git", "-C", str(self.root), "rev-parse", "--show-prefix"], check=True, capture_output=True, text=True).stdout.strip()
-            out = subprocess.run(["git", "-C", str(self.root), "log", "--format=@%cI", "--name-only", "--", "."], check=True, capture_output=True, text=True).stdout
+            if self.tag:
+                top = ""
+                out = subprocess.run(["git", "-C", str(self.repo), "log", "--format=@%cI", "--name-only", self.tag, "--", self.docdir], check=True, capture_output=True, text=True).stdout
+            else:
+                top = subprocess.run(["git", "-C", str(self.root), "rev-parse", "--show-prefix"], check=True, capture_output=True, text=True).stdout.strip()
+                out = subprocess.run(["git", "-C", str(self.root), "log", "--format=@%cI", "--name-only", "--", "."], check=True, capture_output=True, text=True).stdout
         except (OSError, subprocess.CalledProcessError):
             print(f"{self.root}: no git history, so the sitemap has no lastmod for {self.name}", file=sys.stderr)
             return
@@ -160,45 +185,130 @@ class Site:
                 self.lastmod.setdefault(line.removeprefix(top), when)
 
 
+def git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+
+
+def releases(repo, docdir):
+    res = git(repo, "tag", "--list", "v*")
+    if res.returncode:
+        print(f"{repo}: not a git repository, so the site has no release versions", file=sys.stderr)
+        return []
+    tags = sorted((t for t in res.stdout.split() if RELEASE.match(t)), key=lambda t: tuple(int(n) for n in RELEASE.match(t).groups()))
+    for i, t in enumerate(tags):
+        if git(repo, "cat-file", "-e", f"{t}:{docdir}/nav.md").returncode == 0:
+            return tags[i:]
+    return []
+
+
+def extract(repo, tag, dest):
+    dest.mkdir(parents=True)
+    proc = subprocess.Popen(["git", "-C", str(repo), "archive", "--format=tar", tag], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        with tarfile.open(fileobj=proc.stdout, mode="r|") as tf:
+            tf.extractall(dest, filter="data")
+    except tarfile.TarError as e:
+        proc.kill()
+        proc.wait()
+        raise SystemExit(f"{repo}: git archive {tag} failed: {e}: {proc.stderr.read().decode().strip()}") from None
+    if proc.wait():
+        raise SystemExit(f"{repo}: git archive {tag} failed: {proc.stderr.read().decode().strip()}")
+
+
 class Builder:
     def __init__(self, args):
         self.out = pathlib.Path(args.out).resolve()
         self.base = args.base.rstrip("/")
         self.jobs = args.jobs
-        self.hub = Site("hub", "DMRHub", pathlib.Path(args.hub), "doc", "/docs/", "https://github.com/USA-RedDragon/DMRHub")
-        self.go = Site("dmrgo", "dmrgo", pathlib.Path(args.dmrgo), "docs", "/docs/dmrgo/", "https://github.com/USA-RedDragon/dmrgo", GO_HIDDEN) if args.dmrgo else None
-        self.sites = [s for s in (self.hub, self.go) if s]
+        self.work = None
+        self.args = args
+        self.trees = []
+        self.hub = None
+        self.go = None
         self.template = string.Template((SHELL / "page.html").read_text())
         self.icons = {f"i_{k}": icon(k) for k in ICONS}
         self.icons |= {"i_mode_light": icon("sun", ' data-mode-icon="light" hidden'), "i_mode_dark": icon("moon", ' data-mode-icon="dark" hidden'), "i_mode_system": icon("monitor", ' data-mode-icon="system"')}
-        self.copied = set()
-        self.assets = {}
+        self.copied = {}
+        self.shell = {}
+        self.index = {}
+        self.html_cache = {}
+        self.versions_json = {}
+
+    def versions(self, key, name, main_root, repo, docdir, base, home, github, hidden=()):
+        repo = pathlib.Path(repo).resolve()
+        tags = [] if self.args.no_releases else releases(repo, docdir)
+        roots = [("main", pathlib.Path(main_root), None)]
+        for t in tags:
+            d = self.work / key / t
+            try:
+                extract(repo, t, d)
+            except SystemExit as e:
+                raise SystemExit(f"{name} {t}: cannot get the release tag to build its docs: {e}") from None
+            roots.append((t, d, t))
+        latest = tags[-1] if tags else "main"
+        entries = [{"name": latest, "label": f"{latest} (latest)" if tags else "main (unreleased)", "prefix": base, "home": home}]
+        if tags:
+            entries.append({"name": "main", "label": "main (unreleased)", "prefix": base + "main/", "home": base + "main/"})
+        entries += [{"name": t, "label": t, "prefix": base + t + "/", "home": base + t + "/"} for t in reversed(tags[:-1])]
+        made = []
+        for version, root, tag in roots:
+            made.append((Site(key, name, root, docdir, github, hidden, version, tag, repo), base + version + "/", base + version + "/"))
+        r, t = {v: (r, t) for v, r, t in roots}[latest]
+        default = Site(key, name, r, docdir, github, hidden, latest, t, repo)
+        made.insert(0, (default, base, home))
+        main = made[1][0]
+        for site, prefix, h in made:
+            site.prefix, site.home, site.default, site.main, site.latest = prefix, h, default, main, (latest if tags else None)
+            site.entries, site.versions_url = entries, base + "versions.json"
+        self.trees += [m[0] for m in made]
+        self.versions_json[base + "versions.json"] = {"latest": latest if tags else None, "versions": entries}
+        return default
+
+    def fail(self, site, e):
+        what = "the docs at this release tag do not build with this builder" if site.tag else "the docs do not build"
+        return f"{site.label()}: {what}: {e}"
+
+    def put(self, name, data):
+        stem, ext = name.rsplit(".", 1)
+        hashed = f"{stem}.{hashlib.sha256(data).hexdigest()[:12]}.{ext}"
+        dest = self.out / "docs" / "_shell" / hashed
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return "/docs/_shell/" + hashed
 
     def shell_assets(self):
-        dest = self.out / "docs" / "_shell"
-        dest.mkdir(parents=True)
         names = {}
-
-        def put(name, data):
-            stem, ext = name.rsplit(".", 1)
-            hashed = f"{stem}.{hashlib.sha256(data).hexdigest()[:12]}.{ext}"
-            (dest / hashed).write_bytes(data)
-            names[name] = "/docs/_shell/" + hashed
-
         for f in sorted((SHELL / "fonts").iterdir()):
-            put(f.name, f.read_bytes())
+            names[f.name] = self.put(f.name, f.read_bytes())
         css = re.sub(r"url\(fonts/([^)]+)\)", lambda m: f"url({names[m.group(1)]})", (SHELL / "shell.css").read_text())
-        put("shell.css", css.encode())
-        put("shell.js", (SHELL / "shell.js").read_bytes())
-        put("search.js", ("window.docsIndex=" + json.dumps(self.search_index(), separators=(",", ":")) + ";\n").encode())
-        self.assets = {"css": names["shell.css"], "js": names["shell.js"], "index": names["search.js"], "font": names["nunito-sans-latin-wght-normal.woff2"]}
+        self.shell = {"css": self.put("shell.css", css.encode()), "js": self.put("shell.js", (SHELL / "shell.js").read_bytes()), "font": names["nunito-sans-latin-wght-normal.woff2"]}
+        for site in self.trees:
+            self.index[site] = self.put("search.js", ("window.docsIndex=" + json.dumps(self.search_index(site), separators=(",", ":")) + ";\n").encode())
 
-    def search_index(self):
-        idx = [["Overview", "DMRHub", "DMRHub docs", "/"]]
-        for site in self.sites:
-            for title, items in site.sections:
-                idx += [[it.title, site.name, title or "Overview", it.url] for it in items]
-        return idx
+    def search_index(self, site):
+        def pages(s):
+            idx = [["Overview", "DMRHub", "DMRHub docs", s.home]] if s.key == "hub" else []
+            for title, items in s.sections:
+                idx += [[it.title, s.name, title or "Overview", it.url] for it in items]
+            return idx
+
+        other = self.go if site.key == "hub" else self.hub
+        return pages(site) + (pages(other) if other else [])
+
+    def picker(self, site):
+        opts = "".join(f'<option value="{esc(e["name"])}" data-prefix="{esc(e["prefix"])}" data-home="{esc(e["home"])}"{" selected" if e["name"] == site.version else ""}>{esc(e["label"])}</option>' for e in site.entries)
+        return f'<label class="vpick"><span class="vlabel">Version</span><select data-versions="{esc(site.versions_url)}" data-prefix="{esc(site.prefix)}" data-home="{esc(site.home)}" aria-label="{esc(site.name)} docs version">{opts}</select></label>'
+
+    def banner(self, site, url):
+        if site.version == site.latest:
+            return ""
+        rel = site.rel(url)
+        there = site.default.url_of(rel) if rel in site.default.rels else site.default.home
+        if site.version != "main":
+            return f'<p class="vbanner" role="note">These are the {esc(site.name)} docs of {esc(site.version)}, an older release. <a href="{esc(there)}">Read them in {esc(site.latest)}, the latest release</a>.</p>'
+        if site.latest:
+            return f'<p class="vbanner" role="note">These {esc(site.name)} docs are built from main and can describe changes that no release has yet. <a href="{esc(there)}">Read them in {esc(site.latest)}, the latest release</a>.</p>'
+        return f'<p class="vbanner" role="note">These {esc(site.name)} docs are built from main and can describe changes that no release has yet. No release of {esc(site.name)} has these docs.</p>'
 
     def nav_html(self, site, cur):
         def link(it):
@@ -206,9 +316,9 @@ class Builder:
             return f'<li><a href="{esc(it.url)}"{on}>{esc(it.title)}</a></li>'
 
         out = []
-        if site is self.hub:
-            on = ' class="on" aria-current="page"' if cur == "/" else ""
-            out.append(f'<li><a href="/"{on}>Overview</a></li>')
+        if site.key == "hub":
+            on = ' class="on" aria-current="page"' if cur == site.home else ""
+            out.append(f'<li><a href="{site.home}"{on}>Overview</a></li>')
         for title, items in site.sections:
             lis = "".join(link(it) for it in items)
             if title and len(items) > 6:
@@ -218,16 +328,17 @@ class Builder:
                 out.append(f'<li class="sec"><span class="label">{esc(title)}</span><ul>{lis}</ul></li>')
             else:
                 out.append(lis)
-        if site is self.hub and self.go:
+        if site.key == "hub" and self.go:
             out.append(f'<li class="sec"><span class="label">DMRHub projects</span><ul><li><a href="{self.go.prefix}">dmrgo<span class="tag">Go library</span></a></li></ul></li>')
-        head = ""
-        if site is self.go:
-            head = f'<div class="product"><a class="back" href="/">{icon("left")}DMRHub docs</a><div class="name"><b>dmrgo</b><span class="ver">v2</span></div><p>Go library for DMR. A DMRHub project.</p></div>'
+        if site.key == "hub":
+            head = f'<div class="product hub">{self.picker(site)}</div>'
+        else:
+            head = f'<div class="product"><a class="back" href="/">{icon("left")}DMRHub docs</a><div class="name"><b>dmrgo</b></div><p>Go library for DMR. A DMRHub project.</p>{self.picker(site)}</div>'
         return head + "<ul>" + "".join(out) + "</ul>"
 
     def crumbs(self, site, it):
-        c = [("DMRHub", "/")]
-        if site is self.go:
+        c = [("DMRHub", site.home if site.key == "hub" else "/")]
+        if site.key == "dmrgo":
             c.append(("dmrgo", site.prefix))
             if it.url == site.prefix:
                 return c
@@ -246,8 +357,8 @@ class Builder:
 
     def pager(self, site, url):
         pages = [(it.title, it.url) for it in site.flat()]
-        if site is self.hub:
-            pages.insert(0, ("DMRHub docs", "/"))
+        if site.key == "hub":
+            pages.insert(0, ("DMRHub docs", site.home))
         idx = next((i for i, p in enumerate(pages) if p[1] == url), None)
         if idx is None:
             return ""
@@ -266,6 +377,7 @@ class Builder:
 
     def rewrite_links(self, site, src, body):
         here = posixpath.dirname(src)
+        ref = site.tag or "main"
 
         def repl(m):
             target, rest, inner = html.unescape(m.group(1)), m.group(2), m.group(3)
@@ -281,9 +393,9 @@ class Builder:
             if p in site.pages:
                 url = site.pages[p].url + frag
             elif (site.root / p).is_dir():
-                url = f"{site.github}/tree/main/{p}{frag}"
+                url = f"{site.github}/tree/{ref}/{p}{frag}"
             elif (site.root / p).is_file():
-                url = f"{site.github}/blob/main/{p}{frag}"
+                url = f"{site.github}/blob/{ref}/{p}{frag}"
             else:
                 return m.group(0)
             return f'<a href="{esc(url)}"{rest}>{inner}</a>'
@@ -300,8 +412,9 @@ class Builder:
             p = self.resolve(here, target)
             if p is None or not (site.root / p).is_file():
                 raise SystemExit(f"{site.root / src}: image {target} not found")
-            url = site.asset_url(p)
-            self.copied.add((site.root / p, self.out / url.lstrip("/")))
+            f = site.root / p
+            url = f"/docs/_assets/{hashlib.sha256(f.read_bytes()).hexdigest()[:16]}{f.suffix.lower()}"
+            self.copied[url] = f
             return f'<img src="{esc(url)}"'
 
         return re.sub(r'<img src="([^"]*)"', repl, body)
@@ -327,25 +440,39 @@ class Builder:
         return text
 
     def pandoc(self, path):
-        return subprocess.run(["pandoc", "-f", "gfm", "-t", "html5", "--wrap=none", str(path)], check=True, capture_output=True, text=True).stdout
+        data = path.read_bytes()
+        key = hashlib.sha256(data).hexdigest()
+        if key not in self.html_cache:
+            self.html_cache[key] = subprocess.run(["pandoc", "-f", "gfm", "-t", "html5", "--wrap=none"], input=data, check=True, capture_output=True).stdout.decode()
+        return self.html_cache[key]
 
-    def write(self, url, title, desc, main, nav, crumbs, onpage=""):
+    def write(self, site, url, title, desc, main, nav, crumbs, onpage=""):
+        canonical = url or "/"
+        if url is not None:
+            rel = site.rel(url)
+            if rel in site.default.rels:
+                canonical = site.default.url_of(rel)
+            main = re.sub(r"(<article[^>]*>)", lambda m: m.group(1) + self.banner(site, url), main, count=1)
         jsonld = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": i + 1, "name": n, "item": self.base + u} for i, (n, u) in enumerate(crumbs)]}
+        noindex = site.version == "main" and site is not site.default
+        sitewide = "the DMRHub and dmrgo docs" if self.go else "the DMRHub docs"
         page = self.template.substitute(
             self.icons,
             title=esc(title),
             description=esc(desc),
-            canonical=esc(self.base + (url or "/")),
+            canonical=esc(self.base + canonical),
+            robots='<meta name="robots" content="noindex">\n' if noindex else "",
             jsonld=json.dumps(jsonld).replace("</", "<\\/"),
             app_links="".join(f'<a class="nav-link" href="{u}">{t}</a>' for t, u, _ in APP_LINKS),
             app_menu="".join(f'<a class="m-link" href="{u}">{icon(i)}{t}</a>' for t, u, i in APP_LINKS),
-            search=f'<div class="search" role="search">{icon("search")}<input type="search" placeholder="Search docs" aria-label="Search the DMRHub and dmrgo docs" autocomplete="off" spellcheck="false"><kbd>/</kbd><ul class="results" hidden></ul></div>',
+            search=f'<div class="search" role="search">{icon("search")}<input type="search" placeholder="Search docs" aria-label="Search {sitewide}" autocomplete="off" spellcheck="false"><kbd>/</kbd><ul class="results" hidden></ul></div>',
             nav=nav,
             main=main,
             onpage=onpage,
             wide="" if onpage else " wide",
             year=datetime.date.today().year,
-            **self.assets,
+            index=self.index[site],
+            **self.shell,
         )
         dest = self.out / "404.html" if url is None else self.out / url.lstrip("/") / "index.html"
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -359,8 +486,11 @@ class Builder:
             it.title = strip_tags(m.group(1)) if m else site.name
         nav = self.nav_html(site, it.url)
         crumbs = self.crumbs(site, it)
-        edit = f'<p class="edit"><a href="{site.github}/blob/main/{it.src}">Edit this page on GitHub</a></p>'
-        if site is self.go and it.url == site.prefix:
+        if site.tag and it.src not in site.main.pages:
+            edit = f'<p class="edit"><a href="{site.github}/blob/{site.tag}/{it.src}">View the source of this page at {site.tag}</a></p>'
+        else:
+            edit = f'<p class="edit"><a href="{site.github}/blob/main/{it.src}">Edit this page on GitHub</a></p>'
+        if site.key == "dmrgo" and it.url == site.prefix:
             body = re.sub(r"<h1[^>]*>.*?</h1>\s*", "", body, count=1, flags=re.S)
             p = re.search(r"<p>(.*?)</p>\s*", body, re.S)
             desc = self.first_para(body)
@@ -369,35 +499,54 @@ class Builder:
             right, inline = self.toc(body)
             hero = f'<div class="hero"><p class="eyebrow">A DMRHub project</p><h1 class="mono">dmrgo</h1><p class="lede">{lede}</p><div class="ctas"><a class="btn primary" href="{site.first_in("Get started").url}">Get started</a><a class="btn outline" href="https://pkg.go.dev/github.com/USA-RedDragon/dmrgo/v2">Go API on pkg.go.dev</a><a class="btn outline" href="https://github.com/USA-RedDragon/dmrgo">GitHub</a></div></div>'
             main = f'<article class="doc">{self.crumbs_html(crumbs)}{hero}{inline}{body}{self.pager(site, it.url)}{edit}</article>'
-            self.write(it.url, "dmrgo, the Go DMR library | DMRHub Docs", desc, main, nav, crumbs, right)
+            self.write(site, it.url, "dmrgo, the Go DMR library | DMRHub Docs", desc, main, nav, crumbs, right)
             return
         right, inline = self.toc(body)
         body = body.replace("</h1>", "</h1>" + inline, 1) if m else inline + body
         main = f'<article class="doc">{self.crumbs_html(crumbs)}{body}{self.pager(site, it.url)}{edit}</article>'
-        self.write(it.url, f"{it.title} | {site.name} Docs", self.first_para(body), main, nav, crumbs, right)
+        self.write(site, it.url, f"{it.title} | {site.name} Docs", self.first_para(body), main, nav, crumbs, right)
 
-    def home(self):
+    def home(self, site):
         card = ""
         if self.go:
             card = f'<div class="card project"><span class="mark">{icon("package")}</span><div><h3><a href="{self.go.prefix}"><b>dmrgo</b></a></h3><p>{GO_LEDE}</p><div class="links"><a href="{self.go.first_in("Get started").url}">Get started</a><a href="{self.go.first_in("Guides").url}">Guides</a></div></div></div>\n'
-        main = string.Template((HERE / "home.html").read_text()).substitute(self.icons, dmrgo_card=card)
+        own = site.root / "hack" / "docs-site" / "home.html"
+        tmpl = (own if own.is_file() else HERE / "home.html").read_text()
+        main = string.Template(tmpl).substitute(self.icons, dmrgo_card=card)
+        if site.prefix != "/docs/":
+            main = main.replace('href="/docs/', f'href="{site.prefix}').replace(f'href="{site.prefix}dmrgo/', 'href="/docs/dmrgo/')
         lede = strip_tags(re.search(r'<p class="lede">(.*?)</p>', main).group(1))
         desc = lede[:158].rsplit(" ", 1)[0] + "." if len(lede) > 158 else lede
-        self.write("/", "DMRHub: run your own DMR network from one binary", desc, main, self.nav_html(self.hub, "/"), [("DMRHub", "/")])
+        self.write(site, site.home, "DMRHub: run your own DMR network from one binary", desc, main, self.nav_html(site, site.home), [("DMRHub", site.home)])
 
     def not_found(self):
         main = '<article class="doc"><h1>Page not found</h1><p>No page has this address.</p><p><a href="/">Go to the DMRHub docs</a></p></article>'
-        self.write(None, "Page not found | DMRHub Docs", "No page has this address.", main, self.nav_html(self.hub, None), [("DMRHub", "/")])
+        self.write(self.hub, None, "Page not found | DMRHub Docs", "No page has this address.", main, self.nav_html(self.hub, None), [("DMRHub", "/")])
 
     def sitemap(self):
         rows = []
-        for site in self.sites:
+        for site in (s for s in (self.hub, self.go) if s):
             for it in sorted(site.pages.values(), key=lambda i: i.url):
                 lm = site.lastmod.get(it.src)
                 rows.append(f"<url><loc>{esc(self.base + it.url)}</loc>" + (f"<lastmod>{lm}</lastmod>" if lm else "") + "</url>")
         xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(rows) + "\n</urlset>\n"
         (self.out / "docs" / "sitemap.xml").write_text(xml)
         return len(rows)
+
+    def reserved(self, site):
+        names = {"main", "dmrgo", "_shell", "_assets"} if site.key == "hub" else {"main"}
+        for it in site.pages.values():
+            first = site.rel(it.url).split("/", 1)[0]
+            if first in names or RELEASE.match(first):
+                sys.exit(f"{it.src} makes {it.url}, which the address of a docs version or of the site files needs")
+
+    def owner(self, f):
+        url = "/" + f.relative_to(self.out).as_posix()
+        best = None
+        for site in self.trees:
+            if url.startswith(site.prefix) and (best is None or len(site.prefix) > len(best.prefix)):
+                best = site
+        return best.label() if best and best is not best.default else (best.label() + " (latest, at the unversioned addresses)" if best else "the site")
 
     def check(self):
         ids, bad = {}, []
@@ -408,7 +557,10 @@ class Builder:
             return ids[f]
 
         for f in sorted(self.out.rglob("*.html")):
-            for target in re.findall(r'(?:href|src)="([^"]*)"', f.read_text()):
+            text = f.read_text()
+            targets = re.findall(r'(?:href|src)="([^"]*)"', text)
+            targets += re.findall(r'data-home="([^"]*)"', text)
+            for target in targets:
                 target = html.unescape(target)
                 if SCHEME.match(target):
                     continue
@@ -418,43 +570,75 @@ class Builder:
                 if not path:
                     dest = f
                 elif not path.startswith("/") or path == "/docs/":
-                    bad.append(f"{f.relative_to(self.out)}: {target}")
+                    bad.append(f"{self.owner(f)}: {f.relative_to(self.out)}: {target}")
                     continue
                 else:
                     dest = self.out / path.lstrip("/")
                     if path.endswith("/"):
                         dest = dest / "index.html"
                 if not dest.is_file() or (frag and dest.suffix == ".html" and frag not in anchors(dest)):
-                    bad.append(f"{f.relative_to(self.out)}: {target}")
+                    bad.append(f"{self.owner(f)}: {f.relative_to(self.out)}: {target}")
         if bad:
             raise SystemExit("broken links:\n" + "\n".join(bad))
 
     def run(self):
-        for site in self.sites:
-            site.load_nav()
+        self.work = pathlib.Path(tempfile.mkdtemp(prefix="docs-site-"))
+        try:
+            self.build()
+        finally:
+            shutil.rmtree(self.work, ignore_errors=True)
+
+    def build(self):
+        a = self.args
+        self.hub = self.versions("hub", "DMRHub", a.hub, a.hub_repo or a.hub, "doc", "/docs/", "/", "https://github.com/USA-RedDragon/DMRHub")
+        if a.dmrgo:
+            self.go = self.versions("dmrgo", "dmrgo", a.dmrgo, a.dmrgo_repo or a.dmrgo, "docs", "/docs/dmrgo/", "/docs/dmrgo/", "https://github.com/USA-RedDragon/dmrgo", GO_HIDDEN)
+        for site in self.trees:
+            try:
+                site.load_nav()
+                if site is site.default:
+                    self.reserved(site)
+            except SystemExit as e:
+                raise SystemExit(self.fail(site, e)) from None
+        for site in (s for s in (self.hub, self.go) if s):
             site.load_lastmod()
         if self.out.exists():
             shutil.rmtree(self.out)
         self.out.mkdir(parents=True)
         self.shell_assets()
-        work = [(site, it) for site in self.sites for it in site.pages.values()]
+        work = [(site, it) for site in self.trees for it in site.pages.values()]
         with concurrent.futures.ThreadPoolExecutor(self.jobs) as pool:
-            for f in [pool.submit(self.render, s, it) for s, it in work]:
-                f.result()
-        self.home()
+            for (site, _), f in [((s, it), pool.submit(self.render, s, it)) for s, it in work]:
+                try:
+                    f.result()
+                except (SystemExit, subprocess.CalledProcessError, ValueError, KeyError, AttributeError, StopIteration) as e:
+                    raise SystemExit(self.fail(site, e)) from None
+        for site in self.trees:
+            if site.key == "hub":
+                try:
+                    self.home(site)
+                except (SystemExit, ValueError, KeyError, AttributeError) as e:
+                    raise SystemExit(self.fail(site, e)) from None
         self.not_found()
-        for a, b in sorted(self.copied):
-            b.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(a, b)
+        for url, src in sorted(self.copied.items()):
+            dest = self.out / url.lstrip("/")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest)
+        for url, data in self.versions_json.items():
+            (self.out / url.lstrip("/")).write_text(json.dumps(data, indent=1) + "\n")
         n = self.sitemap()
         self.check()
-        print(f"{self.out}: {n} doc pages and the home page, {len(self.copied)} images")
+        listed = "; ".join(f"{s.name}: " + ", ".join(e["name"] for e in s.entries) for s in (self.hub, self.go) if s)
+        print(f"{self.out}: {n} doc pages and the home page at the latest addresses, {len(self.trees)} versions ({listed}), {len(self.copied)} images")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Build the dmrhub.net docs site: the DMRHub docs at / and /docs/, and the dmrgo docs at /docs/dmrgo/.")
-    ap.add_argument("--hub", default=str(HERE.parent.parent), help="DMRHub source tree (default: this repository)")
-    ap.add_argument("--dmrgo", help="dmrgo source tree; without it the site has only the DMRHub docs")
+    ap = argparse.ArgumentParser(description="Build the dmrhub.net docs site: the DMRHub docs at / and /docs/, and the dmrgo docs at /docs/dmrgo/. Each release tag that has the docs layout, and main, also get their own copy at /docs/<version>/ and /docs/dmrgo/<version>/.")
+    ap.add_argument("--hub", default=str(HERE.parent.parent), help="DMRHub source tree for the main version (default: this repository)")
+    ap.add_argument("--hub-repo", help="DMRHub git repository to take the release tags from (default: --hub)")
+    ap.add_argument("--dmrgo", help="dmrgo source tree for the main version; without it the site has only the DMRHub docs")
+    ap.add_argument("--dmrgo-repo", help="dmrgo git repository to take the release tags from (default: --dmrgo)")
+    ap.add_argument("--no-releases", action="store_true", help="build only main, at the latest addresses and at main/")
     ap.add_argument("--out", default="artifacts/docs-site", help="output directory, replaced on each build")
     ap.add_argument("--base", default="https://dmrhub.net", help="absolute URL of the site, for canonical links and the sitemap")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="pandoc processes at once")

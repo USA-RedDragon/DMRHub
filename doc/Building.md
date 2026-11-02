@@ -98,13 +98,17 @@ go test -tags codec2wasm -timeout 30m -race ./...
 
 The docs site at dmrhub.net has one page for each Markdown file of `doc/`. The DMRHub docs home is the site home at `/`, and the other pages are at `/docs/<page>/`, such as `/docs/getting-started/` for `doc/getting-started.md`. The docs of [dmrgo](https://github.com/USA-RedDragon/dmrgo), a DMRHub project, are at `/docs/dmrgo/`.
 
+The site has one copy of the docs for each version. The addresses above show the latest release. The docs of main are at `/docs/main/` and `/docs/dmrgo/main/`, and the docs of each release tag are at `/docs/<tag>/` and `/docs/dmrgo/<tag>/`, such as `/docs/v1.3.26/`. A release tag gets a copy when it has the docs layout (`doc/nav.md` for DMRHub, `docs/nav.md` for dmrgo) and so does each later release tag. For DMRHub, that is v1.3.25 and later. Each build makes every copy again, from `git archive` of the tag, with the current `build.py`. The build stops with the name of the tag when the docs of a release tag do not build. When no release tag has the docs layout, the latest addresses show main.
+
+Each page has a version list in the navigation. It reads `/docs/versions.json` or `/docs/dmrgo/versions.json`, so a page of an old version also lists the newer versions. When you pick a version, the site opens the same page in that version, or the home of that version when that version does not have the page. The docs of main and of older releases show a note that links to the latest release.
+
 `hack/docs-site/build.py` makes the site with pandoc. These files control it:
 
 - `doc/nav.md` is the navigation, in reading order. The build stops when it names a page that `doc/` does not have. A Markdown file that `doc/nav.md` does not name still gets a page, but no navigation item.
 - `hack/docs-site/home.html` is the content of the home page.
 - `hack/docs-site/shell/` holds the page frame (`page.html`), its CSS and script, and the fonts. The frame has the header, the theme setting and the colors of the DMRHub web interface.
 
-The build stops when a page links to a page or an anchor that does not exist. It also writes `/docs/sitemap.xml`, with the date of the last commit of each page when the source tree is a git repository.
+The build stops when a page links to a page or an anchor that does not exist. It also writes `/docs/sitemap.xml` with the pages of the latest addresses, with the date of the last commit of each page when the source tree is a git repository. Images are at `/docs/_assets/`, named by a hash of their content, so that the versions share one copy of each image.
 
 It needs Python 3 and pandoc. Run:
 
@@ -112,16 +116,16 @@ It needs Python 3 and pandoc. Run:
 make docs-site
 ```
 
-The site is in `artifacts/docs-site`. To add the dmrgo docs, give a dmrgo source tree: `python3 hack/docs-site/build.py --dmrgo <dmrgo directory>`. The site uses absolute paths, so serve the directory from the root of a web server to view it.
+The site is in `artifacts/docs-site`. To add the dmrgo docs, give a dmrgo source tree: `python3 hack/docs-site/build.py --dmrgo <dmrgo directory>`. The release tags come from the git repository of each source tree, or from `--hub-repo` and `--dmrgo-repo`. To build only main, add `--no-releases`. The site uses absolute paths, so serve the directory from the root of a web server to view it.
 
-`hack/docs-site/Dockerfile` builds the image that serves the site at dmrhub.net. It clones dmrgo at the ref in the `DMRGO_REF` build argument (default `main`). To use a local dmrgo tree instead, give it as the `dmrgo` build context:
+`hack/docs-site/Dockerfile` builds the image that serves the site at dmrhub.net. The docs workflow builds it for each release tag and for each push to main, with the tag `main`. It clones dmrgo at the ref in the `DMRGO_REF` build argument (default `main`), and clones DMRHub without file contents to get the release tags. A new value of the `SOURCES_RUN` build argument makes the build clone again instead of using a cached clone. To use a local dmrgo tree instead, give it as the `dmrgo` build context:
 
 ```bash
 docker build -f hack/docs-site/Dockerfile --build-arg DMRGO_REF=main -t dmrhub-docs .
 docker build -f hack/docs-site/Dockerfile --build-context dmrgo=../dmrgo -t dmrhub-docs .
 ```
 
-The image runs `hack/docs-site/server` on port 8080 as an unprivileged user. It redirects `/docs/` to `/` and a page address without its trailing slash to the address with it, and sends the zstd copy of a file to a browser that accepts zstd.
+The image runs `hack/docs-site/server` on port 8080 as an unprivileged user. It lists the files of the site at start and reads each file when a browser asks for it, so its memory does not grow with the number of versions. It redirects `/docs/` to `/` and a page address without its trailing slash to the address with it, and sends the zstd copy of a file to a browser that accepts zstd.
 
 ## Make the screenshots of the docs
 

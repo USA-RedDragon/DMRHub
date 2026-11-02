@@ -32,6 +32,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	mobyclient "github.com/moby/moby/client"
@@ -114,8 +115,8 @@ func reapStaleRuns(ctx context.Context, cli *mobyclient.Client) error {
 		}) {
 			continue
 		}
-		if _, err := cli.ContainerRemove(ctx, c.ID, mobyclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true}); err != nil && stillThere(ctx, cli, c.ID) {
-			errs = append(errs, fmt.Errorf("remove the stale server %s: %w", c.ID, err))
+		if err := removeStale(ctx, cli, c.ID); err != nil {
+			errs = append(errs, err)
 		}
 		_ = os.RemoveAll(runSharedDir(run))
 	}
@@ -139,7 +140,26 @@ func reapStaleDirs() {
 	}
 }
 
-func stillThere(ctx context.Context, cli *mobyclient.Client, id string) bool {
+// staleRemover is the part of the Docker client that removes a stale
+// server.
+type staleRemover interface {
+	ContainerRemove(ctx context.Context, id string, options mobyclient.ContainerRemoveOptions) (mobyclient.ContainerRemoveResult, error)
+	ContainerInspect(ctx context.Context, id string, options mobyclient.ContainerInspectOptions) (mobyclient.ContainerInspectResult, error)
+}
+
+// removeStale removes the stale server id. A server that another run
+// removes already, which Docker answers with "removal of container ... is
+// already in progress" before it shows the container as removing, or that
+// is gone, counts as removed.
+func removeStale(ctx context.Context, cli staleRemover, id string) error {
+	_, err := cli.ContainerRemove(ctx, id, mobyclient.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
+	if err == nil || cerrdefs.IsNotFound(err) || strings.Contains(err.Error(), "is already in progress") || !stillThere(ctx, cli, id) {
+		return nil
+	}
+	return fmt.Errorf("remove the stale server %s: %w", id, err)
+}
+
+func stillThere(ctx context.Context, cli staleRemover, id string) bool {
 	res, err := cli.ContainerInspect(ctx, id, mobyclient.ContainerInspectOptions{})
 	if err != nil {
 		return false

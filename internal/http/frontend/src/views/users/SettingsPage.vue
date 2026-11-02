@@ -153,6 +153,8 @@
 
       <PluginSwitchesCard v-if="!mustChange" />
 
+      <OnAirCodeCard v-if="!mustChange" />
+
       <EmailCard v-if="!mustChange" :current="email" :verified="emailVerified" />
 
       <AppsCard v-if="!mustChange" />
@@ -183,6 +185,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import AccountCard from '@/components/users/AccountCard.vue';
 import AppsCard from '@/components/users/AppsCard.vue';
 import EmailCard from '@/components/users/EmailCard.vue';
+import OnAirCodeCard from '@/components/users/OnAirCodeCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
 import PluginSwitchesCard from '@/components/users/PluginSwitchesCard.vue';
 import StoreForwardCard from '@/components/users/StoreForwardCard.vue';

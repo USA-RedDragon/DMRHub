@@ -76,6 +76,7 @@ import { buttonVariants } from '@/components/ui/button';
 import RelativeTimestamp from './RelativeTimestamp.vue';
 import ResetPasswordDialog from './users/ResetPasswordDialog.vue';
 import { radioIDMismatch } from '@/services/radioid';
+import { resetOnAirCode } from '@/services/totp';
 
 type UserRow = {
   id: number;
@@ -88,6 +89,7 @@ type UserRow = {
   created_at: string | Date;
   editing: boolean;
   radioIDCallsign?: string;
+  onAirCode?: boolean;
 };
 
 export default {
@@ -169,6 +171,10 @@ export default {
 
               res.data.users[i].created_at = new Date(res.data.users[i].created_at);
             }
+            const onAir = new Set<number>(res.data.on_air_codes ?? []);
+            for (const u of res.data.users) {
+              u.onAirCode = onAir.has(u.id);
+            }
             this.users = res.data.users;
             this.totalRecords = res.data.total;
             this.loading = false;
@@ -178,6 +184,35 @@ export default {
             this.loading = false;
           });
       }
+    },
+    resetOnAirCode(user: UserRow) {
+      this.$confirm.require({
+        message: `Turn off the on-air code of ${user.callsign}? Anyone can then transmit with their radio IDs.`,
+        header: 'Turn off on-air code',
+        icon: 'pi pi-exclamation-triangle',
+        acceptClass: 'p-button-danger',
+        accept: () => {
+          resetOnAirCode(user.id)
+            .then(() => {
+              user.onAirCode = false;
+              this.$toast.add({
+                summary: 'On-air code off',
+                severity: 'success',
+                detail: `The on-air code of ${user.callsign} is off.`,
+                life: 3000,
+              });
+            })
+            .catch((err) => {
+              console.error(err);
+              this.$toast.add({
+                summary: 'Error',
+                severity: 'error',
+                detail: 'Could not turn off the on-air code.',
+                life: 3000,
+              });
+            });
+        },
+      });
     },
     handleApprovePage(user: UserRow) {
       this.$confirm.require({
@@ -423,6 +458,9 @@ export default {
                 : actionButton('Save Changes', () => this.finishEditingUser(user)),
               !user.editing && user.id !== this.userStore.id
                 ? actionButton('Reset password', () => this.resetPassword(user))
+                : null,
+              !user.editing && user.onAirCode
+                ? actionButton('Turn off on-air code', () => this.resetOnAirCode(user))
                 : null,
               user.editing
                 ? actionButton('Cancel', () => this.cancelEditingUser(user))

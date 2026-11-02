@@ -60,6 +60,9 @@ function serve(smsStorage: boolean, ids = [accountID, addedID], switches: unknow
     if (url === '/oauth/apps') {
       return Promise.resolve({ data: [] });
     }
+    if (url === '/users/me/totp') {
+      return Promise.resolve({ data: { on: false, unlock_seconds: 86400, unlocks: [] } });
+    }
     if (url === '/users/me/tokens') {
       return Promise.resolve({ data: { tokens: [], scopes: [], expiries: [30, 90, 365, 0] } });
     }
@@ -91,6 +94,7 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-test="radio-ids-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="apps-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="tokens-card"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="on-air-card"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-card"]').exists()).toBe(false);
   });
 
@@ -152,6 +156,14 @@ describe('SettingsPage', () => {
     const wrapper = await mountPage();
     const cards = wrapper.findAll('[data-test$="-card"], [data-test^="plugin-switch-3"]').map((c) => c.attributes('data-test'));
     expect(cards.indexOf('plugin-switch-3-aprs')).toBe(cards.indexOf('radio-ids-card') + 1);
+  });
+
+  it('shows the on-air code after the radio IDs', async () => {
+    serve(false);
+    const wrapper = await mountPage();
+    const cards = wrapper.findAll('[data-test$="-card"]').map((c) => c.attributes('data-test'));
+    expect(cards.indexOf('on-air-card')).toBeGreaterThan(cards.indexOf('radio-ids-card'));
+    expect(wrapper.find('[data-test="on-air-card"]').text()).toContain('Set up');
   });
 
   it('shows SMS Storage off with the privacy text and no dates or config keys', async () => {

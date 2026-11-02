@@ -253,7 +253,7 @@ describe('setup menu routing', () => {
   it('has the routing settings and no explainer text', () => {
     expect(tabPaths(tab('routing'))).toEqual([
       'dmr.routing.disable-dynamic-links', 'dmr.routing.dynamic-timeout', 'dmr.routing.transmit', 'dmr.routing.max-transmission',
-      'dmr.routing.contention', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
+      'dmr.routing.contention', 'dmr.routing.on-air-unlock', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
       'dmr.routing.local-talkgroups', 'dmr.repeater-quota',
     ]);
     expect(tab('routing').intro).toEqual([]);
@@ -293,6 +293,8 @@ describe('setup menu routing', () => {
     expect(inputValue(field('dmr.routing.ephemeral-ttl'), 24 * 3.6e12)).toBe('24');
     expect(fromInput(field('dmr.routing.ephemeral-ttl'), '1.5')).toBe(1.5 * 3.6e12);
     expect(fromInput(field('dmr.routing.max-transmission'), '180')).toBe(180e9);
+    expect(inputValue(field('dmr.routing.on-air-unlock'), 24 * 3.6e12)).toBe('24');
+    expect(fromInput(field('dmr.routing.on-air-unlock'), '0.25')).toBe(0.25 * 3.6e12);
   });
 
   it('turns the longest transmission on at 3 minutes', () => {

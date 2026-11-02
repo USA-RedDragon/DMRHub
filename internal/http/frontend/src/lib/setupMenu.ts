@@ -757,6 +757,10 @@ export const TABS: TabDef[] = [
             toggle: { label: 'Limit transmission length', value: 180e9 },
           },
           { path: 'dmr.routing.contention', label: 'Two talkers at once', kind: 'segment', options: contention },
+          {
+            path: 'dmr.routing.on-air-unlock', label: 'On-air unlock (hours)', kind: 'hours', step: 'any',
+            help: 'How long a right code unlocks a radio ID on its timeslot.',
+          },
         ],
       },
       {

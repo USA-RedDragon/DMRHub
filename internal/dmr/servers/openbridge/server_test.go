@@ -48,7 +48,7 @@ func TestMakeServer(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)
@@ -81,7 +81,7 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	defConfig.DMR.OpenBridge.Bind = "0.0.0.0"
 	defConfig.DMR.OpenBridge.Port = 0
 
@@ -142,7 +142,7 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	defConfig.DMR.OpenBridge.Port = 0 // OS-assigned port
 
 	database, err := db.MakeDB(&defConfig)

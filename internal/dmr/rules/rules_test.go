@@ -38,7 +38,7 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)
@@ -369,7 +369,7 @@ func benchmarkPeerShouldEgress(b *testing.B, numRules uint) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	memdb.Use(&defConfig)
+	memdb.Use(b, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {
@@ -420,7 +420,7 @@ func benchmarkPeerShouldIngress(b *testing.B, numRules uint) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	memdb.Use(&defConfig)
+	memdb.Use(b, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {

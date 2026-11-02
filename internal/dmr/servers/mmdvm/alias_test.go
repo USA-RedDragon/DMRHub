@@ -50,7 +50,7 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 		const repeaterID, radio = uint(311862), uint(3191868)
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		memdb.Use(&cfg)
+		memdb.Use(t, &cfg)
 		database, err := db.MakeDB(&cfg)
 		require.NoError(t, err)
 		kvStore, err := kv.MakeKV(context.Background(), &cfg)

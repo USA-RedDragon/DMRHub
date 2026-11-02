@@ -131,14 +131,14 @@ func (p *Plugins) RunAt(t testing.TB, address, name string, ranges []models.Plug
 	return added
 }
 
-// RepeaterHub returns a hub on an in-memory database, with the user owner
+// RepeaterHub returns a hub on a test database, with the user owner
 // and the MMDVM repeater it owns, active, and the server handle that gets
 // what the hub sends to the repeater. It stops when the test ends.
 func RepeaterHub(t testing.TB, owner, repeater uint) (*hub.Hub, *gorm.DB, pubsub.PubSub, *hub.ServerHandle) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)

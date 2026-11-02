@@ -43,7 +43,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestStoppingTheListenerTwiceIsSafe(t *testing.T) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

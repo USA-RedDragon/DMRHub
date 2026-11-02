@@ -73,7 +73,7 @@ func TestSetupWizardSavesToTheDatabase(t *testing.T) {
 	t.Parallel()
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&base)
+	memdb.Use(t, &base)
 	base.Secret = "a-secret-that-is-long-enough-for-the-check"
 	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
 	database, err := db.MakeDB(&base)
@@ -427,7 +427,7 @@ func TestSetupWizardLetsTheFirstVisitorMakeTheAdmin(t *testing.T) {
 func TestSetupWizardMakesTheFirstAdminQuietly(t *testing.T) { //nolint:paralleltest // it swaps the default logger
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&base)
+	memdb.Use(t, &base)
 	base.Secret = "a-secret-that-is-long-enough-for-the-check"
 	base.PasswordSalt = "a-salt-that-is-long-enough-for-the-check"
 	base.DMR.DisableRadioIDValidation = true
@@ -718,7 +718,7 @@ func TestSetupWizardTestsNoDatabaseItCannotChange(t *testing.T) {
 
 	base, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&base)
+	memdb.Use(t, &base)
 	database, err := db.MakeDB(&base)
 	require.NoError(t, err)
 	live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})

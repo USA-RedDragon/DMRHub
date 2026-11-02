@@ -49,7 +49,7 @@ func TestCaseInsensitiveUsernames(t *testing.T) {
 			t.Parallel()
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
 			require.NoError(t, err)
-			memdb.Use(&cfg)
+			memdb.Use(t, &cfg)
 			be.Setup(t, &cfg)
 			database, err := db.MakeDB(&cfg)
 			require.NoError(t, err)

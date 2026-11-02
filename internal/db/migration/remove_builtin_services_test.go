@@ -39,7 +39,7 @@ func builtinsDB(t *testing.T, be testutils.Backend) (*gorm.DB, *config.Config) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	be.Setup(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

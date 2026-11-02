@@ -74,7 +74,7 @@ func TestAPeerGetsItsCallsFromTheReplyToItsRegistration(t *testing.T) {
 	const id, stream = uint32(311891), uint(76102)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
 	cfg.DMR.IPSC.NetworkID = 311860
@@ -163,7 +163,7 @@ func newRegisterRig(t *testing.T, id uint32) *registerRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
 	cfg.DMR.IPSC.NetworkID = 311860

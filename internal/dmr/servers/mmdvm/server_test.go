@@ -43,7 +43,7 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	defConfig.DMR.MMDVM.Port = 0 // Use ephemeral port to avoid conflicts under -count >1
 
 	db, err := db.MakeDB(&defConfig)

@@ -41,7 +41,7 @@ func corsRouter(t *testing.T, enabled bool) *gin.Engine {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.HTTP.CORS.Enabled = enabled
 	cfg.HTTP.CORS.Hosts = []string{"https://hub.example"}
 	database, err := db.MakeDB(&cfg)

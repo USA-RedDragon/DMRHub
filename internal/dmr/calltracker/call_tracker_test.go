@@ -95,7 +95,7 @@ func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	if probe, _ := database.DB(); probe != nil {
@@ -959,7 +959,7 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		memdb.Use(&defConfig)
+		memdb.Use(t, &defConfig)
 		database, err := db.MakeDB(&defConfig)
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)

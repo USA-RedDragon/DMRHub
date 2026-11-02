@@ -42,7 +42,7 @@ func closedDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -320,7 +320,7 @@ func openDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -337,7 +337,7 @@ func benchOpenDB(b *testing.B) (*gorm.DB, func()) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	memdb.Use(&defConfig)
+	memdb.Use(b, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {
 		b.Fatal(err)

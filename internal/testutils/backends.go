@@ -85,7 +85,8 @@ func ClockOn(c clock.Clock) Backend {
 	}
 }
 
-// SQLiteMemoryBackend returns a backend using in-memory SQLite and in-memory pubsub/KV.
+// SQLiteMemoryBackend returns a backend using a SQLite file in WAL mode, as
+// DMRHub runs by default, and in-memory pubsub and KV.
 func SQLiteMemoryBackend() Backend {
 	return Backend{
 		Name:  "sqlite-memory",

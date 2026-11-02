@@ -96,7 +96,7 @@ func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub,
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)

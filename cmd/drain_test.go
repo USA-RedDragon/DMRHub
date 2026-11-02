@@ -56,7 +56,7 @@ func drainRig(t *testing.T, otherReplica bool) (*serverManager, <-chan *pluginv1
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.Secret = "a secret of the config, long enough"
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	cfg.DMR.DrainTimeout = drainTimeout
 	database, err := db.MakeDB(&cfg)

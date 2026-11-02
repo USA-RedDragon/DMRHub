@@ -43,7 +43,7 @@ func TestMakeDBInMemoryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	db, err := db.MakeDB(&defConfig)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
@@ -137,7 +137,7 @@ func TestSQLiteTransactionsThatReadThenWriteRunTogether(t *testing.T) {
 		{name: "file", use: func(t *testing.T, cfg *config.Config) {
 			cfg.Database.Database = filepath.Join(t.TempDir(), "readwrite.db")
 		}},
-		{name: "shared cache", use: func(_ *testing.T, cfg *config.Config) { memdb.Use(cfg) }},
+		{name: "shared cache", use: func(_ *testing.T, cfg *config.Config) { memdb.UseSharedCache(cfg) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

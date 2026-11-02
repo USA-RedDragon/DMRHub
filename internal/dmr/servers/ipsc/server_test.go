@@ -127,7 +127,7 @@ func testDBConfig(t *testing.T) *config.Config {
 		t.Fatalf("config: %v", err)
 	}
 	cfg.DMR.IPSC.NetworkID = testConfig().DMR.IPSC.NetworkID
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	return &cfg
 }
 

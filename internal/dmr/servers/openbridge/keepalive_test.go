@@ -45,7 +45,7 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.OpenBridge.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)

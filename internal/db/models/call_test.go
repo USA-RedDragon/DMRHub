@@ -39,7 +39,7 @@ func TestFindCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -59,7 +59,7 @@ func TestCountCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -78,7 +78,7 @@ func TestFindUserCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -97,7 +97,7 @@ func TestCountUserCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -116,7 +116,7 @@ func TestFindRepeaterCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -135,7 +135,7 @@ func TestFindTalkgroupCallsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -154,7 +154,7 @@ func TestActiveCallExistsReturnsError(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 
@@ -173,7 +173,7 @@ func TestCallQueriesSucceedOnValidDB(t *testing.T) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 	defer func() {

@@ -61,7 +61,7 @@ func replicasOn(t *testing.T, n int, wrap func(kv.KV) kv.KV) ([]replica, *gorm.D
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)

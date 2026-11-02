@@ -50,7 +50,7 @@ func TestTheMatchOfAPairStaysBounded(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
@@ -236,7 +236,7 @@ func TestTheHomesOfRowsEmptyAfterTheMatchExpires(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		memdb.Use(&cfg)
+		memdb.Use(t, &cfg)
 		database, err := db.MakeDB(&cfg)
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &cfg)

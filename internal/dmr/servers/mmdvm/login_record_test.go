@@ -85,7 +85,7 @@ func newRecordRig(t *testing.T, id uint32) *recordRig {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.DMR.MMDVM.Bind = "127.0.0.1"
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)

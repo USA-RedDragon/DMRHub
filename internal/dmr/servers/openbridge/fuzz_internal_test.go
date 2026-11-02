@@ -53,7 +53,7 @@ func startFuzzServer(t *testing.T) fuzzServer {
 	t.Helper()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	defConfig.DMR.OpenBridge.Port = 0
 
 	database, err := db.MakeDB(&defConfig)

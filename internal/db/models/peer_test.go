@@ -38,7 +38,7 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
@@ -359,7 +359,7 @@ func benchMakeTestDB(b *testing.B) (*gorm.DB, func()) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	memdb.Use(&defConfig)
+	memdb.Use(b, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	if err != nil {

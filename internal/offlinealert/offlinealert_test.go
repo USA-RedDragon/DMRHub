@@ -96,7 +96,7 @@ func newEnv(t *testing.T, be testutils.Backend) *env {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	be.Migrated().Setup(t, &cfg)
 	cfg.SMTP.Enabled = true
 	cfg.NetworkName = "DMRHub Demo"

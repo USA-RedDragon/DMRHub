@@ -55,7 +55,7 @@ func webTransportRouter(t *testing.T, enabled bool) (http.Handler, *config.Confi
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	cfg.Secret = "a secret"
 	cfg.PasswordSalt = "a salt"
 	cfg.DMR.MMDVM.WebTransport.Enabled = enabled

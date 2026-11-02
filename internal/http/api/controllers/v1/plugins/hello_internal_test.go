@@ -39,7 +39,7 @@ func TestEachProblemOfAHelloIsWorded(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg, "_pragma=foreign_keys(1)")
+	memdb.Use(t, &cfg, "_pragma=foreign_keys(1)")
 	db, err := dbpkg.MakeDB(&cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

@@ -80,7 +80,7 @@ func rulesSetup(t *testing.T, be testutils.Backend) *rulesEnv {
 	t.Helper()
 	c, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&c)
+	memdb.Use(t, &c)
 	be.Migrated().Setup(t, &c)
 	database, err := db.MakeDB(&c)
 	require.NoError(t, err)

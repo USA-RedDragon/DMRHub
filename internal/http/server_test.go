@@ -157,7 +157,7 @@ func TestHealthcheckNotReady(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	assert.NoError(t, err)
 
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	database, err := db.MakeDB(&defConfig)
 	assert.NoError(t, err)

@@ -42,7 +42,7 @@ func newDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100000101}, Password: "pw"}).Error)

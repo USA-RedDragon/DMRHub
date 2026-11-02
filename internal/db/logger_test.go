@@ -39,7 +39,7 @@ func TestMakeDBLogsNoMissingRecord(t *testing.T) { //nolint:paralleltest // it s
 	t.Cleanup(db.SetGormLogWriter(log.New(&out, "", 0)))
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&cfg)
+	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

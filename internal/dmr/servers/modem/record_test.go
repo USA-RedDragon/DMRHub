@@ -35,7 +35,7 @@ func TestServerCreatesAMissingRepeaterWithNoOwner(t *testing.T) {
 	t.Parallel()
 	cfg := modemConfig(t, false)
 	cfg.DMR.Modem.CWID.Callsign = "ki5vmf"
-	memdb.Use(cfg, "_pragma=foreign_keys(1)")
+	memdb.Use(t, cfg, "_pragma=foreign_keys(1)")
 	database, err := db.MakeDB(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {

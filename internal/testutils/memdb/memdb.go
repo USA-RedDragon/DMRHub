@@ -17,19 +17,30 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-// Package memdb names SQLite memory databases for tests.
+// Package memdb gives tests their own SQLite databases.
 //
-// An empty SQLite name gives each connection of the pool its own empty
-// database, so tables and rows made on one connection are missing on the
-// next. A shared-cache name fixes that only while no other open database of
-// the process has the same name. The names here are random, so no two tests
-// share one, even under -count above one.
+// Use gives a test a SQLite file in WAL mode in its temporary directory,
+// with the parameters that DMRHub uses by default but foreign keys, so
+// that the test locks as a server does: a read never waits for a write.
+// UseSharedCache and DSN give a shared-cache memory database instead, for
+// the tests of that mode. An empty SQLite name gives each connection of
+// the pool its own empty database, so tables and rows made on one
+// connection are missing on the next. A shared-cache name fixes that only
+// while no other open database of the process has the same name. The
+// names here are random, so no two tests share one, even under -count
+// above one.
 package memdb
 
 import (
 	"crypto/rand"
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
+	"github.com/USA-RedDragon/configulator/v2"
 )
 
 // Name returns a new SQLite name for a shared-cache memory database.
@@ -42,9 +53,48 @@ func DSN() string {
 	return Name() + "?mode=memory&cache=shared"
 }
 
-// Use points cfg at a new shared-cache SQLite memory database, with params
-// added to the extra parameters.
-func Use(cfg *config.Config, params ...string) {
+// Use points cfg at a new SQLite file in the temporary directory of t,
+// with the default database parameters of DMRHub but foreign keys, which a
+// test turns on with params, and params added to them.
+func Use(t testing.TB, cfg *config.Config, params ...string) {
+	t.Helper()
+	if err := UseIn(t.TempDir(), cfg, params...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// UseIn is Use for a caller without a test, with the file in dir, which
+// the caller removes when it closes the database.
+func UseIn(dir string, cfg *config.Config, params ...string) error {
+	extra, err := defaults()
+	if err != nil {
+		return err
+	}
+	extra = slices.DeleteFunc(slices.Clone(extra), func(p string) bool {
+		return strings.HasPrefix(p, "_pragma=foreign_keys")
+	})
+	for _, p := range params {
+		if !slices.Contains(extra, p) {
+			extra = append(extra, p)
+		}
+	}
+	cfg.Database.Driver = config.DatabaseDriverSQLite
+	cfg.Database.Database = filepath.Join(dir, "dmrhub.db")
+	cfg.Database.ExtraParameters = extra
+	return nil
+}
+
+// UseSharedCache points cfg at a new shared-cache SQLite memory database,
+// with params added to the extra parameters.
+func UseSharedCache(cfg *config.Config, params ...string) {
 	cfg.Database.Database = Name()
 	cfg.Database.ExtraParameters = append([]string{"mode=memory", "cache=shared"}, params...)
+}
+
+func defaults() ([]string, error) {
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	if err != nil {
+		return nil, fmt.Errorf("read the default database parameters: %w", err)
+	}
+	return cfg.Database.ExtraParameters, nil
 }

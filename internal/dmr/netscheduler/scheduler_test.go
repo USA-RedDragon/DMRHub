@@ -40,7 +40,7 @@ func makeTestStack(t *testing.T) (*netscheduler.NetScheduler, func()) {
 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
 

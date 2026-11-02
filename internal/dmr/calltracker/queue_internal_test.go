@@ -42,7 +42,7 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		memdb.Use(&defConfig)
+		memdb.Use(t, &defConfig)
 		database, err := db.MakeDB(&defConfig)
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
@@ -81,7 +81,7 @@ func TestACallEndsWhileTasksThatAreNotPacketsKeepTheQueueBusy(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		memdb.Use(&defConfig)
+		memdb.Use(t, &defConfig)
 		database, err := db.MakeDB(&defConfig)
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)

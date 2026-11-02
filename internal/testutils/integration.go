@@ -46,7 +46,8 @@ import (
 )
 
 // IntegrationStack is a full DMRHub test environment with real MMDVM and IPSC
-// servers on ephemeral UDP ports, backed by in-memory SQLite, pubsub, and KV.
+// servers on ephemeral UDP ports, backed by a SQLite file and in-memory
+// pubsub and KV.
 type IntegrationStack struct {
 	Config           *config.Config
 	DB               *gorm.DB
@@ -107,10 +108,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	// In-memory SQLite — use a named shared-cache DB so all connections within
-	// the same test share data. Without cache=shared, each connection in the pool
-	// gets its own empty in-memory database, causing "no such table" errors.
-	memdb.Use(&defConfig)
+	memdb.Use(t, &defConfig)
 
 	// Apply backend overrides (e.g. Postgres+Redis instead of SQLite+memory).
 	for _, be := range backends {

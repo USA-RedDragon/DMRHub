@@ -58,7 +58,7 @@ type userEnv struct {
 func newUserEnv(t *testing.T, be testutils.Backend) *userEnv {
 	t.Helper()
 	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
-		memdb.Use(c)
+		memdb.Use(t, c)
 		be.Migrated().Setup(t, c)
 	})
 	require.NoError(t, err)

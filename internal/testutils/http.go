@@ -22,6 +22,7 @@ package testutils
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"testing"
 
@@ -49,6 +50,19 @@ type TestDB struct {
 	ct       *calltracker.CallTracker
 	stop     context.CancelFunc
 	config   *config.Config
+	dir      string
+}
+
+func (t *TestDB) useDB(cfg *config.Config) error {
+	dir, err := os.MkdirTemp("", "dmrhub-db-")
+	if err != nil {
+		return fmt.Errorf("failed to make the database directory: %w", err)
+	}
+	t.dir = dir
+	if err := memdb.UseIn(dir, cfg, "_pragma=foreign_keys(1)"); err != nil {
+		return fmt.Errorf("failed to point the config at the database: %w", err)
+	}
+	return nil
 }
 
 // KV returns the KV store of the router.
@@ -72,6 +86,10 @@ func (t *TestDB) CloseDB() {
 		_ = sqlDB.Close()
 	}
 	t.database = nil
+	if t.dir != "" {
+		_ = os.RemoveAll(t.dir)
+		t.dir = ""
+	}
 }
 
 // PubSub returns the pubsub of the router of CreateTestDBRouterWithOptions.
@@ -101,7 +119,9 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
+	if err := t.useDB(&defConfig); err != nil {
+		return nil, nil, err
+	}
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 	if change != nil {
@@ -160,9 +180,9 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 	return http.CreateRouter(ctx, &defConfig, t.hub, t.database, ps, ready, nil, "test", "deadbeef", opts...), &t, nil
 }
 
-// CreateTestDBRouterWithHub creates a test router with a hub. Its in-memory
-// database is shared by every connection, so the goroutines of the hub see
-// what the handlers write.
+// CreateTestDBRouterWithHub creates a test router with a hub. Its database
+// is shared by every connection, so the goroutines of the hub see what the
+// handlers write.
 func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	var t TestDB
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
@@ -170,7 +190,9 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
+	if err := t.useDB(&defConfig); err != nil {
+		return nil, nil, err
+	}
 	defConfig.DMR.DisableRadioIDValidation = true
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
@@ -240,7 +262,9 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		return nil, nil, fmt.Errorf("failed to create default config: %w", err)
 	}
 
-	memdb.Use(&defConfig, "_pragma=foreign_keys(1)")
+	if err := t.useDB(&defConfig); err != nil {
+		return nil, nil, err
+	}
 	defConfig.DMR.OpenBridge.Enabled = true
 	defConfig.DMR.IPSC.Enabled = true
 	defConfig.DMR.DisableRadioIDValidation = true

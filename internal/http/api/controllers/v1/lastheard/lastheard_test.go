@@ -206,6 +206,7 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 		"user.id": true, "user.callsign": true, "repeater.id": true, "repeater.callsign": true,
 		"to_user.id": true, "to_user.callsign": true, "to_repeater.id": true, "to_repeater.callsign": true,
 		"to_talkgroup.id": true, "to_talkgroup.name": true, "to_talkgroup.description": true,
+		"is_to_local_group": true, "to_local_group": true, "to_local_group.id": true, "to_local_group.name": true,
 	}
 	for _, path := range paths {
 		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)

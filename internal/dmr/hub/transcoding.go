@@ -232,6 +232,17 @@ func (h *Hub) finishCopy(ctx context.Context, t *copyTicket, packets ...models.P
 // Codec2.
 func (h *Hub) needsCopy(ctx context.Context, packet *models.Packet, sc *streamCodec, sourceName string) bool {
 	want := sc.codec.Other().String()
+	if verdict, group := h.localRoute(*packet, sourceName); verdict != notLocal {
+		if verdict == localDrop {
+			return false
+		}
+		for _, t := range h.localTargets(group, packet.Repeater) {
+			if t.rpt.SlotCodec(t.slot) == want {
+				return true
+			}
+		}
+		return false
+	}
 	if sc.codec == transcode.CodecCodec2 && h.toPeers(sourceName) && h.anyAMBEPeer(ctx, *packet) {
 		return true
 	}
@@ -275,6 +286,14 @@ func (h *Hub) copyMode(ctx context.Context, packet *models.Packet) codec2.Mode {
 	if !packet.GroupCall {
 		if rpt, ok := h.privateTargetRepeater(ctx, *packet); ok {
 			return modeOf(rpt.SlotCodec2Mode(packet.Slot))
+		}
+		return codec2.Mode2400
+	}
+	if verdict, group := h.localRoute(*packet, ""); verdict == localGroupCall {
+		for _, t := range h.localTargets(group, packet.Repeater) {
+			if t.rpt.SlotCodec(t.slot) == models.CodecCodec2 {
+				return modeOf(t.rpt.SlotCodec2Mode(t.slot))
+			}
 		}
 		return codec2.Mode2400
 	}

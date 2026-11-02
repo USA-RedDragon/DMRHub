@@ -146,6 +146,7 @@ type subscription struct {
 	feed    *repeaterFeed
 	topic   string
 	tg      uint
+	local   uint
 	flood   bool
 	mu      sync.RWMutex
 	stopped bool
@@ -175,6 +176,15 @@ func (f *repeaterFeed) subscribeTG(tg uint) *subscription {
 		return f.newSubscription("", 0)
 	}
 	sub := f.newSubscription(talkgroupTopic(tg), tg)
+	f.add(sub)
+	return sub
+}
+
+// subscribeLocal adds the topic of the local group to the feed, and
+// returns its subscription.
+func (f *repeaterFeed) subscribeLocal(group uint) *subscription {
+	sub := f.newSubscription(localGroupTopic(group), 0)
+	sub.local = group
 	f.add(sub)
 	return sub
 }
@@ -290,6 +300,12 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 			radioSubs.Store(*p.TS2DynamicTalkgroupID, feed.subscribeTG(*p.TS2DynamicTalkgroupID))
 		}
 	}
+
+	for _, m := range p.LocalGroups {
+		if _, ok := radioSubs.Load(localGroupKey(m.GroupID)); !ok {
+			radioSubs.Store(localGroupKey(m.GroupID), feed.subscribeLocal(m.GroupID))
+		}
+	}
 }
 
 // resubscribeLocked makes the subscriptions of the active repeater match
@@ -337,11 +353,13 @@ func (h *Hub) resubscribeLocked(ctx context.Context, repeaterID uint) {
 		if _, ok := radioSubs.Load(key); ok {
 			continue
 		}
-		switch key {
-		case repeaterID:
+		switch {
+		case key == repeaterID:
 			radioSubs.Store(key, feed.subscribe(repeaterID))
-		case floodSubKey:
+		case key == floodSubKey:
 			radioSubs.Store(key, feed.subscribeFlood())
+		case key&localKeyBase != 0:
+			radioSubs.Store(key, feed.subscribeLocal(key&^localKeyBase))
 		default:
 			radioSubs.Store(key, feed.subscribeTG(key))
 		}
@@ -349,8 +367,8 @@ func (h *Hub) resubscribeLocked(ctx context.Context, repeaterID uint) {
 }
 
 // wantedSubscriptions returns the keys of the subscriptions that the
-// repeater p wants: its private calls, the private flood, and its static
-// and dynamic talkgroups.
+// repeater p wants: its private calls, the private flood, its static and
+// dynamic talkgroups, and its local groups.
 func wantedSubscriptions(p *models.Repeater) map[uint]bool {
 	want := map[uint]bool{p.ID: true, floodSubKey: true}
 	for _, tg := range p.TS1StaticTalkgroups {
@@ -364,6 +382,9 @@ func wantedSubscriptions(p *models.Repeater) map[uint]bool {
 	}
 	if p.TS2DynamicTalkgroupID != nil {
 		want[*p.TS2DynamicTalkgroupID] = true
+	}
+	for _, m := range p.LocalGroups {
+		want[localGroupKey(m.GroupID)] = true
 	}
 	return want
 }
@@ -694,9 +715,12 @@ func (m *subscriptionManager) readFeed(ctx context.Context, f *repeaterFeed, rep
 		if sub.flood && packet.Repeater == repeaterID {
 			continue
 		}
-		if sub.tg == 0 {
+		switch {
+		case sub.local != 0:
+			m.deliverLocal(ctx, sub, packet, repeaterID)
+		case sub.tg == 0:
 			m.deliverPrivate(ctx, sub, packet, repeaterID)
-		} else {
+		default:
 			m.deliverGroup(ctx, sub, packet, repeaterID)
 		}
 	}
@@ -776,6 +800,38 @@ func (m *subscriptionManager) deliverGroup(ctx context.Context, sub *subscriptio
 	m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
 }
 
+// deliverLocal delivers a call of the local group of sub to the repeater,
+// on the slot it takes the calls of the group on. The repeater that the
+// call came from does not get it back.
+func (m *subscriptionManager) deliverLocal(ctx context.Context, sub *subscription, packet models.Packet, repeaterID uint) {
+	if packet.Repeater == repeaterID {
+		return
+	}
+	p, err := m.hub.routingRepeater(repeaterID)
+	if err != nil {
+		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
+		countLookupWait(err)
+		return
+	}
+	member, ok := p.LocalGroupByID(sub.local)
+	if !ok {
+		return
+	}
+	if m.hub.refusal(repeaterID, member.Slot, packet, true) != "" {
+		return
+	}
+	if !m.hub.holdsSlot(p.ID, member.Slot, packet) {
+		return
+	}
+	packet.Repeater = p.ID
+	packet.Slot = member.Slot
+	if !wantsVersion(&packet, p.SlotCodec(member.Slot)) {
+		return
+	}
+	sub.deliver(m.hub, p.Type, RoutedPacket{RepeaterID: repeaterID, Packet: packet})
+	m.hub.noteCopy(ctx, &packet, repeaterTarget(repeaterID))
+}
+
 // Subscribes reports whether the active repeater repeaterID takes the
 // bursts of the talkgroup tg.
 func (h *Hub) Subscribes(repeaterID, tg uint) bool {
@@ -785,4 +841,10 @@ func (h *Hub) Subscribes(repeaterID, tg uint) bool {
 	}
 	_, ok = subs.Load(tg)
 	return ok
+}
+
+// SubscribesLocal reports whether the active repeater repeaterID takes the
+// calls of the local group.
+func (h *Hub) SubscribesLocal(repeaterID, group uint) bool {
+	return h.Subscribes(repeaterID, localGroupKey(group))
 }

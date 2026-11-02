@@ -129,18 +129,13 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 
 	sc := h.observeCodec(ctx, &packet, sourceName)
 
-	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName, came, epoch) {
+	verdict, _ := h.localRoute(packet, sourceName)
+	if verdict == localDrop {
+		h.dropLocal(packet, sourceName)
 		return
 	}
-
-	h.autoCreateTalkgroup(packet, sourceName, isVoice)
-	if packet.GroupCall && isVoice {
-		h.noteTalkgroupCall(packet.Dst)
-	}
-
-	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer && !h.routingConfig().DisableDynamicLinks {
-		link, at := packet, h.clock.Now()
-		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link, at, came, epoch) })
+	if verdict == notLocal && h.routeToTalkgroups(ctx, packet, isVoice, sourceName, came, epoch) {
+		return
 	}
 
 	tx, ticket := h.prepareCopy(ctx, &packet, sc, sourceName)
@@ -153,9 +148,37 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	}
 }
 
+// routeToTalkgroups hands packet to the plugins and the special
+// destinations, and makes and links its talkgroup as the settings say. It
+// reports whether routing ends here.
+func (h *Hub) routeToTalkgroups(ctx context.Context, packet models.Packet, isVoice bool, sourceName string, came time.Time, epoch uint64) bool {
+	if h.handleSpecialDestinations(ctx, packet, isVoice, sourceName, came, epoch) {
+		return true
+	}
+
+	h.autoCreateTalkgroup(packet, sourceName, isVoice)
+	if packet.GroupCall && isVoice {
+		h.noteTalkgroupCall(packet.Dst)
+	}
+
+	if packet.GroupCall && isVoice && h.getServerRole(sourceName) != RolePeer && !h.routingConfig().DisableDynamicLinks {
+		link, at := packet, h.clock.Now()
+		h.queueLink(ctx, packet.Repeater, func() { h.switchDynamicTalkgroup(ctx, link, at, came, epoch) })
+	}
+	return false
+}
+
 // fanOut sends packet, an original or a copy in the other codec, to the
-// peers, the talkgroup or the private target.
+// peers, the talkgroup, the local group or the private target.
 func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName string) {
+	switch verdict, group := h.localRoute(packet, sourceName); verdict {
+	case localGroupCall:
+		h.marshalAndPublish(h.sourceSlotOf(packet, sourceName), packet, localGroupTopic(group))
+		return
+	case localDrop:
+		return
+	case notLocal:
+	}
 	_, isPlugin := plugins.PluginOfSource(sourceName)
 	if !isPlugin && h.getServerRole(sourceName) != RolePeer {
 		h.publishForPeers(ctx, packet, sourceName)

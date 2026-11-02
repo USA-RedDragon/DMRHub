@@ -43,6 +43,13 @@ type WSCallResponseTalkgroup struct {
 	Description string `json:"description"`
 }
 
+// WSCallResponseLocalGroup is the local group that a call went to, with
+// its name when the call was made.
+type WSCallResponseLocalGroup struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
 type WSCallResponse struct {
 	ID            uint                    `json:"id"`
 	User          WSCallResponseUser      `json:"user"`
@@ -59,40 +66,43 @@ type WSCallResponse struct {
 	ToUser        WSCallResponseUser      `json:"to_user"`
 	IsToRepeater  bool                    `json:"is_to_repeater"`
 	ToRepeater    WSCallResponseRepeater  `json:"to_repeater"`
-	DestinationID uint                    `json:"destination_id"`
-	Loss          float32                 `json:"loss"`
-	Jitter        float32                 `json:"jitter"`
-	BER           float32                 `json:"ber"`
-	RSSI          float32                 `json:"rssi"`
-	Kind          models.CallKind         `json:"kind"`
-	SubKind       string                  `json:"sub_kind"`
-	SourceID      uint                    `json:"source_id"`
-	Transport     string                  `json:"transport"`
-	Bursts        uint                    `json:"bursts"`
-	FID           *uint8                  `json:"fid"`
-	Opcode        *uint8                  `json:"opcode"`
-	SAP           *uint8                  `json:"sap"`
-	DataFormat    string                  `json:"data_format"`
-	Confirmed     bool                    `json:"confirmed"`
-	Blocks        uint                    `json:"blocks"`
-	Octets        uint                    `json:"octets"`
-	BadCRC        uint                    `json:"bad_crc"`
-	LostBlocks    uint                    `json:"lost_blocks"`
-	Response      models.CallResponse     `json:"response"`
-	TalkerAlias   string                  `json:"talker_alias"`
-	AliasFormat   string                  `json:"alias_format"`
-	Grid          string                  `json:"grid"`
-	Latitude      *float64                `json:"latitude"`
-	Longitude     *float64                `json:"longitude"`
-	PositionError *uint8                  `json:"position_error"`
-	Partial       bool                    `json:"partial"`
-	Undeliverable []WSCallUndeliverable   `json:"undeliverable"`
-	Codec         string                  `json:"codec"`
-	Codec2Mode    int                     `json:"codec2_mode"`
-	SentAMBE      int                     `json:"sent_ambe"`
-	SentCodec2    int                     `json:"sent_codec2"`
-	MissedMS      int                     `json:"missed_ms"`
-	Busy          bool                    `json:"busy"`
+	// IsToLocalGroup marks a call to the local group ToLocalGroup.
+	IsToLocalGroup bool                     `json:"is_to_local_group"`
+	ToLocalGroup   WSCallResponseLocalGroup `json:"to_local_group"`
+	DestinationID  uint                     `json:"destination_id"`
+	Loss           float32                  `json:"loss"`
+	Jitter         float32                  `json:"jitter"`
+	BER            float32                  `json:"ber"`
+	RSSI           float32                  `json:"rssi"`
+	Kind           models.CallKind          `json:"kind"`
+	SubKind        string                   `json:"sub_kind"`
+	SourceID       uint                     `json:"source_id"`
+	Transport      string                   `json:"transport"`
+	Bursts         uint                     `json:"bursts"`
+	FID            *uint8                   `json:"fid"`
+	Opcode         *uint8                   `json:"opcode"`
+	SAP            *uint8                   `json:"sap"`
+	DataFormat     string                   `json:"data_format"`
+	Confirmed      bool                     `json:"confirmed"`
+	Blocks         uint                     `json:"blocks"`
+	Octets         uint                     `json:"octets"`
+	BadCRC         uint                     `json:"bad_crc"`
+	LostBlocks     uint                     `json:"lost_blocks"`
+	Response       models.CallResponse      `json:"response"`
+	TalkerAlias    string                   `json:"talker_alias"`
+	AliasFormat    string                   `json:"alias_format"`
+	Grid           string                   `json:"grid"`
+	Latitude       *float64                 `json:"latitude"`
+	Longitude      *float64                 `json:"longitude"`
+	PositionError  *uint8                   `json:"position_error"`
+	Partial        bool                     `json:"partial"`
+	Undeliverable  []WSCallUndeliverable    `json:"undeliverable"`
+	Codec          string                   `json:"codec"`
+	Codec2Mode     int                      `json:"codec2_mode"`
+	SentAMBE       int                      `json:"sent_ambe"`
+	SentCodec2     int                      `json:"sent_codec2"`
+	MissedMS       int                      `json:"missed_ms"`
+	Busy           bool                     `json:"busy"`
 
 	// UndeliverableScope tells whose repeaters Undeliverable lists:
 	// UndeliverableScopeAll, UndeliverableScopeOwn, or "" for none.
@@ -104,49 +114,50 @@ type WSCallResponse struct {
 // field; NewWSCallResponsesFor shows the fields that a viewer may see.
 func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 	resp := WSCallResponse{
-		ID:            call.ID,
-		StartTime:     call.StartTime,
-		Duration:      call.Duration,
-		Active:        call.Active,
-		TimeSlot:      call.TimeSlot,
-		GroupCall:     call.GroupCall,
-		IsToTalkgroup: call.IsToTalkgroup,
-		IsToUser:      call.IsToUser,
-		IsToRepeater:  call.IsToRepeater,
-		DestinationID: call.DestinationID,
-		Loss:          call.Loss,
-		Jitter:        call.Jitter,
-		BER:           call.BER,
-		RSSI:          call.RSSI,
-		RepeaterID:    call.IngressID,
-		Kind:          call.Kind,
-		SubKind:       call.SubKind,
-		SourceID:      call.SourceID,
-		Transport:     call.Transport,
-		Bursts:        call.Bursts,
-		FID:           call.FID,
-		Opcode:        call.Opcode,
-		SAP:           call.SAP,
-		DataFormat:    call.DataFormat,
-		Confirmed:     call.Confirmed,
-		Blocks:        call.Blocks,
-		Octets:        call.Octets,
-		BadCRC:        call.BadCRC,
-		LostBlocks:    call.LostBlocks,
-		Response:      call.Response,
-		TalkerAlias:   call.TalkerAlias,
-		AliasFormat:   call.AliasFormat,
-		Latitude:      call.Latitude,
-		Longitude:     call.Longitude,
-		PositionError: call.PositionError,
-		Partial:       call.Partial,
-		Undeliverable: undeliverableEntries(call.Undeliverable),
-		Codec:         call.Codec,
-		Codec2Mode:    call.Codec2Mode,
-		SentAMBE:      call.SentAMBE,
-		SentCodec2:    call.SentCodec2,
-		MissedMS:      call.MissedMS,
-		Busy:          call.TranscodeBusy,
+		ID:             call.ID,
+		StartTime:      call.StartTime,
+		Duration:       call.Duration,
+		Active:         call.Active,
+		TimeSlot:       call.TimeSlot,
+		GroupCall:      call.GroupCall,
+		IsToTalkgroup:  call.IsToTalkgroup,
+		IsToUser:       call.IsToUser,
+		IsToRepeater:   call.IsToRepeater,
+		IsToLocalGroup: call.IsToLocalGroup,
+		DestinationID:  call.DestinationID,
+		Loss:           call.Loss,
+		Jitter:         call.Jitter,
+		BER:            call.BER,
+		RSSI:           call.RSSI,
+		RepeaterID:     call.IngressID,
+		Kind:           call.Kind,
+		SubKind:        call.SubKind,
+		SourceID:       call.SourceID,
+		Transport:      call.Transport,
+		Bursts:         call.Bursts,
+		FID:            call.FID,
+		Opcode:         call.Opcode,
+		SAP:            call.SAP,
+		DataFormat:     call.DataFormat,
+		Confirmed:      call.Confirmed,
+		Blocks:         call.Blocks,
+		Octets:         call.Octets,
+		BadCRC:         call.BadCRC,
+		LostBlocks:     call.LostBlocks,
+		Response:       call.Response,
+		TalkerAlias:    call.TalkerAlias,
+		AliasFormat:    call.AliasFormat,
+		Latitude:       call.Latitude,
+		Longitude:      call.Longitude,
+		PositionError:  call.PositionError,
+		Partial:        call.Partial,
+		Undeliverable:  undeliverableEntries(call.Undeliverable),
+		Codec:          call.Codec,
+		Codec2Mode:     call.Codec2Mode,
+		SentAMBE:       call.SentAMBE,
+		SentCodec2:     call.SentCodec2,
+		MissedMS:       call.MissedMS,
+		Busy:           call.TranscodeBusy,
 	}
 	if resp.Kind == "" {
 		resp.Kind = models.CallKindVoice
@@ -177,6 +188,10 @@ func NewWSCallResponseFromCall(call *models.Call) WSCallResponse {
 		resp.ToTalkgroup.ID = call.ToTalkgroup.ID
 		resp.ToTalkgroup.Name = call.ToTalkgroup.Name
 		resp.ToTalkgroup.Description = call.ToTalkgroup.Description
+	}
+	if call.IsToLocalGroup && call.LocalGroupID != nil {
+		resp.ToLocalGroup.ID = *call.LocalGroupID
+		resp.ToLocalGroup.Name = call.LocalGroupName
 	}
 	if call.IsToUser {
 		resp.ToUser.ID = call.ToUser.ID

@@ -49,6 +49,7 @@ const (
 	ReasonSlotLocked          = "slot_locked"
 	ReasonTalkgroupRefused    = "talkgroup_refused"
 	ReasonTalkgroupRestricted = "talkgroup_restricted"
+	ReasonNotInLocalGroup     = "not_in_local_group"
 )
 
 func sentenceFormat(reason string) string {
@@ -81,6 +82,8 @@ func sentenceFormat(reason string) string {
 		return "%s does not carry that talkgroup."
 	case ReasonTalkgroupRestricted:
 		return "%s is not approved for that talkgroup."
+	case ReasonNotInLocalGroup:
+		return "%s is in no local group on that talkgroup and timeslot."
 	default:
 		return "the burst could not be prepared for %s."
 	}
@@ -93,6 +96,7 @@ func Reasons() []string {
 		ReasonSlotType, ReasonStreamID, ReasonBuild, ReasonEncode,
 		ReasonDataInVoice, ReasonUndecodable, ReasonSlotBusy,
 		ReasonSlotLocked, ReasonTalkgroupRefused, ReasonTalkgroupRestricted,
+		ReasonNotInLocalGroup,
 	}
 }
 

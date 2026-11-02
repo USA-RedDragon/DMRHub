@@ -143,6 +143,7 @@ type CallTracker struct {
 
 	observer atomic.Pointer[observerBox]
 	plugins  atomic.Pointer[pluginsBox]
+	locals   atomic.Pointer[localGroupsBox]
 	// out publishes what the workers and the callers, which deliver
 	// bursts, send to pubsub, so that they never wait on it.
 	out     *outbox.Outbox[outKey]
@@ -162,6 +163,28 @@ type observerBox struct{ o DataObserver }
 // PluginOwners tells which plugin owns a DMR ID.
 type PluginOwners interface {
 	Owner(id uint) (uint, bool)
+}
+
+// LocalGroups tells whether dst is a local talkgroup, and which local
+// group, by ID and name, a group call to it on the slot of a repeater goes
+// to: ID 0 when it goes nowhere.
+type LocalGroups interface {
+	LocalGroupOf(repeaterID, dst uint, slot bool) (uint, string, bool)
+}
+
+type localGroupsBox struct{ l LocalGroups }
+
+// SetLocalGroups makes l the local groups that the group calls go to.
+func (c *CallTracker) SetLocalGroups(l LocalGroups) {
+	c.locals.Store(&localGroupsBox{l: l})
+}
+
+func (c *CallTracker) localGroupOf(repeaterID, dst uint, slot bool) (uint, string, bool) {
+	b := c.locals.Load()
+	if b == nil || b.l == nil {
+		return 0, "", false
+	}
+	return b.l.LocalGroupOf(repeaterID, dst, slot)
 }
 
 type pluginsBox struct{ p PluginOwners }
@@ -1095,7 +1118,7 @@ func (c *CallTracker) remoteResponse(msg []byte) {
 
 // publishCall publishes call for the web clients. The worker idx calls it.
 func (c *CallTracker) publishCall(idx int, call *models.Call) {
-	if (call.IsToRepeater || call.IsToTalkgroup || call.IsToPlugin) && call.GroupCall {
+	if (call.IsToRepeater || call.IsToTalkgroup || call.IsToPlugin || call.IsToLocalGroup) && call.GroupCall {
 		rows, err := apimodels.NewWSCallResponsesFor(c.db, nil, models.CurrentSMSWindow(), []models.Call{*call})
 		if err != nil || len(rows) != 1 {
 			slog.Error("Error showing call", "error", err)
@@ -1164,6 +1187,14 @@ func (c *CallTracker) resolve(call *models.Call, peer bool) {
 		}
 	}
 	dst := call.DestinationID
+	if call.GroupCall {
+		if id, name, local := c.localGroupOf(call.IngressID, dst, call.TimeSlot); local {
+			if id != 0 && !peer {
+				call.IsToLocalGroup, call.LocalGroupID, call.LocalGroupName = true, &id, name
+			}
+			return
+		}
+	}
 	if call.GroupCall {
 		if tg, err := models.FindTalkgroupByID(c.db, dst); err == nil {
 			call.IsToTalkgroup, call.ToTalkgroupID, call.ToTalkgroup = true, &tg.ID, tg

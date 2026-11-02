@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -214,8 +215,16 @@ func SetRepeaterPassword(db *gorm.DB, id uint, password string) error {
 	return nil
 }
 
+// DeleteRepeater deletes the repeater id with its calls, routing rules and
+// static talkgroups. It locks the repeater row first, so that a call row of
+// the repeater that another connection starts meanwhile waits for the
+// delete and does not stop it.
 func DeleteRepeater(db *gorm.DB, id uint) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
+		var locked []Repeater
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).Select("id").Where("id = ?", id).Find(&locked).Error; err != nil {
+			return fmt.Errorf("lock repeater: %w", err)
+		}
 		if err := tx.Unscoped().Where("(is_to_repeater = ? AND to_repeater_id = ?) OR repeater_id = ?", true, id, id).Delete(&Call{}).Error; err != nil {
 			return fmt.Errorf("delete calls: %w", err)
 		}

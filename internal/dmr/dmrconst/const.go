@@ -104,6 +104,30 @@ var CallsignRegex = regexp.MustCompile(`^([A-Z0-9]{0,8})$`)
 // MaxDMRAddress is the maximum value for a 24-bit DMR address.
 const MaxDMRAddress = 0xFFFFFF
 
+// UnlockFirst and UnlockLast bound the private call IDs that unlock a
+// radio ID with its on-air code: 9 followed by the 6 digits of the code,
+// as on BrandMeister. A private call to one of them is a code, which the
+// hub never routes, records or logs.
+const (
+	UnlockFirst = 9000000
+	UnlockLast  = 9999999
+)
+
+// IsUnlockID reports whether a private call to id carries an on-air code.
+func IsUnlockID(id uint) bool {
+	return id >= UnlockFirst && id <= UnlockLast
+}
+
+// LogTarget returns the destination target of a call, a talkgroup when
+// group is true, as a log line shows it: a private call to an unlock ID
+// shows as "on-air code", so that no log holds a code.
+func LogTarget(group bool, target uint) any {
+	if !group && IsUnlockID(target) {
+		return "on-air code"
+	}
+	return target
+}
+
 const (
 	VoiceA = iota
 	VoiceB

@@ -20,6 +20,7 @@
 package models_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -323,5 +324,24 @@ func TestEqualDifferentPackets(t *testing.T) {
 	}
 	if packet1.Equal(packet2) {
 		t.Errorf("Expected packets to be different")
+	}
+}
+
+func TestPacketStringLeavesOutAnOnAirCode(t *testing.T) {
+	t.Parallel()
+	p := models.Packet{Src: 3191868, Dst: 9482913, Repeater: 319186801, StreamID: 77}
+	p.DMRData[0] = 0x5A
+	got := p.String()
+	for _, secret := range []string{"9482913", "482913", "90 "} {
+		if strings.Contains(got, secret) {
+			t.Errorf("String() = %q holds %q", got, secret)
+		}
+	}
+	if !strings.Contains(got, "3191868") {
+		t.Errorf("String() = %q lost the source", got)
+	}
+	p.GroupCall = true
+	if !strings.Contains(p.String(), "9482913") {
+		t.Errorf("String() of a group call = %q lost its talkgroup", p.String())
 	}
 }

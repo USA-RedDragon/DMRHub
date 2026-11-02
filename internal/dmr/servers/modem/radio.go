@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/dmrgo/v2/bs"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -414,9 +415,9 @@ func (r *radio) apply(now time.Duration, outs []bs.Output) {
 		case bs.OutputCallStart:
 			r.callStart(o)
 		case bs.OutputCallEnd:
-			slog.Info("Modem call ended", "slot", o.Slot, "rf", o.From.RF, "source", o.Call.Source, "target", o.Call.Target, "reason", o.End)
+			slog.Info("Modem call ended", "slot", o.Slot, "rf", o.From.RF, "source", o.Call.Source, "target", dmrconst.LogTarget(o.Call.Group, uint(o.Call.Target)), "reason", o.End)
 		case bs.OutputRejected:
-			slog.Debug("Modem refused a source", "slot", o.Slot, "rf", o.From.RF, "reason", o.Reason, "target", o.Call.Target)
+			slog.Debug("Modem refused a source", "slot", o.Slot, "rf", o.From.RF, "reason", o.Reason, "target", dmrconst.LogTarget(o.Call.Group, uint(o.Call.Target)))
 		}
 	}
 	r.shortLC()
@@ -454,7 +455,7 @@ func (r *radio) callStart(o *bs.Output) {
 		s.stream, s.seq = newStream(), 0
 	}
 	slog.Info("Modem call", "slot", o.Slot, "rf", o.From.RF, "service", o.Service, "group", o.Call.Group,
-		"source", o.Call.Source, "target", o.Call.Target)
+		"source", o.Call.Source, "target", dmrconst.LogTarget(o.Call.Group, uint(o.Call.Target)))
 }
 
 func (r *radio) burst(now time.Duration, o *bs.Output) {

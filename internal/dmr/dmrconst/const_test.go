@@ -99,3 +99,27 @@ func BenchmarkFrameTypeUnmarshalBinary(b *testing.B) {
 		_ = ft.UnmarshalBinary(data)
 	}
 }
+
+func TestUnlockIDsAreNineAndSixDigits(t *testing.T) {
+	t.Parallel()
+	for id, want := range map[uint]bool{
+		8999999: false, 9000000: true, 9482913: true, 9999999: true, 10000000: false, 9990: false, 4000: false,
+	} {
+		if got := dmrconst.IsUnlockID(id); got != want {
+			t.Errorf("IsUnlockID(%d) = %t, want %t", id, got, want)
+		}
+	}
+}
+
+func TestLogTargetHidesOnlyTheCodesOfPrivateCalls(t *testing.T) {
+	t.Parallel()
+	if got := dmrconst.LogTarget(false, 9482913); got != "on-air code" {
+		t.Errorf("LogTarget of a private call to a code = %v", got)
+	}
+	if got := dmrconst.LogTarget(true, 9482913); got != uint(9482913) {
+		t.Errorf("LogTarget of a talkgroup = %v", got)
+	}
+	if got := dmrconst.LogTarget(false, 3191868); got != uint(3191868) {
+		t.Errorf("LogTarget of a private call to a radio = %v", got)
+	}
+}

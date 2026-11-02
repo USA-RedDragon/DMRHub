@@ -20,6 +20,9 @@
 package modem
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,11 +191,22 @@ type timedBurst struct {
 // frame type.
 func voiceCall(t testing.TB, src layer2.SyncSource, superframes int) []timedBurst {
 	t.Helper()
+	return voiceCallTo(t, src, superframes, true, benchTG)
+}
+
+// voiceCallTo is voiceCall to the talkgroup dst, or to the radio dst when
+// group is false.
+func voiceCallTo(t testing.TB, src layer2.SyncSource, superframes int, group bool, dst uint32) []timedBurst {
+	t.Helper()
 	var lcb pdu.LCBytes
-	if err := lcb.SetFLCO(enums.FLCOGroupVoiceChannelUser); err != nil {
+	flco := enums.FLCOGroupVoiceChannelUser
+	if !group {
+		flco = enums.FLCOUnitToUnitVoiceChannelUser
+	}
+	if err := lcb.SetFLCO(flco); err != nil {
 		t.Fatal(err)
 	}
-	if err := lcb.SetCall(true, benchTG, benchRadio); err != nil {
+	if err := lcb.SetCall(group, dst, benchRadio); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := layer2.NewVoiceTransmitter(&layer2.VoiceTransmitterOptions{LC: pdu.DecodeFullLinkControlBytes(lcb), ColorCode: 1, Source: src})
@@ -450,5 +464,29 @@ func TestRadioIsSilentWithoutStatus(t *testing.T) {
 	b.run(400 * time.Millisecond)
 	if !b.r.silent(b.now) {
 		t.Fatal("not silent 2 s after the last status")
+	}
+}
+
+func TestAnRFCallToAnOnAirCodeLeavesTheCodeOutOfTheLog(t *testing.T) { //nolint:paralleltest // it replaces the default logger
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	b := newBench(t, false, 1)
+	b.run(time.Second)
+	call := voiceCallTo(t, layer2.SyncSourceMS, 1, false, 9482913)
+	b.playRF(enums.Slot2, call)
+	b.run(time.Second)
+	if len(b.routed) == 0 || b.routed[0].Dst != 9482913 || b.routed[0].GroupCall {
+		t.Fatalf("the hub did not get the call to the code: %v", b.routed)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "Modem call") {
+		t.Fatalf("the log has no line of the call:\n%s", out)
+	}
+	for _, secret := range []string{"9482913", "482913"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("the log holds %s:\n%s", secret, out)
+		}
 	}
 }

@@ -83,7 +83,7 @@ func (t *IPSCTranslator) dropped(u *ipscwire.User, reason string, err error) {
 	}
 	t.dropLogNext = now.Add(dropLogEvery)
 	slog.Info("Burst from an IPSC peer cannot go to the hub",
-		"peer", u.ID, "src", u.Source, "dst", u.Destination, "burstType", u.Burst,
+		"peer", u.ID, "src", u.Source, "dst", dmrconst.LogTarget(u.Opcode == ipscwire.OpGroupVoice || u.Opcode == ipscwire.OpGroupData, uint(u.Destination)), "burstType", u.Burst,
 		"reason", reason, "error", err, "unlogged", t.dropUnlogged)
 	t.dropUnlogged = 0
 }
@@ -755,7 +755,7 @@ func (t *IPSCTranslator) TranslateToMMDVM(packetType byte, data []byte) []models
 
 	groupCall := u.Opcode == ipscwire.OpGroupVoice || u.Opcode == ipscwire.OpGroupData
 	slog.Debug("IPSCTranslator: TranslateToMMDVM",
-		"packetType", u.Opcode, "src", u.Source, "dst", u.Destination, "groupCall", groupCall,
+		"packetType", u.Opcode, "src", u.Source, "dst", dmrconst.LogTarget(groupCall, uint(u.Destination)), "groupCall", groupCall,
 		"slot", u.Info.Slot(), "isEnd", u.Info.End())
 
 	// Use call control as the stream identifier

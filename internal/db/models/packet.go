@@ -142,10 +142,23 @@ func PacketFromData(d *dmrd.Data, hasQuality bool) Packet {
 }
 
 func (p *Packet) String() string {
+	if p.IsUnlockCall() {
+		return fmt.Sprintf(
+			"Packet: Seq %d, Src %d, Dst on-air code, Repeater %d, Slot %t, GroupCall %t, FrameType=%s, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d",
+			p.Seq, p.Src, p.Repeater, p.Slot, p.GroupCall, p.FrameType.String(), p.DTypeOrVSeq, p.StreamID, p.BER, p.RSSI,
+		)
+	}
 	return fmt.Sprintf(
 		"Packet: Seq %d, Src %d, Dst %d, Repeater %d, Slot %t, GroupCall %t, FrameType=%s, DTypeOrVSeq %d, StreamId %d, BER %d, RSSI %d, DMRData %v",
 		p.Seq, p.Src, p.Dst, p.Repeater, p.Slot, p.GroupCall, p.FrameType.String(), p.DTypeOrVSeq, p.StreamID, p.BER, p.RSSI, p.DMRData,
 	)
+}
+
+// IsUnlockCall reports whether p is a private call that carries an
+// on-air code in its destination. String leaves out the destination and
+// the payload of such a packet.
+func (p *Packet) IsUnlockCall() bool {
+	return !p.GroupCall && dmrconst.IsUnlockID(p.Dst)
 }
 
 // Data returns p as a 55-octet DMRD packet. Each field is cut to its width

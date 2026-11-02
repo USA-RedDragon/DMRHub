@@ -21,6 +21,7 @@ package calltracker_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,5 +125,47 @@ func TestACallOfAUserDeletedDuringItEnds(t *testing.T) {
 		assert.Equal(t, 2*time.Second, got[7001].Duration)
 		require.NotNil(t, got[7002].ToUserID)
 		assert.Equal(t, userA, *got[7002].ToUserID)
+	})
+}
+
+// TestASaveOfACallThatADeleteRemovedEnds deletes the repeater of a voice
+// call while it is on the air, which deletes the row of the call. The save
+// of the end of the call must stop when it finds the row gone, and must not
+// write it again.
+func TestASaveOfACallThatADeleteRemovedEnds(t *testing.T) {
+	t.Parallel()
+	forEveryBackend(t, func(t *testing.T, database *gorm.DB, ps pubsub.PubSub, store kv.KV) {
+		var reads atomic.Int64
+		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:count_call_locks", func(d *gorm.DB) {
+			if _, ok := d.Statement.Clauses["FOR"]; ok && d.Statement.Table == "calls" {
+				reads.Add(1)
+			}
+		}))
+		base := time.Now().Truncate(time.Second)
+		fake := clock.NewFake(base)
+		ct := calltracker.NewCallTracker(database, ps, store, calltracker.WithClock(fake))
+		t.Cleanup(ct.Stop)
+		voice := newSender(t, ct, userB, tgID, true, 7001)
+		voice.at = base
+		voice.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceHead), layer2.RawBurst{})
+		for i := range 12 {
+			voice.at = base.Add(time.Duration(i+1) * 60 * time.Millisecond)
+			voice.send(dmrconst.FrameVoice, uint(i%5)+1, layer2.RawBurst{})
+		}
+		ct.Flush()
+		require.NoError(t, models.DeleteRepeater(database, repeaterA))
+		fake.Advance(2 * time.Second)
+		voice.at = fake.Now()
+		voice.send(dmrconst.FrameDataSync, uint(dmrconst.DTypeVoiceTerm), layer2.RawBurst{})
+		ct.Flush()
+		after := reads.Load()
+		for range 120 {
+			fake.Advance(time.Second)
+			ct.Flush()
+		}
+		assert.Equal(t, after, reads.Load(), "the save of a deleted call goes on")
+		var calls []models.Call
+		require.NoError(t, database.Unscoped().Find(&calls).Error)
+		assert.Empty(t, calls, "a deleted call was written again")
 	})
 }

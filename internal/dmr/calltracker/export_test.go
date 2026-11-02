@@ -48,7 +48,7 @@ const VoiceHang = voiceHang
 const SaveTimeout = saveTimeout
 
 func SaveMergedPart(c *CallTracker, call *models.Call, id string, packets uint) bool {
-	_, _, ok, _ := c.shards[0].saveMerged(context.Background(), call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
+	_, _, ok, _, _ := c.shards[0].saveMerged(context.Background(), call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
 	return ok
 }
 

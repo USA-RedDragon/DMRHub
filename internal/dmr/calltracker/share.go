@@ -750,7 +750,7 @@ func (s *shard) saveLoop(r *row, key voiceKey, gen uint64, parts []voiceDelta, t
 }
 
 func (s *shard) saveParts(r *row, parts []voiceDelta, done func(ok bool)) bool {
-	if r.saving {
+	if r.saving || r.deleted {
 		return false
 	}
 	if now := s.t.clock.Now(); now.Before(r.notBefore) {
@@ -763,11 +763,15 @@ func (s *shard) saveParts(r *row, parts []voiceDelta, done func(ok bool)) bool {
 	tmpl.CallData = slices.Clone(r.call.CallData)
 	tmpl.Undeliverable = slices.Clone(r.call.Undeliverable)
 	go func() {
-		out, changed, ok, late := s.saveMerged(context.Background(), &tmpl, parts)
+		out, changed, ok, late, gone := s.saveMerged(context.Background(), &tmpl, parts)
 		s.saved <- func(s *shard) {
 			r.saving = false
 			r.backOff(late, s.t.clock.Now())
-			s.savedParts(r, parts, &tmpl, &out, changed, ok)
+			if gone {
+				r.deleted, r.pending, ok = true, nil, true
+			} else {
+				s.savedParts(r, parts, &tmpl, &out, changed, ok)
+			}
 			if r.reactivate {
 				r.reactivate = false
 				s.markActive(r.call.ID)
@@ -868,7 +872,7 @@ func (s *shard) touchShared(now time.Time) {
 	}
 }
 
-func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voiceDelta) (models.Call, bool, bool, bool) {
+func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voiceDelta) (models.Call, bool, bool, bool, bool) {
 	var out models.Call
 	changed := false
 	ctx, cancel := context.WithCancel(ctx)
@@ -877,7 +881,7 @@ func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voice
 	tx := s.t.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", tx.Error)
-		return out, false, false, false
+		return out, false, false, false, false
 	}
 	stop := time.AfterFunc(saveTimeout, func() {
 		late.Store(true)
@@ -922,11 +926,15 @@ func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voice
 	} else {
 		tx.Rollback()
 	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Debug("CallTracker: a delete removed the shared call before its save", "id", call.ID)
+		return out, false, false, false, true
+	}
 	if err != nil {
 		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", err)
-		return out, false, false, late.Load()
+		return out, false, false, late.Load(), false
 	}
-	return out, changed, true, false
+	return out, changed, true, false, false
 }
 
 func endOmits() []string {

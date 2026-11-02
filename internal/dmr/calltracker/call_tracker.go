@@ -1319,6 +1319,15 @@ func (s *shard) open(t *task, ch *channel, key any, kind models.CallKind, sub st
 	return r
 }
 
+func (c *CallTracker) callGone(id uint) bool {
+	var n int64
+	if err := c.db.Model(&models.Call{}).Unscoped().Where("id = ?", id).Count(&n).Error; err != nil {
+		slog.Error("CallTracker: error looking for a call", "id", id, "error", err)
+		return false
+	}
+	return n == 0
+}
+
 func (s *shard) newCall(t *task, kind models.CallKind, sub string) *models.Call {
 	p := &t.p
 	return &models.Call{
@@ -1425,7 +1434,11 @@ func (s *shard) finish(r *row, at time.Time) {
 			call.Response = resp
 		}
 	}
-	err := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).Select("*").Omit(endOmits()...).Updates(call).Error
+	res := s.t.db.Model(&models.Call{}).Where("id = ?", call.ID).Select("*").Omit(endOmits()...).Updates(call)
+	err := res.Error
+	if err == nil && res.RowsAffected == 0 && s.t.callGone(call.ID) {
+		r.deleted = true
+	}
 	s.t.owned.Delete(call.ID)
 	if r.what != "" {
 		s.t.homes.Store(call.ID, homeRow{shard: s.idx, until: s.t.clock.Now().Add(responseWindow + matchLag)})
@@ -1433,6 +1446,10 @@ func (s *shard) finish(r *row, at time.Time) {
 	}
 	if err != nil {
 		slog.Error("CallTracker: error saving call", "error", err)
+		return
+	}
+	if r.deleted {
+		slog.Debug("CallTracker: a delete removed the call before its end", "id", call.ID)
 		return
 	}
 	s.t.publishCall(s.idx, call)

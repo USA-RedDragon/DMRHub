@@ -43,7 +43,7 @@ func TestMakeDBInMemoryDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create default config: %v", err)
 	}
-	memdb.Use(t, &defConfig)
+	memdb.UseEmpty(t, &defConfig)
 	db, err := db.MakeDB(&defConfig)
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)

@@ -45,7 +45,7 @@ type cluster struct {
 func newCluster(t *testing.T) cluster {
 	t.Helper()
 	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &config.Config{})
+	store, err := kv.MakeKV(ctx, &config.Config{}, kv.WithoutCallBound())
 	if err != nil {
 		t.Fatal(err)
 	}

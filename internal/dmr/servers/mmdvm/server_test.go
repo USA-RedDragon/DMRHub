@@ -51,7 +51,7 @@ func TestMakeServerInitialization(t *testing.T) {
 		t.Fatalf("Failed to create database: %v", err)
 	}
 
-	kv, err := kv.MakeKV(context.TODO(), &defConfig)
+	kv, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	if err != nil {
 		t.Fatalf("Failed to create key-value store: %v", err)
 	}

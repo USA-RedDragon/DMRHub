@@ -74,6 +74,35 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	assert.Less(t, withoutDeadline, 2*consts.RedisCallTimeout, "the call without a deadline was not bounded by the call timeout, so each retry got its own read timeout")
 }
 
+// TestAStoreWithoutACallBoundEndsOnItsCallersContext calls a hung Redis
+// through a store made with WithoutCallBound, which sets no deadline of its
+// own. The call must still end when the context of its caller ends.
+func TestAStoreWithoutACallBoundEndsOnItsCallersContext(t *testing.T) {
+	t.Parallel()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	var c testutils.Containers
+	testutils.PostgresOwnRedisBackendInto(&c).Setup(t, &cfg)
+	store, err := kv.MakeKV(t.Context(), &cfg, kv.WithoutCallBound())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	require.NoError(t, store.Set(t.Context(), "hang", []byte{1}))
+	require.NoError(t, kv.FillRedisPool(t.Context(), store))
+
+	out, err := exec.Command("docker", "pause", c.Redis).CombinedOutput() //nolint:gosec,noctx
+	require.NoError(t, err, string(out))
+	t.Cleanup(func() { _ = exec.Command("docker", "unpause", c.Redis).Run() }) //nolint:gosec,noctx
+
+	ctx, cancel := context.WithCancel(t.Context())
+	got := make(chan error, 1)
+	go func() {
+		_, err := store.Get(ctx, "hang")
+		got <- err
+	}()
+	cancel()
+	require.ErrorIs(t, <-got, context.Canceled, "a call to a hung Redis without a call bound ignored the end of its context")
+}
+
 func TestRedisGetMissingIsNotFound(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()

@@ -42,7 +42,7 @@ func TestStopUnderAFlood(t *testing.T) {
 	require.NoError(t, err)
 	cfg.DMR.MMDVM.Bind = "127.0.0.1"
 	cfg.DMR.MMDVM.Port = 0
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	h := hub.NewHub(nil, kvStore, nil, nil)
 	t.Cleanup(func() { h.Stop(context.Background()) })

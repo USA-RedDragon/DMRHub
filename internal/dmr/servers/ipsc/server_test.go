@@ -141,7 +141,7 @@ func newHubServer(t *testing.T, database *gorm.DB) (*IPSCServer, *net.UDPAddr) {
 	cfg := testDBConfig(t)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
-	kvStore, err := kv.MakeKV(context.Background(), cfg)
+	kvStore, err := kv.MakeKV(context.Background(), cfg, kv.WithoutCallBound())
 	if err != nil {
 		t.Fatalf("kv: %v", err)
 	}

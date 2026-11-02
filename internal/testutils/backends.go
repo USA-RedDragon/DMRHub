@@ -62,8 +62,10 @@ type Backend struct {
 	HubOptions []hub.Option
 	// BoundedWaits, when true, keeps the waits of the hubs of an
 	// integration stack for the database and the KV store bounded, as in
-	// production, so that a slow answer drops the burst. Without it, those
-	// waits last until the answer comes.
+	// production, so that a slow answer drops the burst, and keeps the
+	// bound of each call to Redis. Without it, those waits last until the
+	// answer comes, and a call to Redis until the context of its caller
+	// ends.
 	BoundedWaits bool
 }
 

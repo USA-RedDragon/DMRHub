@@ -442,7 +442,7 @@ func backendDeps(t *testing.T, be testutils.Backend) (*gorm.DB, pubsub.PubSub, k
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.TODO(), &cfg)
+	store, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		sqlDB, _ := database.DB()

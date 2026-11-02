@@ -56,7 +56,7 @@ func memKV(t *testing.T) kv.KV {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 	return kvStore
@@ -92,7 +92,7 @@ func newRig(t *testing.T) *rig {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database, kvStore)

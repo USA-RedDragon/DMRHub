@@ -67,7 +67,7 @@ func replicaHubs(t *testing.T, be testutils.Backend) (*hub.Hub, *hub.Hub) {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	be.Setup(t, &cfg)
-	shared, err := kv.MakeKV(context.Background(), &cfg)
+	shared, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	one, two := hub.NewHub(nil, shared, nil, nil), hub.NewHub(nil, shared, nil, nil)
 	t.Cleanup(func() {

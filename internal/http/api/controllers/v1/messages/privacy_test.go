@@ -84,7 +84,7 @@ func TestRoutedSMSReachesTheInboxOnlyAfterOptIn(t *testing.T) {
 			e, cfg := newEnvOn(t, be)
 			ps, err := pubsub.MakePubSub(context.TODO(), cfg)
 			require.NoError(t, err)
-			kvStore, err := kv.MakeKV(context.TODO(), cfg)
+			kvStore, err := kv.MakeKV(context.TODO(), cfg, kv.WithoutCallBound())
 			require.NoError(t, err)
 			fake := clock.NewFake(time.Now())
 			ct := calltracker.NewCallTracker(e.db, ps, kvStore, calltracker.WithClock(fake))
@@ -168,7 +168,7 @@ func TestRetentionPurgeEmptiesAdminAndUserViews(t *testing.T) {
 	require.Equal(t, int64(2), e.admin(admin, "").Total)
 	require.Equal(t, 2, e.list("/api/v1/messages/inbox").Total)
 
-	kvStore, err := kv.MakeKV(context.Background(), cfg)
+	kvStore, err := kv.MakeKV(context.Background(), cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 	purgeCfg := *cfg

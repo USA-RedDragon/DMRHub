@@ -64,7 +64,7 @@ func TestAVersionOfAPeerBeforeItsChangeIsDropped(t *testing.T) {
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 	})
-	store, err := kv.MakeKV(t.Context(), &cfg)
+	store, err := kv.MakeKV(t.Context(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	ctx := t.Context()

@@ -63,7 +63,7 @@ func drainRig(t *testing.T, otherReplica bool) (*serverManager, <-chan *pluginv1
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(func() {

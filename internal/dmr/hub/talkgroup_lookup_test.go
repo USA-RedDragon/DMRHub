@@ -72,7 +72,7 @@ func startHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub) *hub.Hub {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	h := hub.NewHub(database, kvStore, ps, ct)

@@ -56,7 +56,7 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 

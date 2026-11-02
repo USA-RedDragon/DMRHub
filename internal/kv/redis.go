@@ -34,7 +34,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
+func makeRedisKV(ctx context.Context, config *config.Config, unbounded bool) (KV, error) {
+	timeout := consts.RedisTimeout
+	if unbounded {
+		timeout = -1
+	}
 	client := redis.NewClient(&redis.Options{
 		Addr:                  fmt.Sprintf("%s:%d", config.Redis.Host, config.Redis.Port),
 		Password:              config.Redis.Password,
@@ -43,11 +47,13 @@ func makeRedisKV(ctx context.Context, config *config.Config) (KV, error) {
 		MinIdleConns:          runtime.GOMAXPROCS(0),
 		ConnMaxIdleTime:       consts.MaxIdleTime,
 		DialTimeout:           consts.RedisDialTimeout,
-		ReadTimeout:           consts.RedisTimeout,
-		WriteTimeout:          consts.RedisTimeout,
+		ReadTimeout:           timeout,
+		WriteTimeout:          timeout,
 		ContextTimeoutEnabled: true,
 	})
-	client.AddHook(callTimeoutHook{timeout: consts.RedisCallTimeout})
+	if !unbounded {
+		client.AddHook(callTimeoutHook{timeout: consts.RedisCallTimeout})
+	}
 
 	if err := redisping.Until(ctx, func(ctx context.Context) error { return client.Ping(ctx).Err() }); err != nil {
 		_ = client.Close()

@@ -201,7 +201,7 @@ func TestAStreamStartedOnTwoReplicasAtOnceHasOneSource(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		inner, err := kv.MakeKV(context.Background(), &cfg)
+		inner, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		shared := &slowKV{KV: inner, delay: 10 * time.Millisecond}
 		shared.on.Store(true)

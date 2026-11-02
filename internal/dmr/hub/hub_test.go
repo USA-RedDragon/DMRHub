@@ -106,7 +106,7 @@ func makeTestHubWrappingKV(t testing.TB, wrap func(pubsub.PubSub) pubsub.PubSub,
 	require.NoError(t, err)
 	ps := wrap(inner)
 
-	innerKV, err := kv.MakeKV(context.Background(), &defConfig)
+	innerKV, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 	kvStore := wrapKV(innerKV)
 

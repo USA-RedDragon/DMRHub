@@ -37,7 +37,7 @@ func settleRig(t *testing.T) (kv.KV, func(id string) *Server) {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)

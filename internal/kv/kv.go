@@ -85,13 +85,23 @@ type KV interface {
 type Option func(*options)
 
 type options struct {
-	clock clock.Clock
+	clock     clock.Clock
+	unbounded bool
 }
 
 // WithClock makes the in-memory store expire its keys on c. Redis keeps
 // the TTLs of its keys itself.
 func WithClock(c clock.Clock) Option {
 	return func(o *options) { o.clock = c }
+}
+
+// WithoutCallBound makes a Redis store bound each call only by the context
+// of its caller: it sets no deadline of its own on a call, nor on its reads
+// and writes. Tests use it, since a starved test machine can take longer
+// than consts.RedisCallTimeout to run a goroutine whose answer has come;
+// DMRHub keeps the bound.
+func WithoutCallBound() Option {
+	return func(o *options) { o.unbounded = true }
 }
 
 // MakeKV creates a new key-value store client.
@@ -101,7 +111,7 @@ func MakeKV(ctx context.Context, config *config.Config, opts ...Option) (KV, err
 		opt(&o)
 	}
 	if config.Redis.Enabled {
-		redisKV, err := makeRedisKV(ctx, config)
+		redisKV, err := makeRedisKV(ctx, config, o.unbounded)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create redis kv: %w", err)
 		}

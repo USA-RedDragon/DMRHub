@@ -63,7 +63,7 @@ func trackedReplicas(t *testing.T) (*hub.Hub, *servers.InstanceRegistry, *hub.Hu
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		sqlDB, _ := database.DB()

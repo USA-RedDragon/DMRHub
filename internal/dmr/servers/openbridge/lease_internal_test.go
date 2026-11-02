@@ -44,7 +44,7 @@ func TestEgressLeaseMovesAfterACrash(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		store, err := kv.MakeKV(context.Background(), &cfg)
+		store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		a := &Server{clock: clock.Real(), kv: store, id: "a"}
@@ -99,7 +99,7 @@ func TestAHolderThatGaveTheLeaseUpSendsUntilTheTakenMessage(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 		ctx := context.Background()
-		store, err := kv.MakeKV(ctx, &cfg)
+		store, err := kv.MakeKV(ctx, &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		ps, err := pubsub.MakePubSub(ctx, &cfg)
@@ -141,7 +141,7 @@ func TestAHolderThatGaveTheLeaseUpStopsAfterAnOldTaker(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 		ctx := context.Background()
-		store, err := kv.MakeKV(ctx, &cfg)
+		store, err := kv.MakeKV(ctx, &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		ps, err := pubsub.MakePubSub(ctx, &cfg)
@@ -241,7 +241,7 @@ func TestTheHolderSendsUntilItsLeaseRunsOutInARedisOutage(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 		ctx := context.Background()
-		store, err := kv.MakeKV(ctx, &cfg)
+		store, err := kv.MakeKV(ctx, &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		paused := &pausedKV{KV: store}
@@ -277,7 +277,7 @@ func TestAStoppedServerDoesNotTakeTheLeaseAgain(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		store, err := kv.MakeKV(context.Background(), &cfg)
+		store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		s := &Server{clock: clock.Real(), kv: store, id: "a", done: make(chan struct{})}
@@ -304,7 +304,7 @@ func TestAStopGivesUpALeaseThatAFollowerHolds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		store, err := kv.MakeKV(context.Background(), &cfg)
+		store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		ctx := context.Background()
@@ -338,7 +338,7 @@ func TestAHolderThatLostTheLeaseAtARenewalSendsUntilTheTakenMessage(t *testing.T
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &cfg)
+	store, err := kv.MakeKV(ctx, &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	fake := clock.NewFake(time.Unix(0, 0))

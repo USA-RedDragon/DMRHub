@@ -164,7 +164,7 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 	}
 	t.pubsub = ps
 
-	kvStore, err := kv.MakeKV(ctx, &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig, kv.WithoutCallBound())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
@@ -232,7 +232,7 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	kvStore, err := kv.MakeKV(ctx, &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig, kv.WithoutCallBound())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
@@ -308,7 +308,7 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 		return nil, nil, fmt.Errorf("failed to create pubsub: %w", err)
 	}
 
-	kvStore, err := kv.MakeKV(ctx, &defConfig)
+	kvStore, err := kv.MakeKV(ctx, &defConfig, kv.WithoutCallBound())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create kv: %w", err)
 	}
@@ -344,7 +344,7 @@ func (t *TestDB) ReplicaRouter(tb testing.TB) *gin.Engine {
 		require.NoError(tb, err)
 		tb.Cleanup(func() { _ = ps.Close() })
 	}
-	kvStore, err := kv.MakeKV(ctx, t.config)
+	kvStore, err := kv.MakeKV(ctx, t.config, kv.WithoutCallBound())
 	require.NoError(tb, err)
 	ct := calltracker.NewCallTracker(t.database, ps, kvStore)
 	dmrHub := hub.NewHub(t.database, kvStore, ps, ct)

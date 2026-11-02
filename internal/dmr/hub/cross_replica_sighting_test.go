@@ -63,7 +63,7 @@ func TestAnAnswerOnAnotherReplicaFollowsASightingThatIsNotStoredYet(t *testing.T
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 		require.NoError(t, err)
-		store, err := kv.MakeKV(context.Background(), &cfg)
+		store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		held := &heldSightings{KV: store, open: make(chan struct{})}
 		seedUser(t, database, 1000001, "SENDER")

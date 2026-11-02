@@ -49,7 +49,7 @@ func TestAPacketIsStampedWhenItArrives(t *testing.T) {
 	require.NoError(t, err)
 	cfg.DMR.MMDVM.Bind = "127.0.0.1"
 	cfg.DMR.MMDVM.Port = 0
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	s, err := MakeServer(&cfg, nil, nil, nil, kvStore, "test", "test")
 	require.NoError(t, err)

@@ -50,7 +50,7 @@ func linkReplicas(t *testing.T, be testutils.Backend, n int) ([]*hub.Hub, *gorm.
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = ps.Close()

@@ -81,7 +81,7 @@ func TestInstanceRegistryNoOtherInstances(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	kv, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -101,7 +101,7 @@ func TestInstanceRegistryWithOtherInstances(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	kv, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -127,7 +127,7 @@ func TestInstanceRegistryDeregister(t *testing.T) {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	kv, err := kv.MakeKV(context.Background(), &defConfig)
+	kv, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -155,7 +155,7 @@ func TestInstanceDrainingFollowsTheDrain(t *testing.T) {
 	t.Parallel()
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &defConfig)
+	store, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ctx := context.Background()
 

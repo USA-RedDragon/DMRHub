@@ -66,7 +66,7 @@ func replicasOn(t *testing.T, n int, wrap func(kv.KV) kv.KV) ([]replica, *gorm.D
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		sqlDB, _ := database.DB()

@@ -77,7 +77,7 @@ func TestTheBuiltinParrotAnswersThroughTheHub(t *testing.T) {
 	h, database, ps, srv := testutils.RepeaterHub(t, caller, repeater)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	listener, err := plugins.Start(context.Background(), &cfg, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)

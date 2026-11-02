@@ -81,7 +81,7 @@ func newGateway(t *testing.T) *gateway {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	cfg.DMR.Positions.APRSIS = config.APRSIS{Callsign: "N0HUB-10", Server: srv.Addr()}
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: repeater, Callsign: "W5ABC"}, OwnerID: owner}).Error)

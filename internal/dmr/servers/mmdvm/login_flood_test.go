@@ -76,7 +76,7 @@ func TestALoginFloodDoesNotDelayARealLogin(t *testing.T) {
 			<-gate
 		}
 	}))
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)

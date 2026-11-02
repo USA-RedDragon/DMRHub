@@ -42,7 +42,7 @@ func crowdedKV(t *testing.T, be testutils.Backend) kv.KV {
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	be.Setup(t, &cfg)
-	store, err := kv.MakeKV(context.Background(), &cfg)
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	for i := range 500 {

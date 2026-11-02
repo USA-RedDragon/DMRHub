@@ -189,7 +189,7 @@ func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 		assert.Equal(t, *local, *out.State.Status)
 		assert.Zero(t, api.opens.Load())
 
-		store, err := kv.MakeKV(ctx, &config.Config{})
+		store, err := kv.MakeKV(ctx, &config.Config{}, kv.WithoutCallBound())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = store.Close() })
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -253,7 +253,7 @@ func TestGETModemPorts(t *testing.T) {
 func TestModemTestOnAnotherReplica(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store, err := kv.MakeKV(ctx, &config.Config{})
+	store, err := kv.MakeKV(ctx, &config.Config{}, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(ctx, &config.Config{})
 	require.NoError(t, err)

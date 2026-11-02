@@ -95,7 +95,7 @@ func newRecordRig(t *testing.T, id uint32) *recordRig {
 		Type:                  models.RepeaterTypeMMDVM,
 		Password:              testPassword,
 	}).Error)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)

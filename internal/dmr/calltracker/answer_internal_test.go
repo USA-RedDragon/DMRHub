@@ -55,7 +55,7 @@ func TestTheMatchOfAPairStaysBounded(t *testing.T) {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.TODO(), &cfg)
+	store, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ct := NewCallTracker(database, ps, store)
 	t.Cleanup(func() {
@@ -149,7 +149,7 @@ func BenchmarkMatchStep(b *testing.B) {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			cfg, err := configulator.New(config.ConfigSchema()).Default()
 			require.NoError(b, err)
-			store, err := kv.MakeKV(context.TODO(), &cfg)
+			store, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 			require.NoError(b, err)
 			b.Cleanup(func() { _ = store.Close() })
 			c := &CallTracker{kv: store}
@@ -176,7 +176,7 @@ func memoryStore(t testing.TB) kv.KV {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.TODO(), &cfg)
+	store, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	return store

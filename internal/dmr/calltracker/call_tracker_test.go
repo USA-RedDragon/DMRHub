@@ -85,7 +85,7 @@ func memKV(t *testing.T) kv.KV {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.TODO(), &cfg)
+	kvStore, err := kv.MakeKV(context.TODO(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 	return kvStore
@@ -103,7 +103,7 @@ func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
 	}
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		sqlDB, _ := database.DB()
@@ -968,7 +968,7 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 		require.NoError(t, database.Create(&models.Talkgroup{ID: tgID, Name: "TG42"}).Error)
 		net := models.Net{TalkgroupID: tgID, StartedByUserID: new(userA), StartTime: time.Now(), Active: true}
 		require.NoError(t, database.Create(&net).Error)
-		kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+		kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 		require.NoError(t, err)
 		ct := calltracker.NewCallTracker(database, ps, kvStore)
 		t.Cleanup(func() {

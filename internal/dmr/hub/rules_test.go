@@ -87,7 +87,7 @@ func rulesSetup(t *testing.T, be testutils.Backend) *rulesEnv {
 	registerQueryCounter(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &c)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &c)
+	kvStore, err := kv.MakeKV(context.Background(), &c, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = ps.Close()

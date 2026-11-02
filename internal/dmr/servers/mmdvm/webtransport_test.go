@@ -60,7 +60,7 @@ func webTransportServerWith(t *testing.T, set func(*config.Config)) (*Server, *c
 	set(&cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)

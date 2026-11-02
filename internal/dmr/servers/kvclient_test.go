@@ -41,7 +41,7 @@ func makeTestKV(t *testing.T) kv.KV {
 	defConfig, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

@@ -60,7 +60,7 @@ func TestMakeServer(t *testing.T) {
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	assert.NoError(t, err)
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	assert.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
@@ -95,7 +95,7 @@ func TestMakeServerDefaultBindAddress(t *testing.T) {
 	ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 	assert.NoError(t, err)
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	assert.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 
@@ -156,7 +156,7 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = ps.Close() }()
 
-	kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+	kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 	defer func() { _ = kvStore.Close() }()
 

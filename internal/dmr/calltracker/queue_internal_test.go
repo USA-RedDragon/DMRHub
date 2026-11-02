@@ -47,7 +47,7 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 		require.NoError(t, err)
-		kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+		kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 		require.NoError(t, err)
 		ct := NewCallTracker(database, ps, kvStore)
 		release := make(chan struct{})
@@ -86,7 +86,7 @@ func TestACallEndsWhileTasksThatAreNotPacketsKeepTheQueueBusy(t *testing.T) {
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 		require.NoError(t, err)
-		kvStore, err := kv.MakeKV(context.TODO(), &defConfig)
+		kvStore, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 		require.NoError(t, err)
 		ct := NewCallTracker(database, ps, kvStore)
 		t.Cleanup(func() {

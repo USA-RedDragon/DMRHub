@@ -86,7 +86,7 @@ func TestARepeaterGetsTheCallsOfItsNewStaticsFromTheAckOfItsOptions(t *testing.T
 		Password:              testPassword,
 	}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: tg, Name: "TG91"}).Error)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
 		Password:              testPassword,
 	}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
@@ -278,7 +278,7 @@ func TestFullRecordsQueueWithholdsTheOptionsAck(t *testing.T) {
 		Password:              testPassword,
 	}).Error)
 	require.NoError(t, database.Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)

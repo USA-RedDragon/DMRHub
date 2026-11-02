@@ -39,7 +39,7 @@ func TestServerStatusReachesTheOtherReplicas(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		store, err := kv.MakeKV(ctx, &config.Config{})
+		store, err := kv.MakeKV(ctx, &config.Config{}, kv.WithoutCallBound())
 		if err != nil {
 			t.Fatal(err)
 		}

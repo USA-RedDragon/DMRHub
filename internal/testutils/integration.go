@@ -137,7 +137,11 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	ps, err := pubsub.MakePubSub(context.Background(), &defConfig)
 	require.NoError(t, err)
 
-	kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+	var kvOpts []kv.Option
+	if !boundedWaits(backends) {
+		kvOpts = append(kvOpts, kv.WithoutCallBound())
+	}
+	kvStore, err := kv.MakeKV(context.Background(), &defConfig, kvOpts...)
 	require.NoError(t, err)
 
 	for _, be := range backends {

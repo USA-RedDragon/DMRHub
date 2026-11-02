@@ -103,7 +103,7 @@ func newEnv(t *testing.T, be testutils.Backend) *env {
 	cfg.HTTP.CanonicalHost = "https://dmrhub.example.org/"
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = kvStore.Close()

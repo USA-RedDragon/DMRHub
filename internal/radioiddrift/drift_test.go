@@ -46,7 +46,7 @@ func setup(t *testing.T, be testutils.Backend) (*config.Config, *gorm.DB, kv.KV)
 	be.Migrated().Setup(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
-	kvStore, err := kv.MakeKV(context.Background(), &cfg)
+	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = kvStore.Close()

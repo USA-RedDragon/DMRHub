@@ -76,7 +76,7 @@ func TestGroupCallPublishesOnlyItsTalkgroupTopic(t *testing.T) {
 		rec := &topicRecorder{PubSub: ps}
 		defConfig, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		kvStore, err := kv.MakeKV(context.Background(), &defConfig)
+		kvStore, err := kv.MakeKV(context.Background(), &defConfig, kv.WithoutCallBound())
 		require.NoError(t, err)
 		ct := calltracker.NewCallTracker(database, ps, kvStore)
 		h := hub.NewHub(database, kvStore, rec, ct)

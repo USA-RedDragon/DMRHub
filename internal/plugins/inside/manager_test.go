@@ -172,7 +172,7 @@ func newClusterOn(t *testing.T, c clock.Clock) *cluster {
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
-	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithClock(c))
+	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithClock(c), kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = ps.Close()

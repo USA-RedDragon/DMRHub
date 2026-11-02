@@ -65,7 +65,7 @@ func startFuzzServer(t *testing.T) fuzzServer {
 	ps, err := pubsub.MakePubSub(t.Context(), &defConfig)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
-	kvStore, err := kv.MakeKV(t.Context(), &defConfig)
+	kvStore, err := kv.MakeKV(t.Context(), &defConfig, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
 

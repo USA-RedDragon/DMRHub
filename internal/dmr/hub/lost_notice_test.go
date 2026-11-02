@@ -66,7 +66,7 @@ func TestLostNoticeHealsAfterTheCacheExpires(t *testing.T) {
 		hubB, database, ps := makeTestHubWithPubSub(t)
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		kvA, err := kv.MakeKV(context.Background(), &cfg)
+		kvA, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 		require.NoError(t, err)
 		ctA := calltracker.NewCallTracker(database, ps, kvA)
 		hubA := hub.NewHub(database, kvA, noticeDropper{ps}, ctA)

@@ -64,10 +64,11 @@ type Server struct {
 
 // Start serves the plugins as cfg says, and gives the hub the registry of
 // their IDs through setPlugins. notify gets each position that a plugin
-// sent and the hub stored. It listens only when cfg accepts plugins that
-// run as their own programs, and returns nil when no plugins run at all.
+// sent and the hub stored; opts set up the service. It listens only when
+// cfg accepts plugins that run as their own programs, and returns nil when
+// no plugins run at all.
 func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSub, router Router,
-	setPlugins func(*Registry), notify func(models.Position)) (*Server, error) {
+	setPlugins func(*Registry), notify func(models.Position), opts ...ServiceOption) (*Server, error) {
 	c := cfg.DMR.Plugins
 	if !c.Enabled && !c.InProcess {
 		return nil, nil //nolint:nilnil // no plugins when both are off
@@ -79,7 +80,7 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 	if err := registry.SetInProcess(c.InProcess); err != nil {
 		return nil, err
 	}
-	service := NewService(db, ps, registry, router, notify)
+	service := NewService(db, ps, registry, router, notify, opts...)
 	if !c.Enabled {
 		s := &Server{registry: registry, service: service, done: make(chan struct{})}
 		registry.Follow(s.done)

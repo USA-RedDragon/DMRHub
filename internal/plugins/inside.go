@@ -59,9 +59,18 @@ func (s *Service) inside(id uint) (models.Plugin, error) {
 	return p, nil
 }
 
-// hello records the version that a plugin that runs as its own program
-// says it has. A plugin inside DMRHub has the version of its module.
+// hello records the switches that a plugin declares, and the version that
+// a plugin that runs as its own program says it has. A plugin inside
+// DMRHub has the version of its module.
 func (s *Service) hello(p *models.Plugin, h *pluginv1.Hello) {
+	specs := switchSpecs(p.Name, h)
+	if had, err := models.PluginSwitchesOf(s.db, p.ID); err != nil {
+		slog.Warn("Plugins: cannot read the switches of a plugin", "plugin", p.Name, "error", err)
+	} else if !sameSpecs(had, specs) {
+		if err := models.SetPluginSwitches(s.db, p.ID, specs); err != nil {
+			slog.Warn("Plugins: cannot note the switches of a plugin", "plugin", p.Name, "error", err)
+		}
+	}
 	if p.Kind != models.PluginExternal || h.GetVersion() == p.Version {
 		return
 	}

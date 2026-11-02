@@ -101,6 +101,9 @@ type Service struct {
 	clock     clock.Clock
 	heartbeat time.Duration
 	grace     time.Duration
+	texts     Texts
+	aprs      *APRS
+	aprsInbox bool
 
 	mu       sync.Mutex
 	streams  map[*openStream]struct{}
@@ -246,7 +249,7 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 		return err
 	}
 	out := make(chan *pluginv1.ConnectResponse, sendQueue)
-	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p)}}}
+	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p), Features: s.features()}}}
 	send := func(m *pluginv1.ConnectResponse) {
 		select {
 		case out <- m:
@@ -317,11 +320,18 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 			case <-ctx.Done():
 			}
 		},
-		subscribe: make(chan bool, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{}, sentFrom: map[uint32]uint{},
+		subscribe: make(chan *pluginv1.Subscribe, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{}, sentFrom: map[uint32]uint{},
 	}
 	go w.watch(ctx)
+	q := newRequester(s, &p, func(m *pluginv1.ConnectResponse) {
+		select {
+		case out <- m:
+		case <-ctx.Done():
+		}
+	})
+	go q.run(ctx)
 
-	go s.receive(ctx, cancel, stream, &p, send, ranges, w)
+	go s.receive(ctx, cancel, stream, &p, send, ranges, w, q)
 	<-ctx.Done()
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, errPluginDone) && !errors.Is(cause, context.Canceled) {
 		return cause //nolint:wrapcheck // a gRPC status of this package, or the error of a failed send
@@ -335,7 +345,7 @@ var errPluginDone = errors.New("the plugin closed its stream")
 // receive routes the bursts that the plugin sends, and refuses those it may
 // not send. It hands its subscriptions and positions to w.
 func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, stream pluginv1.PluginService_ConnectServer,
-	p *models.Plugin, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange, w *watcher) {
+	p *models.Plugin, send func(*pluginv1.ConnectResponse), ranges chan []models.PluginRange, w *watcher, q *requester) {
 	current := p.Ranges
 	for {
 		msg, err := stream.Recv()
@@ -353,7 +363,10 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 			case <-w.subscribe:
 			default:
 			}
-			w.subscribe <- m.Subscribe.GetTracking()
+			w.subscribe <- m.Subscribe
+			continue
+		case *pluginv1.ConnectRequest_Request:
+			q.take(m.Request, current)
 			continue
 		case *pluginv1.ConnectRequest_Position:
 			select {
@@ -392,12 +405,25 @@ type watcher struct {
 	// handOver ends the stream after the messages queued for it.
 	handOver  func()
 	ranges    chan []models.PluginRange
-	subscribe chan bool
+	subscribe chan *pluginv1.Subscribe
 	positions chan *pluginv1.Position
 
 	tracking pubsub.Subscription
 	heard    pubsub.Feed
 	twins    map[heardKey][]time.Time
+	// heardAll is true after a Subscribe with heard.
+	heardAll bool
+	// feed follows the topics of the texts, the switches and the APRS
+	// messages, as topics says.
+	feed   pubsub.Feed
+	topics map[string]bool
+	texts  bool
+	seen   map[uint64]struct{}
+	// wantSwitches is true after a Subscribe with switches. The changes to
+	// the switches are also followed to drop the APRS addresses of a user
+	// who turns them off.
+	wantSwitches bool
+	aprsTo       map[string]bool
 	// heardOn is the repeater where each radio with tracking on was heard
 	// last, when the plugin subscribed to tracking.
 	heardOn map[uint32]uint
@@ -415,11 +441,7 @@ func (w *watcher) watch(ctx context.Context) {
 	defer heartbeat.Stop()
 	var handoff <-chan time.Time
 	for {
-		var tracking <-chan []byte
-		var heard <-chan pubsub.Message
-		if w.tracking != nil {
-			tracking, heard = w.tracking.Channel(), w.heard.Channel()
-		}
+		tracking, heard, feed := w.channels()
 		select {
 		case <-ctx.Done():
 			return
@@ -453,8 +475,8 @@ func (w *watcher) watch(ctx context.Context) {
 			}
 			w.sent(&pkt)
 			w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
-		case on := <-w.subscribe:
-			w.setTracking(on)
+		case sub := <-w.subscribe:
+			w.setSubscribe(sub)
 		case pos := <-w.positions:
 			w.store(pos, current)
 		case b, ok := <-tracking:
@@ -467,6 +489,11 @@ func (w *watcher) watch(ctx context.Context) {
 				return
 			}
 			w.radioHeard(m)
+		case m, ok := <-feed:
+			if !ok {
+				return
+			}
+			w.fromFeed(m, current)
 		case _, ok := <-w.changed.Channel():
 			if !ok {
 				return
@@ -503,14 +530,15 @@ func (w *watcher) watch(ctx context.Context) {
 // sends them all, or ends that subscription.
 func (w *watcher) setTracking(on bool) {
 	if !on {
-		w.unsubscribe()
+		if w.tracking != nil {
+			_ = w.tracking.Close()
+			w.tracking = nil
+		}
+		w.heardOn = map[uint32]uint{}
 		return
 	}
 	if w.tracking == nil {
 		w.tracking = w.s.pubsub.Subscribe(TrackingTopic)
-		w.heard = w.s.pubsub.Feed()
-		w.heard.Add(HeardTopic)
-		w.heard.Add(HeardAtTopic)
 	}
 	radios, err := tracked(w.s.db)
 	if err != nil {
@@ -526,14 +554,8 @@ func (w *watcher) setTracking(on bool) {
 }
 
 func (w *watcher) unsubscribe() {
-	if w.tracking == nil {
-		return
-	}
-	_ = w.tracking.Close()
-	_ = w.heard.Close()
-	w.tracking, w.heard = nil, nil
-	w.heardOn = map[uint32]uint{}
-	w.twins = nil
+	w.setSubscribe(&pluginv1.Subscribe{})
+	w.closeFeed()
 }
 
 // trackingChanged sends the tracking of the radio named in b.
@@ -567,10 +589,11 @@ func (w *watcher) radioHeard(m pubsub.Message) {
 	if !w.twin(m.Topic, h.heardKey) {
 		return
 	}
-	if _, tracked := w.heardOn[h.radio]; !tracked {
+	if _, tracked := w.heardOn[h.radio]; tracked {
+		w.heardOn[h.radio] = uint(h.repeater)
+	} else if !w.heardAll {
 		return
 	}
-	w.heardOn[h.radio] = uint(h.repeater)
 	msg := &pluginv1.Heard{Radio: h.radio, Slot: uint32(h.slot), ColorCode: uint32(h.cc)}
 	if h.at != 0 {
 		msg.At = &h.at

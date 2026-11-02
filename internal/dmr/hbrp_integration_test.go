@@ -22,6 +22,8 @@ package dmr_test
 import (
 	"context"
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,6 +37,7 @@ import (
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // TestHBRPLogin logs in a repeater that speaks HBRP, with hex text IDs,
@@ -293,14 +296,18 @@ func TestHBRPHandoff(t *testing.T) {
 
 // TestMixedDialectLoginIsRefused starts a login in the MMDVM network
 // protocol and answers the salt with an HBRP RPTK. DMRHub must not
-// complete the login, and must go on serving other repeaters.
+// complete the login, and must go on serving other repeaters. The
+// database answers the first read of a repeater after slowLookup, as on a
+// starved machine, so the salt comes late.
 func TestMixedDialectLoginIsRefused(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+		slow := slowRepeaterRead(t, stack.DB)
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
 		stack.StartServers(t)
+		slow.Store(true)
 
 		raddr, err := net.ResolveUDPAddr("udp", stack.MMDVMAddr)
 		require.NoError(t, err)
@@ -321,7 +328,7 @@ func TestMixedDialectLoginIsRefused(t *testing.T) {
 		require.NoError(t, err)
 		_, err = conn.Write(rptl)
 		require.NoError(t, err)
-		ack, err := dmrd.DecodeControl(read(time.Second), dmrd.DialectMMDVM)
+		ack, err := dmrd.DecodeControl(read(handshakeWait), dmrd.DialectMMDVM)
 		require.NoError(t, err)
 		salt, ok := ack.LoginSalt()
 		require.True(t, ok)
@@ -341,4 +348,28 @@ func TestMixedDialectLoginIsRefused(t *testing.T) {
 		require.NoError(t, hb.WaitReady(handshakeWait), "DMRHub should still log in other repeaters")
 		assert.False(t, servers.MakeKVClient(stack.KV).RepeaterExists(context.Background(), 100001))
 	})
+}
+
+// slowLookup is how long the slow read of slowRepeaterRead takes: longer
+// than the second that a test once gave the server to answer an RPTL.
+const slowLookup = 2 * time.Second
+
+// slowRepeaterRead makes the first read of the repeaters table on database
+// after the returned flag is set take slowLookup. Call it before anything
+// else uses database.
+func slowRepeaterRead(t *testing.T, database *gorm.DB) *atomic.Bool {
+	t.Helper()
+	var armed atomic.Bool
+	var once sync.Once
+	require.NoError(t, database.Callback().Query().Before("gorm:query").Register("slow_repeater_read", func(tx *gorm.DB) {
+		if tx.Statement.Table != "repeaters" || !armed.Load() {
+			return
+		}
+		once.Do(func() {
+			done := make(chan struct{})
+			time.AfterFunc(slowLookup, func() { close(done) })
+			<-done
+		})
+	}))
+	return &armed
 }

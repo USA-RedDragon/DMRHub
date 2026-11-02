@@ -376,6 +376,11 @@ func DeletePlugin(db *gorm.DB, id uint) error {
 		if err := tx.Where("plugin_id = ?", id).Delete(&PluginModule{}).Error; err != nil {
 			return fmt.Errorf("could not delete the plugin module: %w", err)
 		}
+		for _, table := range []any{&PluginStoreEntry{}, &PluginSwitch{}, &PluginUserSwitch{}} {
+			if err := tx.Where("plugin_id = ?", id).Delete(table).Error; err != nil {
+				return fmt.Errorf("could not delete the plugin's store and switches: %w", err)
+			}
+		}
 		res := tx.Delete(&Plugin{}, id)
 		if res.Error != nil {
 			return fmt.Errorf("could not delete the plugin: %w", res.Error)

@@ -184,11 +184,16 @@ func TestFakeAMBEServerRefusesTheSpeechFormat(t *testing.T) {
 	assert.False(t, srv.SpeechFormat())
 }
 
+// TestFakeAMBEServerDropsMisuse sends each bad packet with a good channel
+// packet after it. The server handles the packets of a client in order,
+// so the first answer must be that of the good packet, and by then the
+// error of the bad one is recorded.
 func TestFakeAMBEServerDropsMisuse(t *testing.T) {
 	t.Parallel()
 	srv := testutils.StartFakeAMBEServer(t)
 	conn, _ := dialFake(t, srv)
 	slot := fakeSlot(6)
+	probe := rawPacket(dvsi.TypeChannel, append([]byte{0x01, dvsi.FrameBits}, slot[:]...)...)
 	for _, tc := range []struct {
 		name   string
 		typ    dvsi.PacketType
@@ -204,10 +209,15 @@ func TestFakeAMBEServerDropsMisuse(t *testing.T) {
 		before := len(srv.Errors())
 		_, err := conn.Write(rawPacket(tc.typ, tc.fields...))
 		require.NoError(t, err, tc.name)
-		require.NoError(t, conn.SetReadDeadline(time.Now().Add(150*time.Millisecond)))
+		_, err = conn.Write(probe)
+		require.NoError(t, err, tc.name)
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(replyWait)))
 		buf := make([]byte, dvsi.MaxPacketLen)
-		_, err = conn.Read(buf)
-		require.Error(t, err, "%s: the server answered", tc.name)
+		n, err := conn.Read(buf)
+		require.NoError(t, err, tc.name)
+		p, _, err := dvsi.Parse(buf[:n], true)
+		require.NoError(t, err, tc.name)
+		require.Equal(t, dvsi.TypeSpeech, p.Type, "%s: the server answered the bad packet", tc.name)
 		errs := srv.Errors()
 		require.Len(t, errs, before+1, tc.name)
 		assert.True(t, strings.Contains(errs[before], tc.err), "%s: %q", tc.name, errs[before])

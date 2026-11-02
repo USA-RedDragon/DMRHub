@@ -138,7 +138,6 @@ timer	internal/stress/transport_test.go	2	release stress battery (stress build t
 elapsed	internal/stress/web_test.go	1	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose
 sleep	internal/stress/web_test.go	3	release stress battery (stress build tag, not run by go test ./... or CI): it paces real traffic and measures real latency and throughput on purpose; lines 101, 161, 187 are settle waits between stress phases; should become an event wait (open item)
 sleep	internal/testutils/ambeserver.go	2	protocol pacing of the fake AMBE server: the sleeps model the reply delay of a real device, which the tests set on purpose
-deadline	internal/testutils/ambeserver_test.go	1	negative window: the read checks that the fake server answers nothing to a bad packet; a slow machine can only hide a fault; the positive read uses replyWait
 deadline	internal/testutils/backends.go	5	setup probes: each 2 s ping runs inside pool.Retry, which tries again until the pool max wait of 3 min, and the clear of a Redis or MySQL spare on cleanup only logs or drops the spare on error; no test fails on a starved probe
 sleep	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers
 timer	internal/testutils/bubble/bubble.go	1	virtual time: these helpers wait in the synctest bubbles of their callers

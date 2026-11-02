@@ -21,10 +21,11 @@ package testutils_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -36,10 +37,16 @@ import (
 
 // admittedOnASlowDatabase routes the first burst of a radio to a stack
 // whose routing lets only members transmit, while the database holds the
-// lookup of the owner of the radio for longer than lookup.Wait, and
-// reports whether the hub took the burst in.
-func admittedOnASlowDatabase(t *testing.T, opts ...testutils.Backend) bool {
+// lookup of the owner of the radio for lookup.Wait of the hub's clock, and
+// reports whether the hub took the burst in. A stack with bounded waits
+// must decide before the database answers.
+func admittedOnASlowDatabase(t *testing.T, bounded bool) bool {
 	t.Helper()
+	fake := clock.NewFake(time.Now())
+	opts := []testutils.Backend{testutils.ClockOn(fake)}
+	if bounded {
+		opts = append(opts, testutils.BoundedWaits())
+	}
 	stack := testutils.SetupIntegrationStack(t, opts...)
 	stack.SeedUser(t, 1000001, "N0CALL")
 	cfg := *stack.Config
@@ -64,11 +71,10 @@ func admittedOnASlowDatabase(t *testing.T, opts ...testutils.Backend) bool {
 		FrameType: dmrconst.FrameVoice, DTypeOrVSeq: dmrconst.VoiceA, StreamID: 4242, BER: -1, RSSI: -1,
 	}, models.RepeaterTypeMMDVM, func(ok bool) { admitted <- ok })
 	<-started
-	_, err := lookup.NewFlights[int, int](nil).Do(0, func() (int, error) {
-		<-release
-		return 0, nil
-	})
-	require.True(t, errors.Is(err, lookup.ErrSlow), "the probe ended before lookup.Wait")
+	fake.Advance(lookup.Wait)
+	if bounded {
+		return <-admitted
+	}
 	once.Do(func() { close(release) })
 	return <-admitted
 }
@@ -80,10 +86,10 @@ func TestAStackWaitsOutASlowDatabase(t *testing.T) {
 	t.Parallel()
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
-		require.True(t, admittedOnASlowDatabase(t), "the hub dropped the burst of a radio whose owner the database was slow to give")
+		require.True(t, admittedOnASlowDatabase(t, false), "the hub dropped the burst of a radio whose owner the database was slow to give")
 	})
 	t.Run("bounded", func(t *testing.T) {
 		t.Parallel()
-		require.False(t, admittedOnASlowDatabase(t, testutils.BoundedWaits()), "the hub waited past lookup.Wait")
+		require.False(t, admittedOnASlowDatabase(t, true), "the hub waited past lookup.Wait")
 	})
 }

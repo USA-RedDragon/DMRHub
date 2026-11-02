@@ -36,6 +36,8 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
+	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
+	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -77,6 +79,7 @@ func hooks() map[string]hook {
 		"held":          holdText,
 		"local-groups":  seedLocalGroups,
 		"local-call":    playCalls(localGroupCall()),
+		"plugin-switch": pluginSwitch,
 	}
 }
 
@@ -500,6 +503,52 @@ func makeTokens(ctx context.Context, r *runner) error {
 		return err
 	}
 	return a.do(ctx, http.MethodPost, "/api/v1/users/me/tokens", map[string]any{"name": "Backup job", "full": true, "expires_in_days": 365}, nil)
+}
+
+// pluginSwitch connects a plugin that declares a per-user switch, and
+// turns the switch on for n0call. The answer to a request after the hello
+// shows that the hub kept the switch.
+func pluginSwitch(ctx context.Context, r *runner) error {
+	a := r.api("n0call")
+	var made struct {
+		Token  string `json:"token"`
+		Plugin struct {
+			ID uint `json:"id"`
+		} `json:"plugin"`
+	}
+	if err := a.do(ctx, http.MethodPost, "/api/v1/admin/plugins", map[string]any{
+		"name": "Check-in list", "ranges": []map[string]uint{{"first": 9996, "last": 9996}},
+	}, &made); err != nil {
+		return err
+	}
+	var list struct {
+		Connection struct {
+			Fingerprint string `json:"fingerprint"`
+		} `json:"connection"`
+	}
+	if err := a.do(ctx, http.MethodGet, "/api/v1/admin/plugins", nil, &list); err != nil {
+		return err
+	}
+	conn, err := plugin.Dial(ctx, plugin.Options{
+		Address: fmt.Sprintf("127.0.0.1:%d", pluginPort), Token: made.Token, Fingerprint: list.Connection.Fingerprint,
+		Hello: &pluginv1.Hello{Name: "Check-in list", Version: "1.0.0", Switches: []*pluginv1.Switch{{
+			Key: "list", Title: "Net check-in list", Description: "Show your callsign on the public check-in list of the nets that you call in to.",
+			Notice: "The check-in list is on the internet, where anyone can read it.",
+			Details: []*pluginv1.SwitchDetail{
+				{Label: "Your name on the list", Value: "`{callsign}`"},
+				{Label: "To check in", Value: "Call `{id}` during the {choice} net."},
+			},
+			Choice: &pluginv1.SwitchChoice{Label: "Net", Options: []string{"Tuesday", "Thursday"}},
+		}}},
+	})
+	if err != nil {
+		return fmt.Errorf("could not connect the plugin: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.StoreGet(ctx, "none"); !errors.Is(err, plugin.ErrNotFound) {
+		return fmt.Errorf("the plugin's request after its hello: %w", err)
+	}
+	return a.do(ctx, http.MethodPut, fmt.Sprintf("/api/v1/users/me/plugin-switches/%d/list", made.Plugin.ID), map[string]any{"on": true, "choice": "Thursday"}, nil)
 }
 
 func repeaterRules(ctx context.Context, r *runner) error {

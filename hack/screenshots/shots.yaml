@@ -462,3 +462,10 @@ shots:
     route: /admin/setup#routing
     wait: Local talkgroups
     clip: card Talkgroups
+  - name: settings-plugin-switch.png
+    phase: main
+    as: n0call
+    needs: [plugin-switch]
+    route: /settings
+    wait: Net check-in list
+    clip: card Net check-in list

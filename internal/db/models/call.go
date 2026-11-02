@@ -221,25 +221,42 @@ func ActiveCallExists(db *gorm.DB, streamID uint, src uint, dst uint, slot bool,
 }
 
 // FindTalkgroupCallsInTimeRange returns calls for a talkgroup within a time window.
+// The window takes in the whole millisecond of each bound, the precision of
+// the column on MySQL and MariaDB, so a call is in it whatever precision
+// the bounds have.
 func FindTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) ([]Call, error) {
+	startTime, endTime = rangeBounds(startTime, endTime)
 	var calls []Call
 	err := db.Preload("User").Preload("Repeater").Preload("ToTalkgroup").Preload("ToUser").Preload("ToRepeater").
-		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).
+		Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Order("start_time desc").Find(&calls).Error
 	return calls, err
 }
 
-// CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window.
+// CountTalkgroupCallsInTimeRange returns the count of calls for a talkgroup within a time window,
+// as FindTalkgroupCallsInTimeRange takes it.
 func CountTalkgroupCallsInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
+	startTime, endTime = rangeBounds(startTime, endTime)
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).Count(&count).Error
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).Count(&count).Error
 	return int(count), err
 }
 
-// CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window.
+// CountUniqueUsersInTimeRange returns the number of distinct users who made calls on a talkgroup within a time window,
+// as FindTalkgroupCallsInTimeRange takes it.
 func CountUniqueUsersInTimeRange(db *gorm.DB, talkgroupID uint, startTime, endTime time.Time) (int, error) {
+	startTime, endTime = rangeBounds(startTime, endTime)
 	var count int64
-	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime.UTC(), endTime.UTC(), CallKindVoice).
+	err := db.Model(&Call{}).Where("is_to_talkgroup = ? AND to_talkgroup_id = ? AND start_time >= ? AND start_time <= ? AND kind = ? AND user_id IS NOT NULL", true, talkgroupID, startTime, endTime, CallKindVoice).
 		Distinct("user_id").Count(&count).Error
 	return int(count), err
+}
+
+func rangeBounds(start, end time.Time) (time.Time, time.Time) {
+	start = start.UTC().Truncate(time.Millisecond)
+	end = end.UTC()
+	if up := end.Truncate(time.Millisecond); up.Before(end) {
+		end = up.Add(time.Millisecond)
+	}
+	return start, end
 }

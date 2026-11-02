@@ -70,7 +70,7 @@ func tokenRoutes() map[string][]string {
 // not use the route: the routes of account security, which need the user
 // signed in.
 func fullAccessRefused(method, path string) bool {
-	for _, prefix := range []string{"/api/v1/auth/", "/api/v1/oauth/", "/api/v1/users/me/tokens"} {
+	for _, prefix := range []string{"/api/v1/auth/", "/api/v1/oauth/", "/api/v1/users/me/tokens", "/api/v1/users/me/totp", "/api/v1/users/:id/totp"} {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}

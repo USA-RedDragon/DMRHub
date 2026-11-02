@@ -89,7 +89,32 @@ func GETUsers(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting user count"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{totalKey: total, usersKey: users})
+	out := gin.H{totalKey: total, usersKey: users}
+	if sessionAdmin(c, cDb) {
+		ids := make([]uint, 0, len(users))
+		for _, u := range users {
+			ids = append(ids, u.ID)
+		}
+		on, err := models.UsersWithTOTP(cDb, ids)
+		if err != nil {
+			slog.Error("Error getting the on-air codes of users", "function", "GETUsers", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error getting users"})
+			return
+		}
+		out["on_air_codes"] = on
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// sessionAdmin reports whether an admin signed in made the request, not a
+// token, without answering the request.
+func sessionAdmin(c *gin.Context, db *gorm.DB) bool {
+	uid, ok := sessions.Default(c).Get("user_id").(uint)
+	if !ok || utils.ViaToken(c) {
+		return false
+	}
+	var me models.User
+	return db.Select("id", "admin").First(&me, uid).Error == nil && me.Admin
 }
 
 // POSTUser is used to register a new user.

@@ -8,8 +8,6 @@ github.com/USA-RedDragon/configulator/v2 v2.5.0 h1:Z6eY4ncXH6m7cTCfF0/chRJxUT5/T
 github.com/USA-RedDragon/configulator/v2 v2.5.0/go.mod h1:L/HGK6Bf1Wr7dbBibAW0zpXhvG0A+7cMI0U9Rz9Hplg=
 github.com/USA-RedDragon/dmrgo/v2 v2.0.8-0.20261101193735-ddb61e96be02 h1:9kC1md6LcXfk59AOPwdIAWiXJLF0X1PTd44vL00UDY0=
 github.com/USA-RedDragon/dmrgo/v2 v2.0.8-0.20261101193735-ddb61e96be02/go.mod h1:+vgzs3oSTUL/QsbDtj4KqbZtPO3kijdmHYOfN3ODoG8=
-github.com/USA-RedDragon/dmrgo/v2 v2.0.8 h1:g5W+6oampTb3pjsNNoWbKaB7qvnu96z6jOemrCEJw08=
-github.com/USA-RedDragon/dmrgo/v2 v2.0.8/go.mod h1:+vgzs3oSTUL/QsbDtj4KqbZtPO3kijdmHYOfN3ODoG8=
 github.com/aperturerobotics/protobuf-go-lite v0.19.0 h1:7Veh1XY7pkswacItBnTR+skvPyNIFdOPg0tb3X0Yd/E=
 github.com/aperturerobotics/protobuf-go-lite v0.19.0/go.mod h1:3Ay/E7iaw2KWLirK3+dDdNJZHK0hu8Y1/kKeYeUa+8s=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
@@ -335,3 +333,5 @@ modernc.org/sqlite v1.23.1 h1:nrSBg4aRQQwq59JpvGEQ15tNxoO5pX/kUjcRNwSAGQM=
 modernc.org/sqlite v1.23.1/go.mod h1:OrDj17Mggn6MhE+iPbBNf7RGKODDE9NFT0f3EwDzJqk=
 pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
 pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
+rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
+rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

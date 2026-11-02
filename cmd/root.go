@@ -32,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/aprs"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/migration"
@@ -150,6 +151,7 @@ func runRoot(cmd *cobra.Command, _ []string) error {
 	messageStore.SetNotify(func(m *models.Message) {
 		messagePusher.Push(m)
 		storeForward.Stored(m)
+		plugins.PublishText(pubsubClient, m)
 	})
 	callTracker.SetDataObserver(messageStore)
 
@@ -595,7 +597,11 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 	positionPusher := positions.NewPusher(database, pubsubClient)
 	hub.SetPositionNotify(positionPusher.Push)
 	sm.plugins, err = plugins.Start(ctx, cfg, database, pubsubClient, hub, func(r *plugins.Registry) { hub.SetPlugins(r) },
-		positionPusher.Push)
+		positionPusher.Push, plugins.WithAPRS(plugins.APRS{
+			Send:   func(m aprs.Message) error { return positions.PublishMessage(pubsubClient, m) },
+			On:     func() bool { return current.Get().DMR.Positions.APRSIS.Callsign != "" },
+			Limits: kvStore,
+		}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

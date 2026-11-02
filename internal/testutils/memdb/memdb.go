@@ -20,8 +20,8 @@
 // Package memdb gives tests their own SQLite databases.
 //
 // Use gives a test a SQLite file in WAL mode in its temporary directory,
-// with the parameters that DMRHub uses by default but foreign keys, so
-// that the test locks as a server does: a read never waits for a write.
+// with the parameters that DMRHub uses by default, so that the test locks
+// and checks foreign keys as a server does: a read never waits for a write.
 // The file is a copy of a database that the process migrated once, so
 // that each test does not run every migration again; UseEmpty gives an
 // empty file to the tests of the migrations. UseSharedCache and DSN give a shared-cache memory database instead, for
@@ -40,7 +40,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 
@@ -54,16 +53,16 @@ func Name() string {
 	return "file:memdb_" + rand.Text()
 }
 
-// DSN returns a new SQLite DSN that opens a shared-cache memory database.
+// DSN returns a new SQLite DSN that opens a shared-cache memory database
+// with foreign keys on, as DMRHub turns them on.
 func DSN() string {
-	return Name() + "?mode=memory&cache=shared"
+	return Name() + "?mode=memory&cache=shared&_pragma=foreign_keys(1)"
 }
 
 // Use points cfg at a new SQLite file in the temporary directory of t,
-// with the default database parameters of DMRHub but foreign keys, which a
-// test turns on with params, and params added to them. The file holds a
-// copy of a database that the process migrated once, so db.MakeDB finds
-// every migration done.
+// with the default database parameters of DMRHub and params added to them.
+// The file holds a copy of a database that the process migrated once, so
+// db.MakeDB finds every migration done.
 func Use(t testing.TB, cfg *config.Config, params ...string) {
 	t.Helper()
 	if err := UseIn(t.TempDir(), cfg, params...); err != nil {
@@ -100,9 +99,7 @@ func pointAt(dir string, cfg *config.Config, params ...string) error {
 	if err != nil {
 		return err
 	}
-	extra = slices.DeleteFunc(slices.Clone(extra), func(p string) bool {
-		return strings.HasPrefix(p, "_pragma=foreign_keys")
-	})
+	extra = slices.Clone(extra)
 	for _, p := range params {
 		if !slices.Contains(extra, p) {
 			extra = append(extra, p)
@@ -114,11 +111,11 @@ func pointAt(dir string, cfg *config.Config, params ...string) error {
 	return nil
 }
 
-// UseSharedCache points cfg at a new shared-cache SQLite memory database,
-// with params added to the extra parameters.
+// UseSharedCache points cfg at a new shared-cache SQLite memory database
+// with foreign keys on, with params added to the extra parameters.
 func UseSharedCache(cfg *config.Config, params ...string) {
 	cfg.Database.Database = Name()
-	cfg.Database.ExtraParameters = append([]string{"mode=memory", "cache=shared"}, params...)
+	cfg.Database.ExtraParameters = append([]string{"mode=memory", "cache=shared", "_pragma=foreign_keys(1)"}, params...)
 }
 
 func defaults() ([]string, error) {

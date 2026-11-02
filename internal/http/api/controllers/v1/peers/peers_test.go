@@ -269,12 +269,7 @@ func TestDELETEPeer(t *testing.T) {
 
 func TestDELETEPeerWithRules(t *testing.T) {
 	t.Parallel()
-	sqliteFK := testutils.SQLiteMemoryBackend()
-	sqliteFK.Name = "sqlite-memory-fk"
-	sqliteFK.Setup = func(_ *testing.T, c *config.Config) {
-		c.Database.ExtraParameters = append(c.Database.ExtraParameters, "_pragma=foreign_keys(1)")
-	}
-	for _, be := range []testutils.Backend{sqliteFK, testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
+	for _, be := range []testutils.Backend{testutils.SQLiteMemoryBackend(), testutils.PostgresRedisBackend(), testutils.MySQLBackend(), testutils.MariaDBBackend()} {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) { be.Migrated().Setup(t, c) })

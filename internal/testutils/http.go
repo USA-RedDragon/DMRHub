@@ -59,7 +59,7 @@ func (t *TestDB) useDB(cfg *config.Config) error {
 		return fmt.Errorf("failed to make the database directory: %w", err)
 	}
 	t.dir = dir
-	if err := memdb.UseIn(dir, cfg, "_pragma=foreign_keys(1)"); err != nil {
+	if err := memdb.UseIn(dir, cfg); err != nil {
 		return fmt.Errorf("failed to point the config at the database: %w", err)
 	}
 	return nil

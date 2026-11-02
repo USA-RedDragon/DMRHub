@@ -255,3 +255,50 @@ func TestAHandoverToABrowserHotspotIsPaced(t *testing.T) {
 		assert.GreaterOrEqual(t, times[n-1].Sub(times[0]), (n-1)*wtHandoverGap, "the handover went out at once")
 	})
 }
+
+// TestAHandoverThatMovesOnHandsOverWhatItDidNotSend moves a browser
+// hotspot on to another replica while this one still sends it the paced
+// packets of the handover it got. The handover of this replica must hold
+// the packets that it did not send yet, which the hotspot gets nowhere
+// else, and this replica must send them no more.
+func TestAHandoverThatMovesOnHandsOverWhatItDidNotSend(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		s.egressMiss = xsync.NewMap[uint, time.Time]()
+		s.connected.Store(1, endpoint{transport: webTransportName, addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+		s.moving = map[uint]*movingRepeater{1: {seen: map[packetKey]bool{}}}
+		const n, before = 10, 3
+		lost := make([]models.Packet, 0, n)
+		for i := range n {
+			lost = append(lost, models.Packet{StreamID: 7, Seq: uint(i)})
+		}
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			s.finishHandover(context.Background(), 1, lost)
+		}()
+		for range before {
+			<-s.outgoingChan
+		}
+		synctest.Wait()
+
+		h := s.report(1, time.Now(), ruleFor(endpoint{transport: webTransportName}))
+		s.connected.Delete(1)
+		s.egressMiss.Store(1, time.Now())
+		<-finished
+
+		got := decodePackets(h.Packets)
+		seqs := make([]uint, 0, len(got))
+		for _, p := range got {
+			seqs = append(seqs, p.Seq)
+		}
+		want := make([]uint, 0, n)
+		for i := range n {
+			want = append(want, uint(i))
+		}
+		assert.Equal(t, want, seqs, "the handover misses the packets that this replica did not send")
+		assert.LessOrEqual(t, len(s.outgoingChan), 1, "this replica sent the packets after the hotspot moved on")
+	})
+}

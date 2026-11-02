@@ -535,8 +535,13 @@ func (s *Server) deliver(ctx context.Context, repeaterID uint, packet models.Pac
 }
 
 func (s *Server) send(ep endpoint, repeaterID uint, packet models.Packet) {
+	s.sendRecorded(ep, repeaterID, packet, s.remember(repeaterID, packet))
+}
+
+// sendRecorded sends packet, whose record of the handover sent is, to the
+// repeater repeaterID at ep.
+func (s *Server) sendRecorded(ep endpoint, repeaterID uint, packet models.Packet, sent *sentPacket) {
 	slog.Debug("Sending packet", "packet", packet.String(), "repeaterID", repeaterID)
-	sent := s.remember(repeaterID, packet)
 	select {
 	case s.outgoingChan <- outgoing{raw: rawPacketFrom(ep, packet.Encode()), sent: sent}:
 	case <-s.done:

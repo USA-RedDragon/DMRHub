@@ -145,6 +145,7 @@ func encodePackets(pkts []models.Packet) [][]byte {
 // went to it then, until the grace ends.
 type movingRepeater struct {
 	held  []models.Packet
+	left  []models.Packet
 	done  bool
 	seen  map[packetKey]bool
 	grace time.Time
@@ -165,6 +166,11 @@ func keyOf(p models.Packet) packetKey {
 func (s *Server) remember(id uint, pkt models.Packet) *sentPacket {
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
+	return s.rememberLocked(id, pkt)
+}
+
+// rememberLocked is remember for a caller that holds s.sentMu.
+func (s *Server) rememberLocked(id uint, pkt models.Packet) *sentPacket {
 	if s.sent == nil {
 		s.sent = map[uint][]*sentPacket{}
 	}
@@ -261,7 +267,7 @@ func (s *Server) takeHeld(id uint) []models.Packet {
 	if m.done {
 		return nil
 	}
-	return m.held
+	return append(m.left, m.held...)
 }
 
 // handOver sends the replica that claimed the repeater id h, the packets
@@ -337,6 +343,9 @@ func (s *Server) awaitHandover(ctx context.Context, id uint, anchors []wtAnchor)
 func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Packet) {
 	s.movingMu.Lock()
 	m, ok := s.moving[id]
+	if ok {
+		m.left = append(m.left, lost...)
+	}
 	s.movingMu.Unlock()
 	if !ok {
 		return
@@ -345,29 +354,57 @@ func (s *Server) finishHandover(ctx context.Context, id uint, lost []models.Pack
 	if ep, ok := s.connected.Load(id); ok && ep.transport == webTransportName {
 		gap = wtHandoverGap
 	}
-	sent := false
-	batch := lost
-	for {
-		for _, p := range batch {
-			if m.seen[keyOf(p)] {
-				continue
-			}
-			m.seen[keyOf(p)] = true
-			if sent && gap > 0 && !s.wait(gap) {
-				return
-			}
-			sent = true
-			s.deliver(ctx, id, p)
-		}
-		s.movingMu.Lock()
-		if len(m.held) == 0 {
-			m.done, m.grace = true, s.clock.Now().Add(handedGrace)
-			s.movingMu.Unlock()
+	for sent := false; ; sent = true {
+		if sent && gap > 0 && !s.wait(gap) {
 			return
 		}
-		batch, m.held = m.held, nil
-		s.movingMu.Unlock()
+		if !s.sendHanded(ctx, id, m) {
+			return
+		}
 	}
+}
+
+// sendHanded sends the repeater id the next packet of the handover m that
+// it did not get yet, and then those held for it, and reports false when
+// none is left or the repeater moved on. It takes the packet and records it
+// as sent in one step, so that the handover of the repeater to the next
+// replica holds every packet that this one did not send.
+func (s *Server) sendHanded(ctx context.Context, id uint, m *movingRepeater) bool {
+	s.sentMu.Lock()
+	s.movingMu.Lock()
+	if s.moving[id] != m {
+		s.movingMu.Unlock()
+		s.sentMu.Unlock()
+		return false
+	}
+	var p models.Packet
+	for {
+		if len(m.left) == 0 {
+			m.left, m.held = m.held, nil
+		}
+		if len(m.left) == 0 {
+			m.done, m.grace = true, s.clock.Now().Add(handedGrace)
+			s.movingMu.Unlock()
+			s.sentMu.Unlock()
+			return false
+		}
+		p, m.left = m.left[0], m.left[1:]
+		if !m.seen[keyOf(p)] {
+			m.seen[keyOf(p)] = true
+			break
+		}
+	}
+	s.movingMu.Unlock()
+	ep, ok := s.connected.Load(id)
+	if !ok {
+		s.sentMu.Unlock()
+		s.deliver(ctx, id, p)
+		return true
+	}
+	rec := s.rememberLocked(id, p)
+	s.sentMu.Unlock()
+	s.sendRecorded(ep, id, p, rec)
+	return true
 }
 
 // wait waits for d, and reports false when the server stops first.

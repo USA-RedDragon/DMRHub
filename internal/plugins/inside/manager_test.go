@@ -160,7 +160,7 @@ func (c *cluster) now() time.Time {
 
 func newCluster(t *testing.T) *cluster {
 	t.Helper()
-	return newClusterOn(t, nil)
+	return newClusterOn(t, clock.NewFake(time.Now()))
 }
 
 func newClusterOn(t *testing.T, c clock.Clock) *cluster {
@@ -197,8 +197,18 @@ func fast() inside.Timing {
 		MinBackoff: 100 * time.Millisecond, MaxBackoff: time.Second}
 }
 
+// engineOn returns e with its limits timed on c, so that the hello and
+// answer deadlines of a guest step with the test clock rather than run out
+// on the real clock while the guest is slow to start.
+func engineOn(e *wasm.Engine, c clock.Clock) *wasm.Engine {
+	l := e.Limits()
+	l.Clock = c
+	return e.Limited(l)
+}
+
 func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *replica {
 	t.Helper()
+	e = engineOn(e, c.clock)
 	registry, err := plugins.NewRegistry(c.db, c.ps)
 	require.NoError(t, err)
 	done := make(chan struct{})

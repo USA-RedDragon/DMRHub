@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
@@ -84,7 +85,7 @@ func TestTheBuiltinParrotAnswersThroughTheHub(t *testing.T) {
 	t.Cleanup(listener.Stop)
 	m := inside.NewManager(inside.Deps{
 		DB: database, PubSub: ps, KV: store, Instance: "a", Version: "v1.3.4",
-		Service: listener.Service(), Registry: listener.Registry(), Engine: engine, Timing: fast(),
+		Service: listener.Service(), Registry: listener.Registry(), Engine: engineOn(engine, clock.NewFake(time.Now())), Timing: fast(),
 	})
 	require.NoError(t, m.Start(context.Background(), true))
 	t.Cleanup(func() { m.Stop(context.Background()) })

@@ -108,5 +108,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_local_groups_migration_202611020100(db, cfg),
 		keep_network_local_numbers_migration_202611020110(db, cfg),
 		add_plugin_sdk_migration_202611020200(db, cfg),
+		add_totp_secret_migration_202611020300(db, cfg),
 	}
 }

@@ -66,10 +66,14 @@ type User struct {
 	// CallsignOverride reports that an admin set a callsign that RadioID
 	// did not give the DMR ID of the user, so the RadioID drift check
 	// skips the user. Only SetCallsignOverride writes it.
-	CallsignOverride bool           `json:"callsign_override" gorm:"<-:create;not null;default:false"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"-"`
-	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
+	CallsignOverride bool `json:"callsign_override" gorm:"<-:create;not null;default:false"`
+	// TOTPSecret is the secret of the on-air code of the user, sealed with
+	// a key of the hub secret, or empty when the on-air code is off. Only
+	// SetTOTPSecret writes it, and no API shows it.
+	TOTPSecret string         `json:"-" gorm:"<-:create;size:128;not null;default:''"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"-"`
+	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (u User) TableName() string {
@@ -163,6 +167,40 @@ func SetCallsignOverride(db *gorm.DB, id uint, override bool) error {
 		return fmt.Errorf("could not set the callsign override of %d: %w", id, err)
 	}
 	return nil
+}
+
+// SetTOTPSecret sets the sealed secret of the on-air code of the user id,
+// or turns the on-air code off when sealed is empty.
+func SetTOTPSecret(db *gorm.DB, id uint, sealed string) error {
+	if err := db.Exec("UPDATE users SET totp_secret = ? WHERE id = ?", sealed, id).Error; err != nil {
+		return fmt.Errorf("could not set the on-air code of %d: %w", id, err)
+	}
+	return nil
+}
+
+// TOTPSecretOf returns the sealed secret of the on-air code of the user
+// id, empty when the on-air code is off or the user does not exist.
+func TOTPSecretOf(db *gorm.DB, id uint) (string, error) {
+	var secrets []string
+	if err := db.Table("users").Where("id = ? AND deleted_at IS NULL", id).Limit(1).Pluck("totp_secret", &secrets).Error; err != nil {
+		return "", fmt.Errorf("could not read the on-air code of %d: %w", id, err)
+	}
+	if len(secrets) == 0 {
+		return "", nil
+	}
+	return secrets[0], nil
+}
+
+// UsersWithTOTP returns the users among ids whose on-air code is on.
+func UsersWithTOTP(db *gorm.DB, ids []uint) ([]uint, error) {
+	out := []uint{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := db.Model(&User{}).Where("id IN ? AND totp_secret IS NOT NULL AND totp_secret <> ''", ids).Pluck("id", &out).Error; err != nil {
+		return nil, fmt.Errorf("could not find the users with an on-air code: %w", err)
+	}
+	return out, nil
 }
 
 func ListUsers(db *gorm.DB) ([]User, error) {

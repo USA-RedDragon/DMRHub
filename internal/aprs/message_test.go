@@ -30,31 +30,31 @@ import (
 
 func TestAMessageLineHasThePaddedAddresseeAndTheNumber(t *testing.T) {
 	t.Parallel()
-	c := aprs.Config{Login: "N0HUB"}
-	line, err := c.MessageLine(&aprs.Message{Source: "KP4DJT-7", Addressee: "W1AW-9", Text: "Hello there", Number: "12"})
+	c := aprs.Config{Login: "N8CALL"}
+	line, err := c.MessageLine(&aprs.Message{Source: "N1CALL-7", Addressee: "N2CALL-9", Text: "Hello there", Number: "12"})
 	require.NoError(t, err)
-	assert.Equal(t, "KP4DJT-7>"+aprs.ToCall+",TCPIP*::W1AW-9   :Hello there{12", line)
-	line, err = c.MessageLine(&aprs.Message{Source: "KP4DJT-7", Addressee: "W1AW-9", Text: "ack12"})
+	assert.Equal(t, "N1CALL-7>"+aprs.ToCall+",TCPIP*::N2CALL-9 :Hello there{12", line)
+	line, err = c.MessageLine(&aprs.Message{Source: "N1CALL-7", Addressee: "N2CALL-9", Text: "ack12"})
 	require.NoError(t, err)
-	assert.Equal(t, "KP4DJT-7>"+aprs.ToCall+",TCPIP*::W1AW-9   :ack12", line)
+	assert.Equal(t, "N1CALL-7>"+aprs.ToCall+",TCPIP*::N2CALL-9 :ack12", line)
 }
 
 func TestAMessageThatAPRSCannotCarryIsRefused(t *testing.T) {
 	t.Parallel()
-	ok := aprs.Message{Source: "KP4DJT-7", Addressee: "W1AW-9", Text: strings.Repeat("x", aprs.MaxMessageText), Number: "12345"}
+	ok := aprs.Message{Source: "N1CALL-7", Addressee: "N2CALL-9", Text: strings.Repeat("x", aprs.MaxMessageText), Number: "12345"}
 	require.NoError(t, ok.Check())
 	for _, bad := range []aprs.Message{
-		{Source: "kp4djt", Addressee: "W1AW", Text: "hi"},
-		{Source: "KP4DJT-123", Addressee: "W1AW", Text: "hi"},
-		{Source: "KP4DJT", Addressee: "", Text: "hi"},
-		{Source: "KP4DJT", Addressee: "W1AW-12345", Text: "hi"},
-		{Source: "KP4DJT", Addressee: "W1AW:", Text: "hi"},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: strings.Repeat("x", aprs.MaxMessageText+1)},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: "a{b"},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: "a|b"},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: "line\nbreak"},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: "hi", Number: "123456"},
-		{Source: "KP4DJT", Addressee: "W1AW", Text: "hi", Number: "1-2"},
+		{Source: "n1call", Addressee: "N2CALL", Text: "hi"},
+		{Source: "N1CALL-123", Addressee: "N2CALL", Text: "hi"},
+		{Source: "N1CALL", Addressee: "", Text: "hi"},
+		{Source: "N1CALL", Addressee: "N2CALL-12345", Text: "hi"},
+		{Source: "N1CALL", Addressee: "N2CALL:", Text: "hi"},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: strings.Repeat("x", aprs.MaxMessageText+1)},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: "a{b"},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: "a|b"},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: "line\nbreak"},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: "hi", Number: "123456"},
+		{Source: "N1CALL", Addressee: "N2CALL", Text: "hi", Number: "1-2"},
 	} {
 		require.ErrorIs(t, bad.Check(), aprs.ErrMessage, bad)
 		_, err := aprs.Config{}.MessageLine(&bad)

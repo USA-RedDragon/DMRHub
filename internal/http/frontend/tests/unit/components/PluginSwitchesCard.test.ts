@@ -41,8 +41,8 @@ function aprs(on: boolean, ssid = '7') {
     description: 'Send and get APRS text messages with your radio.',
     notice: 'APRS messages go out on the internet, where anyone can read them.',
     details: [
-      { label: 'Your APRS address', value: `\`KP4DJT-${ssid}\`` },
-      { label: 'To send', value: 'Text `4700` with the address, a space and the message, such as `W1AW-9 Hello there`.' },
+      { label: 'Your APRS address', value: `\`N1CALL-${ssid}\`` },
+      { label: 'To send', value: 'Text `4700` with the address, a space and the message, such as `N2CALL-9 Hello there`.' },
     ],
     choice: { label: 'SSID', options: ['5', '7', '9'], value: ssid },
     on,
@@ -91,7 +91,7 @@ describe('PluginSwitchesCard', () => {
     expect(card.find('[data-test="plugin-switch-status"]').text()).toBe('On.');
     const list = card.find('[data-test="plugin-switch-detail-list"]');
     expect(list.findAll('dt').map((d) => d.text())).toEqual(['Your APRS address', 'To send']);
-    expect(list.findAll('.font-mono').map((m) => m.text())).toEqual(['KP4DJT-7', '4700', 'W1AW-9 Hello there']);
+    expect(list.findAll('.font-mono').map((m) => m.text())).toEqual(['N1CALL-7', '4700', 'N2CALL-9 Hello there']);
     expect(card.find('[data-test="plugin-switch-notice"]').text()).toBe(
       'APRS messages go out on the internet, where anyone can read them.',
     );
@@ -105,7 +105,7 @@ describe('PluginSwitchesCard', () => {
     await wrapper.find('[data-test="plugin-switch-choice"]').setValue('9');
     await flushPromises();
     expect(mockAPI.put).toHaveBeenCalledWith('/users/me/plugin-switches/3/aprs', { on: true, choice: '9' });
-    expect(wrapper.find('[data-test="plugin-switch-detail-list"] .font-mono').text()).toBe('KP4DJT-9');
+    expect(wrapper.find('[data-test="plugin-switch-detail-list"] .font-mono').text()).toBe('N1CALL-9');
   });
 
   it('says why a switch did not change', async () => {

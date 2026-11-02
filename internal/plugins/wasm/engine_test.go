@@ -220,7 +220,7 @@ func TestTheHubKeepsTheSwitchesOfAPluginInside(t *testing.T) {
 	eachCompiler(t, func(t *testing.T, compiler string) {
 		r := newRig(t)
 		_, p := r.run(t, engine, "Echo", guestOf(t, compiler, "echo"), nil, models.PluginRange{First: 9100, Last: 9100})
-		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true}))
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 1000001, Dst: 9100, StreamID: 7, Seq: 1, Slot: true}))
 		r.next(t)
 		specs, err := models.PluginSwitchesOf(r.db, p.ID)
 		require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestAPluginInsideUsesItsStore(t *testing.T) {
 	eachCompiler(t, func(t *testing.T, compiler string) {
 		r := newRig(t)
 		_, p := r.run(t, engine, "Store", guestOf(t, compiler, "store"), nil, models.PluginRange{First: 9200, Last: 9200})
-		pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 7, Seq: 1, Slot: true}
+		pkt := models.Packet{Src: 1000001, Dst: 9200, StreamID: 7, Seq: 1, Slot: true}
 		pkt.DMRData[0] = 41
 		require.NoError(t, r.registry.Deliver(p.ID, pkt))
 		got := r.next(t)
@@ -439,7 +439,7 @@ func pong(t *testing.T) string {
 
 func probe(t *testing.T, r *rig, p models.Plugin, address string) string {
 	t.Helper()
-	pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 9}
+	pkt := models.Packet{Src: 1000001, Dst: 9200, StreamID: 9}
 	copy(pkt.DMRData[:], address)
 	require.NoError(t, r.registry.Deliver(p.ID, pkt))
 	got := r.next(t)

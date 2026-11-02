@@ -48,7 +48,7 @@ func TestAConnGetsAnswersWithoutRecv(t *testing.T) {
 		first, _ := s.Recv()
 		close(firstIn)
 		second, _ := s.Recv()
-		answer(s, &pluginv1.Answer{Id: second.GetRequest().GetId(), Result: &pluginv1.Answer_User{User: &pluginv1.User{Callsign: "W1AW"}}})
+		answer(s, &pluginv1.Answer{Id: second.GetRequest().GetId(), Result: &pluginv1.Answer_User{User: &pluginv1.User{Callsign: "N2CALL"}}})
 		answer(s, &pluginv1.Answer{Id: first.GetRequest().GetId(), Result: &pluginv1.Answer_StoreValue{StoreValue: &pluginv1.StoreValue{Value: []byte("v")}}})
 		third, _ := s.Recv()
 		answer(s, &pluginv1.Answer{Id: third.GetRequest().GetId(), Code: pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, Error: "no such key"})
@@ -66,8 +66,8 @@ func TestAConnGetsAnswersWithoutRecv(t *testing.T) {
 		got <- res{v, err}
 	}()
 	within(t, firstIn, "the request of StoreGet")
-	u, err := c.LookupCallsign(t.Context(), "w1aw")
-	if err != nil || u.GetCallsign() != "W1AW" {
+	u, err := c.LookupCallsign(t.Context(), "n2call")
+	if err != nil || u.GetCallsign() != "N2CALL" {
 		t.Fatalf("LookupCallsign = %v, %v", u, err)
 	}
 	r := within(t, got, "the answer of StoreGet")
@@ -95,7 +95,7 @@ func TestAConnAsksOnlyForWhatItsHubServes(t *testing.T) {
 	if !c.Has(pluginv1.Feature_FEATURE_STORE) || c.Has(pluginv1.Feature_FEATURE_SEND_TEXT) {
 		t.Fatal("Has does not follow the Welcome")
 	}
-	if _, err := c.SendText(t.Context(), 4700, 3191868, "hi"); !errors.Is(err, ErrUnsupported) {
+	if _, err := c.SendText(t.Context(), 4700, 1000001, "hi"); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("SendText = %v, want ErrUnsupported", err)
 	}
 	if err := c.Subscribe(&pluginv1.Subscribe{Tracking: true, Texts: true}); !errors.Is(err, ErrUnsupported) {

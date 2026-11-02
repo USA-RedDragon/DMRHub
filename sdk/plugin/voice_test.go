@@ -30,7 +30,7 @@ func TestAVoiceCallCarriesItsAddressesAndItsSlotsInOrder(t *testing.T) {
 	for i := range slots {
 		slots[i] = [9]byte{byte(i + 1), 0x55, byte(i), 0, 0, 0, 0, 0, byte(i * 3)}
 	}
-	call := plugin.VoiceCall{Source: 5000, Destination: 3191868, Slot: 2, Stream: 42, ColorCode: 1}
+	call := plugin.VoiceCall{Source: 5000, Destination: 1000001, Slot: 2, Stream: 42, ColorCode: 1}
 	bursts, err := plugin.VoiceBursts(call, slots)
 	require.NoError(t, err)
 
@@ -46,7 +46,7 @@ func TestAVoiceCallCarriesItsAddressesAndItsSlotsInOrder(t *testing.T) {
 	for i, b := range bursts {
 		assert.True(t, plugin.IsVoice(b))
 		assert.Equal(t, uint32(5000), b.GetSource())
-		assert.Equal(t, uint32(3191868), b.GetDestination())
+		assert.Equal(t, uint32(1000001), b.GetDestination())
 		assert.False(t, b.GetGroupCall())
 		assert.Equal(t, uint32(2), b.GetSlot())
 		assert.Equal(t, uint32(42), b.GetStreamId())
@@ -65,7 +65,7 @@ func TestAVoiceCallCarriesItsAddressesAndItsSlotsInOrder(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, voice.Call{Target: 3191868, Source: 5000}, voice.Call{Group: heard.Group, Target: heard.Target, Source: heard.Source})
+	assert.Equal(t, voice.Call{Target: 1000001, Source: 5000}, voice.Call{Group: heard.Group, Target: heard.Target, Source: heard.Source})
 	require.GreaterOrEqual(t, len(got), len(slots))
 	assert.Equal(t, slots, got[:len(slots)])
 	for _, s := range got[len(slots):] {

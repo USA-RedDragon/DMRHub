@@ -108,10 +108,10 @@ func (f *fakeAPRS) all() []aprs.Message {
 func sdkRig(t *testing.T, opts ...plugins.ServiceOption) (*rig, models.Plugin, *stream, *pluginv1.Welcome) {
 	t.Helper()
 	r := newRig(t, opts...)
-	require.NoError(t, r.db.Create(&models.User{ID: 3191868, Callsign: "KP4DJT", Username: "kp4djt", Approved: true}).Error)
-	require.NoError(t, r.db.Create(&models.User{ID: 3191869, Callsign: "W1AW", Username: "w1aw", Approved: true}).Error)
-	require.NoError(t, r.db.Create(&models.User{ID: 3191870, Callsign: "N0NEW", Username: "n0new"}).Error)
-	require.NoError(t, r.db.Create(&models.UserRadioID{UserID: 3191868, RadioID: 3191899, VerifiedAt: time.Now()}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: 1000001, Callsign: "N1CALL", Username: "n1call", Approved: true}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: 1000002, Callsign: "N2CALL", Username: "n2call", Approved: true}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: 1000003, Callsign: "N6CALL", Username: "n6call"}).Error)
+	require.NoError(t, r.db.Create(&models.UserRadioID{UserID: 1000001, RadioID: 1000009, VerifiedAt: time.Now()}).Error)
 	p, token := r.add("APRS", rng(4700, 4709))
 	s := r.connect(token)
 	m, err := recv(t, s)
@@ -183,25 +183,25 @@ func TestAPluginKeepsValuesInItsStore(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, _, s, _ := sdkRig(t)
 		ttl := uint32(60)
-		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StorePut{StorePut: &pluginv1.StorePut{Key: "mail/W1AW/1", Value: []byte("hi"), TtlSeconds: &ttl}}})
+		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StorePut{StorePut: &pluginv1.StorePut{Key: "mail/N2CALL/1", Value: []byte("hi"), TtlSeconds: &ttl}}})
 		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
-		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StorePut{StorePut: &pluginv1.StorePut{Key: "mail/W1AW/2", Value: []byte("yo")}}}).GetCode())
+		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StorePut{StorePut: &pluginv1.StorePut{Key: "mail/N2CALL/2", Value: []byte("yo")}}}).GetCode())
 
-		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreGet{StoreGet: &pluginv1.StoreGet{Key: "mail/W1AW/1"}}})
+		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreGet{StoreGet: &pluginv1.StoreGet{Key: "mail/N2CALL/1"}}})
 		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
 		assert.Equal(t, []byte("hi"), a.GetStoreValue().GetValue())
 		assert.Equal(t, time.Now().Add(time.Minute).UnixMilli(), a.GetStoreValue().GetExpiresAt())
 
 		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreList{StoreList: &pluginv1.StoreList{Prefix: "mail/", Limit: 1}}})
 		require.Len(t, a.GetStoreEntries().GetEntries(), 1)
-		assert.Equal(t, "mail/W1AW/1", a.GetStoreEntries().GetEntries()[0].GetKey())
+		assert.Equal(t, "mail/N2CALL/1", a.GetStoreEntries().GetEntries()[0].GetKey())
 		assert.True(t, a.GetStoreEntries().GetMore())
 
 		time.Sleep(time.Minute)
-		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreGet{StoreGet: &pluginv1.StoreGet{Key: "mail/W1AW/1"}}})
+		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreGet{StoreGet: &pluginv1.StoreGet{Key: "mail/N2CALL/1"}}})
 		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, a.GetCode(), "the key expired")
 
-		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreDelete{StoreDelete: &pluginv1.StoreDelete{Key: "mail/W1AW/2"}}}).GetCode())
+		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreDelete{StoreDelete: &pluginv1.StoreDelete{Key: "mail/N2CALL/2"}}}).GetCode())
 		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_StoreList{StoreList: &pluginv1.StoreList{}}})
 		assert.Empty(t, a.GetStoreEntries().GetEntries())
 
@@ -218,19 +218,19 @@ func TestAPluginLooksUpAUserByRadioOrCallsignWithItsSwitches(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r, p, s, _ := sdkRig(t)
-		switchOn(t, r, p, 3191868, true, "9")
-		for _, l := range []*pluginv1.Lookup{{By: &pluginv1.Lookup_Radio{Radio: 3191899}}, {By: &pluginv1.Lookup_Callsign{Callsign: "kp4djt"}}} {
+		switchOn(t, r, p, 1000001, true, "9")
+		for _, l := range []*pluginv1.Lookup{{By: &pluginv1.Lookup_Radio{Radio: 1000009}}, {By: &pluginv1.Lookup_Callsign{Callsign: "n1call"}}} {
 			a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Lookup{Lookup: l}})
 			require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
-			want := &pluginv1.User{UserId: 3191868, Callsign: "KP4DJT", Radios: []uint32{3191868, 3191899},
-				Switches: []*pluginv1.UserSwitch{{UserId: 3191868, Callsign: "KP4DJT", Key: "aprs", On: true, Choice: "9"}}}
+			want := &pluginv1.User{UserId: 1000001, Callsign: "N1CALL", Radios: []uint32{1000001, 1000009},
+				Switches: []*pluginv1.UserSwitch{{UserId: 1000001, Callsign: "N1CALL", Key: "aprs", On: true, Choice: "9"}}}
 			assert.True(t, proto.Equal(want, a.GetUser()), "got %v", a.GetUser())
 		}
-		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Lookup{Lookup: &pluginv1.Lookup{By: &pluginv1.Lookup_Callsign{Callsign: "W1AW"}}}})
+		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Lookup{Lookup: &pluginv1.Lookup{By: &pluginv1.Lookup_Callsign{Callsign: "N2CALL"}}}})
 		require.Len(t, a.GetUser().GetSwitches(), 1)
 		assert.False(t, a.GetUser().GetSwitches()[0].GetOn())
 		assert.Equal(t, "7", a.GetUser().GetSwitches()[0].GetChoice(), "the first option is the preset")
-		for _, l := range []*pluginv1.Lookup{{By: &pluginv1.Lookup_Radio{Radio: 3191870}}, {By: &pluginv1.Lookup_Callsign{Callsign: "N0BODY"}}, {By: &pluginv1.Lookup_Radio{Radio: 1234567}}} {
+		for _, l := range []*pluginv1.Lookup{{By: &pluginv1.Lookup_Radio{Radio: 1000003}}, {By: &pluginv1.Lookup_Callsign{Callsign: "N0BODY"}}, {By: &pluginv1.Lookup_Radio{Radio: 1234567}}} {
 			assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Lookup{Lookup: l}}).GetCode(), l)
 		}
 		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Lookup{Lookup: &pluginv1.Lookup{}}}).GetCode())
@@ -245,14 +245,14 @@ func TestAPluginReadsTheTalkgroupsOfARepeater(t *testing.T) {
 			require.NoError(t, r.db.Create(&models.Talkgroup{ID: id, Name: fmt.Sprint(id)}).Error)
 		}
 		dyn := uint(9)
-		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "W5ABC"}, OwnerID: 3191868, TS2DynamicTalkgroupID: &dyn}
+		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100001, Callsign: "N5CALL"}, OwnerID: 1000001, TS2DynamicTalkgroupID: &dyn}
 		require.NoError(t, r.db.Create(&rpt).Error)
-		require.NoError(t, models.SetRepeaterStaticTalkgroups(r.db, 311860, []models.Talkgroup{{ID: 91}}, []models.Talkgroup{{ID: 3100}}))
+		require.NoError(t, models.SetRepeaterStaticTalkgroups(r.db, 100001, []models.Talkgroup{{ID: 91}}, []models.Talkgroup{{ID: 3100}}))
 
-		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Repeater{Repeater: &pluginv1.RepeaterQuery{Repeater: 311860}}})
+		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_Repeater{Repeater: &pluginv1.RepeaterQuery{Repeater: 100001}}})
 		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
 		nine := uint32(9)
-		want := &pluginv1.RepeaterInfo{Repeater: 311860, Callsign: "W5ABC", Slots: []*pluginv1.SlotInfo{
+		want := &pluginv1.RepeaterInfo{Repeater: 100001, Callsign: "N5CALL", Slots: []*pluginv1.SlotInfo{
 			{Slot: 1, StaticTalkgroups: []uint32{91}},
 			{Slot: 2, StaticTalkgroups: []uint32{3100}, DynamicTalkgroup: &nine},
 		}}
@@ -275,21 +275,21 @@ func TestAPluginSendsATextOnlyFromItsIDsAndOnlyInAFormatTheHubKnows(t *testing.T
 		_, other := r.add("Parrot", rng(9990, 9990))
 		_ = other
 
-		a := sendText(t, s, 4700, 3191868, "1 new message")
+		a := sendText(t, s, 4700, 1000001, "1 new message")
 		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
 		assert.Equal(t, "TMS", a.GetTextSent().GetFormat())
-		assert.Equal(t, []sentText{{4700, 3191868, "1 new message"}}, texts.all())
+		assert.Equal(t, []sentText{{4700, 1000001, "1 new message"}}, texts.all())
 
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendText(t, s, 4710, 3191868, "hi").GetCode(), "not the plugin's ID")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendText(t, s, 4710, 1000001, "hi").GetCode(), "not the plugin's ID")
 		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendText(t, s, 4700, 9990, "hi").GetCode(), "an ID of a plugin")
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendText(t, s, 4700, 3191868, "").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendText(t, s, 4700, 1000001, "").GetCode())
 		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendText(t, s, 4700, 1<<24, "hi").GetCode())
 		assert.Len(t, texts.all(), 1)
 
 		texts.mu.Lock()
 		texts.err = fmt.Errorf("the radio never sent a text: %w", plugins.ErrNoFormat)
 		texts.mu.Unlock()
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, sendText(t, s, 4700, 3191869, "hi").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, sendText(t, s, 4700, 1000002, "hi").GetCode())
 		for err, code := range map[error]pluginv1.ErrorCode{
 			plugins.ErrTextDoesNotFit: pluginv1.ErrorCode_ERROR_CODE_INVALID,
 			plugins.ErrRadioRefused:   pluginv1.ErrorCode_ERROR_CODE_REFUSED,
@@ -298,7 +298,7 @@ func TestAPluginSendsATextOnlyFromItsIDsAndOnlyInAFormatTheHubKnows(t *testing.T
 			texts.mu.Lock()
 			texts.err = fmt.Errorf("sending: %w", err)
 			texts.mu.Unlock()
-			assert.Equal(t, code, sendText(t, s, 4700, 3191869, "hi").GetCode(), err)
+			assert.Equal(t, code, sendText(t, s, 4700, 1000002, "hi").GetCode(), err)
 		}
 	})
 }
@@ -307,7 +307,7 @@ func TestAHubWithoutATextSenderRefusesTexts(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		_, _, s, _ := sdkRig(t)
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendText(t, s, 4700, 3191868, "hi").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendText(t, s, 4700, 1000001, "hi").GetCode())
 	})
 }
 
@@ -317,7 +317,7 @@ func TestAPluginThatAsksTooMuchAtOnceIsToldToSlowDown(t *testing.T) {
 		texts := &fakeTexts{format: "TMS", hold: make(chan struct{})}
 		_, _, s, _ := sdkRig(t, plugins.WithTexts(texts))
 		for i := range 70 {
-			req := &pluginv1.Request{Id: uint32(1000 + i), Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{Source: 4700, Radio: 3191868, Body: "hi"}}}
+			req := &pluginv1.Request{Id: uint32(1000 + i), Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{Source: 4700, Radio: 1000001, Body: "hi"}}}
 			require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Request{Request: req}}))
 		}
 		m, err := recv(t, s)
@@ -330,7 +330,7 @@ func TestAPluginThatAsksTooMuchAtOnceIsToldToSlowDown(t *testing.T) {
 
 func sendAPRS(t *testing.T, s *stream, source, text string) *pluginv1.Answer {
 	t.Helper()
-	return ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_AprsSend{AprsSend: &pluginv1.APRSSend{Source: source, Addressee: "W1AW-9", Text: text, Number: "1"}}})
+	return ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_AprsSend{AprsSend: &pluginv1.APRSSend{Source: source, Addressee: "N2CALL-9", Text: text, Number: "1"}}})
 }
 
 func TestAPluginSendsAPRSOnlyAsAUserWhoTurnedItsSwitchOn(t *testing.T) {
@@ -339,34 +339,34 @@ func TestAPluginSendsAPRSOnlyAsAUserWhoTurnedItsSwitchOn(t *testing.T) {
 		out := &fakeAPRS{}
 		opts := out.options(t)
 		r, p, s, _ := sdkRig(t, plugins.WithAPRS(opts))
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode(), "the switch is off")
-		switchOn(t, r, p, 3191868, true, "")
-		a := sendAPRS(t, s, "kp4djt-7", "Hello there")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "N1CALL-7", "hi").GetCode(), "the switch is off")
+		switchOn(t, r, p, 1000001, true, "")
+		a := sendAPRS(t, s, "n1call-7", "Hello there")
 		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
-		assert.Equal(t, []aprs.Message{{Source: "KP4DJT-7", Addressee: "W1AW-9", Text: "Hello there", Number: "1"}}, out.all())
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "W1AW-7", "hi").GetCode(), "another user")
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendAPRS(t, s, "KP4DJT-7", "a{b").GetCode())
+		assert.Equal(t, []aprs.Message{{Source: "N1CALL-7", Addressee: "N2CALL-9", Text: "Hello there", Number: "1"}}, out.all())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "N2CALL-7", "hi").GetCode(), "another user")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendAPRS(t, s, "N1CALL-7", "a{b").GetCode())
 
 		for range 29 {
-			require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode())
+			require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendAPRS(t, s, "N1CALL-7", "hi").GetCode())
 		}
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_RATE, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_RATE, sendAPRS(t, s, "N1CALL-7", "hi").GetCode())
 		again := &stream{PluginService_ConnectClient: r.connect(s.token), token: s.token}
 		m, err := recv(t, again)
 		require.NoError(t, err)
 		require.NotNil(t, m.GetWelcome())
 		s = again
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_RATE, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode(), "the limit lasts over a new connection")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_RATE, sendAPRS(t, s, "N1CALL-7", "hi").GetCode(), "the limit lasts over a new connection")
 		time.Sleep(time.Minute)
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendAPRS(t, s, "N1CALL-7", "hi").GetCode())
 		assert.Len(t, out.all(), 31)
 
 		out.off.Store(true)
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode(), "no APRS-IS login")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendAPRS(t, s, "N1CALL-7", "hi").GetCode(), "no APRS-IS login")
 		out.off.Store(false)
 
-		switchOn(t, r, p, 3191868, false, "")
-		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "KP4DJT-7", "hi").GetCode())
+		switchOn(t, r, p, 1000001, false, "")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendAPRS(t, s, "N1CALL-7", "hi").GetCode())
 	})
 }
 
@@ -411,23 +411,23 @@ func TestAPluginHearsEveryRadioOnlyWhenItAsks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r, _, s, _ := sdkRig(t)
 		subscribeTo(t, s, &pluginv1.Subscribe{Heard: true})
-		require.NoError(t, plugins.PublishHeard(r.ps, 3191869, 311860, 1, 1))
+		require.NoError(t, plugins.PublishHeard(r.ps, 1000002, 100001, 1, 1))
 		m, err := recv(t, s)
 		require.NoError(t, err)
-		assert.True(t, proto.Equal(&pluginv1.Heard{Radio: 3191869, Slot: 1, ColorCode: 1}, m.GetHeard()), "got %v", m)
+		assert.True(t, proto.Equal(&pluginv1.Heard{Radio: 1000002, Slot: 1, ColorCode: 1}, m.GetHeard()), "got %v", m)
 
 		subscribeTo(t, s, &pluginv1.Subscribe{})
-		require.NoError(t, plugins.PublishHeard(r.ps, 3191869, 311860, 2, 1))
+		require.NoError(t, plugins.PublishHeard(r.ps, 1000002, 100001, 2, 1))
 		subscribeTo(t, s, &pluginv1.Subscribe{Heard: true})
-		require.NoError(t, plugins.PublishHeard(r.ps, 3191868, 311860, 2, 3))
+		require.NoError(t, plugins.PublishHeard(r.ps, 1000001, 100001, 2, 3))
 		m, err = recv(t, s)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(3191868), m.GetHeard().GetRadio(), "no Heard while it did not ask")
+		assert.Equal(t, uint32(1000001), m.GetHeard().GetRadio(), "no Heard while it did not ask")
 	})
 }
 
 func text(id uint, dst uint, body string) *models.Message {
-	return &models.Message{ID: id, SourceID: 3191868, DestinationID: dst, Slot: 2, RepeaterID: 311860, Format: models.MessageFormatTMS,
+	return &models.Message{ID: id, SourceID: 1000001, DestinationID: dst, Slot: 2, RepeaterID: 100001, Format: models.MessageFormatTMS,
 		Text: &body, ChecksumOK: true, ReceivedAt: time.Now()}
 }
 
@@ -441,12 +441,12 @@ func TestAPluginGetsEachTextToItsIDsOnceAsTheHubReadIt(t *testing.T) {
 		bad := text(3, 4700, "bad")
 		bad.BadCRC = true
 		plugins.PublishText(r.ps, bad)
-		plugins.PublishText(r.ps, text(4, 4701, "W1AW hello"))
-		plugins.PublishText(r.ps, text(4, 4701, "W1AW hello"))
+		plugins.PublishText(r.ps, text(4, 4701, "N2CALL hello"))
+		plugins.PublishText(r.ps, text(4, 4701, "N2CALL hello"))
 		plugins.PublishText(r.ps, text(5, 4700, "INBOX"))
 		m, err := recv(t, s)
 		require.NoError(t, err)
-		want := &pluginv1.Text{Id: 4, Source: 3191868, Destination: 4701, Slot: 2, Repeater: 311860, Format: "TMS", Body: "W1AW hello", At: time.Now().UnixMilli()}
+		want := &pluginv1.Text{Id: 4, Source: 1000001, Destination: 4701, Slot: 2, Repeater: 100001, Format: "TMS", Body: "N2CALL hello", At: time.Now().UnixMilli()}
 		assert.True(t, proto.Equal(want, m.GetText()), "got %v", m)
 		m, err = recv(t, s)
 		require.NoError(t, err)
@@ -458,17 +458,17 @@ func TestAPluginFollowsItsSwitchesAndTheHubKeepsThemFromItsHello(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r, p, s, _ := sdkRig(t)
-		switchOn(t, r, p, 3191868, true, "9")
+		switchOn(t, r, p, 1000001, true, "9")
 		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Subscribe{Subscribe: &pluginv1.Subscribe{Switches: true}}}))
 		m, err := recv(t, s)
 		require.NoError(t, err)
-		want := &pluginv1.UserSwitches{Switches: []*pluginv1.UserSwitch{{UserId: 3191868, Callsign: "KP4DJT", Key: "aprs", On: true, Choice: "9"}}}
+		want := &pluginv1.UserSwitches{Switches: []*pluginv1.UserSwitch{{UserId: 1000001, Callsign: "N1CALL", Key: "aprs", On: true, Choice: "9"}}}
 		assert.True(t, proto.Equal(want, m.GetUserSwitches()), "got %v", m)
 
-		switchOn(t, r, p, 3191869, true, "")
+		switchOn(t, r, p, 1000002, true, "")
 		m, err = recv(t, s)
 		require.NoError(t, err)
-		assert.True(t, proto.Equal(&pluginv1.UserSwitch{UserId: 3191869, Callsign: "W1AW", Key: "aprs", On: true, Choice: "7"}, m.GetUserSwitch()), "got %v", m)
+		assert.True(t, proto.Equal(&pluginv1.UserSwitch{UserId: 1000002, Callsign: "N2CALL", Key: "aprs", On: true, Choice: "7"}, m.GetUserSwitch()), "got %v", m)
 
 		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Hello{Hello: &pluginv1.Hello{}}}))
 		synctest.Wait()
@@ -482,19 +482,19 @@ func TestAPluginGetsAPRSMessagesOnlyToTheAddressesOfItsUsers(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r, p, s, _ := sdkRig(t)
-		switchOn(t, r, p, 3191868, true, "")
-		subscribeTo(t, s, &pluginv1.Subscribe{Aprs: []string{"kp4djt-7", "W1AW-7"}})
-		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "N0CALL", Addressee: "W1AW-7", Text: "not a user of the plugin"}))
-		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "W1AW-9", Addressee: "KP4DJT-7", Text: "hello", Number: "3"}))
+		switchOn(t, r, p, 1000001, true, "")
+		subscribeTo(t, s, &pluginv1.Subscribe{Aprs: []string{"n1call-7", "N2CALL-7"}})
+		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "N0CALL", Addressee: "N2CALL-7", Text: "not a user of the plugin"}))
+		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "hello", Number: "3"}))
 		m, err := recv(t, s)
 		require.NoError(t, err)
-		assert.True(t, proto.Equal(&pluginv1.APRSMessage{Source: "W1AW-9", Addressee: "KP4DJT-7", Text: "hello", Number: "3"}, m.GetAprs()), "got %v", m)
+		assert.True(t, proto.Equal(&pluginv1.APRSMessage{Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "hello", Number: "3"}, m.GetAprs()), "got %v", m)
 
-		switchOn(t, r, p, 3191868, false, "")
+		switchOn(t, r, p, 1000001, false, "")
 		synctest.Wait()
-		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "W1AW-9", Addressee: "KP4DJT-7", Text: "after the switch went off"}))
+		require.NoError(t, plugins.PublishAPRS(r.ps, &pluginv1.APRSMessage{Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "after the switch went off"}))
 		subscribeTo(t, s, &pluginv1.Subscribe{Heard: true})
-		require.NoError(t, plugins.PublishHeard(r.ps, 3191869, 311860, 1, 1))
+		require.NoError(t, plugins.PublishHeard(r.ps, 1000002, 100001, 1, 1))
 		m, err = recv(t, s)
 		require.NoError(t, err)
 		assert.NotNil(t, m.GetHeard(), "no APRS message after its user turned the switch off: got %v", m)

@@ -299,11 +299,11 @@ func TestOnlyTheReplicaWithTheLoginSendsAPluginsAPRSMessage(t *testing.T) {
 	_, w := g.start()
 	_, w2 := g.open()
 	require.False(t, next(t, w2.refreshed, "lease check"), "the second replica took the lease")
-	require.ErrorIs(t, positions.PublishMessage(g.ps, aprs.Message{Source: "KI5VMF-7", Addressee: "W1AW-9", Text: "a{b"}), aprs.ErrMessage)
-	require.NoError(t, positions.PublishMessage(g.ps, aprs.Message{Source: "KI5VMF-7", Addressee: "W1AW-9", Text: "Hello there", Number: "1"}))
+	require.ErrorIs(t, positions.PublishMessage(g.ps, aprs.Message{Source: "N3CALL-7", Addressee: "N2CALL-9", Text: "a{b"}), aprs.ErrMessage)
+	require.NoError(t, positions.PublishMessage(g.ps, aprs.Message{Source: "N3CALL-7", Addressee: "N2CALL-9", Text: "Hello there", Number: "1"}))
 	assert.True(t, next(t, w.messages, "message"), "the replica with the lease sends")
 	assert.False(t, next(t, w2.messages, "message"), "the other replica sends nothing")
-	assert.Equal(t, []string{"KI5VMF-7>APZDMH,TCPIP*::W1AW-9   :Hello there{1"}, g.lines(1))
+	assert.Equal(t, []string{"N3CALL-7>APZDMH,TCPIP*::N2CALL-9 :Hello there{1"}, g.lines(1))
 }
 
 func TestTheReplicaThatIsLeftTakesOverTheLogin(t *testing.T) {

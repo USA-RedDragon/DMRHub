@@ -67,8 +67,8 @@ func TestAUserSetsTheSwitchOfAPluginAndThePluginHearsOfIt(t *testing.T) {
 	t.Parallel()
 	e := newOAuthEnv(t)
 	db := e.tdb.DB()
-	testutils.SeedAccount(t, db, 3191868, "KP4DJT", "kp4djt")
-	jar := testutils.Login(t, e.router, "kp4djt")
+	testutils.SeedAccount(t, db, 1000001, "N1CALL", "n1call")
+	jar := testutils.Login(t, e.router, "n1call")
 	p, _, err := models.CreatePlugin(db, "APRS", []models.PluginRange{{First: 4700, Last: 4709}}, time.Now())
 	require.NoError(t, err)
 	require.NoError(t, models.SetPluginSwitches(db, p.ID, []models.PluginSwitchSpec{{
@@ -86,7 +86,7 @@ func TestAUserSetsTheSwitchOfAPluginAndThePluginHearsOfIt(t *testing.T) {
 	assert.Equal(t, "APRS", got[0].Plugin)
 	assert.False(t, got[0].On)
 	require.Len(t, got[0].Details, 2)
-	assert.Equal(t, "KP4DJT-7", got[0].Details[0].Value)
+	assert.Equal(t, "N1CALL-7", got[0].Details[0].Value)
 	assert.Equal(t, "Text 4700 with the address and the message", got[0].Details[1].Value)
 	require.NotNil(t, got[0].Choice)
 	assert.Equal(t, "7", got[0].Choice.Value)
@@ -99,14 +99,14 @@ func TestAUserSetsTheSwitchOfAPluginAndThePluginHearsOfIt(t *testing.T) {
 	var put pluginSwitchJSON
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &put))
 	assert.True(t, put.On)
-	assert.Equal(t, "KP4DJT-9", put.Details[0].Value)
+	assert.Equal(t, "N1CALL-9", put.Details[0].Value)
 
 	select {
 	case b := <-sub.Channel():
 		require.Greater(t, len(b), 4)
 		var u pluginv1.UserSwitch
 		require.NoError(t, proto.Unmarshal(b[4:], &u))
-		assert.True(t, proto.Equal(&pluginv1.UserSwitch{UserId: 3191868, Callsign: "KP4DJT", Key: "aprs", On: true, Choice: "9"}, &u), "got %v", &u)
+		assert.True(t, proto.Equal(&pluginv1.UserSwitch{UserId: 1000001, Callsign: "N1CALL", Key: "aprs", On: true, Choice: "9"}, &u), "got %v", &u)
 	default:
 		t.Fatal("the plugin did not hear of the switch before the answer")
 	}

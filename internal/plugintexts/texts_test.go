@@ -42,11 +42,11 @@ import (
 )
 
 const (
-	radio         = 3191868
+	radio         = 1000001
 	owner         = radio
 	service       = 4700
-	ownRepeater   = 311860
-	otherRepeater = 311861
+	ownRepeater   = 100001
+	otherRepeater = 100002
 )
 
 type sent struct {
@@ -85,10 +85,10 @@ func openDB(t *testing.T) *gorm.DB {
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 	})
-	require.NoError(t, database.Create(&models.User{ID: owner, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
-	require.NoError(t, database.Create(&models.User{ID: 3191869, Callsign: "N0CALL", Username: "other", Approved: true}).Error)
-	require.NoError(t, database.Create(&models.Repeater{ID: ownRepeater, OwnerID: owner, Callsign: "KI5VMF", Type: models.RepeaterTypeMMDVM}).Error)
-	require.NoError(t, database.Create(&models.Repeater{ID: otherRepeater, OwnerID: 3191869, Callsign: "N0CALL", Type: models.RepeaterTypeMMDVM}).Error)
+	require.NoError(t, database.Create(&models.User{ID: owner, Callsign: "N3CALL", Username: "owner", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 1000002, Callsign: "N0CALL", Username: "other", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.Repeater{ID: ownRepeater, OwnerID: owner, Callsign: "N3CALL", Type: models.RepeaterTypeMMDVM}).Error)
+	require.NoError(t, database.Create(&models.Repeater{ID: otherRepeater, OwnerID: 1000002, Callsign: "N0CALL", Type: models.RepeaterTypeMMDVM}).Error)
 	return database
 }
 
@@ -144,7 +144,7 @@ func TestNoTextGoesToARadioWithoutAKnownFormat(t *testing.T) {
 	out := &fakeSender{result: data.ResultSent}
 	_, err := plugintexts.New(database, out).SendText(context.Background(), service, radio, "hi")
 	require.ErrorIs(t, err, plugins.ErrNoFormat)
-	_, err = plugintexts.New(database, out).SendText(context.Background(), service, 3100999, "hi")
+	_, err = plugintexts.New(database, out).SendText(context.Background(), service, 1000999, "hi")
 	require.ErrorIs(t, err, plugins.ErrNoFormat, "a radio of no user")
 	assert.Empty(t, out.all())
 }

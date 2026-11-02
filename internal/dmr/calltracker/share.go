@@ -27,6 +27,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -44,6 +45,7 @@ const (
 	kvBackoff         = 5 * time.Second
 	kvTrips           = 3
 	saveTimeout       = 5 * time.Second
+	saveBackoffMax    = 30 * time.Second
 )
 
 var (
@@ -570,14 +572,22 @@ func (s *shard) finishShared(r *row, at time.Time) {
 	}
 	r.pending = append(r.pending, mine)
 	r.markGiven()
-	s.saveLoop(r, key, res)
+	s.saveLoop(r, key, res.gen, res.held, 1)
 }
 
-func (s *shard) keep(ctx context.Context, r *row, d voiceDelta) {
+func (s *shard) keep(_ context.Context, r *row, d voiceDelta) {
 	r.pending = append(r.pending, d)
 	r.markGiven()
-	if !s.saveParts(ctx, r, slices.Clone(r.pending)) {
-		s.wait(r, s.t.clock.Now().Add(touchEvery))
+	s.savePending(r)
+}
+
+func (s *shard) savePending(r *row) {
+	if !s.saveParts(r, slices.Clone(r.pending), func(ok bool) {
+		if !ok {
+			s.wait(r, s.t.clock.Now().Add(touchEvery))
+		}
+	}) {
+		r.resave = true
 	}
 }
 
@@ -666,6 +676,14 @@ func (s *shard) retryWaiting(now time.Time) {
 			delete(s.waiting, r)
 			continue
 		}
+		if r.saving || now.Before(r.notBefore) {
+			next := now.Add(touchEvery)
+			if r.notBefore.After(next) {
+				next = r.notBefore
+			}
+			s.waiting[r] = next
+			continue
+		}
 		key, _ := r.key.(voiceKey)
 		var verdict retryVerdict
 		var res finishResult
@@ -675,7 +693,7 @@ func (s *shard) retryWaiting(now time.Time) {
 			return rec
 		}); err != nil {
 			if len(r.pending) > 0 && now.Sub(r.waitSince) >= partLive {
-				s.saveParts(context.Background(), r, slices.Clone(r.pending))
+				s.saveParts(r, slices.Clone(r.pending), nil)
 			}
 			if len(r.pending) == 0 && now.Sub(r.waitSince) >= streamIdle {
 				delete(s.waiting, r)
@@ -689,28 +707,25 @@ func (s *shard) retryWaiting(now time.Time) {
 			s.waiting[r] = now.Add(touchEvery)
 		case retrySave:
 			s.waiting[r] = now.Add(touchEvery)
-			s.saveLoop(r, key, res)
-		case retryDone:
-			if len(r.pending) > 0 && !s.saveParts(context.Background(), r, slices.Clone(r.pending)) {
-				s.waiting[r] = now.Add(touchEvery)
+			s.saveLoop(r, key, res.gen, res.held, 1)
+		case retryDone, retryGone:
+			if len(r.pending) == 0 {
+				delete(s.waiting, r)
 				continue
 			}
-			delete(s.waiting, r)
-		case retryGone:
-			if len(r.pending) > 0 && !s.saveParts(context.Background(), r, slices.Clone(r.pending)) {
-				s.waiting[r] = now.Add(touchEvery)
-				continue
-			}
-			delete(s.waiting, r)
+			s.waiting[r] = now.Add(touchEvery)
+			s.saveParts(r, slices.Clone(r.pending), func(ok bool) {
+				if ok && len(r.pending) == 0 {
+					delete(s.waiting, r)
+				}
+			})
 		}
 	}
 }
 
-func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
+func (s *shard) saveLoop(r *row, key voiceKey, gen uint64, parts []voiceDelta, try int) {
 	call := r.call
-	gen, parts := res.gen, res.held
-	for try := 1; ; try++ {
-		ok := s.saveParts(context.Background(), r, parts)
+	if s.saveParts(r, parts, func(ok bool) {
 		var after savedResult
 		if err := s.t.updateRecord(context.Background(), key, func(rec *voiceRecord) *voiceRecord {
 			rec, after = savedRecord(rec, gen, ok, parts, try, s.t.clock.Now())
@@ -724,15 +739,61 @@ func (s *shard) saveLoop(r *row, key voiceKey, res finishResult) {
 		if after.active {
 			s.markActive(call.ID)
 		}
-		if !after.again {
-			return
+		if after.again {
+			s.saveLoop(r, key, after.gen, after.held, try+1)
 		}
-		gen, parts = after.gen, after.held
+	}) {
+		return
 	}
+	r.resave = true
+	s.wait(r, s.t.clock.Now().Add(touchEvery))
 }
 
-func (s *shard) saveParts(ctx context.Context, r *row, parts []voiceDelta) bool {
-	out, changed, ok := s.saveMerged(ctx, r.call, parts)
+func (s *shard) saveParts(r *row, parts []voiceDelta, done func(ok bool)) bool {
+	if r.saving {
+		return false
+	}
+	if now := s.t.clock.Now(); now.Before(r.notBefore) {
+		s.wait(r, r.notBefore)
+		return false
+	}
+	r.saving = true
+	s.saves++
+	tmpl := *r.call
+	tmpl.CallData = slices.Clone(r.call.CallData)
+	tmpl.Undeliverable = slices.Clone(r.call.Undeliverable)
+	go func() {
+		out, changed, ok, late := s.saveMerged(context.Background(), &tmpl, parts)
+		s.saved <- func(s *shard) {
+			r.saving = false
+			r.backOff(late, s.t.clock.Now())
+			s.savedParts(r, parts, &tmpl, &out, changed, ok)
+			if r.reactivate {
+				r.reactivate = false
+				s.markActive(r.call.ID)
+			}
+			if done != nil {
+				done(ok)
+			}
+			if r.resave && !r.saving && !r.deleted {
+				r.resave = false
+				if len(r.pending) > 0 {
+					s.savePending(r)
+				}
+			}
+			s.saves--
+			if s.saves == 0 {
+				for _, w := range s.idle {
+					close(w)
+				}
+				s.idle = nil
+			}
+		}
+	}()
+	return true
+}
+
+func (s *shard) savedParts(r *row, parts []voiceDelta, tmpl, out *models.Call, changed, ok bool) {
 	if !ok {
 		if r.unacked == nil {
 			r.unacked = map[string]bool{}
@@ -740,7 +801,7 @@ func (s *shard) saveParts(ctx context.Context, r *row, parts []voiceDelta) bool 
 		for _, p := range parts {
 			r.unacked[p.ID] = true
 		}
-		return false
+		return
 	}
 	for _, p := range parts {
 		if r.unacked[p.ID] {
@@ -748,19 +809,18 @@ func (s *shard) saveParts(ctx context.Context, r *row, parts []voiceDelta) bool 
 			delete(r.unacked, p.ID)
 		}
 	}
-	s.adoptMerged(r, &out)
+	s.adoptMerged(r, out, tmpl)
 	saved := make(map[string]bool, len(parts))
 	for _, p := range parts {
 		saved[p.ID] = true
 	}
 	r.pending = slices.DeleteFunc(r.pending, func(d voiceDelta) bool { return saved[d.ID] })
 	if !changed {
-		return true
+		return
 	}
-	s.t.publishCall(s.idx, &out)
-	s.t.publishNetCheckIn(s.idx, &out)
+	s.t.publishCall(s.idx, out)
+	s.t.publishNetCheckIn(s.idx, out)
 	slog.Info("Transmission ended", "kind", out.Kind, "sub", out.SubKind, "streamID", out.StreamID, "src", out.SourceID, "dst", out.DestinationID, "repeater", out.IngressID, "duration", out.Duration, "loss", out.Loss*pct, "ber", out.BER*pct, "rssi", out.RSSI, "jitter", out.Jitter)
-	return true
 }
 
 func touchRecord(rec *voiceRecord, me, ch string, id uint, start time.Time, seq uint, last time.Time) *voiceRecord {
@@ -808,12 +868,23 @@ func (s *shard) touchShared(now time.Time) {
 	}
 }
 
-func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voiceDelta) (models.Call, bool, bool) {
+func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voiceDelta) (models.Call, bool, bool, bool) {
 	var out models.Call
 	changed := false
-	ctx, cancel := context.WithTimeout(ctx, saveTimeout)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	err := s.t.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var late atomic.Bool
+	tx := s.t.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", tx.Error)
+		return out, false, false, false
+	}
+	stop := time.AfterFunc(saveTimeout, func() {
+		late.Store(true)
+		cancel()
+	})
+	defer stop.Stop()
+	err := func(tx *gorm.DB) error {
 		var base models.Call
 		if err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).Omit(clause.Associations).First(&base, call.ID).Error; err != nil {
 			return fmt.Errorf("reading the call: %w", err)
@@ -844,15 +915,81 @@ func (s *shard) saveMerged(ctx context.Context, call *models.Call, parts []voice
 			return fmt.Errorf("storing the parts of the call: %w", err)
 		}
 		return nil
-	})
+	}(tx)
+	if err == nil {
+		err = tx.Commit().Error
+	} else {
+		tx.Rollback()
+	}
 	if err != nil {
 		slog.Error("CallTracker: error saving a shared call", "id", call.ID, "error", err)
-		return out, false, false
+		return out, false, false, late.Load()
 	}
-	return out, changed, true
+	return out, changed, true, false
 }
 
-func (s *shard) adoptMerged(r *row, out *models.Call) {
-	*r.call = *out
-	r.markGiven()
+func (s *shard) adoptMerged(r *row, out, tmpl *models.Call) {
+	cur, g := *r.call, r.given
+	c := *out
+	c.TotalPackets = shifted(cur.TotalPackets, out.TotalPackets, tmpl.TotalPackets)
+	c.LostSequences = shifted(cur.LostSequences, out.LostSequences, tmpl.LostSequences)
+	c.TotalBits = shifted(cur.TotalBits, out.TotalBits, tmpl.TotalBits)
+	c.TotalErrors = shifted(cur.TotalErrors, out.TotalErrors, tmpl.TotalErrors)
+	c.MissedMS = shifted(cur.MissedMS, out.MissedMS, tmpl.MissedMS)
+	c.SentAMBE = shifted(cur.SentAMBE, out.SentAMBE, tmpl.SentAMBE)
+	c.SentCodec2 = shifted(cur.SentCodec2, out.SentCodec2, tmpl.SentCodec2)
+	c.CallData = slices.Clone(out.CallData)
+	if len(cur.CallData) > len(tmpl.CallData) {
+		c.CallData = append(c.CallData, cur.CallData[len(tmpl.CallData):]...)
+	}
+	c.Undeliverable = slices.Clone(out.Undeliverable)
+	for _, u := range cur.Undeliverable {
+		if !slices.Contains(c.Undeliverable, u) {
+			c.Undeliverable = append(c.Undeliverable, u)
+		}
+	}
+	if cur.LastSeq != tmpl.LastSeq || !cur.LastPacketTime.Equal(tmpl.LastPacketTime) {
+		c.LastSeq, c.LastPacketTime, c.LastFrameNum = cur.LastSeq, cur.LastPacketTime, cur.LastFrameNum
+		c.Jitter, c.RSSI = cur.Jitter, cur.RSSI
+	}
+	if cur.Active != tmpl.Active {
+		c.Active = cur.Active
+	}
+	if cur.Response != tmpl.Response {
+		c.Response = cur.Response
+	}
+	if cur.Codec != tmpl.Codec || cur.Codec2Mode != tmpl.Codec2Mode || cur.TranscodeBusy != tmpl.TranscodeBusy {
+		c.Codec, c.Codec2Mode, c.TranscodeBusy = cur.Codec, cur.Codec2Mode, cur.TranscodeBusy
+	}
+	*r.call = c
+	r.given = given{
+		packets: shifted(g.packets, out.TotalPackets, tmpl.TotalPackets),
+		lost:    shifted(g.lost, out.LostSequences, tmpl.LostSequences),
+		bits:    shifted(g.bits, out.TotalBits, tmpl.TotalBits),
+		errors:  shifted(g.errors, out.TotalErrors, tmpl.TotalErrors),
+		data:    max(g.data+len(out.CallData)-len(tmpl.CallData), 0),
+		missed:  shifted(g.missed, out.MissedMS, tmpl.MissedMS),
+		ambe:    shifted(g.ambe, out.SentAMBE, tmpl.SentAMBE),
+		codec2:  shifted(g.codec2, out.SentCodec2, tmpl.SentCodec2),
+		from:    g.from,
+	}
+}
+
+func shifted[T uint | int](v, out, tmpl T) T {
+	if out >= tmpl {
+		return v + (out - tmpl)
+	}
+	if v > tmpl-out {
+		return v - (tmpl - out)
+	}
+	return 0
+}
+
+func (r *row) backOff(late bool, now time.Time) {
+	if !late {
+		r.pause, r.notBefore = 0, time.Time{}
+		return
+	}
+	r.pause = min(max(2*r.pause, saveTimeout), saveBackoffMax)
+	r.notBefore = now.Add(r.pause)
 }

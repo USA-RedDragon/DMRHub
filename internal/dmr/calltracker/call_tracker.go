@@ -445,14 +445,21 @@ func (c *CallTracker) markUndeliverable(n undeliverableNote) bool {
 	return true
 }
 
-// Flush waits until the workers handled every packet queued before it.
+// Flush waits until the workers handled every packet queued before it, and
+// until no save that runs off a worker is left.
 func (c *CallTracker) Flush() {
 	barriers := make([]chan struct{}, len(c.shards))
 	for i := range c.shards {
 		barriers[i] = make(chan struct{})
 		b := barriers[i]
 		select {
-		case c.shards[i].in <- task{at: c.clock.Now(), fn: func(*shard) { close(b) }}:
+		case c.shards[i].in <- task{at: c.clock.Now(), fn: func(s *shard) {
+			if s.saves == 0 {
+				close(b)
+				return
+			}
+			s.idle = append(s.idle, b)
+		}}:
 		case <-c.done:
 			return
 		}
@@ -1189,18 +1196,23 @@ type row struct {
 	remembered bool
 	// what is the kind of answer that can be set on the row, of the radios
 	// of pair, or "".
-	what      string
-	pair      pair
-	ns        uint8
-	hasNS     bool
-	converted map[string]bool
-	shared    bool
-	deferred  bool
-	given     given
-	touched   time.Time
-	pending   []voiceDelta
-	waitSince time.Time
-	unacked   map[string]bool
+	what       string
+	pair       pair
+	ns         uint8
+	hasNS      bool
+	converted  map[string]bool
+	shared     bool
+	deferred   bool
+	given      given
+	touched    time.Time
+	pending    []voiceDelta
+	waitSince  time.Time
+	unacked    map[string]bool
+	saving     bool
+	resave     bool
+	reactivate bool
+	pause      time.Duration
+	notBefore  time.Time
 }
 
 type channel struct {
@@ -1226,6 +1238,9 @@ type shard struct {
 	burst    *layer2.Burst
 	events   []data.Event
 	clock    time.Time
+	saved    chan func(*shard)
+	saves    int
+	idle     []chan struct{}
 }
 
 func newShard(t *CallTracker, idx int) *shard {
@@ -1241,6 +1256,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		aliases:  map[sourceKey]*sourceState{},
 		burst:    layer2.NewBurst(),
 		events:   make([]data.Event, 0, data.MaxEvents),
+		saved:    make(chan func(*shard)),
 	}
 }
 
@@ -1257,12 +1273,17 @@ func (s *shard) run() {
 			switch {
 			case t.stop:
 				s.finishAll()
+				for s.saves > 0 {
+					(<-s.saved)(s)
+				}
 				return
 			case t.fn != nil:
 				t.fn(s)
 			default:
 				s.handle(&t)
 			}
+		case fn := <-s.saved:
+			fn(s)
 		case <-ticker.C():
 			now := s.t.clock.Now()
 			if len(s.in) > 0 {

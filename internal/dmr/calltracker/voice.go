@@ -129,7 +129,9 @@ func (s *shard) resume(k voiceKey, r *row) {
 	r.finished, r.hung = false, false
 	r.call.Active = true
 	s.rows[k] = r
-	if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Update("active", true).Error; err != nil {
+	if r.saving {
+		r.reactivate = true
+	} else if err := s.t.db.Model(&models.Call{}).Where("id = ?", r.call.ID).Update("active", true).Error; err != nil {
 		slog.Error("CallTracker: error resuming call", "error", err)
 	}
 	slog.Debug("CallTracker: transmission resumed", "streamID", r.call.StreamID, "src", r.call.SourceID, "dst", r.call.DestinationID)

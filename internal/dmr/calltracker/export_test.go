@@ -48,6 +48,14 @@ const VoiceHang = voiceHang
 const SaveTimeout = saveTimeout
 
 func SaveMergedPart(c *CallTracker, call *models.Call, id string, packets uint) bool {
-	_, _, ok := c.shards[0].saveMerged(context.Background(), call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
+	_, _, ok, _ := c.shards[0].saveMerged(context.Background(), call, []voiceDelta{{ID: id, Packets: packets, First: call.StartTime, Last: call.StartTime}})
 	return ok
+}
+
+// WorkerAnswers returns a channel that closes when the worker of the slot
+// of repeater on server runs a task queued now.
+func WorkerAnswers(c *CallTracker, server string, repeater uint, slot bool) <-chan struct{} {
+	done := make(chan struct{})
+	c.enqueue(WorkerOf(server, repeater, slot), task{fn: func(*shard) { close(done) }})
+	return done
 }

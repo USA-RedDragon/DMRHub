@@ -248,6 +248,7 @@ func TestAPluginThatSpinsIsStopped(t *testing.T) {
 			t.Fatalf("the plugin was stopped before a check of its CPU: %v", inst.Err())
 		default:
 		}
+		require.NoError(t, fake.BlockUntil(t.Context(), 1), "the CPU check of the plugin waits on the clock")
 		fake.Advance(check)
 		<-inst.Done()
 		require.ErrorIs(t, inst.Err(), wasm.ErrCPU)

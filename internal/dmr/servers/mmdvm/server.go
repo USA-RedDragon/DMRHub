@@ -578,14 +578,22 @@ type outgoing struct {
 	sent *sentPacket
 }
 
-// writeOut writes o, and then records when it left. Until then the
-// packet counts as one that waits, which a handover holds, so that a write
-// that stalls past a move is not missed.
+// writeOut writes o, and then records when it left: when the write began,
+// so that a repeater that got it before a move does not get it again
+// outside the move, or when the write returned, if it took longer than
+// MoveSlack and so may have left after a move. Until then the packet counts
+// as one that waits, which a handover holds, so that a write that stalls
+// past a move is not missed.
 func (s *Server) writeOut(o outgoing) {
+	began := s.clock.Now()
 	s.write(endpointOf(o.raw), o.raw.Data)
 	if o.sent != nil {
+		at := began
+		if returned := s.clock.Now(); returned.Sub(began) > MoveSlack {
+			at = returned
+		}
 		s.sentMu.Lock()
-		o.sent.at = s.clock.Now()
+		o.sent.at = at
 		s.sentMu.Unlock()
 	}
 }

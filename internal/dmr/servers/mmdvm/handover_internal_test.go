@@ -225,6 +225,64 @@ func TestHandOverAPacketWrittenLate(t *testing.T) {
 	})
 }
 
+// TestHandOverNoFrameThatLeftJustOverMoveSlackBeforeTheClaim writes a
+// frame to a repeater, whose write takes a moment, just over MoveSlack
+// before the packet of the repeater reached the other replica. The load
+// balancer moved the repeater no earlier than that, so the repeater got
+// the frame before the move, and the handover must not hold it, or the
+// repeater gets it twice outside the move.
+func TestHandOverNoFrameThatLeftJustOverMoveSlackBeforeTheClaim(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s, slow := slowServer()
+		start := time.Now()
+		wrote := writeLater(s)
+		<-slow.writing
+		time.Sleep(time.Millisecond)
+		close(slow.release)
+		<-wrote
+		assert.Empty(t, s.sentSince(start.Add(MoveSlack+500*time.Microsecond), ruleFor(udpEndpoint(net.UDPAddr{}))), "the handover holds a frame that the repeater got before the move")
+	})
+}
+
+// TestHandOverAFrameWhoseWriteStalledPastTheMove stalls the write of a
+// frame to a repeater for longer than MoveSlack, past the move of the
+// repeater, and builds the handover once the write returned. The frame may
+// have left after the move, which the load balancer no longer takes to the
+// repeater, so the handover must hold it.
+func TestHandOverAFrameWhoseWriteStalledPastTheMove(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s, slow := slowServer()
+		start := time.Now()
+		wrote := writeLater(s)
+		<-slow.writing
+		time.Sleep(2 * MoveSlack)
+		close(slow.release)
+		<-wrote
+		assert.Len(t, s.sentSince(start.Add(MoveSlack+MoveSlack/2), ruleFor(udpEndpoint(net.UDPAddr{}))), 1, "the handover misses a frame whose write ended after the move")
+	})
+}
+
+func slowServer() (*Server, *slowTransport) {
+	s := queueServer()
+	slow := &slowTransport{writing: make(chan struct{}), release: make(chan struct{})}
+	s.transports.Store("slow", slow)
+	s.connected.Store(1, endpoint{transport: "slow", addr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}})
+	return s, slow
+}
+
+func writeLater(s *Server) <-chan struct{} {
+	s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 3})
+	o := <-s.outgoingChan
+	wrote := make(chan struct{})
+	go func() {
+		defer close(wrote)
+		s.writeOut(o)
+	}()
+	return wrote
+}
+
 // TestAHandoverToABrowserHotspotIsPaced hands over many packets to a
 // browser hotspot that moved here. A WebTransport session holds only a few
 // datagrams that the browser has not read yet and drops the rest, so the

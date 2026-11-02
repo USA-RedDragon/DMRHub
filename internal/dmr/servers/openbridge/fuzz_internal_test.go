@@ -168,7 +168,10 @@ func FuzzValidateOpenBridgeHMAC(f *testing.F) {
 		}
 
 		s := startFuzzServer(t)
+		_, err := s.peerTable()
+		require.NoError(t, err)
 		require.NoError(t, s.DB.Create(&models.Peer{ID: peerID, Password: password, Ingress: true}).Error)
+		s.hub.PeerChanged(peerID)
 
 		s.deliver(t, sign(other))
 		_, pinged := s.pinged.Load(peerID)

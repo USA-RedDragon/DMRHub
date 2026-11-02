@@ -40,7 +40,6 @@ import (
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 const (
@@ -672,17 +671,17 @@ func checkMXRows(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload,
 			want["sub_kind~"] = p.sub
 		}
 		if src.ipsc && addr.name == "unregistered" {
-			assert.Equal(t, 1, countRows(t, n.stack.DB, "calls", "destination_id", addr.c.dst, want), "transmission rows of kind %s", p.kind)
+			assert.Equal(t, 1, countRows(t, recordsOf(n.stack), "calls", "destination_id", addr.c.dst, want), "transmission rows of kind %s", p.kind)
 			return
 		}
-		assert.Equal(t, 1, countRows(t, n.stack.DB, "calls", "stream_id", rowStream, want), "transmission rows of kind %s", p.kind)
+		assert.Equal(t, 1, countRows(t, recordsOf(n.stack), "calls", "stream_id", rowStream, want), "transmission rows of kind %s", p.kind)
 		time.Sleep(time.Second)
 		assert.Len(t, rowsOf(t, n.stack.DB, "calls", "stream_id", rowStream), 1, "rows of the stream")
 	})
 	if addr.name == "group" && !p.ipsc {
 		t.Run("undeliverable-to-ipsc", func(t *testing.T) {
 			needs(t, join(needRows(), []string{"hub-a commit 7"})...)
-			requireRows(t, n.stack.DB, "calls", "stream_id", rowStream, map[string]any{"undeliverable+": true})
+			requireRows(t, recordsOf(n.stack), "calls", "stream_id", rowStream, map[string]any{"undeliverable+": true})
 		})
 	}
 	if p.text != "" {
@@ -696,7 +695,7 @@ func checkMXRows(t *testing.T, n *mxNet, src mxSource, addr mxAddr, p mxPayload,
 				want["confirmed"] = true
 				want["response"] = "ack"
 			}
-			assert.Equal(t, 1, countRows(t, n.stack.DB, "messages", "destination_id", addr.c.dst, want), "message rows")
+			assert.Equal(t, 1, countRows(t, recordsOf(n.stack), "messages", "destination_id", addr.c.dst, want), "message rows")
 		})
 	}
 }
@@ -997,7 +996,7 @@ func runReplicaCase(t *testing.T, stack *testutils.IntegrationStack, from string
 			}
 			needs(t, needed...)
 			want := map[string]any{"kind": p.kind}
-			assert.Equal(t, 1, countRows(t, stack.DB, "calls", "stream_id", stream, want))
+			assert.Equal(t, 1, countRows(t, recordsOf(stack), "calls", "stream_id", stream, want))
 			time.Sleep(time.Second)
 			assert.Len(t, rowsOf(t, stack.DB, "calls", "stream_id", stream), 1)
 		})
@@ -1048,18 +1047,17 @@ func ipscBursts(t *testing.T, got []testutils.IPSCBurst) []layer2.RawBurst {
 	return raws
 }
 
-func requireRows(t *testing.T, db *gorm.DB, table, col string, v any, want ...map[string]any) []map[string]any {
+func requireRows(t *testing.T, r records, table, col string, v any, want ...map[string]any) {
 	t.Helper()
-	rows := waitRows(t, db, table, col, v, want)
+	rows := waitRows(t, r, table, col, v, want)
 	if miss := unmatched(want, rows); len(miss) > 0 {
 		t.Fatalf("%s where %s = %v: no row for %s; rows: %s", table, col, v, jsonText(miss), jsonText(project(rows, keysOf(want))))
 	}
-	return rows
 }
 
-func countRows(t *testing.T, db *gorm.DB, table, col string, v any, want map[string]any) int {
+func countRows(t *testing.T, r records, table, col string, v any, want map[string]any) int {
 	t.Helper()
-	rows := waitRows(t, db, table, col, v, []map[string]any{want})
+	rows := waitRows(t, r, table, col, v, []map[string]any{want})
 	n := 0
 	for _, r := range rows {
 		if matches(want, r) {

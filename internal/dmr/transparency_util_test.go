@@ -531,8 +531,21 @@ func matches(want, got map[string]any) bool {
 	return true
 }
 
-func waitRows(t *testing.T, db *gorm.DB, table, col string, v any, want []map[string]any) []map[string]any {
+type records struct {
+	db    *gorm.DB
+	flush func()
+}
+
+func recordsOf(s *testutils.IntegrationStack) records {
+	return records{db: s.DB, flush: func() {
+		s.CallTracker.Flush()
+		s.MessageStore.Flush()
+	}}
+}
+
+func waitRows(t *testing.T, r records, table, col string, v any, want []map[string]any) []map[string]any {
 	t.Helper()
+	r.flush()
 	deadline := time.Now().Add(deliverWait)
 	mine := make([]map[string]any, 0, len(want))
 	for _, w := range want {
@@ -544,7 +557,7 @@ func waitRows(t *testing.T, db *gorm.DB, table, col string, v any, want []map[st
 	var rows []map[string]any
 	for {
 		var all []map[string]any
-		require.NoError(t, live(db, table).Where(col+" = ?", v).Find(&all).Error, "reading %s", table)
+		require.NoError(t, live(r.db, table).Where(col+" = ?", v).Find(&all).Error, "reading %s", table)
 		rows = all
 		if len(unmatched(want, rows)) == 0 || time.Now().After(deadline) {
 			break
@@ -627,18 +640,18 @@ func readGolden(t *testing.T, name string) golden {
 	return g
 }
 
-func checkGoldenRows(t *testing.T, db *gorm.DB, name string, srcs, dsts []uint) {
+func checkGoldenRows(t *testing.T, r records, name string, srcs, dsts []uint) {
 	t.Helper()
 	g := readGolden(t, name)
 	if *updateGolden {
-		writeGolden(t, db, name, g, srcs, dsts)
+		writeGolden(t, r.db, name, g, srcs, dsts)
 		return
 	}
 	t.Run("transmissions", func(t *testing.T) {
 		needs(t, needRows()...)
 		rows := make([]map[string]any, 0, len(g.Transmissions))
 		for _, src := range srcs {
-			rows = append(rows, waitRows(t, db, "calls", "source_id", src, g.Transmissions)...)
+			rows = append(rows, waitRows(t, r, "calls", "source_id", src, g.Transmissions)...)
 		}
 		if miss := unmatched(g.Transmissions, rows); len(miss) > 0 {
 			t.Fatalf("no transmission row for %s; rows: %s", jsonText(miss), jsonText(project(rows, keysOf(g.Transmissions))))
@@ -651,7 +664,7 @@ func checkGoldenRows(t *testing.T, db *gorm.DB, name string, srcs, dsts []uint) 
 		needs(t, needMessages()...)
 		rows := make([]map[string]any, 0, len(g.Messages))
 		for _, dst := range dsts {
-			rows = append(rows, waitRows(t, db, "messages", "destination_id", dst, g.Messages)...)
+			rows = append(rows, waitRows(t, r, "messages", "destination_id", dst, g.Messages)...)
 		}
 		if miss := unmatched(g.Messages, rows); len(miss) > 0 {
 			t.Fatalf("no message row for %s; rows: %s", jsonText(miss), jsonText(project(rows, keysOf(g.Messages))))

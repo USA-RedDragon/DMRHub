@@ -220,7 +220,7 @@ func TestGoldenAirCaptures(t *testing.T) {
 						assertSamePackets(t, sent[i], ofStream(ob, sent[i][0].StreamID), goldenPeer, false)
 					}
 				})
-				checkGoldenRows(t, stack.DB, g.name, []uint{anyTone, otherRadio}, []uint{anyTone, otherRadio})
+				checkGoldenRows(t, recordsOf(stack), g.name, []uint{anyTone, otherRadio}, []uint{anyTone, otherRadio})
 			})
 		})
 	}
@@ -323,7 +323,7 @@ func TestGoldenIPSCDataToMMDVM(t *testing.T) {
 						assertSamePayloads(t, want, burstsOf(pkts), nil)
 					}
 				})
-				checkGoldenRows(t, stack.DB, "ipsc-"+g.tag, []uint{uint(src)}, []uint{uint(dst)})
+				checkGoldenRows(t, recordsOf(stack), "ipsc-"+g.tag, []uint{uint(src)}, []uint{uint(dst)})
 			})
 		})
 	}
@@ -375,7 +375,7 @@ func TestGoldenDMRGatewayAliasAndGPS(t *testing.T) {
 
 		t.Run("rows", func(t *testing.T) {
 			needs(t, join(needRows(), []string{"hub-b commit 11"})...)
-			checkGoldenRows(t, stack.DB, "dmrgateway-dmra-dmrg", []uint{anyTone}, nil)
+			checkGoldenRows(t, recordsOf(stack), "dmrgateway-dmra-dmrg", []uint{anyTone}, nil)
 		})
 	})
 }
@@ -496,7 +496,7 @@ func TestGoldenAppCaptures(t *testing.T) {
 					needs(t, needRoute()...)
 					assertSamePackets(t, sent[0], ofStream(got[otherRadio], 0xC000), otherRpt, true)
 				})
-				checkGoldenRows(t, stack.DB, "app-"+g.name, []uint{anyTone}, []uint{otherRadio})
+				checkGoldenRows(t, recordsOf(stack), "app-"+g.name, []uint{anyTone}, []uint{otherRadio})
 			})
 		})
 	}

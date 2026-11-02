@@ -430,7 +430,7 @@ func checkC2IPSC(t *testing.T, want []models.Packet, lc pdu.LCBytes, got []ipscw
 func (n *c2Net) checkRow(t *testing.T, stream uint, src uint32) {
 	t.Helper()
 	t.Run("last-heard", func(t *testing.T) {
-		assert.Equal(t, 1, countRows(t, n.stack.DB, "calls", "stream_id", stream, map[string]any{"kind": "voice", "source_id": src}), "voice rows")
+		assert.Equal(t, 1, countRows(t, recordsOf(n.stack), "calls", "stream_id", stream, map[string]any{"kind": "voice", "source_id": src}), "voice rows")
 		for _, r := range rowsOf(t, n.stack.DB, "calls", "stream_id", stream) {
 			t.Logf("last heard row: kind %v sub_kind %q fid %v", r["kind"], text(r["sub_kind"]), r["fid"])
 		}

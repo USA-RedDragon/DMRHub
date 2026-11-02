@@ -24,7 +24,18 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func createPeers(t *testing.T, database *gorm.DB, ids ...uint) {
+	t.Helper()
+	owner := models.User{ID: 1, Callsign: "N0CALL", Username: "owner"}
+	require.NoError(t, database.Create(&owner).Error)
+	for _, id := range ids {
+		require.NoError(t, database.Create(&models.Peer{ID: id, OwnerID: owner.ID, Ingress: true, Egress: true}).Error)
+	}
+}
 
 func TestListRulesForPeerEmpty(t *testing.T) {
 	t.Parallel()
@@ -41,13 +52,12 @@ func TestListRulesForPeerReturnsRules(t *testing.T) {
 	database, cleanup := makeTestDB(t)
 	defer cleanup()
 
-	peer := models.Peer{ID: 10, Ingress: true, Egress: true}
-	database.Create(&peer)
+	createPeers(t, database, 10)
 
 	ingress := models.PeerRule{PeerID: 10, Direction: true, SubjectIDMin: 100, SubjectIDMax: 200}
 	egress := models.PeerRule{PeerID: 10, Direction: false, SubjectIDMin: 300, SubjectIDMax: 400}
-	database.Create(&ingress)
-	database.Create(&egress)
+	require.NoError(t, database.Create(&ingress).Error)
+	require.NoError(t, database.Create(&egress).Error)
 
 	rules, err := models.ListRulesForPeer(database, 10)
 	assert.NoError(t, err)
@@ -69,13 +79,12 @@ func TestListIngressRulesForPeerFiltersDirection(t *testing.T) {
 	database, cleanup := makeTestDB(t)
 	defer cleanup()
 
-	peer := models.Peer{ID: 11, Ingress: true, Egress: true}
-	database.Create(&peer)
+	createPeers(t, database, 11)
 
 	ingress := models.PeerRule{PeerID: 11, Direction: true, SubjectIDMin: 100, SubjectIDMax: 200}
 	egress := models.PeerRule{PeerID: 11, Direction: false, SubjectIDMin: 300, SubjectIDMax: 400}
-	database.Create(&ingress)
-	database.Create(&egress)
+	require.NoError(t, database.Create(&ingress).Error)
+	require.NoError(t, database.Create(&egress).Error)
 
 	rules, err := models.ListIngressRulesForPeer(database, 11)
 	assert.NoError(t, err)
@@ -98,13 +107,12 @@ func TestListEgressRulesForPeerFiltersDirection(t *testing.T) {
 	database, cleanup := makeTestDB(t)
 	defer cleanup()
 
-	peer := models.Peer{ID: 12, Ingress: true, Egress: true}
-	database.Create(&peer)
+	createPeers(t, database, 12)
 
 	ingress := models.PeerRule{PeerID: 12, Direction: true, SubjectIDMin: 100, SubjectIDMax: 200}
 	egress := models.PeerRule{PeerID: 12, Direction: false, SubjectIDMin: 300, SubjectIDMax: 400}
-	database.Create(&ingress)
-	database.Create(&egress)
+	require.NoError(t, database.Create(&ingress).Error)
+	require.NoError(t, database.Create(&egress).Error)
 
 	rules, err := models.ListEgressRulesForPeer(database, 12)
 	assert.NoError(t, err)
@@ -117,15 +125,12 @@ func TestListRulesForPeerDoesNotReturnOtherPeerRules(t *testing.T) {
 	database, cleanup := makeTestDB(t)
 	defer cleanup()
 
-	peer1 := models.Peer{ID: 13, Ingress: true, Egress: true}
-	peer2 := models.Peer{ID: 14, Ingress: true, Egress: true}
-	database.Create(&peer1)
-	database.Create(&peer2)
+	createPeers(t, database, 13, 14)
 
 	rule1 := models.PeerRule{PeerID: 13, Direction: true, SubjectIDMin: 100, SubjectIDMax: 200}
 	rule2 := models.PeerRule{PeerID: 14, Direction: true, SubjectIDMin: 300, SubjectIDMax: 400}
-	database.Create(&rule1)
-	database.Create(&rule2)
+	require.NoError(t, database.Create(&rule1).Error)
+	require.NoError(t, database.Create(&rule2).Error)
 
 	rules, err := models.ListRulesForPeer(database, 13)
 	assert.NoError(t, err)

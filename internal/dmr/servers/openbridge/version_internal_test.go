@@ -98,7 +98,8 @@ func TestAVersionOfAPeerBeforeItsChangeIsDropped(t *testing.T) {
 		s.consumeVersions()
 	}
 
-	require.NoError(t, database.Create(&models.Peer{ID: 7, Password: "secret", IP: "127.0.0.1", Port: 62035, Egress: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.Peer{ID: 7, OwnerID: 3191868, Password: "secret", IP: "127.0.0.1", Port: 62035, Egress: true}).Error)
 	aFeed := make(chan []byte, 1)
 	a, stale := replica(aFeed), replica(nil)
 	old := peerOf(stale)

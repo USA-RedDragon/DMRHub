@@ -89,7 +89,7 @@ src/lib/lastHeardColumns.ts	40	33
 src/lib/modem.ts	78	15
 src/lib/next.ts	3	2
 src/lib/password.ts	11	3
-src/lib/setupMenu.ts	194	125
+src/lib/setupMenu.ts	196	126
 src/lib/setupState.ts	37	20
 src/lib/timeConversion.ts	46	14
 src/lib/transmissions.ts	181	119

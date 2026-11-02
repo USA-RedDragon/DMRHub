@@ -469,3 +469,30 @@ shots:
     route: /settings
     wait: Net check-in list
     clip: card Net check-in list
+  - name: settings-on-air-code-setup.png
+    phase: main
+    as: n3call
+    needs: [seed]
+    route: /settings
+    wait: On-air code
+    steps: ["click Set up", "wait Scan the code", "run on-air-example", "fill #on-air-code = 482913", blur]
+    clip: card On-air code
+  - name: settings-on-air-code-on.png
+    phase: main
+    as: n3call
+    needs: [seed, on-air-code]
+    route: /settings
+    wait: "300000401, TS2"
+    clip: card On-air code
+  - name: settings-on-air-code-off.png
+    phase: main
+    as: n3call
+    route: /settings
+    wait: "300000401, TS2"
+    steps: ["click Turn off", "fill #on-air-off-code = 482913", blur]
+    clip: card On-air code
+  - name: admin-users-on-air-code.png
+    phase: main
+    as: n0call
+    route: /admin/users
+    wait: Turn off on-air code

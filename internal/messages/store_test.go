@@ -285,9 +285,17 @@ func responseRow(id uint) *models.Call {
 	return &models.Call{ID: id, SourceID: userA, DestinationID: userB}
 }
 
+func seedCalls(t *testing.T, database *gorm.DB) {
+	t.Helper()
+	for id := uint(1); id <= 9; id++ {
+		require.NoError(t, database.Create(&models.Call{ID: id, Kind: models.CallKindData, SourceID: userB, DestinationID: userA}).Error)
+	}
+}
+
 func storeOnly(t *testing.T) (*messages.Store, *gorm.DB) {
 	t.Helper()
 	database := openDB(t)
+	seedCalls(t, database)
 	store := messages.NewStore(database, memKV(t))
 	t.Cleanup(store.Stop)
 	return store, database
@@ -364,6 +372,7 @@ func TestStoreAttachesAResponseHeardFirst(t *testing.T) {
 func storeReplicas(t *testing.T) (*messages.Store, *messages.Store, *gorm.DB) {
 	t.Helper()
 	database := openDB(t)
+	seedCalls(t, database)
 	kvStore := memKV(t)
 	one := messages.NewStore(database, kvStore)
 	t.Cleanup(one.Stop)
@@ -419,6 +428,7 @@ func TestStoreReplacesTheFirstFragmentWithTheWholeMessage(t *testing.T) {
 func TestStoreNeverBlocksTheTracker(t *testing.T) {
 	t.Parallel()
 	database := openDB(t)
+	seedCalls(t, database)
 	release := make(chan struct{})
 	require.NoError(t, database.Callback().Create().Before("gorm:create").Register("block", func(*gorm.DB) { <-release }))
 	store := messages.NewStore(database, memKV(t))
@@ -427,8 +437,8 @@ func TestStoreNeverBlocksTheTracker(t *testing.T) {
 		store.Stop()
 	})
 	h, payload := confirmed(t, "flood", 0)
-	for i := range 4096 + 64 {
-		store.DataPacket(&models.Call{ID: uint(i + 1)}, delivered(h, payload, false), time.Now())
+	for range 4096 + 64 {
+		store.DataPacket(&models.Call{ID: 1}, delivered(h, payload, false), time.Now())
 	}
 	assert.GreaterOrEqual(t, store.Dropped(), uint64(63))
 }

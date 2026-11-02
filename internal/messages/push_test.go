@@ -41,6 +41,7 @@ import (
 func pushRig(t *testing.T) (*messages.Store, pubsub.PubSub) {
 	t.Helper()
 	database := openDB(t)
+	seedCalls(t, database)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.TODO(), &cfg)

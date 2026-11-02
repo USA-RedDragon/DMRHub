@@ -33,7 +33,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -562,18 +564,36 @@ func startDMRGateway(ctx context.Context, r *runner) error {
 // seedUnassigned writes two modem repeaters with no owner, with the columns
 // that the modem server writes when a modem connects with an unknown ID.
 // The harness has no serial modems, so it writes them to the database.
-func seedUnassigned(_ context.Context, r *runner) error {
-	path := filepath.Join(r.o.work, "DMRHub.db")
+func demoDB(r *runner) (*gorm.DB, func(), error) {
+	saved, ok, err := liveconfig.DatabaseState{Path: filepath.Join(r.o.work, liveconfig.DatabaseStateFile)}.Load()
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not read the database of DMRHub: %w", err)
+	}
+	if !ok || saved.Driver != config.DatabaseDriverSQLite {
+		return nil, nil, errors.New("the setup wizard saved no SQLite database for DMRHub")
+	}
+	path := strings.TrimPrefix(saved.Database, "file:")
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(r.o.work, path)
+	}
 	dsn := "file:" + (&url.URL{Path: path}).EscapedPath() + "?mode=rw&_pragma=busy_timeout(10000)&_pragma=foreign_keys(1)"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
-		return fmt.Errorf("could not open the database of DMRHub: %w", err)
+		return nil, nil, fmt.Errorf("could not open the database of DMRHub: %w", err)
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("could not open the database of DMRHub: %w", err)
+		return nil, nil, fmt.Errorf("could not open the database of DMRHub: %w", err)
 	}
-	defer func() { _ = sqlDB.Close() }()
+	return db, func() { _ = sqlDB.Close() }, nil
+}
+
+func seedUnassigned(_ context.Context, r *runner) error {
+	db, closeDB, err := demoDB(r)
+	if err != nil {
+		return err
+	}
+	defer closeDB()
 	pkg := "MMDVM_HS_Hat-v1.6.1 20231115 14.7456MHz"
 	rps := []struct {
 		id       uint

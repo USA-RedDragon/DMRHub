@@ -45,11 +45,11 @@ func startEnhancedStack(t *testing.T, stack *testutils.IntegrationStack) enhance
 	stack.AssignTS1StaticTG(t, 100001, 1)
 	stack.StartServers(t)
 
-	peer := testutils.NewOpenBridgeClient(500001, obPassword)
+	peer := testutils.NewOpenBridgeClient(500001, obPassword(t))
 	t.Cleanup(peer.Close)
 	require.NoError(t, peer.Connect(stack.OpenBridgeAddr))
 	addr := peer.LocalAddr()
-	stack.SeedPeer(t, 500001, 1000001, obPassword, addr.IP.String(), addr.Port, true, true)
+	stack.SeedPeer(t, 500001, 1000001, obPassword(t), addr.IP.String(), addr.Port, true, true)
 	stack.SeedPeerRule(t, 500001, true, 1, 1)
 	stack.SeedPeerRule(t, 500001, false, 1000001, 1000001)
 

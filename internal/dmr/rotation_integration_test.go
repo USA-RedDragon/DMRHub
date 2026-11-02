@@ -331,11 +331,11 @@ func TestRotationMidCall(t *testing.T) {
 		stack.StartServers(t)
 		a := stack.Replica()
 
-		ob := testutils.NewOpenBridgeClient(500002, obPassword)
+		ob := testutils.NewOpenBridgeClient(500002, obPassword(t))
 		t.Cleanup(ob.Close)
 		require.NoError(t, ob.Connect(stack.OpenBridgeAddr))
 		obAddr := ob.LocalAddr()
-		stack.SeedPeer(t, 500002, 1000001, obPassword, obAddr.IP.String(), obAddr.Port, true, true)
+		stack.SeedPeer(t, 500002, 1000001, obPassword(t), obAddr.IP.String(), obAddr.Port, true, true)
 		stack.SeedPeerRule(t, 500002, false, 1000001, 1000002)
 
 		fronts := testutils.Fronts{MMDVM: testutils.NewUDPFront(t), IPSC: testutils.NewUDPFront(t), WebTransport: testutils.NewUDPFront(t)}

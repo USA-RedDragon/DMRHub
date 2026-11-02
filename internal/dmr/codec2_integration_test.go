@@ -264,11 +264,11 @@ func c2IPSCPeer(t *testing.T, stack *testutils.IntegrationStack, id uint32) *tes
 
 func c2OBPeer(t *testing.T, stack *testutils.IntegrationStack, id uint32, enhanced bool) *testutils.OpenBridgeClient {
 	t.Helper()
-	c := testutils.NewOpenBridgeClient(id, obPassword)
+	c := testutils.NewOpenBridgeClient(id, obPassword(t))
 	t.Cleanup(c.Close)
 	require.NoError(t, c.Connect(stack.OpenBridgeAddr))
 	addr := c.LocalAddr()
-	stack.SeedPeer(t, uint(id), c2Talker, obPassword, addr.IP.String(), addr.Port, true, true)
+	stack.SeedPeer(t, uint(id), c2Talker, obPassword(t), addr.IP.String(), addr.Port, true, true)
 	if enhanced {
 		require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", id).Update("enhanced", true).Error)
 	}

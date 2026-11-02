@@ -189,11 +189,11 @@ func TestOpenBridgeSlowRedisHoldsNoBurst(t *testing.T) {
 		from := testutils.NewOpenBridgeClient(500001, fromPassword)
 		t.Cleanup(from.Close)
 		require.NoError(t, from.Connect(stack.OpenBridgeAddr))
-		to := testutils.NewOpenBridgeClient(500002, obPassword)
+		to := testutils.NewOpenBridgeClient(500002, obPassword(t))
 		t.Cleanup(to.Close)
 		require.NoError(t, to.Connect(stack.OpenBridgeAddr))
 		addr := to.LocalAddr()
-		stack.SeedPeer(t, 500002, 1000001, obPassword, addr.IP.String(), addr.Port, false, true)
+		stack.SeedPeer(t, 500002, 1000001, obPassword(t), addr.IP.String(), addr.Port, false, true)
 		stack.SeedPeerRule(t, 500002, false, 1, 9999999)
 
 		send := func(fromPeer bool) func(uint) []time.Time {
@@ -250,10 +250,10 @@ func TestOpenBridgeSlowRedisHoldsNoBurstOnTheOtherReplica(t *testing.T) {
 	forAllSlowRedisBackends(t, "", []string{"hub:events:peers", "openbridge:egress"}, func(t *testing.T, stack *testutils.IntegrationStack, slow *slowRedis) {
 		r := startReplicaOB(t, stack)
 		_, _, otherAddr := r.leader(t)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.SeedPeerRule(t, 500002, false, 1, 9999999)
-		from := testutils.NewOpenBridgeClient(500001, obPassword)
+		from := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		t.Cleanup(from.Close)
 		require.NoError(t, from.Connect(otherAddr))
 		r.peerNoticeTaken(t)

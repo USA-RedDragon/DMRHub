@@ -82,11 +82,11 @@ func newGoldenNet(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, i
 		rpt:   map[uint32]*testutils.MMDVMClient{},
 		rptID: map[uint32]uint{anyTone: anyToneRpt, otherRadio: otherRpt},
 	}
-	n.ob = testutils.NewOpenBridgeClient(goldenPeer, obPassword)
+	n.ob = testutils.NewOpenBridgeClient(goldenPeer, obPassword(t))
 	t.Cleanup(n.ob.Close)
 	require.NoError(t, n.ob.Connect(stack.OpenBridgeAddr))
 	addr := n.ob.LocalAddr()
-	stack.SeedPeer(t, goldenPeer, anyTone, obPassword, addr.IP.String(), addr.Port, false, true)
+	stack.SeedPeer(t, goldenPeer, anyTone, obPassword(t), addr.IP.String(), addr.Port, false, true)
 	stack.SeedPeerRule(t, goldenPeer, false, 1, dmrconst.MaxDMRAddress)
 
 	for radio, id := range n.rptID {

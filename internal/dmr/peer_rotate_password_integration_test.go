@@ -47,7 +47,7 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
 		applied := noticesApplied(t, stack.PubSub, "hub:peers:changed", second.Hub.OnPeerChange)
-		stack.SeedPeer(t, peerID, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, peerID, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, peerID, true, 1, 1)
 		applied()
 
@@ -68,7 +68,7 @@ func TestRotatedPeerPasswordStopsAtOnceOnEveryReplica(t *testing.T) {
 		}{{"first", stack.OpenBridgeAddr}, {"second", second.OpenBridgeAddr}}
 		old := make([]*testutils.OpenBridgeClient, len(replicas))
 		for i, r := range replicas {
-			old[i] = client(obPassword, r.addr)
+			old[i] = client(obPassword(t), r.addr)
 		}
 		stream := uint32(9701)
 		for i, r := range replicas {

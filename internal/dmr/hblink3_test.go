@@ -144,7 +144,7 @@ func TestExternalHBlink3(t *testing.T) {
 	stack.AssignTS1StaticTG(t, mxTGRpt, mxTG)
 
 	obpPort, masterPort, reportPort := testutils.FreeUDPPort(t), testutils.FreeUDPPort(t), testutils.FreeUDPPort(t)
-	stack.SeedPeer(t, hblink3NetworkID, mxRadio, obPassword, "127.0.0.1", obpPort, true, true)
+	stack.SeedPeer(t, hblink3NetworkID, mxRadio, obPassword(t), "127.0.0.1", obpPort, true, true)
 	stack.SeedPeerRule(t, hblink3NetworkID, true, 1, 99999999)
 	stack.SeedPeerRule(t, hblink3NetworkID, false, 1, 99999999)
 	stack.StartServers(t)
@@ -154,7 +154,7 @@ func TestExternalHBlink3(t *testing.T) {
 	port, err := strconv.Atoi(hubPort)
 	require.NoError(t, err)
 	dir := t.TempDir()
-	cfg := fmt.Sprintf(hblink3Config, dir, obpPort, port, masterPort, obPassword, reportPort, hblink3NetworkID, testPassword)
+	cfg := fmt.Sprintf(hblink3Config, dir, obpPort, port, masterPort, obPassword(t), reportPort, hblink3NetworkID, testPassword)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "hblink.cfg"), []byte(cfg), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "rules.py"), fmt.Appendf(nil, hblink3Rules, mxTG), 0o600))
 	for name, body := range map[string]string{"peer_ids.json": `{"rptrs": []}`, "subscriber_ids.json": `{"users": []}`, "talkgroup_ids.json": `{"talkgroups": []}`} {
@@ -210,5 +210,5 @@ func TestExternalHBlink3(t *testing.T) {
 		crossLive(t, c.from, c.to, c.tx, uint(0x7E01+i), c.name)
 	}
 
-	checkForgedPacketsAreDropped(t, stack.OpenBridgeAddr, hblink3NetworkID, obPassword, false, local)
+	checkForgedPacketsAreDropped(t, stack.OpenBridgeAddr, hblink3NetworkID, obPassword(t), false, local)
 }

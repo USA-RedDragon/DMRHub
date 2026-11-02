@@ -155,10 +155,10 @@ func newRig(t *testing.T, s settings, res *result, logs *logCounter, o rigOption
 	})
 	stack.RunPlugin(t, "Parrot", []models.PluginRange{{First: parrotID, Last: parrotID}}, parrot.Serve)
 	if o.withOB {
-		r.ob = testutils.NewOpenBridgeClient(obPeerID, obPassword)
+		r.ob = testutils.NewOpenBridgeClient(obPeerID, obPassword(t))
 		require.NoError(t, r.ob.Connect(stack.OpenBridgeAddr))
 		addr := r.ob.LocalAddr()
-		stack.SeedPeer(t, obPeerID, userID(0), obPassword, addr.IP.String(), addr.Port, false, true)
+		stack.SeedPeer(t, obPeerID, userID(0), obPassword(t), addr.IP.String(), addr.Port, false, true)
 		stack.SeedPeerRule(t, obPeerID, false, 1, dmrconst.MaxDMRAddress)
 		t.Cleanup(r.ob.Close)
 	}

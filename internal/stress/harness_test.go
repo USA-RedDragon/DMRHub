@@ -46,11 +46,14 @@ import (
 const (
 	rptPassword = "s3cret"
 	ipscKey     = "0000000000000000000000000000000000003039"
-	obPassword  = "bridge-secret"
 	handshake   = 10 * time.Second
 	levelError  = slog.LevelError
 	levelWarn   = slog.LevelWarn
 )
+
+func obPassword(t testing.TB) string {
+	return testutils.Secret(t)
+}
 
 // settings are the knobs of a run, from the environment.
 type settings struct {

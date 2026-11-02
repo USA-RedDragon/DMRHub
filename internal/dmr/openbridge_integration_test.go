@@ -32,7 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const obPassword = "obTestPass123"
+func obPassword(t testing.TB) string {
+	return testutils.Secret(t)
+}
 
 // TestOpenBridgeInboundPeerToLocalRepeater verifies that an OpenBridge peer
 // sending a group call packet is delivered to an MMDVM repeater subscribed
@@ -45,7 +47,7 @@ func TestOpenBridgeInboundPeerToLocalRepeater(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		// Peer with ingress enabled, ingress rule covers TG1
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1) // ingress rule for TG1
 		stack.StartServers(t)
 
@@ -56,7 +58,7 @@ func TestOpenBridgeInboundPeerToLocalRepeater(t *testing.T) {
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
 		// Connect OpenBridge client
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 
@@ -84,7 +86,7 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.StartServers(t)
 
@@ -93,7 +95,7 @@ func TestOpenBridgeInboundKeepsStreamOrder(t *testing.T) {
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 
@@ -156,7 +158,7 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100002, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		stack.AssignTS1StaticTG(t, 100002, 2)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 2)
 		stack.StartServers(t)
 
@@ -169,7 +171,7 @@ func TestOpenBridgeInboundKeepsOrderAcrossStreams(t *testing.T) {
 			clients[tg] = mc
 		}
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		probes := map[uint]bool{}
@@ -219,14 +221,14 @@ func TestOpenBridgeOutboundLocalRepeaterToPeer(t *testing.T) {
 		stack.StartServers(t)
 
 		// Connect OpenBridge client first so we know its local address
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		localAddr := obc.LocalAddr()
 		require.NotNil(t, localAddr)
 
 		// Seed peer with the client's actual local address for outbound delivery
-		stack.SeedPeer(t, 500001, 1000001, obPassword, localAddr.IP.String(), localAddr.Port, false, true)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), localAddr.IP.String(), localAddr.Port, false, true)
 		stack.SeedPeerRule(t, 500001, false, 1000001, 1000001) // egress rule matching src ID
 
 		// Connect MMDVM client
@@ -262,22 +264,22 @@ func TestOpenBridgePeerToPeerForwarding(t *testing.T) {
 		stack.StartServers(t)
 
 		// Connect OB client B first to get its local address
-		obcB := testutils.NewOpenBridgeClient(500002, obPassword)
+		obcB := testutils.NewOpenBridgeClient(500002, obPassword(t))
 		defer obcB.Close()
 		require.NoError(t, obcB.Connect(stack.OpenBridgeAddr))
 		localAddrB := obcB.LocalAddr()
 		require.NotNil(t, localAddrB)
 
 		// Peer A: ingress enabled, ingress rule covers TG1
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1) // ingress for TG1
 
 		// Peer B: egress enabled, egress rule covers the source ID
-		stack.SeedPeer(t, 500002, 1000001, obPassword, localAddrB.IP.String(), localAddrB.Port, false, true)
+		stack.SeedPeer(t, 500002, 1000001, obPassword(t), localAddrB.IP.String(), localAddrB.Port, false, true)
 		stack.SeedPeerRule(t, 500002, false, 1000001, 1000001) // egress for src
 
 		// Connect OB client A
-		obcA := testutils.NewOpenBridgeClient(500001, obPassword)
+		obcA := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obcA.Close()
 		require.NoError(t, obcA.Connect(stack.OpenBridgeAddr))
 
@@ -302,7 +304,7 @@ func TestOpenBridgeIngressRuleRejection(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		// Peer with ingress enabled but rule only covers TG2 (not TG1)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 2, 2) // ingress rule for TG2 only
 		stack.StartServers(t)
 
@@ -311,7 +313,7 @@ func TestOpenBridgeIngressRuleRejection(t *testing.T) {
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 
@@ -335,14 +337,14 @@ func TestOpenBridgeEgressRuleRejection(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		stack.StartServers(t)
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		localAddr := obc.LocalAddr()
 		require.NotNil(t, localAddr)
 
 		// Peer with egress enabled but rule covers a different source range
-		stack.SeedPeer(t, 500001, 1000001, obPassword, localAddr.IP.String(), localAddr.Port, false, true)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), localAddr.IP.String(), localAddr.Port, false, true)
 		stack.SeedPeerRule(t, 500001, false, 9999999, 9999999) // egress rule that won't match
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
@@ -369,7 +371,7 @@ func TestOpenBridgeInvalidHMACRejection(t *testing.T) {
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.StartServers(t)
 
@@ -429,7 +431,7 @@ func TestOpenBridgeTS2Drop(t *testing.T) {
 		stack.SeedTalkgroup(t, 1, "TG1")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.StartServers(t)
 
@@ -438,7 +440,7 @@ func TestOpenBridgeTS2Drop(t *testing.T) {
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 
@@ -459,7 +461,7 @@ func TestOpenBridgeTS2Drop(t *testing.T) {
 		}
 		// Build the packet manually with HMAC
 		encoded := ts2Pkt.Encode()[:dmrconst.MMDVMPacketLength]
-		h := hmac.New(sha1.New, []byte(obPassword))
+		h := hmac.New(sha1.New, []byte(obPassword(t)))
 		_, _ = h.Write(encoded)
 		outbound := slices.Concat(encoded, h.Sum(nil))
 		require.NoError(t, obc.SendRawBytes(outbound))
@@ -482,14 +484,14 @@ func TestOpenBridgeCrossProtocolIPSCToOpenBridge(t *testing.T) {
 		stack.StartServers(t)
 
 		// Connect OB client first to get its local address
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		localAddr := obc.LocalAddr()
 		require.NotNil(t, localAddr)
 
 		// OB peer with both ingress (TG1) and egress (src range)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, localAddr.IP.String(), localAddr.Port, true, true)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), localAddr.IP.String(), localAddr.Port, true, true)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)              // ingress TG1
 		stack.SeedPeerRule(t, 500001, false, 1000001, 1000001) // egress src
 
@@ -526,13 +528,13 @@ func TestOpenBridgeOncePerPacketAcrossReplicas(t *testing.T) {
 		_ = stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
 
-		obcB := testutils.NewOpenBridgeClient(500002, obPassword)
+		obcB := testutils.NewOpenBridgeClient(500002, obPassword(t))
 		defer obcB.Close()
 		require.NoError(t, obcB.Connect(stack.OpenBridgeAddr))
 		addrB := obcB.LocalAddr()
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
-		stack.SeedPeer(t, 500002, 1000001, obPassword, addrB.IP.String(), addrB.Port, false, true)
+		stack.SeedPeer(t, 500002, 1000001, obPassword(t), addrB.IP.String(), addrB.Port, false, true)
 		stack.SeedPeerRule(t, 500002, false, 1000001, 1000001)
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
@@ -540,7 +542,7 @@ func TestOpenBridgeOncePerPacketAcrossReplicas(t *testing.T) {
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
 
-		obcA := testutils.NewOpenBridgeClient(500001, obPassword)
+		obcA := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obcA.Close()
 		require.NoError(t, obcA.Connect(stack.OpenBridgeAddr))
 

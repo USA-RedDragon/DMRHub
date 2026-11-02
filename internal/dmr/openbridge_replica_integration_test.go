@@ -54,11 +54,11 @@ func startReplicaOB(t *testing.T, stack *testutils.IntegrationStack) replicaOB {
 	r := replicaOB{stack: stack, second: stack.SpawnSecondReplica(t)}
 	stack.StartServers(t)
 
-	r.peer = testutils.NewOpenBridgeClient(500002, obPassword)
+	r.peer = testutils.NewOpenBridgeClient(500002, obPassword(t))
 	t.Cleanup(r.peer.Close)
 	require.NoError(t, r.peer.Connect(stack.OpenBridgeAddr))
 	addr := r.peer.LocalAddr()
-	stack.SeedPeer(t, 500002, 1000001, obPassword, addr.IP.String(), addr.Port, true, true)
+	stack.SeedPeer(t, 500002, 1000001, obPassword(t), addr.IP.String(), addr.Port, true, true)
 	stack.SeedPeerRule(t, 500002, false, 1000001, 1000001)
 
 	client := func(id uint32, at string) *testutils.MMDVMClient {

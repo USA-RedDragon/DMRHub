@@ -55,7 +55,7 @@ func TestOpenBridgeRecordsTheLastPingOfAPeer(t *testing.T) {
 		second := stack.SpawnSecondReplica(t)
 		stack.StartServers(t)
 		applied := noticesApplied(t, stack.PubSub, "hub:peers:changed", second.Hub.OnPeerChange)
-		stack.SeedPeer(t, peerID, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, peerID, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, peerID, true, 1, 1)
 		applied()
 
@@ -75,7 +75,7 @@ func TestOpenBridgeRecordsTheLastPingOfAPeer(t *testing.T) {
 
 		stream := uint32(9801)
 		for i, addr := range []string{stack.OpenBridgeAddr, second.OpenBridgeAddr} {
-			c := testutils.NewOpenBridgeClient(peerID, obPassword)
+			c := testutils.NewOpenBridgeClient(peerID, obPassword(t))
 			t.Cleanup(c.Close)
 			require.NoError(t, c.Connect(addr))
 			sent := time.Now()

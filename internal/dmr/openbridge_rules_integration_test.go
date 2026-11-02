@@ -44,11 +44,11 @@ func startEgressRuleStack(t *testing.T, stack *testutils.IntegrationStack, seedR
 	stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 	stack.StartServers(t)
 
-	peer := testutils.NewOpenBridgeClient(500001, obPassword)
+	peer := testutils.NewOpenBridgeClient(500001, obPassword(t))
 	t.Cleanup(peer.Close)
 	require.NoError(t, peer.Connect(stack.OpenBridgeAddr))
 	addr := peer.LocalAddr()
-	stack.SeedPeer(t, 500001, 1000001, obPassword, addr.IP.String(), addr.Port, false, true)
+	stack.SeedPeer(t, 500001, 1000001, obPassword(t), addr.IP.String(), addr.Port, false, true)
 	seedRules(500001)
 
 	mc := testutils.NewMMDVMClient(100001, "", testPassword)
@@ -165,7 +165,7 @@ func TestOpenBridgeIngressPrivateCalls(t *testing.T) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedTalkgroup(t, 3100, "TG3100")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
-		stack.SeedPeer(t, 500001, 1000001, obPassword, "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
 		stack.SeedPeerRuleMatch(t, 500001, true, models.PeerRuleMatchDestination, 3100, 3100)
 		stack.SetPeerPrivateCalls(t, 500001, true, false)
 		stack.StartServers(t)
@@ -174,7 +174,7 @@ func TestOpenBridgeIngressPrivateCalls(t *testing.T) {
 		defer mc.Close()
 		require.NoError(t, mc.Connect(stack.MMDVMAddr))
 		require.NoError(t, mc.WaitReady(handshakeWait))
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 

@@ -164,11 +164,11 @@ func checkMovedTalkerOrder(t *testing.T, gate *egressGate, stack *testutils.Inte
 	stack.StartServers(t)
 	old := stack.Replica()
 
-	peer := testutils.NewOpenBridgeClient(500002, obPassword)
+	peer := testutils.NewOpenBridgeClient(500002, obPassword(t))
 	t.Cleanup(peer.Close)
 	require.NoError(t, peer.Connect(stack.OpenBridgeAddr))
 	addr := peer.LocalAddr()
-	stack.SeedPeer(t, 500002, 1000001, obPassword, addr.IP.String(), addr.Port, true, true)
+	stack.SeedPeer(t, 500002, 1000001, obPassword(t), addr.IP.String(), addr.Port, true, true)
 	stack.SeedPeerRule(t, 500002, false, 1000001, 1000001)
 	takeNotice(t, stack.PubSub, holder.Hub.OnPeerChange, "hub:peers:changed")
 	waitFor(t, "the second replica holds the egress lease", holder.OpenBridgeServer.IsEgressLeader)

@@ -68,7 +68,7 @@ func (r *rig) addTransports(t *testing.T) *xport {
 	st.SeedIPSCRepeater(t, ipscRptID, xportUser, ipscKey)
 	st.AssignTS1StaticTG(t, ipscRptID, x.tg)
 	st.SeedIPSCRepeater(t, ipscSrcID, xportUser, ipscKey)
-	st.SeedPeer(t, obSrcPeerID, xportUser, obPassword, "127.0.0.1", 0, true, false)
+	st.SeedPeer(t, obSrcPeerID, xportUser, obPassword(t), "127.0.0.1", 0, true, false)
 	st.SeedPeerRule(t, obSrcPeerID, true, 1, dmrconst.MaxDMRAddress)
 
 	sp, err := testutils.NewSessionPeer(spRptID, rptPassword, "")
@@ -89,7 +89,7 @@ func (r *rig) addTransports(t *testing.T) *xport {
 		require.NoError(t, c.WaitReady(handshake))
 		*p = c
 	}
-	x.obSrc = testutils.NewOpenBridgeClient(obSrcPeerID, obPassword)
+	x.obSrc = testutils.NewOpenBridgeClient(obSrcPeerID, obPassword(t))
 	t.Cleanup(x.obSrc.Close)
 	require.NoError(t, x.obSrc.Connect(st.OpenBridgeAddr))
 

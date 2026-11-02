@@ -203,7 +203,7 @@ func TestExternalFreeDMR(t *testing.T) {
 	stack.AssignTS1StaticTG(t, mxTGRpt, 91)
 
 	obpPort, masterPort, reportPort := testutils.FreeUDPPort(t), testutils.FreeUDPPort(t), testutils.FreeUDPPort(t)
-	stack.SeedPeer(t, freeDMRServerID, mxRadio, obPassword, "127.0.0.1", obpPort, true, true)
+	stack.SeedPeer(t, freeDMRServerID, mxRadio, obPassword(t), "127.0.0.1", obpPort, true, true)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", freeDMRServerID).Update("enhanced", true).Error)
 	stack.SeedPeerRule(t, freeDMRServerID, true, 1, 99999999)
 	stack.SeedPeerRule(t, freeDMRServerID, false, 1, 99999999)
@@ -214,7 +214,7 @@ func TestExternalFreeDMR(t *testing.T) {
 	port, err := strconv.Atoi(hubPort)
 	require.NoError(t, err)
 	dir := t.TempDir()
-	cfg := fmt.Sprintf(freeDMRConfig, freeDMRServerID, obpPort, port, masterPort, reportPort, obPassword, testPassword)
+	cfg := fmt.Sprintf(freeDMRConfig, freeDMRServerID, obpPort, port, masterPort, reportPort, obPassword(t), testPassword)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "freedmr.cfg"), []byte(cfg), 0o600))
 	logs := &lockedLog{}
 	cmd := exec.CommandContext(t.Context(), python, "-E", "-s", filepath.Join(src, "bridge_master.py"), "-c", filepath.Join(dir, "freedmr.cfg")) //nolint:gosec
@@ -264,7 +264,7 @@ func TestExternalFreeDMR(t *testing.T) {
 	crossLive(t, remote, local, liveSMS(t, call{dst: mxRadio, src: liveRemoteRadio}), 0x7E82, "SMS to the hub")
 	time.Sleep(6 * time.Second)
 	send(remote, local, "FreeDMR to hub")
-	checkForgedPacketsAreDropped(t, stack.OpenBridgeAddr, freeDMRServerID, obPassword, true, local)
+	checkForgedPacketsAreDropped(t, stack.OpenBridgeAddr, freeDMRServerID, obPassword(t), true, local)
 
 	time.Sleep(65 * time.Second)
 	send(remote, local, "FreeDMR to hub after a minute of keepalives")

@@ -48,11 +48,11 @@ func startFBPStack(t *testing.T, stack *testutils.IntegrationStack) fbpStack {
 	stack.StartServers(t)
 
 	peer := func(id uint, enhanced bool) *testutils.OpenBridgeClient {
-		c := testutils.NewOpenBridgeClient(uint32(id), obPassword)
+		c := testutils.NewOpenBridgeClient(uint32(id), obPassword(t))
 		t.Cleanup(c.Close)
 		require.NoError(t, c.Connect(stack.OpenBridgeAddr))
 		addr := c.LocalAddr()
-		stack.SeedPeer(t, id, 1000001, obPassword, addr.IP.String(), addr.Port, true, true)
+		stack.SeedPeer(t, id, 1000001, obPassword(t), addr.IP.String(), addr.Port, true, true)
 		require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", id).Update("enhanced", enhanced).Error)
 		stack.SeedPeerRule(t, id, true, 1, 1)
 		stack.SeedPeerRule(t, id, false, 1000001, 1000001)

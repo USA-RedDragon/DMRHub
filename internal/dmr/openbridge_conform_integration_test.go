@@ -60,11 +60,11 @@ func startConformStack(t *testing.T, stack *testutils.IntegrationStack, enhanced
 	stack.AssignTS1StaticTG(t, conformRepeater, 2)
 	stack.StartServers(t)
 
-	peer := testutils.NewOpenBridgeClient(conformPeer, obPassword)
+	peer := testutils.NewOpenBridgeClient(conformPeer, obPassword(t))
 	t.Cleanup(peer.Close)
 	require.NoError(t, peer.Connect(stack.OpenBridgeAddr))
 	addr := peer.LocalAddr()
-	stack.SeedPeer(t, conformPeer, conformUser, obPassword, addr.IP.String(), addr.Port, true, true)
+	stack.SeedPeer(t, conformPeer, conformUser, obPassword(t), addr.IP.String(), addr.Port, true, true)
 	require.NoError(t, stack.DB.Model(&models.Peer{}).Where("id = ?", conformPeer).Update("enhanced", enhanced).Error)
 	stack.SeedPeerRule(t, conformPeer, true, 1, 1)
 	stack.SeedPeerRule(t, conformPeer, true, conformRepeater, conformRepeater)
@@ -103,7 +103,7 @@ func TestOpenBridgeDropsStaleEnhancedPackets(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		s := startConformStack(t, stack, true)
-		key := dmrdauth.NewBridgeKey([]byte(obPassword))
+		key := dmrdauth.NewBridgeKey([]byte(obPassword(t)))
 		send := func(stream uint, age time.Duration) {
 			p := makeGroupVoicePacket(conformUser, 1, stream, false)
 			p.Repeater = conformPeer
@@ -251,7 +251,7 @@ func TestOpenBridgeForgetsTheVersionOfAChangedPeer(t *testing.T) {
 		require.NoError(t, models.DeletePeer(stack.DB, conformPeer))
 		stack.Hub.PeerChanged(conformPeer)
 		addr := s.peer.LocalAddr()
-		stack.SeedPeer(t, conformPeer, conformUser, obPassword, addr.IP.String(), addr.Port, true, true)
+		stack.SeedPeer(t, conformPeer, conformUser, obPassword(t), addr.IP.String(), addr.Port, true, true)
 		stack.SeedPeerRule(t, conformPeer, false, 1, dmrconst.MaxDMRAddress)
 		stack.Hub.PeerChanged(conformPeer)
 		assert.Equal(t, []uint8{1}, s.versionsOf(t, 9644), "a peer added again keeps the version of the deleted one")

@@ -191,11 +191,11 @@ func TestIPListsRefuseOpenBridgePeers(t *testing.T) {
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 1)
 		stack.StartServers(t)
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		t.Cleanup(obc.Close)
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		local := obc.LocalAddr()
-		stack.SeedPeer(t, 500001, 1000001, obPassword, local.IP.String(), local.Port, true, true)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), local.IP.String(), local.Port, true, true)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.SeedPeerRule(t, 500001, false, 1000001, 1000001)
 

@@ -54,11 +54,11 @@ func TestStreamLoopIsDropped(t *testing.T) {
 		stack.AssignTS1StaticTG(t, 100003, 1)
 		stack.StartServers(t)
 
-		obc := testutils.NewOpenBridgeClient(500001, obPassword)
+		obc := testutils.NewOpenBridgeClient(500001, obPassword(t))
 		defer obc.Close()
 		require.NoError(t, obc.Connect(stack.OpenBridgeAddr))
 		addr := obc.LocalAddr()
-		stack.SeedPeer(t, 500001, 1000001, obPassword, addr.IP.String(), addr.Port, true, true)
+		stack.SeedPeer(t, 500001, 1000001, obPassword(t), addr.IP.String(), addr.Port, true, true)
 		stack.SeedPeerRule(t, 500001, true, 1, 1)
 		stack.SeedPeerRule(t, 500001, false, 1000001, 1000001)
 

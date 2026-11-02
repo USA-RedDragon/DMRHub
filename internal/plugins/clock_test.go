@@ -46,6 +46,7 @@ func TestTheServiceNotesTheTimesOfAPluginOnItsClock(t *testing.T) {
 		assert.True(t, start.Equal(*got.LastConnectedAt), "connected at %v", got.LastConnectedAt)
 		assert.True(t, got.Online(fake.Now()))
 
+		synctest.Wait()
 		fake.Advance(plugins.HeartbeatEvery)
 		synctest.Wait()
 		got, err = models.FindPlugin(r.db, p.ID)

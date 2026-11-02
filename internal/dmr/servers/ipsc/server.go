@@ -70,6 +70,7 @@ type IPSCServer struct {
 
 	keyFor  func(peerID uint32) (key [20]byte, useAuth bool, err error)
 	keys    *lookup.Cache[uint32, peerAuthKey]
+	rekeys  atomic.Uint64
 	unwatch func()
 	// unwatchKeys stops the calls of rekey.
 	unwatchKeys   func()
@@ -346,6 +347,7 @@ func (s *IPSCServer) rekey(id uint) {
 		return
 	}
 	s.keys.Reload(uint32(id))
+	s.rekeys.Add(1)
 	s.drop(uint32(id), connlog.PasswordRotated, "Dropping an IPSC peer whose auth key changed")
 }
 
@@ -493,7 +495,7 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 	if !ok {
 		return fmt.Errorf("peer address %v is not IPv4: %w", addr, ErrPacketIgnored)
 	}
-	key, useAuth, err := s.keyFor(raw.ID)
+	key, useAuth, err := s.lockWithKey(raw.ID)
 	if err != nil {
 		return fmt.Errorf("peer %d: %w", raw.ID, err)
 	}
@@ -502,7 +504,6 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 		kp = &key
 	}
 
-	s.mu.Lock()
 	s.heard = heard
 	now := s.now()
 	out := s.m.Packet(now, from, data, kp, s.out[:0])
@@ -534,6 +535,21 @@ func (s *IPSCServer) handlePacketAt(ctx context.Context, data []byte, addr *net.
 		return ErrPacketIgnored
 	}
 	return nil
+}
+
+func (s *IPSCServer) lockWithKey(id uint32) ([20]byte, bool, error) {
+	for {
+		rekeys := s.rekeys.Load()
+		key, useAuth, err := s.keyFor(id)
+		if err != nil {
+			return key, useAuth, err
+		}
+		s.mu.Lock()
+		if s.rekeys.Load() == rekeys {
+			return key, useAuth, nil
+		}
+		s.mu.Unlock()
+	}
 }
 
 func unregistered(out []ipscsession.Output) bool {

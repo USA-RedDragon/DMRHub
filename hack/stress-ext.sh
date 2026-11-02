@@ -16,14 +16,14 @@ name=$1 W=$2 HUB=$3 OB=$4 ID=$5 TG=$6 OBID=$7 OBTG=$8
 mkdir -p "$W"
 cd "$W" || exit 1
 H4LAT='"30.26720"'; H4LON='"-97.74310"'
-CALL=${DMRHUB_EXT_CALLSIGN:-KI5VMF} PASS=${DMRHUB_EXT_PASSWORD:-passw0rd}
+CALL=${DMRHUB_EXT_CALLSIGN:-N6CALL} PASS=${DMRHUB_EXT_PASSWORD:-passw0rd}
 LOC=${DMRHUB_EXT_LOCATION:-Austin} DESC=${DMRHUB_EXT_DESCRIPTION:-ext smoke}
 case $name in
 dmrgateway)
 	cat > MMDVM-Host.ini <<EOF
 [General]
 Callsign=$CALL
-Id=3191868
+Id=3002068
 Timeout=180
 Duplex=1
 RFModeHang=10
@@ -265,7 +265,7 @@ PORT: $((HUB+22))
 MASTER_IP: 127.0.0.1
 MASTER_PORT: $HUB
 PASSPHRASE: passw0rd
-CALLSIGN: KI5VMF
+CALLSIGN: N6CALL
 RADIO_ID: $ID
 RX_FREQ: 438800000
 TX_FREQ: 438800000
@@ -328,7 +328,7 @@ hblink4)
  "dashboard": {"enabled": false},
  "repeater_configurations": {"default": {"passphrase": "passw0rd", "slot1_talkgroups": [$TG], "slot2_talkgroups": [$OBTG]}},
  "outbound_connections": [{"enabled": true, "name": "DMRHub", "address": "127.0.0.1", "port": $HUB, "passphrase": "passw0rd",
-  "radio_id": $ID, "callsign": "KI5VMF", "rx_frequency": 438800000, "tx_frequency": 438800000, "power": 1, "colorcode": 1,
+  "radio_id": $ID, "callsign": "N6CALL", "rx_frequency": 438800000, "tx_frequency": 438800000, "power": 1, "colorcode": 1,
   "latitude": $H4LAT, "longitude": $H4LON, "height": 0, "location": "Austin", "description": "ext smoke", "url": "https://example.org",
   "software_id": "HBlink4", "package_id": "HBlink4", "options": "TS1=$TG", "unit_calls_enabled": true}],
  "openbridge_connections": [{"enabled": true, "name": "DMRHub-OBP", "network_id": $OBID, "local_address": "127.0.0.1", "local_port": $((HUB+32)),
@@ -340,7 +340,7 @@ EOF
 	;;
 mmdvm_bridge)
 	B=$EXT/mmdvm_bridge/opt/MMDVM_Bridge
-	sed -e "s|^Id=1234567|Id=$ID|" -e "s|^Callsign=N0CALL|Callsign=KI5VMF|" -e "s|^FileLevel=2|FileLevel=0|" -e "s|^FilePath=/var/log/mmdvm|FilePath=$W|" \
+	sed -e "s|^Id=1234567|Id=$ID|" -e "s|^Callsign=N0CALL|Callsign=N6CALL|" -e "s|^FileLevel=2|FileLevel=0|" -e "s|^FilePath=/var/log/mmdvm|FilePath=$W|" \
 		-e "s|^File=/var/lib/mmdvm/DMRIds.dat|File=$EXT/mmdvmhost/DMRIds.dat|" -e "s|^File=/var/lib/mmdvm/NXDN.csv|File=$EXT/mmdvmhost/NXDN.csv|" $B/MMDVM_Bridge.ini |
 		awk '/^\[DMR\]$/{s="dmr"} /^\[DMR Network\]$/{s="net"} /^\[/{if($0!="[DMR]"&&$0!="[DMR Network]")s=""}
 			s=="dmr"&&/^Enable=/{print "Enable=1";next}
@@ -358,7 +358,7 @@ ysf2dmr)
 	sed -e "s|^Id=1234567|Id=$ID|" -e "s|^Address=44.131.4.1|Address=127.0.0.1|" -e "s|^Port=62031|Port=$HUB|" -e "s|^Password=PASSWORD|Password=passw0rd|" \
 		-e "s|^StartupDstId=9990|StartupDstId=$TG|" -e "s|^StartupPC=1|StartupPC=0|" -e "s|^FileLevel=1|FileLevel=0|" \
 		-e "s|^File=DMRIds.dat|File=$EXT/mmdvm_cm/YSF2DMR/DMRIds.dat|" -e "s|^TGListFile=TGList-DMR.txt|TGListFile=$EXT/mmdvm_cm/YSF2DMR/TGList-DMR.txt|" \
-		-e "s|^Callsign=G9BF|Callsign=KI5VMF|" $EXT/mmdvm_cm/YSF2DMR/YSF2DMR.ini > YSF2DMR.ini
+		-e "s|^Callsign=G9BF|Callsign=N6CALL|" $EXT/mmdvm_cm/YSF2DMR/YSF2DMR.ini > YSF2DMR.ini
 	exec $EXT/mmdvm_cm/YSF2DMR/YSF2DMR YSF2DMR.ini
 	;;
 *)

@@ -72,13 +72,13 @@ DMRHub saves each change at once. The card shows the address that the emails go 
 DMRHub sends one email for each outage. An outage starts at the last ping of the hotspot, so a hotspot that is offline when you turn the alert on gets no email until it is back and goes offline again. The email names the last problem of the [connection log](#connection-log), when there is one:
 
 ```text
-Subject: Hotspot KP4DJT 319186801 is offline
+Subject: Hotspot N1CALL 300000201 is offline
 
-Your hotspot KP4DJT 319186801 has been offline on DMRHub Demo since Nov 1, 14:41 UTC (10 minutes).
+Your hotspot N1CALL 300000201 has been offline on DMRHub Demo since Nov 1, 14:41 UTC (10 minutes).
 
 Last problem: Connection lost: no ping for 60 seconds. Check the internet connection of the hotspot.
 
-Open the connection log: https://dmrhub.example.org/repeaters/319186801
+Open the connection log: https://dmrhub.example.org/repeaters/300000201
 
 To stop these emails, turn off "Email me when it is offline" on the same page.
 ```

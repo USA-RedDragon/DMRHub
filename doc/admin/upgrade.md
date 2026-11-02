@@ -77,7 +77,7 @@ We tested these upgrades with Docker and SQLite on 2026-10-26, with the commands
 
 | From | To | Data before the upgrade | Result |
 | ---- | -- | ----------------------- | ------ |
-| v1.3.15 (`ghcr.io/usa-reddragon/dmrhub:v1.3.15`) | main at `4b12a3d8`, built locally | An admin and a second user, talkgroup 91, MMDVM repeater 310001, one voice call in Last Heard | All data stayed. Both users logged in. A new call from the repeater showed in Last Heard. v1.3.15 and this main have the same 29 migrations, so no migration ran. |
+| v1.3.15 (`ghcr.io/usa-reddragon/dmrhub:v1.3.15`) | main at `4b12a3d8`, built locally | An admin and a second user, talkgroup 91, an MMDVM repeater, one voice call in Last Heard | All data stayed. Both users logged in. A new call from the repeater showed in Last Heard. v1.3.15 and this main have the same 29 migrations, so no migration ran. |
 | v1.3.0 (`ghcr.io/usa-reddragon/dmrhub:v1.3.0`) | main at `d7608e17`, built locally | The same data | 11 migrations ran (18 to 29 in the `migrations` table). All data stayed, and the parrot user and talkgroup 9990 of v1.3.0 were deleted. Both users logged in, and a new call showed in Last Heard. |
 | main at `d7608e17` | v1.3.0, on the migrated database | The data above | v1.3.0 started, and all data showed. It made the parrot user and talkgroup 9990 again, and they stayed after the next upgrade. |
 | main at `d7608e17` | v1.3.0, from the backup | The backup from before the upgrade | v1.3.0 started with the data of the backup, without the call made after the upgrade. |

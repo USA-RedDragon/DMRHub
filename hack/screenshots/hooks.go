@@ -143,11 +143,11 @@ type demoRepeater struct {
 
 func demoRepeaters() []demoRepeater {
 	return []demoRepeater{
-		{310001, "n0call", "mmdvm", site{"N0CALL", 444125000, 449125000, 32.7831, -96.8067, "Dallas, TX", "Demo repeater", 3}, []uint{1, 8}, []uint{3100}},
+		{990001, "n0call", "mmdvm", site{"N0CALL", 444125000, 449125000, 32.7831, -96.8067, "Dallas, TX", "Demo repeater", 3}, []uint{1, 8}, []uint{3100}},
 		{300000201, "n1call", "mmdvm", site{"N1CALL", 433450000, 433450000, 32.7767, -96.7970, "Dallas, TX", "Demo hotspot", 4}, nil, []uint{3100}},
 		{300000301, "n2call", "mmdvm", site{"N2CALL", 438800000, 438800000, 32.9483, -96.7299, "Richardson, TX", "Demo hotspot", 4}, nil, []uint{3100, 8}},
 		{300000401, "n3call", "mmdvm", site{"N3CALL", 434000000, 434000000, 33.0198, -96.6989, "Plano, TX", "Demo hotspot", 4}, nil, []uint{8}},
-		{310002, "n0call", "ipsc", site{}, nil, nil},
+		{990002, "n0call", "ipsc", site{}, nil, nil},
 	}
 }
 
@@ -328,7 +328,7 @@ func localCall() []call {
 
 func trafficCalls() []call {
 	return []call{
-		{repeater: 310001, src: 3000001, dst: 8, group: true, frames: 55},
+		{repeater: 990001, src: 3000001, dst: 8, group: true, frames: 55},
 		{repeater: 300000201, src: 3000002, dst: 3100, group: true, slot2: true, frames: 45},
 		{repeater: 300000301, src: 3000003, dst: 8, group: true, slot2: true, frames: 30},
 		{repeater: 300000401, src: 3000004, dst: 8, group: true, slot2: true, frames: 25},
@@ -340,7 +340,7 @@ func netCalls() []call {
 	return []call{
 		{repeater: 300000201, src: 3000002, dst: 3100, group: true, slot2: true, frames: 50},
 		{repeater: 300000301, src: 3000003, dst: 3100, group: true, slot2: true, frames: 35},
-		{repeater: 310001, src: 3000001, dst: 3100, group: true, slot2: true, frames: 30},
+		{repeater: 990001, src: 3000001, dst: 3100, group: true, slot2: true, frames: 30},
 	}
 }
 
@@ -729,8 +729,8 @@ func seedUnassigned(_ context.Context, r *runner) error {
 		made     time.Duration
 		seen     time.Duration
 	}{
-		{311860, "N4CALL", 438800000, 438800000, 4, 26 * time.Hour, 3 * time.Minute},
-		{311861, "N2CALL", 442775000, 447775000, 3, 40 * time.Minute, 12 * time.Minute},
+		{990360, "N4CALL", 438800000, 438800000, 4, 26 * time.Hour, 3 * time.Minute},
+		{990361, "N2CALL", 442775000, 447775000, 3, 40 * time.Minute, 12 * time.Minute},
 	}
 	for _, rp := range rps {
 		made := r.cursor.Add(-rp.made)
@@ -753,7 +753,7 @@ func seedLocalGroups(ctx context.Context, r *runner) error {
 	if err := n0.do(ctx, http.MethodPost, "/api/v1/localgroups", map[string]any{"name": "Dallas Local", "talkgroup": 9}, &dallas); err != nil {
 		return err
 	}
-	for _, id := range []uint{310001, 300000201, 300000301} {
+	for _, id := range []uint{990001, 300000201, 300000301} {
 		if err := n0.do(ctx, http.MethodPost, fmt.Sprintf("/api/v1/localgroups/%d/repeaters", dallas.ID), map[string]any{"repeater_id": id, "slot": 2}, nil); err != nil {
 			return err
 		}
@@ -768,5 +768,5 @@ func seedLocalGroups(ctx context.Context, r *runner) error {
 }
 
 func localGroupCall() []call {
-	return []call{{repeater: 310001, src: 3000001, dst: 9, group: true, slot2: true, frames: 35}}
+	return []call{{repeater: 990001, src: 3000001, dst: 9, group: true, slot2: true, frames: 35}}
 }

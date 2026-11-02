@@ -214,7 +214,7 @@ shots:
     phase: main
     as: n0call
     route: /admin/repeaters
-    wait: "310001"
+    wait: "990001"
   - name: admin-talkgroups.png
     phase: main
     as: n0call
@@ -268,7 +268,7 @@ shots:
     phase: main
     as: n0call
     route: /repeaters
-    wait: "310001"
+    wait: "990001"
     steps: ["click Edit"]
   - name: repeater-rules.png
     phase: main
@@ -337,7 +337,7 @@ shots:
     as: n0call
     needs: [unassigned]
     route: /admin/repeaters/unassigned
-    wait: "311861"
+    wait: "990361"
   - name: settings-token-full.png
     phase: main
     as: n0call

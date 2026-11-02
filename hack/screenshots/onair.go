@@ -33,7 +33,7 @@ import (
 	"rsc.io/qr"
 )
 
-const exampleOnAirKey = "JBSWY3DPEHPK3PXPKQ4DJTRA"
+const exampleOnAirKey = "JBSWY3DPEHPK3PXPMFRGGZDF"
 
 // alignToStep moves the clock to 5 s into the next time step of the
 // on-air codes, so that a code made now still holds after the steps of a
@@ -71,7 +71,7 @@ func turnOnAirCodeOn(ctx context.Context, r *runner) error {
 	}
 	for _, c := range []call{
 		{repeater: 300000401, src: 3000004, slot2: true, frames: 6},
-		{repeater: 310001, src: 3000004, frames: 6},
+		{repeater: 990001, src: 3000004, frames: 6},
 	} {
 		if err := r.advance(airauth.Period); err != nil {
 			return err
@@ -97,7 +97,7 @@ func exampleOnAirSetup(ctx context.Context, r *runner) error {
 	if err != nil {
 		return err
 	}
-	key, err := json.Marshal("JBSW Y3DP EHPK 3PXP KQ4D JTRA")
+	key, err := json.Marshal("JBSW Y3DP EHPK 3PXP MFRG GZDF")
 	if err != nil {
 		return fmt.Errorf("show the example on-air key: %w", err)
 	}

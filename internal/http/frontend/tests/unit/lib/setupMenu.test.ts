@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   TABS, allPayload, defaultNote, fromInput, inputValue, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabOfPath, tabPaths,
-  tabPayload, tabReadOnly, tabStartOnly, visibleTabs, wizardTabs, type FieldDef, type TabDef,
+  normalize, tabPayload, tabReadOnly, tabStartOnly, visibleTabs, wizardTabs, type FieldDef, type TabDef,
 } from '@/lib/setupMenu';
 import { emptySetupState, type Setting, type SetupState } from '@/lib/setupState';
 
@@ -254,10 +254,21 @@ describe('setup menu routing', () => {
     expect(tabPaths(tab('routing'))).toEqual([
       'dmr.routing.disable-dynamic-links', 'dmr.routing.dynamic-timeout', 'dmr.routing.transmit', 'dmr.routing.max-transmission',
       'dmr.routing.contention', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
-      'dmr.repeater-quota',
+      'dmr.routing.local-talkgroups', 'dmr.repeater-quota',
     ]);
     expect(tab('routing').intro).toEqual([]);
     expect(tab('routing').group).toBe('DMR');
+  });
+
+  it('takes local talkgroups as numbers and refuses bad ones', () => {
+    const f = field('dmr.routing.local-talkgroups');
+    expect(f.kind).toBe('list');
+    expect(normalize(f, ['8', ' 9 ', ''])).toEqual([8, 9]);
+    expect(f.check?.(['8', '9'])).toBeUndefined();
+    expect(f.check?.(['4000'])).toBe('4000 is not a talkgroup number from 1 to 16777215, other than 4000.');
+    expect(f.check?.(['TG9'])).toBe('TG9 is not a talkgroup number from 1 to 16777215, other than 4000.');
+    expect(f.check?.(['16777216'])).toBe('16777216 is not a talkgroup number from 1 to 16777215, other than 4000.');
+    expect(f.check?.(['9', '9'])).toBe('9 is in the list twice.');
   });
 
   it('shows the timeout only while dynamic links are on', () => {

@@ -387,11 +387,12 @@ describe('Admin Setup page routing tab', () => {
   const routingSettings = Object.fromEntries([
     ['dmr.routing.disable-dynamic-links', false], ['dmr.routing.dynamic-timeout', 9e11], ['dmr.routing.transmit', 'any'],
     ['dmr.routing.max-transmission', 0], ['dmr.routing.contention', 'mix'], ['dmr.routing.auto-create-talkgroups', false],
-    ['dmr.routing.ephemeral-talkgroups', false], ['dmr.routing.ephemeral-ttl', 8.64e13], ['dmr.repeater-quota', 100],
+    ['dmr.routing.ephemeral-talkgroups', false], ['dmr.routing.ephemeral-ttl', 8.64e13], ['dmr.routing.local-talkgroups', [8, 9]],
+    ['dmr.repeater-quota', 100],
   ].map(([p, d]) => [p, { ...plain, default: d }]));
   const routing = {
     'disable-dynamic-links': false, 'dynamic-timeout': 9e11, transmit: 'any', 'max-transmission': 0, contention: 'mix',
-    'auto-create-talkgroups': false, 'ephemeral-talkgroups': false, 'ephemeral-ttl': 8.64e13,
+    'auto-create-talkgroups': false, 'ephemeral-talkgroups': false, 'ephemeral-ttl': 8.64e13, 'local-talkgroups': [8, 9],
   };
   const withRouting = () => {
     const cfg = config();
@@ -448,6 +449,20 @@ describe('Admin Setup page routing tab', () => {
     expect(area(wrapper, 'dmr.routing.ephemeral-ttl').exists()).toBe(false);
     await wrapper.find('#setup-dmr-routing-ephemeral-talkgroups').trigger('click');
     expect((wrapper.find('#setup-dmr-routing-ephemeral-ttl').element as HTMLInputElement).value).toBe('24');
+    wrapper.unmount();
+  });
+
+  it('saves the local talkgroups as numbers and refuses 4000', async () => {
+    withRouting();
+    const { wrapper } = await mountAt('/admin/setup#routing');
+    const list = wrapper.find('#setup-dmr-routing-local-talkgroups');
+    expect((list.element as HTMLTextAreaElement).value).toBe('8\n9');
+    await list.setValue('8\n4000');
+    expect(area(wrapper, 'dmr.routing.local-talkgroups').text()).toContain('4000 is not a talkgroup number from 1 to 16777215, other than 4000.');
+    await list.setValue('8\n9\n77');
+    await wrapper.find('[data-test="save"]').trigger('click');
+    await flushPromises();
+    expect(mockAPI.put.mock.calls[0]![1].dmr.routing['local-talkgroups']).toEqual([8, 9, 77]);
     wrapper.unmount();
   });
 

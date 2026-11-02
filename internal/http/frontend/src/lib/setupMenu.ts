@@ -64,6 +64,8 @@ export type FieldDef = {
   required?: boolean;
   /** Lines of a list or a textarea. */
   rows?: number;
+  /** Makes a list a list of whole numbers. */
+  numbers?: boolean;
   /** Shows the number of entries of a list next to its label. */
   count?: boolean;
   /** Why the value cannot be saved, checked while it is typed. */
@@ -118,6 +120,23 @@ export const isText = (r: Row): r is TextRow => 'text' in r;
 export const isField = (r: Row): r is FieldDef => 'path' in r;
 
 const on = (path: string) => (read: Read) => read(path) === true;
+
+/** Why a list of local talkgroups cannot be saved, or undefined. */
+export const localTalkgroupsError = (v: unknown): string | undefined => {
+  const lines = (Array.isArray(v) ? v : []).map((e) => String(e).trim()).filter((e) => e !== '');
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const n = Number(line);
+    if (!/^\d+$/.test(line) || n < 1 || n > 16777215 || n === 4000) {
+      return `${line} is not a talkgroup number from 1 to 16777215, other than 4000.`;
+    }
+    if (seen.has(line)) {
+      return `${line} is in the list twice.`;
+    }
+    seen.add(line);
+  }
+  return undefined;
+};
 
 const hangHelp = (kind: string) =>
   `How long data and CSBK calls to a slot wait after a ${kind} call on it ends. 0 is off, at most 10 seconds.`;
@@ -749,6 +768,12 @@ export const TABS: TabDef[] = [
             path: 'dmr.routing.ephemeral-ttl', label: 'Lifetime (hours after the last call)', kind: 'hours', step: 'any',
             show: (read) => read('dmr.routing.auto-create-talkgroups') === true && read('dmr.routing.ephemeral-talkgroups') === true,
           },
+          {
+            path: 'dmr.routing.local-talkgroups', label: 'Local talkgroups', kind: 'list', numbers: true, rows: 3, count: true,
+            placeholder: '9',
+            help: 'One for each line. A call to one of them stays in the local group of its repeater.',
+            check: localTalkgroupsError,
+          },
         ],
       },
       {
@@ -996,8 +1021,10 @@ export const normalize = (f: FieldDef, v: unknown): unknown => {
     case 'mhz':
     case 'duration':
       return toNumber(v);
-    case 'list':
-      return Array.isArray(v) ? v.map((e) => String(e).trim()).filter((e) => e !== '') : [];
+    case 'list': {
+      const lines = Array.isArray(v) ? v.map((e) => String(e).trim()).filter((e) => e !== '') : [];
+      return f.numbers ? lines.map(Number) : lines;
+    }
     case 'select':
     case 'choice':
       if (numeric(f)) {

@@ -58,11 +58,19 @@ type site struct {
 }
 
 type peer struct {
-	id   uint32
-	conn *net.UDPConn
-	done chan struct{}
-	wg   sync.WaitGroup
-	mu   sync.Mutex
+	id      uint32
+	conn    *net.UDPConn
+	done    chan struct{}
+	answers chan dmrd.Command
+	wg      sync.WaitGroup
+	mu      sync.Mutex
+}
+
+func newPeer(id uint32, conn *net.UDPConn) *peer {
+	p := &peer{id: id, conn: conn, done: make(chan struct{}), answers: make(chan dmrd.Command, 1)}
+	p.wg.Add(1)
+	go p.drain()
+	return p
 }
 
 func dialPeer(addr string, id uint32, password string, s site) (*peer, error) {
@@ -74,14 +82,12 @@ func dialPeer(addr string, id uint32, password string, s site) (*peer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not reach %s: %w", addr, err)
 	}
-	p := &peer{id: id, conn: conn, done: make(chan struct{})}
+	p := &peer{id: id, conn: conn}
 	if err := p.login(password, s); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
-	p.wg.Add(1)
-	go p.drain()
-	return p, nil
+	return newPeer(id, conn), nil
 }
 
 func (p *peer) control(c dmrd.Command, token [32]byte) error {
@@ -183,13 +189,38 @@ func (p *peer) drain() {
 			return
 		default:
 			_ = p.conn.SetReadDeadline(time.Now().Add(readTimeout))
-			_, _ = p.conn.Read(buf)
+			n, err := p.conn.Read(buf)
+			if err != nil {
+				continue
+			}
+			switch c := dmrd.Classify(buf[:n], dmrd.DialectMMDVM); c { //nolint:exhaustive
+			case dmrd.CommandMSTPONG, dmrd.CommandMSTNAK:
+				select {
+				case p.answers <- c:
+				default:
+				}
+			}
 		}
 	}
 }
 
 func (p *peer) ping() error {
-	return p.control(dmrd.CommandRPTPING, [32]byte{})
+	select {
+	case <-p.answers:
+	default:
+	}
+	if err := p.control(dmrd.CommandRPTPING, [32]byte{}); err != nil {
+		return err
+	}
+	select {
+	case c := <-p.answers:
+		if c == dmrd.CommandMSTNAK {
+			return fmt.Errorf("repeater %d: the hub refused the ping, so its session ended", p.id)
+		}
+		return nil
+	case <-time.After(handshake):
+		return fmt.Errorf("repeater %d: no pong: %w", p.id, errTimeout)
+	}
 }
 
 func (p *peer) close() {

@@ -292,3 +292,53 @@ func TestStopEndsTheKVCallsOfTheHub(t *testing.T) {
 		require.ErrorIs(t, <-got, context.Canceled, "Stop must end the KV call of the hub")
 	})
 }
+
+// TestStopWaitsForTheWorkersOfTheHub stops a hub while a job of its
+// routing queue runs, as a route that links a dynamic talkgroup reads a
+// repeater, and while a load of one of its lookups runs. Stop must return
+// only after both end.
+func TestStopWaitsForTheWorkersOfTheHub(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		start func(h *Hub, work func())
+	}{
+		{name: "routing queue", start: func(h *Hub, work func()) {
+			h.routing.Do(context.Background(), sourceSlot{}, work)
+		}},
+		{name: "lookup load", start: func(h *Hub, work func()) {
+			go func() {
+				_, _ = h.owners.Do(100001, func() ([]byte, error) {
+					work()
+					return nil, nil
+				})
+			}()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				h := NewHub(nil, nil, nil, nil)
+				entered, release := make(chan struct{}), make(chan struct{})
+				tc.start(h, func() {
+					close(entered)
+					<-release
+				})
+				<-entered
+				stopped := make(chan struct{})
+				go func() {
+					h.Stop(context.Background())
+					close(stopped)
+				}()
+				synctest.Wait()
+				select {
+				case <-stopped:
+					t.Error("Stop returned while a worker of the hub ran")
+				default:
+				}
+				close(release)
+				<-stopped
+			})
+		})
+	}
+}

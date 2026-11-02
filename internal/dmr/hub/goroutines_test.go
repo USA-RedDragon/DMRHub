@@ -31,42 +31,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTheHubStartsGoroutinesOnlyThroughGoTracked parses the package and
-// fails on each go statement outside goTracked, whose goroutines Stop
-// waits for. A goroutine that Stop does not wait for can use the
-// database or the pubsub after the caller closed them.
-func TestTheHubStartsGoroutinesOnlyThroughGoTracked(t *testing.T) {
+// TestTheHubStartsGoroutinesOnlyThroughItsHooks parses the hub and the
+// packages that start goroutines for it, and fails on each go statement
+// outside the hook of its package: goTracked in the hub, whose goroutines
+// Stop waits for, and goStart in the others, which the hub points at
+// goTracked with GoWith or, in the transcoder, which Close waits for. A
+// goroutine that Stop does not wait for can use the database or the
+// pubsub after the caller closed them.
+func TestTheHubStartsGoroutinesOnlyThroughItsHooks(t *testing.T) {
 	t.Parallel()
-	files, err := filepath.Glob("*.go")
-	require.NoError(t, err)
 	fset := token.NewFileSet()
 	var bare []string
-	tracked := 0
-	for _, name := range files {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(name)
+	for dir, hook := range map[string]string{".": "goTracked", "../lookup": "goStart", "../streamorder": "goStart", "../outbox": "goStart", "../transcode": "goStart"} {
+		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		require.NoError(t, err)
-		f, err := parser.ParseFile(fset, name, src, 0)
-		require.NoError(t, err)
-		for _, decl := range f.Decls {
-			fn, isFunc := decl.(*ast.FuncDecl)
-			ast.Inspect(decl, func(n ast.Node) bool {
-				if _, ok := n.(*ast.GoStmt); !ok {
+		require.NotEmpty(t, files, dir)
+		hooks := 0
+		for _, name := range files {
+			if strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			src, err := os.ReadFile(name)
+			require.NoError(t, err)
+			f, err := parser.ParseFile(fset, name, src, 0)
+			require.NoError(t, err)
+			for _, decl := range f.Decls {
+				fn, isFunc := decl.(*ast.FuncDecl)
+				ast.Inspect(decl, func(n ast.Node) bool {
+					if _, ok := n.(*ast.GoStmt); !ok {
+						return true
+					}
+					if isFunc && fn.Name.Name == hook && fn.Recv != nil {
+						hooks++
+						return true
+					}
+					bare = append(bare, fset.Position(n.Pos()).String())
 					return true
-				}
-				if isFunc && fn.Name.Name == "goTracked" && fn.Recv != nil {
-					tracked++
-					return true
-				}
-				bare = append(bare, fset.Position(n.Pos()).String())
-				return true
-			})
+				})
+			}
 		}
+		require.Positive(t, hooks, "%s starts its goroutines in %s", dir, hook)
 	}
-	require.Empty(t, bare, "go statements outside goTracked")
-	require.Equal(t, 1, tracked, "goTracked starts the goroutines")
+	require.Empty(t, bare, "go statements outside the hooks")
 }
 
 // TestTheHubReachesItsStoresOnlyThroughItsStopContext parses the package

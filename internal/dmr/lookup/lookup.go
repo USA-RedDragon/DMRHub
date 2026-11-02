@@ -70,6 +70,7 @@ type Flights[K comparable, V any] struct {
 	clock clock.Clock
 	m     *xsync.Map[K, *flight[V]]
 	held  atomic.Pointer[<-chan struct{}]
+	goFn  func(func())
 }
 
 type flight[V any] struct {
@@ -114,6 +115,20 @@ func (f *Flights[K, V]) Do(key K, load func() (V, error)) (V, error) {
 	}
 }
 
+// GoWith makes f run its loads on goroutines that start calls, such as
+// one whose goroutines a Stop waits for. Call it before the first Do.
+func (f *Flights[K, V]) GoWith(start func(func())) {
+	f.goFn = start
+}
+
+func (f *Flights[K, V]) goStart(fn func()) {
+	if f.goFn != nil {
+		f.goFn(fn)
+		return
+	}
+	go fn()
+}
+
 // HoldWaits makes Do wait for a load until end is closed, instead of until
 // Wait after the load started, so that a test can stand for a load that
 // takes longer than Wait without waiting Wait.
@@ -133,11 +148,11 @@ func (f *Flights[K, V]) start(key K, load func() (V, error)) *flight[V] {
 		return &flight[V]{done: make(chan struct{}), until: f.clock.Now().Add(Wait)}, false
 	})
 	if !loaded {
-		go func() {
+		f.goStart(func() {
 			fl.val, fl.err = load()
 			f.m.Delete(key)
 			close(fl.done)
-		}()
+		})
 	}
 	return fl
 }
@@ -172,7 +187,7 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 	if e, ok := c.entries.Load(key); ok {
 		e.read.Store(monotime.Of(now))
 		if now.Sub(e.at) >= c.ttl && e.refreshing.CompareAndSwap(false, true) {
-			go c.refresh(key, e)
+			c.flights.goStart(func() { c.refresh(key, e) })
 		}
 		return e.val, nil
 	}
@@ -184,6 +199,12 @@ func (c *Cache[K, V]) Get(key K) (V, error) {
 		}
 		return v, err
 	})
+}
+
+// GoWith makes c run its loads and refreshes on goroutines that start
+// calls, as Flights.GoWith does. Call it before the first Get.
+func (c *Cache[K, V]) GoWith(start func(func())) {
+	c.flights.GoWith(start)
 }
 
 // HoldWaits makes Get wait for a load until end is closed, as

@@ -79,6 +79,7 @@ type Outbox[K comparable] struct {
 	pending pending
 	deepLog limitedLog
 	errLog  limitedLog
+	start   func(func())
 }
 
 type queue struct {
@@ -91,6 +92,21 @@ type queue struct {
 // attrs gives the log attributes of a key.
 func New[K comparable](ps pubsub.PubSub, done <-chan struct{}, what string, attrs func(K) []any) *Outbox[K] {
 	return &Outbox[K]{ps: ps, done: done, what: what, attrs: attrs, queues: map[K]*queue{}}
+}
+
+// GoWith makes o run the queue of each key on goroutines that start
+// calls, such as one whose goroutines a Stop waits for. Call it before
+// the first Add.
+func (o *Outbox[K]) GoWith(start func(func())) {
+	o.start = start
+}
+
+func (o *Outbox[K]) goStart(fn func()) {
+	if o.start != nil {
+		o.start(fn)
+		return
+	}
+	go fn()
 }
 
 // Add queues job on the queue of key. It never blocks.
@@ -110,7 +126,7 @@ func (o *Outbox[K]) Add(key K, job Job) {
 	if !ok {
 		q = &queue{}
 		o.queues[key] = q
-		go o.run(key, q)
+		o.goStart(func() { o.run(key, q) })
 	}
 	q.jobs = append(q.jobs, job)
 	n := len(q.jobs) - q.head

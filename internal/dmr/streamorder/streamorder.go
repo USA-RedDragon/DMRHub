@@ -33,12 +33,27 @@ type Queue[K comparable] struct {
 	workers map[K]chan func()
 	depth   int
 	done    <-chan struct{}
+	start   func(func())
 }
 
 // New makes a Queue that holds up to depth jobs for each key. The workers
 // stop when done is closed.
 func New[K comparable](depth int, done <-chan struct{}) *Queue[K] {
 	return &Queue[K]{workers: map[K]chan func(){}, depth: max(depth, 1), done: done}
+}
+
+// GoWith makes q run its workers on goroutines that start calls, such as
+// one whose goroutines a Stop waits for. Call it before the first Do.
+func (q *Queue[K]) GoWith(start func(func())) {
+	q.start = start
+}
+
+func (q *Queue[K]) goStart(fn func()) {
+	if q.start != nil {
+		q.start(fn)
+		return
+	}
+	go fn()
 }
 
 // Do queues fn on the worker of key. It returns false, without queueing
@@ -58,7 +73,7 @@ func (q *Queue[K]) Do(ctx context.Context, key K, fn func()) bool {
 	if !ok {
 		jobs = make(chan func(), q.depth)
 		q.workers[key] = jobs
-		go q.run(key, jobs)
+		q.goStart(func() { q.run(key, jobs) })
 	}
 	select {
 	case jobs <- fn:

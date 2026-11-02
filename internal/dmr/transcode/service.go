@@ -157,11 +157,7 @@ func (s *Service) SetServers(list []ServerConfig) {
 		ctx, cancel := context.WithCancel(context.Background())
 		srv := &server{ServerConfig: c, clock: s.timing.Load().clock, cancel: cancel, leases: newLeases(s.kv, c)}
 		next = append(next, srv)
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			probe(ctx, srv)
-		}()
+		s.goStart(func() { probe(ctx, srv) })
 	}
 	for _, o := range old {
 		if o != nil {
@@ -173,7 +169,15 @@ func (s *Service) SetServers(list []ServerConfig) {
 		return
 	}
 	s.servers.Store(&next)
-	go warmCodec2()
+	s.goStart(warmCodec2)
+}
+
+func (s *Service) goStart(fn func()) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		fn()
+	}()
 }
 
 func (s *Service) list() []*server {

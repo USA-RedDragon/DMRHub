@@ -349,6 +349,9 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		return models.TalkgroupRepeaterIDs(h.db, tg)
 	})
 	h.heard = make(chan heardNote, heardQueue)
+	for _, q := range []interface{ GoWith(func(func())) }{h.outbox, h.later, h.peerEgress, h.routing, h.links, h.talkgroupIDs, h.radioOwners, h.radioCalls, h.egressTable, h.lastSeen, h.owners, h.tgRepeaters} {
+		q.GoWith(h.goTracked)
+	}
 	if h.db != nil {
 		h.loadRules()
 		h.loadTalkgroups()
@@ -360,6 +363,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.goTracked(h.runDynamicTimeouts)
 	h.goTracked(h.runEphemeralTalkgroups)
 	h.repeaters = newRepeaterCache(h.clock)
+	h.repeaters.flights.GoWith(h.goTracked)
 	h.origin = newOrigin()
 	if ps != nil {
 		repeaterChanges, codecChanges := ps.Subscribe(repeaterChangedTopic), ps.Subscribe(codecChangedTopic)

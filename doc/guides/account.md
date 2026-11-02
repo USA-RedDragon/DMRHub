@@ -1,6 +1,6 @@
 # Manage your account
 
-Go to **Settings** (`<siteurl>/settings`) to change your password, set your email address, turn SMS Storage on or off, add your other radio IDs, remove apps, and make API tokens for your own scripts.
+Go to **Settings** (`<siteurl>/settings`) to change your password, set your email address, turn SMS Storage on or off, add your other radio IDs, turn on the services of plugins, remove apps, and make API tokens for your own scripts.
 
 ![The Settings page](../Screenshots/settings.png)
 
@@ -48,6 +48,14 @@ An app keeps its access while you use it. If you do not use an app for 30 days, 
 The **API tokens** card makes tokens that let your own scripts use the DMRHub API as you. A token can use only what you pick for it, or have **Full account access**: everything you can do signed in, except admin pages and account security (tokens, apps, password, username, callsign, email, and deleting the account). DMRHub shows each token once. **Rotate** gives a token a new secret and ends the old one at once; **Delete** ends it. See [API tokens](../api-tokens.md).
 
 ![The API tokens card with a new token to copy, and the list of tokens](../Screenshots/settings-tokens-card.png)
+
+## Plugin services
+
+Some plugins of the network serve you only after you turn on their switch on Settings, such as a service that sends your messages to the internet. Each such plugin has its own card. Turn on its switch to use the service. The card then shows what the service needs from you, such as your address on that service and how to use it from your radio, and a note on who can read what it sends. Some cards also have a list, such as a choice of net. Turn the switch off to stop the service.
+
+![The card of a plugin service, Net check-in list, with its switch on, the net Thursday picked, the callsign on the list and how to check in](../Screenshots/settings-plugin-switch.png)
+
+The cards show only the plugins that an admin turned on, and the name of the plugin of each. When you turn on a switch, you also let that plugin send APRS messages from your callsign. Turn on only the switches of services that you use.
 
 ## Theme
 

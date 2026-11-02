@@ -15,6 +15,8 @@ This page is for developers who write plugins. To install, upload and manage plu
 - The hub routes a plugin's calls as it routes the calls of a repeater, with the same limit of one call at a time on each timeslot.
 - A group call of a plugin goes to the OpenBridge peers whose rules take it. A private call of a plugin goes to the peers only when the radio is not on this hub, so that a reply to a radio here does not arrive twice.
 - A plugin can ask for the radios whose owners turned position tracking on, and for where the hub hears them. It can send the positions that those radios report to its IDs. The hub keeps a position only when the radio's owner turned tracking on. It then shows the position on the map and sends it to APRS-IS as the owner chose.
+- To send a text message, a plugin asks the hub, which builds it in the format of a text that the radio itself sent. See [Send a text](#send-a-text). Build no text bursts yourself: the wrong format can lock up a radio.
+- A plugin sends an APRS message only from the address of a user who turned its switch on. See [APRS messages](#aprs-messages).
 
 ## Write a plugin
 
@@ -69,6 +71,14 @@ The main parts of the SDK:
 | `conn.Name()`, `conn.Ranges()`                        | The plugin's name and IDs on the hub.                                                         |
 | `plugin.DataOf(burst)`, `plugin.BurstOf(data)`        | Change a burst into a DMRD packet of [dmrgo](https://github.com/USA-RedDragon/dmrgo), and back. |
 | `plugin.IsVoice(burst)`, `plugin.IsTerminator(burst)` | Tell whether a burst is part of a voice call, and whether it ends one.                        |
+| `plugin.VoiceBursts(call, slots)`, `plugin.Play(ctx, conn.Send, bursts)` | Build a voice call from AMBE+2 vocoder slots, such as a few clips one after another, and send it at the pace of a timeslot. |
+| `conn.Subscribe(sub)`                                  | Asks for more than the calls to the plugin's IDs: every radio the hub hears, texts, switches and APRS messages. |
+| `conn.StoreGet`, `StorePut`, `StoreDelete`, `StoreList` | Keep data in the plugin's store in the hub's database.                                        |
+| `conn.LookupRadio(ctx, id)`, `conn.LookupCallsign(ctx, call)` | Find a user, the user's radio IDs and how the user set the plugin's switches.            |
+| `conn.Repeater(ctx, id)`                               | The static and dynamic talkgroups of each timeslot of a repeater or hotspot.                  |
+| `conn.SendText(ctx, from, radio, text)`                | Asks the hub to send a text message to a radio.                                               |
+| `conn.SendAPRS(ctx, message)`                          | Asks the hub to send an APRS message on its APRS-IS login.                                    |
+| `conn.Has(feature)`, `conn.Request(ctx, request)`      | Tell whether the hub serves a feature, and make any request of the hub.                       |
 
 dmrgo has voice and data receivers and transmitters that decode and build calls from DMRD packets. The parrot in `plugins/parrot` and the location server in `plugins/locator` are full examples.
 
@@ -104,8 +114,96 @@ A plugin tells the hub who it is with a `Hello` message. In Go, this is the firs
 | `description` | What the plugin does, in a sentence or two. At most 500 characters.                                                                         |
 | `ids`         | The ID ranges that the plugin asks for, from `first` to `last`, both included. The admin can change them.                                  |
 | `hosts`       | For a plugin inside DMRHub: at most 16 hosts that it asks to reach. Each has an `address` as `host:port`, at most 255 characters, and a `reason` of at most 200 characters. |
+| `switches`    | At most 4 per-user switches that the Settings page shows. See [Per-user switches](#per-user-switches).                                      |
 
-A plugin that runs as its own program can send its `Hello` after the `Welcome`. The hub then keeps only its version, for the plugins page. The admin sets the name and the IDs.
+A plugin that runs as its own program can send its `Hello` after the `Welcome`. The hub then keeps only its version, for the plugins page, and its switches. The admin sets the name and the IDs.
+
+### Services of the hub
+
+Besides calls, a plugin can ask the hub for data and services. The Go SDK makes each request and waits for its answer, also while another goroutine waits in `conn.Recv`. A request fails with an `*plugin.AnswerError`, which matches `plugin.ErrNotFound`, `plugin.ErrInvalid`, `plugin.ErrRefused`, `plugin.ErrFull`, `plugin.ErrUnavailable`, `plugin.ErrNoFormat` or `plugin.ErrRate` with `errors.Is`.
+
+```go
+func serve(ctx context.Context, conn *plugin.Conn) error {
+	if err := conn.Subscribe(&pluginv1.Subscribe{Texts: true, Heard: true}); err != nil {
+		return err
+	}
+	for {
+		m, err := conn.Recv()
+		if err != nil {
+			return err
+		}
+		if t := m.GetText(); t != nil && t.GetBody() == "INBOX" {
+			mail, _, err := conn.StoreList(ctx, fmt.Sprintf("mail/%d/", t.GetSource()), "", 0)
+			if err != nil {
+				return err
+			}
+			_, err = conn.SendText(ctx, t.GetDestination(), t.GetSource(), fmt.Sprintf("%d messages", len(mail)))
+			if errors.Is(err, plugin.ErrNoFormat) {
+				continue
+			}
+		}
+	}
+}
+```
+
+| Service      | What it does                                                                                                                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Store        | Each plugin has a store of keys and values in the hub's database, which every replica shares. A key has 1 to 255 bytes and a value at most 16 KiB. A store holds at most 10000 keys. A key can expire after a time. `StoreList` returns the keys with a prefix, at most 100 at a time, in byte order. Deleting the plugin deletes its store. |
+| Users        | `LookupRadio` and `LookupCallsign` return a user who is approved and not suspended: the account ID, the callsign, all the user's radio IDs, and how the user set each switch of the plugin.             |
+| Repeaters    | `Repeater` returns the static talkgroups and the dynamic talkgroup of each timeslot of a repeater or hotspot, such as the `repeater` of a burst.                                                          |
+| Heard        | `Subscribe` with `heard` sends a `Heard` each time the hub hears any radio on a repeater, not only the radios with tracking on.                                                                         |
+| Texts        | `Subscribe` with `texts` sends a `Text` for each text message to the plugin's IDs, as the hub read it: the source, the destination, the format and the text. The bursts of the message still come. A stream gets each message once; while a plugin moves to another replica, the Go SDK drops the copy from the other stream. |
+| Voice        | `plugin.VoiceBursts` builds the bursts of a voice call from AMBE+2 vocoder slots, and `plugin.Play` sends them one burst each 60 ms.                                                                     |
+
+#### Send a text
+
+A plugin never builds the bursts of a text message itself. It asks the hub with `SendText`: from one of its IDs, to a radio, with at most 500 characters. The hub builds the message in the exact format of the last text that the radio itself sent: its header, rate, encoding and service. The wrong format can lock up a radio, so when the radio sent no text that the hub can build again, the hub sends nothing and answers `ErrNoFormat`.
+
+To answer a text, send to its source: the text that just came is then the format of the answer. The response of the radio to the text comes to the plugin as bursts from the radio.
+
+#### APRS messages
+
+`SendAPRS` sends an APRS message on the hub's APRS-IS login. The source is the address, as `CALLSIGN-SSID`, of a user who turned a switch of the plugin on, and whose callsign is a licensed one. The addressee has at most 9 characters, and the text at most 67, with none of `|`, `~` or `{`. The hub sends at most 30 messages a minute for a plugin, over all its connections and replicas. A hub with no APRS-IS login answers `ErrUnavailable`. An answer with no error means that the hub handed the message to the replica that holds its APRS-IS login; APRS-IS does not say whether the addressee got it. During an upgrade, a replica of an older version that holds the login drops the message, so send it again until its ack comes.
+
+`Subscribe` with `aprs` lists the addresses whose APRS messages, acks included, come to the plugin as `APRSMessage`. It needs the feature `FEATURE_APRS_INBOX`, which a hub offers once it reads APRS messages from APRS-IS. The hub takes only the addresses of users who turned a switch of the plugin on, and drops an address when its user has no switch of the plugin on any more.
+
+#### Per-user switches
+
+A plugin can declare in its `Hello` at most 4 switches that each user turns on or off on the Settings page, such as for a service that sends the user's messages to the internet. Serve a user only when that user turned the switch on. The card shows the name of the plugin. A user who turns on any switch of a plugin lets it send APRS messages from the user's callsign.
+
+```go
+plugin.MainWith(&pluginv1.Hello{
+	Name: "Check-in list",
+	Switches: []*pluginv1.Switch{{
+		Key:         "list",
+		Title:       "Net check-in list",
+		Description: "Show your callsign on the public check-in list of the nets that you call in to.",
+		Notice:      "The check-in list is on the internet, where anyone can read it.",
+		Details: []*pluginv1.SwitchDetail{
+			{Label: "Your name on the list", Value: "`{callsign}`"},
+			{Label: "To check in", Value: "Call `{id}` during the {choice} net."},
+		},
+		Choice: &pluginv1.SwitchChoice{Label: "Net", Options: []string{"Tuesday", "Thursday"}},
+	}},
+}, serve)
+```
+
+![The card of the switch on the Settings page, on, with Thursday picked](Screenshots/settings-plugin-switch.png)
+
+| Field         | Rules                                                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `key`         | 1 to 32 of `a` to `z`, `0` to `9`, `_` and `-`, one per switch.                                                               |
+| `title`       | 1 to 64 characters. The title of the card and the label of the switch.                                                       |
+| `description` | At most 300 characters.                                                                                                       |
+| `notice`      | At most 300 characters. A caution under the details, such as who can read what the service sends.                           |
+| `details`     | At most 4 lines that the card shows while the switch is on, each a `label` of at most 32 characters and a `value` of at most 200. In the value, `{callsign}` is the user's callsign, `{choice}` the user's choice and `{id}` the plugin's first ID. Text between backticks shows in a fixed-width font. |
+| `choice`      | A list that the user picks from while the switch is on: a `label`, 1 to 32 `options` of at most 16 characters, and the `preset`, which is the first option when empty. |
+
+The hub drops a switch that breaks a rule, and logs why. `Subscribe` with `switches` sends a `UserSwitches` with each user who turned a switch on, and a `UserSwitch` at each change. `LookupRadio` and `LookupCallsign` also give the switches of a user.
+
+#### During an upgrade
+
+During a rolling upgrade, replicas of two versions run together, and a plugin can move from one to the other. The `Welcome` of each replica lists the features it serves. `conn.Has` tells whether the replica that holds the plugin now serves one, and can change after a move: check it again before you rely on a feature, such as each time you handle a call. A request or subscription that the replica does not serve fails with `plugin.ErrUnsupported` and the hub does nothing. When the plugin moves to another replica, the SDK subscribes there again with the parts of the last `Subscribe` that the replica serves. A request whose stream ends before its answer fails with `plugin.ErrLost`; the hub may have done it. Strings, such as store keys, are UTF-8; the SDK refuses others with `plugin.ErrInvalid`.
 
 ### The sandbox
 
@@ -142,9 +240,10 @@ What the plugin sends (`ConnectRequest`):
 | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | `Hello`      | Who the plugin is and what it asks for. See [The manifest](#the-manifest).                                  |
 | `Burst`      | A burst of a call that the plugin sends.                                                                     |
-| `Subscribe`  | `tracking: true` asks for the radios with position tracking on. A later `Subscribe` replaces an earlier one. |
+| `Subscribe`  | `tracking: true` asks for the radios with position tracking on; `heard`, `texts`, `switches` and `aprs` ask for the services above. A later `Subscribe` replaces an earlier one. |
 | `Position`   | A position that a radio reported to one of the plugin's IDs.                                                 |
 | `NetRequest` | Opens, reads, writes or closes a TCP connection. Only inside DMRHub.                                         |
+| `Request`    | A request of the store, a user, a repeater, a text or an APRS message, with the plugin's `id` of the request. The hub answers each with an `Answer` of the same `id`. |
 
 What the hub sends (`ConnectResponse`):
 
@@ -156,8 +255,14 @@ What the hub sends (`ConnectResponse`):
 | `Ranges`      | The admin changed the plugin's IDs.                                                                                                                                                                    |
 | `Tracked`     | After a `Subscribe` with tracking: all the radios with tracking on.                                                                                                                                   |
 | `Tracking`    | An owner turned tracking of a radio on or off, or changed how often it reports.                                                                                                                       |
-| `Heard`       | The hub heard a tracked radio on a repeater, with its timeslot, its color code and `at`, when the hub heard it in milliseconds since 1970 UTC. A `Heard` can come later than `at`. A hub older than `at` leaves it out: use the time the `Heard` came then. |
+| `Heard`       | The hub heard a tracked radio, or any radio after a `Subscribe` with heard, on a repeater, with its timeslot, its color code and `at`, when the hub heard it in milliseconds since 1970 UTC. A `Heard` can come later than `at`. A hub older than `at` leaves it out: use the time the `Heard` came then. |
 | `Draining`    | The replica stops soon. Connect again while you keep this stream. See [Several replicas](admin/plugins.md#several-replicas).                                                                                         |
 | `NetResponse` | The answer to a `NetRequest`.                                                                                                                                                                          |
+| `Answer`      | The answer to a `Request`: a result, or an error code and its reason.                                                                                                                                  |
+| `Text`        | After a `Subscribe` with texts: a text message to one of the plugin's IDs.                                                                                                                            |
+| `UserSwitches`, `UserSwitch` | After a `Subscribe` with switches: each user who turned a switch of the plugin on, then each change.                                                                                    |
+| `APRSMessage` | After a `Subscribe` with aprs: an APRS message to one of the plugin's addresses.                                                                                                                      |
+
+The `features` of the `Welcome` list what the replica serves besides bursts, tracking, positions and the network. A hub that does not list a feature ignores its requests and subscriptions.
 
 A `Burst` is one DMR burst as the MMDVM network protocol carries it. It has the source and destination IDs, group or private call, the timeslot (1 or 2), the stream ID, the frame type, the data type or voice sequence, the sequence number (0 to 255), and the 33 bytes of the burst. Its `repeater` field is the repeater or hotspot that the call came from. The hub ignores that field on the bursts that a plugin sends.

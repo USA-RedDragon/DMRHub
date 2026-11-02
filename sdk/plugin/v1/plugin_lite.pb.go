@@ -2029,11 +2029,16 @@ func (x *SlotInfo) GetDynamicTalkgroup() uint32 {
 
 // SendText asks the hub to send a private text message to a radio. The
 // plugin gives the text, not the bursts: the hub builds the message in the
-// exact format of the last text that the radio itself sent (header type,
-// rate, encoding and service), because a format that a radio does not
-// send can lock it up. With no such text, the hub sends nothing and
-// answers ERROR_CODE_NO_FORMAT. The responses of the radio come to the
-// plugin as bursts from the radio to source.
+// exact format of the last text that the radio itself sent through a
+// repeater of its owner or one that an admin trusts (header type, rate,
+// encoding and service), because a format that a radio does not send can
+// lock it up, and sends it through the repeater and timeslot of that text.
+// With no such text, the hub sends nothing and answers
+// ERROR_CODE_NO_FORMAT. The hub answers once it sent the text, or, when
+// the format asks the radio for an answer, once the radio acknowledged it:
+// ERROR_CODE_REFUSED when the radio refused it, ERROR_CODE_UNAVAILABLE when
+// it did not answer, and ERROR_CODE_INVALID for a text that the format
+// cannot carry.
 type SendText struct {
 	unknownFields []byte
 	// One of the plugin's IDs.

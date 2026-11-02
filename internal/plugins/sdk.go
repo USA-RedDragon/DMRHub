@@ -50,15 +50,27 @@ const (
 	aprsLimitWait = 5 * time.Second
 )
 
-// ErrNoFormat is returned by Texts.SendText when the hub knows no text
-// format that the radio sends.
-var ErrNoFormat = errors.New("the hub knows no text format that the radio sends")
+// The errors of Texts.SendText.
+var (
+	// ErrNoFormat is returned when the hub knows no text format that the
+	// radio sends.
+	ErrNoFormat = errors.New("the hub knows no text format that the radio sends")
+	// ErrTextDoesNotFit is returned for a text that the format of the
+	// radio cannot carry.
+	ErrTextDoesNotFit = errors.New("the text does not fit the text format of the radio")
+	// ErrRadioRefused is returned when the radio refused the text.
+	ErrRadioRefused = errors.New("the radio refused the text")
+	// ErrNoAnswer is returned when the radio did not answer a text that
+	// asks for an answer.
+	ErrNoAnswer = errors.New("the radio did not answer the text")
+)
 
 // Texts sends the text messages of plugins.
 type Texts interface {
 	// SendText sends body from source to radio, in the format of a text
 	// that radio sent, and returns the name of the format. It returns
-	// ErrNoFormat, and sends nothing, when the hub knows no such text.
+	// ErrNoFormat, and sends nothing, when the hub knows no such text, and
+	// ErrTextDoesNotFit, ErrRadioRefused or ErrNoAnswer.
 	SendText(ctx context.Context, source, radio uint, body string) (string, error)
 }
 
@@ -403,6 +415,12 @@ func (q *requester) sendText(ctx context.Context, t *pluginv1.SendText, ranges [
 	switch {
 	case errors.Is(err, ErrNoFormat):
 		return fail(pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, err.Error())
+	case errors.Is(err, ErrTextDoesNotFit):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, err.Error())
+	case errors.Is(err, ErrRadioRefused):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, err.Error())
+	case errors.Is(err, ErrNoAnswer):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, err.Error())
 	case err != nil:
 		return q.unavailable("send a text", err)
 	}

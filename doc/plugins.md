@@ -157,9 +157,11 @@ func serve(ctx context.Context, conn *plugin.Conn) error {
 
 #### Send a text
 
-A plugin never builds the bursts of a text message itself. It asks the hub with `SendText`: from one of its IDs, to a radio, with at most 500 characters. The hub builds the message in the exact format of the last text that the radio itself sent: its header, rate, encoding and service. The wrong format can lock up a radio, so when the radio sent no text that the hub can build again, the hub sends nothing and answers `ErrNoFormat`.
+A plugin never builds the bursts of a text message itself. It asks the hub with `SendText`: from one of its IDs, to a radio, with at most 500 characters. The hub builds the message in the exact format of the last text that the radio itself sent: its header, rate, encoding and service, as [store and forward](guides/text-messages.md) does. The wrong format can lock up a radio, so when the radio sent no text that the hub can build again, the hub sends nothing and answers `ErrNoFormat`.
 
-To answer a text, send to its source: the text that just came is then the format of the answer. The response of the radio to the text comes to the plugin as bursts from the radio.
+The hub reads the format only from a text that the radio sent through a repeater or hotspot of its owner, or one that an admin trusts, so that another hotspot cannot set it with the radio's ID. It sends the text through the repeater and timeslot of that text. `SendText` returns once the hub sent the text, or, when the format asks the radio for an answer, once the radio acknowledged it. It returns `ErrRefused` when the radio refused the text, `ErrUnavailable` when the radio did not answer, and `ErrInvalid` for a text that the format cannot carry, such as Chinese in a 7-bit format.
+
+To answer a text, send to its source: the text that just came is then the format of the answer, unless it came through a hotspot that is not the owner's and not trusted.
 
 #### APRS messages
 

@@ -290,6 +290,16 @@ func TestAPluginSendsATextOnlyFromItsIDsAndOnlyInAFormatTheHubKnows(t *testing.T
 		texts.err = fmt.Errorf("the radio never sent a text: %w", plugins.ErrNoFormat)
 		texts.mu.Unlock()
 		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, sendText(t, s, 4700, 3191869, "hi").GetCode())
+		for err, code := range map[error]pluginv1.ErrorCode{
+			plugins.ErrTextDoesNotFit: pluginv1.ErrorCode_ERROR_CODE_INVALID,
+			plugins.ErrRadioRefused:   pluginv1.ErrorCode_ERROR_CODE_REFUSED,
+			plugins.ErrNoAnswer:       pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE,
+		} {
+			texts.mu.Lock()
+			texts.err = fmt.Errorf("sending: %w", err)
+			texts.mu.Unlock()
+			assert.Equal(t, code, sendText(t, s, 4700, 3191869, "hi").GetCode(), err)
+		}
 	})
 }
 

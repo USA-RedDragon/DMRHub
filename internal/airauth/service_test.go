@@ -353,3 +353,23 @@ func TestATryThatCannotFinishIsLoggedAndNotCountedAsAWrongCode(t *testing.T) { /
 		})
 	}
 }
+
+// noExpireKV fails every Expire, as a store does that goes away between
+// two calls.
+type noExpireKV struct{ kv.KV }
+
+func (noExpireKV) Expire(context.Context, string, time.Duration) error { return errStoreDown }
+
+func TestASetupKeepsItsTimeLimitInOneWrite(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.store = noExpireKV{KV: e.store}
+	e.svc = e.service()
+	ctx := context.Background()
+	setup, err := e.svc.Begin(ctx, owner, "DMRHub", "n0code")
+	require.NoError(t, err, "a setup must not need a second call to the store for its time limit")
+	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(setup.Key)
+	require.NoError(t, err)
+	e.clock.Advance(airauth.SetupTTL + time.Second)
+	require.ErrorIs(t, e.svc.Confirm(ctx, owner, e.code(secret, 0)), airauth.ErrNoSetup, "the setup must end after its time limit")
+}

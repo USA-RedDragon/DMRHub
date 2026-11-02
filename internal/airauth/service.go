@@ -231,10 +231,8 @@ func (s *Service) Begin(ctx context.Context, userID uint, issuer, account string
 	if err != nil {
 		return Setup{}, err
 	}
-	if err := s.store.Set(ctx, pendingKey(userID), []byte(sealed)); err != nil {
-		return Setup{}, fmt.Errorf("keep the on-air code setup: %w", err)
-	}
-	if err := s.store.Expire(ctx, pendingKey(userID), SetupTTL); err != nil {
+	err = s.store.Update(ctx, pendingKey(userID), SetupTTL, func([]byte) ([]byte, error) { return []byte(sealed), nil })
+	if err != nil {
 		return Setup{}, fmt.Errorf("keep the on-air code setup: %w", err)
 	}
 	return Setup{Key: EncodeSecret(secret), URI: URI(issuer, account, secret)}, nil

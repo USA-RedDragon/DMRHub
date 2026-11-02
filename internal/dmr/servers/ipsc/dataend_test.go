@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	smsSource = 3118601
-	smsTarget = 3118602
+	smsSource = 3003501
+	smsTarget = 3003502
 	smsPeer   = 311860
 )
 

@@ -34,14 +34,14 @@ describe('Registration Flow', () => {
 
     cy.get('#dmr_id').type('9999999');
     cy.get('#username').type('newham');
-    cy.get('#callsign').type('KD0NEW');
+    cy.get('#callsign').type('K9CALL');
     cy.get('#password').type('SecurePass123');
     cy.get('#confirmPassword').type('SecurePass123');
     cy.get('button[type="submit"]').click();
 
     cy.wait('@registerUser').its('request.body').should('deep.include', {
       id: 9999999,
-      callsign: 'KD0NEW',
+      callsign: 'K9CALL',
       username: 'newham',
       password: 'SecurePass123',
     });
@@ -67,7 +67,7 @@ describe('Registration Flow', () => {
     cy.get('#dmr_id').should('be.visible');
     cy.get('#dmr_id').type('9999999');
     cy.get('#username').type('newham');
-    cy.get('#callsign').type('KD0NEW');
+    cy.get('#callsign').type('K9CALL');
     cy.get('#password').type('SecurePass123');
     cy.get('#confirmPassword').type('DifferentPass456');
     cy.get('button[type="submit"]').click();
@@ -83,7 +83,7 @@ describe('Registration Flow', () => {
     cy.get('#dmr_id').should('be.visible');
     cy.get('#dmr_id').type('notanumber');
     cy.get('#username').type('newham');
-    cy.get('#callsign').type('KD0NEW');
+    cy.get('#callsign').type('K9CALL');
     cy.get('#password').type('SecurePass123');
     cy.get('#confirmPassword').type('SecurePass123');
     cy.get('button[type="submit"]').click();

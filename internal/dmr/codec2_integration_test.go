@@ -54,7 +54,7 @@ const (
 	c2IPSCSrc     = 200002
 	c2IPSCLate    = 200003
 	c2OB          = 3129201
-	c2OBEnhanced  = 3129202
+	c2OBEnhanced  = 3003902
 	c2Parrot      = 9990
 	c2Superframes = 3
 )

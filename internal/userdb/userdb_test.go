@@ -45,20 +45,33 @@ func TestUserdb(t *testing.T) {
 	}
 }
 
+func firstEmbeddedUser(t testing.TB) DMRUser {
+	t.Helper()
+	user, err := decodeUser(dbtest.FirstEntry(t, compressedDMRUsersDB, "users"))
+	if err != nil || user.ID == 0 || user.Callsign == "" {
+		t.Fatalf("cannot decode the first embedded user: %+v %v", user, err)
+	}
+	return user
+}
+
 func TestUserdbValidUser(t *testing.T) {
 	t.Parallel()
-	if !ValidUserCallsign(3191868, "KI5VMF") {
-		t.Error("KI5VMF is not in the database")
+	first := firstEmbeddedUser(t)
+	if !ValidUserCallsign(first.ID, first.Callsign) {
+		t.Errorf("%s is not in the database", first.Callsign)
 	}
-	me, ok := Get(3191868)
+	if !ValidUserCallsign(first.ID, strings.ToLower(first.Callsign)) {
+		t.Errorf("%s in lower case is not in the database", first.Callsign)
+	}
+	got, ok := Get(first.ID)
 	if !ok {
-		t.Error("KI5VMF is not in the database")
+		t.Fatalf("%d is not in the database", first.ID)
 	}
-	if me.ID != 3191868 {
-		t.Errorf("KI5VMF has the wrong ID. Expected %d, got %d", 3191868, me.ID)
+	if got.ID != first.ID {
+		t.Errorf("%s has the wrong ID. Expected %d, got %d", first.Callsign, first.ID, got.ID)
 	}
-	if !strings.EqualFold(me.Callsign, "KI5VMF") {
-		t.Errorf("KI5VMF has the wrong callsign. Expected \"%s\", got \"%s\"", "KI5VMF", me.Callsign)
+	if !strings.EqualFold(got.Callsign, first.Callsign) {
+		t.Errorf("%d has the wrong callsign. Expected %q, got %q", first.ID, first.Callsign, got.Callsign)
 	}
 }
 
@@ -96,7 +109,7 @@ func TestUserdbInvalidUser(t *testing.T) {
 	if IsValidUserID(0) {
 		t.Error("0 is not a valid user ID")
 	}
-	if !IsValidUserID(3191868) {
+	if !IsValidUserID(3002068) {
 		t.Error("Valid user ID marked invalid")
 	}
 }
@@ -130,9 +143,10 @@ func TestUpdateFromEmbeddedDB(t *testing.T) {
 	if db.Len() != Len() {
 		t.Errorf("Update loaded %d users, UnpackDB loaded %d", db.Len(), Len())
 	}
-	user, ok := db.Get(3191868)
-	if !ok || !strings.EqualFold(user.Callsign, "KI5VMF") {
-		t.Errorf("unexpected user 3191868: %+v", user)
+	first := firstEmbeddedUser(t)
+	user, ok := db.Get(first.ID)
+	if !ok || !strings.EqualFold(user.Callsign, first.Callsign) {
+		t.Errorf("unexpected user %d: %+v", first.ID, user)
 	}
 }
 
@@ -150,16 +164,16 @@ func TestUpdateFixtures(t *testing.T) {
 				t.Errorf("expected 2 users, got %d", db.Len())
 			}
 			want := DMRUser{
-				ID:       1023007,
-				RadioID:  1023007,
-				Name:     "Hans Juergen",
-				FName:    "Hans Juergen",
-				Callsign: "VA3BOC",
-				City:     "Cornwall",
+				ID:       3002207,
+				RadioID:  3002207,
+				Name:     "Pat Example",
+				FName:    "Pat Example",
+				Callsign: "K9CALL",
+				City:     "Anytown",
 				State:    "Ontario",
 				Country:  "Canada",
 			}
-			if user, _ := db.Get(1023007); user != want {
+			if user, _ := db.Get(3002207); user != want {
 				t.Errorf("expected %+v, got %+v", want, user)
 			}
 			date, err := db.GetDate()
@@ -180,16 +194,16 @@ func TestUpdateFailures(t *testing.T) {
 		{"server error", func(t *testing.T) string { return dbtest.NewServer(t, 1, []byte(current)).URL }},
 		{"truncated body", func(t *testing.T) string { return dbtest.NewTruncatedServer(t, []byte(current)) }},
 		{"id becomes a string", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 1023007`, `"id": "1023007"`, 1))).URL
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 3002207`, `"id": "3002207"`, 1))).URL
 		}},
 		{"id renamed", func(t *testing.T) string {
 			return dbtest.NewServer(t, 0, []byte(strings.ReplaceAll(current, `"id": `, `"user_id": `))).URL
 		}},
 		{"callsign becomes an array", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"callsign": "VA3BOC"`, `"callsign": ["VA3BOC"]`, 1))).URL
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"callsign": "K9CALL"`, `"callsign": ["K9CALL"]`, 1))).URL
 		}},
 		{"users becomes an object", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(`{"users": {"1023007": {"id": 1023007}}}`)).URL
+			return dbtest.NewServer(t, 0, []byte(`{"users": {"3002207": {"id": 3002207}}}`)).URL
 		}},
 		{"no users", func(t *testing.T) string { return dbtest.NewServer(t, 0, []byte(`{"users": []}`)).URL }},
 	}
@@ -204,8 +218,8 @@ func TestUpdateFailures(t *testing.T) {
 			if db.Len() != 2 {
 				t.Errorf("failed update replaced the database, it now has %d users", db.Len())
 			}
-			if _, ok := db.Get(3191868); !ok {
-				t.Error("failed update dropped user 3191868")
+			if _, ok := db.Get(3002068); !ok {
+				t.Error("failed update dropped user 3002068")
 			}
 		})
 	}
@@ -213,14 +227,14 @@ func TestUpdateFailures(t *testing.T) {
 
 func TestUpdateIgnoresNewFields(t *testing.T) {
 	t.Parallel()
-	data := `{"users": [{"id": 3191868, "callsign": "KI5VMF", "flags": {"validated": [1, 2]}, "radio_id": 3191868}]}`
+	data := `{"users": [{"id": 3002068, "callsign": "N0CALL", "flags": {"validated": [1, 2]}, "radio_id": 3002068}]}`
 	srv := dbtest.NewServer(t, 0, []byte(data))
 	db := newFixtureDB(t)
 	if err := db.Update(srv.URL); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	if user, ok := db.Get(3191868); !ok || user.Callsign != "KI5VMF" || user.RadioID != 3191868 {
-		t.Errorf("unexpected user 3191868: %+v", user)
+	if user, ok := db.Get(3002068); !ok || user.Callsign != "N0CALL" || user.RadioID != 3002068 {
+		t.Errorf("unexpected user 3002068: %+v", user)
 	}
 }
 
@@ -270,8 +284,9 @@ func BenchmarkUserSearch(b *testing.B) {
 		b.Errorf("Error unpacking database: %v", err)
 		b.Fail()
 	}
+	first := firstEmbeddedUser(b)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		ValidUserCallsign(3191868, "KI5VMF")
+		ValidUserCallsign(first.ID, first.Callsign)
 	}
 }

@@ -424,15 +424,15 @@ func TestDELETETalkgroup(t *testing.T) {
 
 	// Create a user and repeater, assign the talkgroup
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186801,
+		RadioID: 300206801,
 	}
 	_, w = testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	assert.Equal(t, http.StatusOK, w.Code)

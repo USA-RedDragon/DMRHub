@@ -37,7 +37,7 @@ const mockAPI = API as unknown as { get: Mock };
 function repeater(slots: number) {
   const t = new Date().toISOString();
   return {
-    id: 310000101, type: 'mmdvm', slots, connected_time: t, created_at: t, last_ping_time: t,
+    id: 300240101, type: 'mmdvm', slots, connected_time: t, created_at: t, last_ping_time: t,
     ts1_static_talkgroups: [], ts2_static_talkgroups: [],
     ts1_dynamic_talkgroup: { id: 0, name: '' }, ts2_dynamic_talkgroup: { id: 0, name: '' },
     hotspot: true, simplex_repeater: false, trusted: false,
@@ -84,8 +84,8 @@ describe('RepeaterTable co-sysop rows', () => {
   });
 
   it('shows the owner with a Co-sysop badge and no Delete for a repeater of another owner', async () => {
-    const own = { ...repeater(3), id: 3191868, owner: { id: 3191868, callsign: 'KI5VMF' } };
-    const co = { ...repeater(3), id: 311888, owner: { id: 3191869, callsign: 'KP4DJT' } };
+    const own = { ...repeater(3), id: 3002068, owner: { id: 3002068, callsign: 'N6CALL' } };
+    const co = { ...repeater(3), id: 990388, owner: { id: 3002069, callsign: 'N7CALL' } };
     mockAPI.get.mockImplementation((url: string) => {
       if (url.startsWith('/talkgroups')) {
         return Promise.resolve({ data: { talkgroups: [] } });
@@ -94,17 +94,17 @@ describe('RepeaterTable co-sysop rows', () => {
     });
     const pinia = createPinia();
     setActivePinia(pinia);
-    useUserStore().id = 3191868;
+    useUserStore().id = 3002068;
     const wrapper = mount(RepeaterTable, {
       global: { plugins: [pinia], mocks: { $toast: { add: vi.fn() }, $confirm: { require: vi.fn() } }, stubs: { RouterLink: true } },
     });
     await flushPromises();
     expect(wrapper.text()).toContain('Owner');
     expect(wrapper.text()).toContain('You');
-    expect(wrapper.find('[data-test="cosysop-badge-311888"]').text()).toBe('Co-sysop');
-    expect(wrapper.find('[data-test="cosysop-badge-3191868"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="cosysop-badge-990388"]').text()).toBe('Co-sysop');
+    expect(wrapper.find('[data-test="cosysop-badge-3002068"]').exists()).toBe(false);
 
-    const coRow = () => wrapper.findAll('tbody tr').find((r) => r.find('[data-test="cosysop-badge-311888"]').exists())!;
+    const coRow = () => wrapper.findAll('tbody tr').find((r) => r.find('[data-test="cosysop-badge-990388"]').exists())!;
     await coRow().findAll('button').find((b) => b.text() === 'Edit')!.trigger('click');
     await flushPromises();
     const after = coRow();
@@ -116,11 +116,11 @@ describe('RepeaterTable co-sysop rows', () => {
       if (url.startsWith('/talkgroups')) {
         return Promise.resolve({ data: { talkgroups: [] } });
       }
-      return Promise.resolve({ data: { repeaters: [{ ...repeater(3), owner: { id: 3191868, callsign: 'KI5VMF' } }], total: 1 } });
+      return Promise.resolve({ data: { repeaters: [{ ...repeater(3), owner: { id: 3002068, callsign: 'N6CALL' } }], total: 1 } });
     });
     const pinia = createPinia();
     setActivePinia(pinia);
-    useUserStore().id = 3191868;
+    useUserStore().id = 3002068;
     const wrapper = mount(RepeaterTable, {
       global: { plugins: [pinia], mocks: { $toast: { add: vi.fn() }, $confirm: { require: vi.fn() } }, stubs: { RouterLink: true } },
     });

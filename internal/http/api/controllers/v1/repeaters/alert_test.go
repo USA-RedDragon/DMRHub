@@ -47,18 +47,18 @@ func TestASysopTurnsAnOfflineAlertOnAndOff(t *testing.T) {
 				require.NoError(t, err)
 				defer tdb.CloseDB()
 				database := tdb.DB()
-				owner := testutils.SeedAccount(t, database, 3191868, "KP4DJT", "kp4djt")
-				kevin := testutils.SeedAccount(t, database, 3191869, "KI5VMF", "kevin")
-				testutils.SeedAccount(t, database, 3191870, "N0CALL", "other")
-				require.NoError(t, database.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", "kp4djt@example.org", true, owner.ID).Error)
+				owner := testutils.SeedAccount(t, database, 3002068, "N7CALL", "n7call")
+				kevin := testutils.SeedAccount(t, database, 3002069, "N6CALL", "kevin")
+				testutils.SeedAccount(t, database, 3002070, "N0CALL", "other")
+				require.NoError(t, database.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", "n7call@example.org", true, owner.ID).Error)
 				require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: cosysopRepeater}, Type: models.RepeaterTypeMMDVM, Password: "password1234", OwnerID: owner.ID}).Error)
 				now := time.Now()
 				_, err = models.InviteCosysop(database, cosysopRepeater, kevin.ID, owner.ID, now)
 				require.NoError(t, err)
 				_, err = models.AnswerCosysopInvite(database, cosysopRepeater, kevin.ID, true, now)
 				require.NoError(t, err)
-				ownerJar := testutils.Login(t, router, "kp4djt")
-				const path = "/api/v1/repeaters/319186801/alert"
+				ownerJar := testutils.Login(t, router, "n7call")
+				const path = "/api/v1/repeaters/300206801/alert"
 				get := func(jar testutils.CookieJar) apimodels.OfflineAlert {
 					t.Helper()
 					w := testutils.Do(t, router, jar, http.MethodGet, path, nil)
@@ -69,7 +69,7 @@ func TestASysopTurnsAnOfflineAlertOnAndOff(t *testing.T) {
 				}
 
 				a := get(ownerJar)
-				require.Equal(t, apimodels.OfflineAlert{SMTP: smtpOn, EmailVerified: true, Email: "k***@example.org", DelayMinutes: 10, Delays: []uint{5, 10, 30, 60}}, a)
+				require.Equal(t, apimodels.OfflineAlert{SMTP: smtpOn, EmailVerified: true, Email: "n***@example.org", DelayMinutes: 10, Delays: []uint{5, 10, 30, 60}}, a)
 
 				w := testutils.Do(t, router, ownerJar, http.MethodPut, path, apimodels.OfflineAlertPut{Enabled: true, DelayMinutes: 30, Back: true})
 				if !smtpOn {

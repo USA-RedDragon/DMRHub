@@ -119,7 +119,7 @@ func TestOpenBridgeEgressSourceAndTalkgroupRules(t *testing.T) {
 		assert.False(t, s.groupCallReaches(t, 1000001, 91, 9702, false), "TG 91 must not reach the peer")
 		assert.False(t, s.groupCallReaches(t, 1000002, 3100, 9703, false), "a call from 1000002 must not reach the peer")
 		assert.True(t, s.privateCallReaches(t, 3999999, 9704, true), "a private call to 3999999 must reach the peer")
-		assert.False(t, s.privateCallReaches(t, 4000001, 9705, false), "a private call to 4000001 must not reach the peer")
+		assert.False(t, s.privateCallReaches(t, 9000001, 9705, false), "a private call to 9000001 must not reach the peer")
 	})
 }
 

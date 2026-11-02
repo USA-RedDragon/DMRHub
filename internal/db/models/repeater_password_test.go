@@ -33,7 +33,7 @@ import (
 func TestAStaleSaveKeepsTheRotatedPassword(t *testing.T) {
 	t.Parallel()
 	database := foreignKeyDB(t)
-	const id = 319186801
+	const id = 300206801
 	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeMMDVM, Password: "oldPassword1"}).Error)
 	stale, err := models.FindRepeaterByID(database, id)
 	require.NoError(t, err)
@@ -44,5 +44,5 @@ func TestAStaleSaveKeepsTheRotatedPassword(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "newPassword2", saved.Password)
 	require.True(t, saved.SimplexRepeater)
-	require.ErrorIs(t, models.SetRepeaterPassword(database, 311860, "x"), gorm.ErrRecordNotFound)
+	require.ErrorIs(t, models.SetRepeaterPassword(database, 990360, "x"), gorm.ErrRecordNotFound)
 }

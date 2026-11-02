@@ -46,9 +46,9 @@ type undeliverableRow struct {
 
 func allUndeliverable() []undeliverableEntry {
 	return []undeliverableEntry{
-		{Sentence: "IPSC repeater 314926 was busy on that slot.", Target: "ipsc", RepeaterID: 314926, Callsign: "W1XPR", Reason: "slot_busy"},
-		{Sentence: "IPSC repeater 311304200 was busy on that slot.", Target: "ipsc", RepeaterID: 311304200, Callsign: "K5ABC", Reason: "slot_busy"},
-		{Sentence: "IPSC repeater 311305510 cannot carry this kind of burst.", Target: "ipsc", RepeaterID: 311305510, Reason: "no_ipsc_form"},
+		{Sentence: "IPSC repeater 990626 was busy on that slot.", Target: "ipsc", RepeaterID: 990626, Callsign: "W1XPR", Reason: "slot_busy"},
+		{Sentence: "IPSC repeater 300344200 was busy on that slot.", Target: "ipsc", RepeaterID: 300344200, Callsign: "K3CALL", Reason: "slot_busy"},
+		{Sentence: "IPSC repeater 300345510 cannot carry this kind of burst.", Target: "ipsc", RepeaterID: 300345510, Reason: "no_ipsc_form"},
 	}
 }
 
@@ -64,21 +64,21 @@ func TestLastheardShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 	defer tdb.CloseDB()
 	db := tdb.DB()
 
-	caller := testutils.SeedAccount(t, db, 3191868, "KI5VMF", "caller")
-	owner := testutils.SeedAccount(t, db, 3140001, "W1OWN", "owner")
-	other := testutils.SeedAccount(t, db, 3150001, "N0OTH", "other")
+	caller := testutils.SeedAccount(t, db, 3002068, "N6CALL", "caller")
+	owner := testutils.SeedAccount(t, db, 3004201, "W1OWN", "owner")
+	other := testutils.SeedAccount(t, db, 3004401, "W1CALL", "other")
 	testutils.SeedAccount(t, db, other.ID+1, "K5OWN", "k5own")
 	tg := models.Talkgroup{ID: 91, Name: "TG91"}
 	require.NoError(t, db.Create(&tg).Error)
 	for _, r := range []models.Repeater{
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "KI5VMF"}, OwnerID: caller.ID, Type: models.RepeaterTypeMMDVM},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 314926, Callsign: "W1XPR"}, OwnerID: owner.ID, Type: models.RepeaterTypeIPSC},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304200, Callsign: "K5ABC"}, OwnerID: other.ID + 1, Type: models.RepeaterTypeIPSC},
-		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304201, Callsign: "N0OTH"}, OwnerID: other.ID, Type: models.RepeaterTypeIPSC},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990360, Callsign: "N6CALL"}, OwnerID: caller.ID, Type: models.RepeaterTypeMMDVM},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990626, Callsign: "W1XPR"}, OwnerID: owner.ID, Type: models.RepeaterTypeIPSC},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300344200, Callsign: "K3CALL"}, OwnerID: other.ID + 1, Type: models.RepeaterTypeIPSC},
+		{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300344201, Callsign: "W1CALL"}, OwnerID: other.ID, Type: models.RepeaterTypeIPSC},
 	} {
 		require.NoError(t, db.Create(&r).Error)
 	}
-	tgID, srcID, rptID := tg.ID, caller.ID, uint(311860)
+	tgID, srcID, rptID := tg.ID, caller.ID, uint(990360)
 	all := allUndeliverable()
 	sentences := make([]string, 0, len(all))
 	for _, e := range all {
@@ -104,14 +104,14 @@ func TestLastheardShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 	}
 	paths := []string{
 		"/api/v1/lastheard",
-		"/api/v1/lastheard/user/3191868",
-		"/api/v1/lastheard/repeater/311860",
+		"/api/v1/lastheard/user/3002068",
+		"/api/v1/lastheard/repeater/990360",
 		"/api/v1/lastheard/talkgroup/91",
 	}
 	for _, v := range viewers {
 		for _, path := range paths {
 			w := testutils.Do(t, router, v.jar, http.MethodGet, path, nil)
-			restricted := path == "/api/v1/lastheard/user/3191868" || path == "/api/v1/lastheard/repeater/311860"
+			restricted := path == "/api/v1/lastheard/user/3002068" || path == "/api/v1/lastheard/repeater/990360"
 			if restricted && v.scope != "all" && (w.Code == http.StatusUnauthorized || w.Code == http.StatusForbidden) {
 				continue
 			}

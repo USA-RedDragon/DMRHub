@@ -173,13 +173,13 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 	defer tdb.CloseDB()
 	db := tdb.DB()
 
-	src := models.User{ID: 3191868, Callsign: "KI5VMF", Username: "src", Email: "src@example.com", Approved: true}
-	dst := models.User{ID: 3191869, Callsign: "KI5VMG", Username: "dst", Email: "dst@example.com", Approved: true}
+	src := models.User{ID: 3002068, Callsign: "N6CALL", Username: "src", Email: "src@example.com", Approved: true}
+	dst := models.User{ID: 3002069, Callsign: "K1TEST", Username: "dst", Email: "dst@example.com", Approved: true}
 	require.NoError(t, db.Create(&src).Error)
 	require.NoError(t, db.Create(&dst).Error)
 	tg := models.Talkgroup{ID: 91, Name: "TG91", Description: "World"}
 	require.NoError(t, db.Create(&tg).Error)
-	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "KI5VMF"}, OwnerID: src.ID, Type: models.RepeaterTypeMMDVM}
+	rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990360, Callsign: "N6CALL"}, OwnerID: src.ID, Type: models.RepeaterTypeMMDVM}
 	require.NoError(t, db.Create(&rpt).Error)
 	tgID, dstID, srcID, rptID := tg.ID, dst.ID, src.ID, rpt.ID
 	start := time.Now()
@@ -189,8 +189,8 @@ func TestLastheardAnswersCallDTOs(t *testing.T) {
 	_, _, adminJar := testutils.LoginAdmin(t, router)
 	paths := []string{
 		"/api/v1/lastheard",
-		"/api/v1/lastheard/user/3191868",
-		"/api/v1/lastheard/repeater/311860",
+		"/api/v1/lastheard/user/3002068",
+		"/api/v1/lastheard/repeater/990360",
 		"/api/v1/lastheard/talkgroup/91",
 	}
 	allowed := map[string]bool{

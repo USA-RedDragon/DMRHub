@@ -351,7 +351,7 @@ func TestHarnessVoiceTagSurvivesIPSC(t *testing.T) {
 func TestHarnessCountsLateIPSCBurstsForTheirCall(t *testing.T) {
 	t.Parallel()
 	l := newLedger()
-	script := voiceScript{group: true, dst: 50000, src: 3100015, frames: 12}
+	script := voiceScript{group: true, dst: 50000, src: 3002415, frames: 12}
 	bursts, err := script.bursts()
 	require.NoError(t, err)
 	calls := []*callRec{
@@ -389,7 +389,7 @@ func TestHarnessCountsLateIPSCBurstsForTheirCall(t *testing.T) {
 
 func TestHarnessStreamTagSurvivesIPSC(t *testing.T) {
 	t.Parallel()
-	bursts, err := voiceScript{group: true, dst: 50000, src: 3100015, frames: 6}.bursts()
+	bursts, err := voiceScript{group: true, dst: 50000, src: 3002415, frames: 6}.bursts()
 	require.NoError(t, err)
 	stamped, err := stampStream(bursts, 65600)
 	require.NoError(t, err)
@@ -415,11 +415,11 @@ func TestHarnessStreamTagSurvivesIPSC(t *testing.T) {
 func TestHarnessCountsSlotBusyBurstsAsDropped(t *testing.T) {
 	t.Parallel()
 	l := newLedger()
-	bursts, err := voiceScript{group: true, dst: 50000, src: 3100015, frames: 12}.bursts()
+	bursts, err := voiceScript{group: true, dst: 50000, src: 3002415, frames: 12}.bursts()
 	require.NoError(t, err)
 	bursts, err = stampStream(bursts, 7)
 	require.NoError(t, err)
-	c := &callRec{stream: 7, kind: "voice", src: 3100015, dst: 50000, group: true, loose: map[uint]bool{ipscRptID: true}}
+	c := &callRec{stream: 7, kind: "voice", src: 3002415, dst: 50000, group: true, loose: map[uint]bool{ipscRptID: true}}
 	require.NoError(t, l.register(c, bursts, []uint{ipscRptID}))
 	var voice []int
 	for k, b := range bursts {

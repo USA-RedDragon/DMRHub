@@ -111,7 +111,7 @@ func TestCallFilterCountsHiddenSMSAsData(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 	ids := seedKinds(t, database)
-	user := &models.User{ID: 3191868, Approved: true}
+	user := &models.User{ID: 3002068, Approved: true}
 	admin := &models.User{ID: 1, Approved: true, Admin: true}
 	window := idWindow{ids: []uint{ids["sms1"]}}
 	sms := models.CallFilter{Types: []string{models.TypeSMS}}

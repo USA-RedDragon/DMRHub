@@ -31,7 +31,7 @@ import { callLength, resetText, type OnAirCall } from '@/lib/sysop';
 const mockAPI = API as unknown as { get: Mock; post: Mock };
 
 const call = (id: number, slot: number): OnAirCall => ({
-  call_id: id, slot, direction: 'from', source_id: 3191868, callsign: 'KI5VMF', destination_id: 3100, group_call: true,
+  call_id: id, slot, direction: 'from', source_id: 3002068, callsign: 'N6CALL', destination_id: 3100, group_call: true,
   start_time: new Date(Date.now() - 42_000).toISOString(),
 });
 
@@ -58,7 +58,7 @@ describe('OnAirCard', () => {
 
   it('shows nothing without a call', async () => {
     mockAPI.get.mockResolvedValue({ data: { calls: [] } });
-    const w = mount(OnAirCard, { props: { repeaterId: 319186801 } });
+    const w = mount(OnAirCard, { props: { repeaterId: 300206801 } });
     await flushPromises();
     expect(w.find('[data-test="on-air"]').exists()).toBe(false);
     w.unmount();
@@ -67,17 +67,17 @@ describe('OnAirCard', () => {
   it('lists a call and drops it', async () => {
     mockAPI.get.mockResolvedValue({ data: { calls: [call(7, 2)] } });
     mockAPI.post.mockResolvedValue({ data: {} });
-    const w = mount(OnAirCard, { props: { repeaterId: 319186801 } });
+    const w = mount(OnAirCard, { props: { repeaterId: 300206801 } });
     await flushPromises();
     const row = w.find('[data-test="on-air-7"]');
     expect(row.text()).toContain('TS2');
-    expect(row.text()).toContain('KI5VMF');
+    expect(row.text()).toContain('N6CALL');
     expect(row.text()).toContain('TG 3100');
     expect(row.text()).toMatch(/0:4\d/);
     expect(w.emitted('calls')?.[0]).toEqual([[call(7, 2)].map((c) => ({ ...c, start_time: expect.any(String) }))]);
     await w.find('[data-test="drop-7"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/319186801/drop-call', { call_id: 7 });
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/300206801/drop-call', { call_id: 7 });
     expect(w.find('[data-test="on-air"]').exists()).toBe(false);
     w.unmount();
   });

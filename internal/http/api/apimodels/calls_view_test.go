@@ -53,7 +53,7 @@ func (w allSMS) Visible(db *gorm.DB, viewer *models.User, ids []uint) (map[uint]
 func smsCall() models.Call {
 	sap := uint8(4)
 	return models.Call{
-		ID: 7, Kind: models.CallKindData, SubKind: models.SubKindSMS, SourceID: 3140598, DestinationID: 3191868,
+		ID: 7, Kind: models.CallKindData, SubKind: models.SubKindSMS, SourceID: 3002198, DestinationID: 3002068,
 		SAP: &sap, DataFormat: "ip", Confirmed: true, Blocks: 3, Octets: 44, Bursts: 4, Response: models.CallResponseACK,
 		Duration: 600 * time.Millisecond,
 	}
@@ -106,12 +106,12 @@ func TestResponsesForViewers(t *testing.T) {
 	msg.ID = 0
 	require.NoError(t, database.Create(&msg).Error)
 	lat, lon := 32.7767, -96.797
-	gps := models.Call{Kind: models.CallKindGPS, SourceID: 3191868, Latitude: &lat, Longitude: &lon, GroupCall: true, DestinationID: 1}
+	gps := models.Call{Kind: models.CallKindGPS, SourceID: 3002068, Latitude: &lat, Longitude: &lon, GroupCall: true, DestinationID: 1}
 	require.NoError(t, database.Create(&gps).Error)
 	calls := []models.Call{msg, gps}
 
-	owner := &models.User{ID: 3191868, Approved: true}
-	stranger := &models.User{ID: 3113042, Approved: true}
+	owner := &models.User{ID: 3002068, Approved: true}
+	stranger := &models.User{ID: 3003442, Approved: true}
 	admin := &models.User{ID: 1, Approved: true, Admin: true}
 
 	for _, tc := range []struct {

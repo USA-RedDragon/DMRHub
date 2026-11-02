@@ -213,7 +213,7 @@ func TestPacerHoldNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 			log.next(t, time.Second)
 		}
 		p.enqueue(held, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
-		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
+		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
 			stream := uint(10 + i)
 			p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil, time.Time{})
 			got := log.next(t, 100*time.Millisecond)

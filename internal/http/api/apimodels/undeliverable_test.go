@@ -49,20 +49,20 @@ func TestUndeliverableOwnersOfPeersAndRemovedRepeaters(t *testing.T) {
 		_ = sqlDB.Close()
 	})
 
-	const peerOwner, repeaterOwner, gone = 3150001, 3150002, 3150003
+	const peerOwner, repeaterOwner, gone = 3004401, 3004402, 3004403
 	for _, id := range []uint{peerOwner, repeaterOwner, gone} {
 		require.NoError(t, database.Create(&models.User{ID: id, Callsign: fmt.Sprintf("U%d", id), Username: fmt.Sprintf("u%d", id), Approved: true}).Error)
 	}
-	require.NoError(t, database.Create(&models.Peer{ID: 311000, OwnerID: peerOwner}).Error)
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311000, Callsign: "W1RPT"}, OwnerID: repeaterOwner, Type: models.RepeaterTypeMMDVM}).Error)
-	removed := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311001, Callsign: "W1GON"}, OwnerID: gone, Type: models.RepeaterTypeIPSC}
+	require.NoError(t, database.Create(&models.Peer{ID: 990100, OwnerID: peerOwner}).Error)
+	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990100, Callsign: "W5CALL"}, OwnerID: repeaterOwner, Type: models.RepeaterTypeMMDVM}).Error)
+	removed := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990101, Callsign: "W1GON"}, OwnerID: gone, Type: models.RepeaterTypeIPSC}
 	require.NoError(t, database.Create(&removed).Error)
 	require.NoError(t, database.Delete(&removed).Error)
 
-	calls := []models.Call{{ID: 1, SourceID: 3191868, GroupCall: true, DestinationID: 91, Undeliverable: []string{
-		"OpenBridge peer 311000 was busy on that slot.",
-		"MMDVM repeater 311000 was busy on that slot.",
-		"IPSC repeater 311001 was busy on that slot.",
+	calls := []models.Call{{ID: 1, SourceID: 3002068, GroupCall: true, DestinationID: 91, Undeliverable: []string{
+		"OpenBridge peer 990100 was busy on that slot.",
+		"MMDVM repeater 990100 was busy on that slot.",
+		"IPSC repeater 990101 was busy on that slot.",
 		"An IPSC repeater was busy on that slot.",
 		"Something the hub did not write.",
 	}}}
@@ -72,10 +72,10 @@ func TestUndeliverableOwnersOfPeersAndRemovedRepeaters(t *testing.T) {
 		want   []string
 		scope  string
 	}{
-		{"peer owner", &models.User{ID: peerOwner, Approved: true}, []string{"OpenBridge peer 311000 was busy on that slot."}, apimodels.UndeliverableScopeOwn},
-		{"repeater owner", &models.User{ID: repeaterOwner, Approved: true}, []string{"MMDVM repeater 311000 was busy on that slot."}, apimodels.UndeliverableScopeOwn},
+		{"peer owner", &models.User{ID: peerOwner, Approved: true}, []string{"OpenBridge peer 990100 was busy on that slot."}, apimodels.UndeliverableScopeOwn},
+		{"repeater owner", &models.User{ID: repeaterOwner, Approved: true}, []string{"MMDVM repeater 990100 was busy on that slot."}, apimodels.UndeliverableScopeOwn},
 		{"owner of a deleted repeater", &models.User{ID: gone, Approved: true}, nil, ""},
-		{"caller", &models.User{ID: 3191868, Approved: true}, calls[0].Undeliverable, apimodels.UndeliverableScopeAll},
+		{"caller", &models.User{ID: 3002068, Approved: true}, calls[0].Undeliverable, apimodels.UndeliverableScopeAll},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -91,12 +91,12 @@ func TestUndeliverableOwnersOfPeersAndRemovedRepeaters(t *testing.T) {
 		})
 	}
 
-	rows, err := apimodels.NewWSCallResponsesFor(database, &models.User{ID: 3191868, Approved: true}, models.MaskedSMSWindow{}, calls)
+	rows, err := apimodels.NewWSCallResponsesFor(database, &models.User{ID: 3002068, Approved: true}, models.MaskedSMSWindow{}, calls)
 	require.NoError(t, err)
 	assert.Equal(t, []apimodels.WSCallUndeliverable{
-		{Sentence: "OpenBridge peer 311000 was busy on that slot.", Target: "openbridge", RepeaterID: 311000, Reason: "slot_busy"},
-		{Sentence: "MMDVM repeater 311000 was busy on that slot.", Target: "mmdvm", RepeaterID: 311000, Callsign: "W1RPT", Reason: "slot_busy"},
-		{Sentence: "IPSC repeater 311001 was busy on that slot.", Target: "ipsc", RepeaterID: 311001, Reason: "slot_busy"},
+		{Sentence: "OpenBridge peer 990100 was busy on that slot.", Target: "openbridge", RepeaterID: 990100, Reason: "slot_busy"},
+		{Sentence: "MMDVM repeater 990100 was busy on that slot.", Target: "mmdvm", RepeaterID: 990100, Callsign: "W5CALL", Reason: "slot_busy"},
+		{Sentence: "IPSC repeater 990101 was busy on that slot.", Target: "ipsc", RepeaterID: 990101, Reason: "slot_busy"},
 		{Sentence: "An IPSC repeater was busy on that slot.", Target: "ipsc", Reason: "slot_busy"},
 		{Sentence: "Something the hub did not write."},
 	}, rows[0].Undeliverable, "the caller sees each entry with its parts and the callsign of each repeater that is still there")

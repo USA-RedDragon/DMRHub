@@ -54,13 +54,13 @@ func settings(tracking bool, interval, retention uint) map[string]any {
 func withAPRS(cfg *config.Config) {
 	cfg.DMR.Positions.MinInterval = 15
 	cfg.DMR.Positions.MaxRetention = 90
-	cfg.DMR.Positions.APRSIS.Callsign = "N0HUB-10"
+	cfg.DMR.Positions.APRSIS.Callsign = "K0CALL-10"
 }
 
 func TestPositionRadiosListTheUsersRadioIDsAndTheHubsChoices(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	added := uint(3191869)
+	added := uint(3002069)
 	require.NoError(t, e.db.Create(&models.UserRadioID{UserID: owner, RadioID: added}).Error)
 	var r apimodels.PositionRadios
 	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions/radios", &r))
@@ -73,7 +73,7 @@ func TestPositionRadiosListTheUsersRadioIDsAndTheHubsChoices(t *testing.T) {
 	assert.Equal(t, []uint{5, 10, 15, 30, 60}, r.Intervals)
 	assert.Equal(t, []uint{24, 168, 720}, r.Retention)
 	assert.False(t, r.APRS)
-	assert.Equal(t, "KI5VMF", r.Callsign)
+	assert.Equal(t, "N6CALL", r.Callsign)
 
 	e = newEnv(t, withAPRS)
 	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions/radios", &r))

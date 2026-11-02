@@ -66,7 +66,7 @@ func (f *fakePlugins) got(id uint) []models.Packet {
 const (
 	parrotPlugin  = uint(1)
 	weatherPlugin = uint(2)
-	weatherTG     = uint(310001)
+	weatherTG     = uint(990001)
 )
 
 func pluginHub(t *testing.T) (*hub.Hub, *fakePlugins, *hub.ServerHandle) {
@@ -78,7 +78,7 @@ func pluginHub(t *testing.T) (*hub.Hub, *fakePlugins, *hub.ServerHandle) {
 	require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: weatherTG}))
 	h.ReloadRepeater(context.Background(), 100004)
 	loadLookups(t, h, []uint{weatherTG}, nil)
-	f := newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 310009: weatherPlugin})
+	f := newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 990009: weatherPlugin})
 	h.SetPlugins(f)
 	return h, f, srv
 }
@@ -113,7 +113,7 @@ func TestAGroupCallToAPluginIDThatIsNoTalkgroupGoesOnlyToThePlugin(t *testing.T)
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		h, f, srv := pluginHub(t)
-		h.RoutePacket(context.Background(), makeVoicePacket(310009, 7003, true, false), models.RepeaterTypeMMDVM)
+		h.RoutePacket(context.Background(), makeVoicePacket(990009, 7003, true, false), models.RepeaterTypeMMDVM)
 		bubble.Eventually(t, func() bool { return len(f.got(weatherPlugin)) == 1 }, deliveryWait, 10*time.Millisecond)
 		expectNone(t, srv, "no talkgroup, no subscribers")
 	})
@@ -142,7 +142,7 @@ func TestAPluginDoesNotHearItsOwnGroupCall(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h, f, srv := pluginHub(t)
 		p := makeVoicePacket(weatherTG, 7005, true, false)
-		p.Src, p.Repeater = 310009, 0
+		p.Src, p.Repeater = 990009, 0
 		h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
 		expectAt(t, srv, 100004, "the subscribers of the talkgroup")
 		assert.Empty(t, f.got(weatherPlugin), "no echo to the plugin that sent it")
@@ -243,7 +243,7 @@ func pluginPeerHub(t *testing.T) (*hub.Hub, *hub.ServerHandle, *hub.ServerHandle
 	t.Helper()
 	h, database, srv := lastSeenHub(t)
 	seedTalkgroup(t, database, weatherTG, "Weather")
-	h.SetPlugins(newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 310009: weatherPlugin}))
+	h.SetPlugins(newFakePlugins(map[uint]uint{9990: parrotPlugin, weatherTG: weatherPlugin, 990009: weatherPlugin}))
 	owner := models.User{ID: 2000001, Callsign: "PEEROWNER", Username: "PEEROWNER", Approved: true}
 	require.NoError(t, database.Create(&owner).Error)
 	require.NoError(t, database.Create(&models.Peer{ID: 200, OwnerID: owner.ID, Egress: true}).Error)
@@ -260,11 +260,11 @@ func TestAPluginsGroupCallReachesThePeers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h, _, peer := pluginPeerHub(t)
 		p := makeVoicePacket(weatherTG, 7007, true, false)
-		p.Src, p.Repeater = 310009, 0
+		p.Src, p.Repeater = 990009, 0
 		h.RoutePacket(context.Background(), p, plugins.SourceName(weatherPlugin))
 		select {
 		case rp := <-peer.Packets:
-			assert.Equal(t, uint(310009), rp.Packet.Src)
+			assert.Equal(t, uint(990009), rp.Packet.Src)
 		case <-time.After(deliveryWait):
 			t.Fatal("the peer did not get the plugin's group call")
 		}

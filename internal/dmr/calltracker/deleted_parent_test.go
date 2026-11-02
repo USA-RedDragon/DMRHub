@@ -65,8 +65,8 @@ func forEveryBackend(t *testing.T, f func(t *testing.T, database *gorm.DB, ps pu
 				_ = ps.Close()
 				_ = store.Close()
 			})
-			require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
-			require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "KD5SMP", Username: "b", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "N6CALL", Username: "a", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "N8CALL", Username: "b", Approved: true}).Error)
 			require.NoError(t, database.Create(&models.Repeater{
 				RepeaterConfiguration: models.RepeaterConfiguration{ID: repeaterA, Callsign: "RPT1"},
 				OwnerID:               userA,

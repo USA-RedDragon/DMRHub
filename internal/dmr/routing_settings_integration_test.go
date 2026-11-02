@@ -285,7 +285,7 @@ func heardFrom(t *testing.T, talker, listener *testutils.MMDVMClient, src, strea
 }
 
 const (
-	radioIDListed   = uint(3191868)
+	radioIDListed   = uint(3002068)
 	radioIDUnlisted = uint(1000002)
 	addedRadioID    = uint(1000003)
 )

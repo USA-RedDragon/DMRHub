@@ -40,7 +40,7 @@ function repeater(id: number, over: Partial<UnassignedRepeater> = {}): Unassigne
   return {
     id,
     type: 'modem',
-    callsign: 'KI5VMF',
+    callsign: 'N6CALL',
     rx_frequency: 438800000,
     tx_frequency: 438800000,
     color_code: 1,
@@ -52,9 +52,9 @@ function repeater(id: number, over: Partial<UnassignedRepeater> = {}): Unassigne
 }
 
 const users = [
-  { id: 3191868, callsign: 'KI5VMF', username: 'jacob', approved: true, suspended: false },
-  { id: 3112345, callsign: 'N5ABC', username: 'ann', approved: true, suspended: false },
-  { id: 3134567, callsign: 'W5XYZ', username: 'sam', approved: true, suspended: true },
+  { id: 3002068, callsign: 'N6CALL', username: 'jacob', approved: true, suspended: false },
+  { id: 3003345, callsign: 'W2CALL', username: 'ann', approved: true, suspended: false },
+  { id: 3004167, callsign: 'N7TEST', username: 'sam', approved: true, suspended: true },
 ];
 
 let list: UnassignedRepeater[] = [];
@@ -95,15 +95,15 @@ describe('UnassignedRepeatersPage', () => {
 
   it('lists the repeaters with no owner', async () => {
     list = [
-      repeater(311860),
-      repeater(311861, { callsign: '', rx_frequency: 444125000, tx_frequency: 449125000, color_code: 3, slots: 3, connected_time: '0001-01-01T00:00:00Z' }),
+      repeater(990360),
+      repeater(990361, { callsign: '', rx_frequency: 444125000, tx_frequency: 449125000, color_code: 3, slots: 3, connected_time: '0001-01-01T00:00:00Z' }),
     ];
     const wrapper = await page();
     const rows = wrapper.findAll('[data-test="unassigned-row"]');
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.text()).toContain('311860');
+    expect(rows[0]!.text()).toContain('990360');
     expect(rows[0]!.text()).toContain('Modem, hotspot');
-    expect(rows[0]!.text()).toContain('KI5VMF');
+    expect(rows[0]!.text()).toContain('N6CALL');
     expect(rows[0]!.text()).toContain('438.8000 MHz');
     expect(rows[0]!.text()).toContain('12 minutes ago');
     expect(rows[0]!.text()).toContain('Oct 24, 2026');
@@ -121,27 +121,27 @@ describe('UnassignedRepeatersPage', () => {
   });
 
   it('finds a user by callsign, username or DMR ID, and leaves out suspended users', async () => {
-    list = [repeater(311860)];
+    list = [repeater(990360)];
     const wrapper = await page();
     await wrapper.find('[data-test="unassigned-assign"]').trigger('click');
     await flushPromises();
-    expect(dialog()?.textContent).toContain('Assign an owner to repeater 311860');
+    expect(dialog()?.textContent).toContain('Assign an owner to repeater 990360');
     expect(userRows()).toHaveLength(2);
     const search = document.querySelector('[data-test="unassigned-search"]') as HTMLInputElement;
-    for (const [q, want] of [['n5a', 'N5ABC'], ['jac', 'KI5VMF'], ['3112', 'N5ABC']] as const) {
+    for (const [q, want] of [['w2c', 'W2CALL'], ['jac', 'N6CALL'], ['30033', 'W2CALL']] as const) {
       search.value = q;
       search.dispatchEvent(new Event('input'));
       await flushPromises();
       expect(userRows().map((r) => r.textContent)).toEqual([expect.stringContaining(want)]);
     }
-    search.value = 'W5XYZ';
+    search.value = 'N7TEST';
     search.dispatchEvent(new Event('input'));
     await flushPromises();
     expect(document.querySelector('[data-test="unassigned-nomatch"]')?.textContent).toBe('No user matches');
   });
 
   it('assigns the picked user and drops the repeater from the list', async () => {
-    list = [repeater(311860)];
+    list = [repeater(990360)];
     const wrapper = await page();
     await wrapper.find('[data-test="unassigned-assign"]').trigger('click');
     await flushPromises();
@@ -154,15 +154,15 @@ describe('UnassignedRepeatersPage', () => {
     list = [];
     confirm.click();
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/311860/owner', { owner: 3112345 });
-    expect(wrapper.find('[data-test="unassigned-ok"]').text()).toBe('N5ABC now owns repeater 311860.');
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/990360/owner', { owner: 3003345 });
+    expect(wrapper.find('[data-test="unassigned-ok"]').text()).toBe('W2CALL now owns repeater 990360.');
     expect(wrapper.find('[data-test="unassigned-empty"]').exists()).toBe(true);
     expect(dialog()).toBeNull();
     expect(useAdminStore().unassignedRepeaters).toBe(0);
   });
 
   it('shows the error of a repeater that got an owner meanwhile', async () => {
-    list = [repeater(311860)];
+    list = [repeater(990360)];
     const wrapper = await page();
     await wrapper.find('[data-test="unassigned-assign"]').trigger('click');
     await flushPromises();

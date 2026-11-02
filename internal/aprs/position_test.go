@@ -50,10 +50,10 @@ func TestAPositionReport(t *testing.T) {
 		"heading alone is left out":   {aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: carCode}, HeadingDeg: f(90)}, "!3016.03N/09744.59W>"},
 		"altitude":                    {aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: carCode}, AltitudeM: f(156)}, "!3016.03N/09744.59W>/A=000512"},
 		"below sea level":             {aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: carCode}, AltitudeM: f(-30)}, "!3016.03N/09744.59W>/A=-00098"},
-		"comment":                     {aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: '['}, Comment: "DMR 3191868"}, "!3016.03N/09744.59W[DMR 3191868"},
+		"comment":                     {aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: '['}, Comment: "DMR 3002068"}, "!3016.03N/09744.59W[DMR 3002068"},
 		"everything": {
-			aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: carCode}, HeadingDeg: f(270), SpeedMPS: f(30), AltitudeM: f(200), Comment: "DMR 3191868"},
-			"!3016.03N/09744.59W>270/058/A=000656DMR 3191868",
+			aprs.Report{Latitude: 30.2672, Longitude: -97.7431, Symbol: aprs.Symbol{Table: '/', Code: carCode}, HeadingDeg: f(270), SpeedMPS: f(30), AltitudeM: f(200), Comment: "DMR 3002068"},
+			"!3016.03N/09744.59W>270/058/A=000656DMR 3002068",
 		},
 	} {
 		got, err := tc.r.Info()

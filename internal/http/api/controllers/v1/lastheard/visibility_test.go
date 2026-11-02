@@ -55,14 +55,14 @@ func TestVisibilityOfThePublicPages(t *testing.T) {
 			defer tdb.CloseDB()
 			db := tdb.DB()
 
-			_, _, user := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "src", Password: "password"})
-			src, err := models.FindUserByID(db, 3191868)
+			_, _, user := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "src", Password: "password"})
+			src, err := models.FindUserByID(db, 3002068)
 			require.NoError(t, err)
 			tg := models.Talkgroup{ID: 91, Name: "TG91"}
 			require.NoError(t, db.Create(&tg).Error)
 			lat, lon := 32.7767, -96.797
 			srcID, tgID := src.ID, tg.ID
-			require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: time.Now(), UserID: &srcID, SourceID: src.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID, TalkerAlias: "KI5VMF Jacob", Latitude: &lat, Longitude: &lon}).Error)
+			require.NoError(t, db.Create(&models.Call{StreamID: 1, StartTime: time.Now(), UserID: &srcID, SourceID: src.ID, GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg.ID, TalkerAlias: "N6CALL Jacob", Latitude: &lat, Longitude: &lon}).Error)
 			admin := testutils.Login(t, router, "Admin")
 			visitor := testutils.CookieJar{}
 
@@ -79,39 +79,39 @@ func TestVisibilityOfThePublicPages(t *testing.T) {
 			}
 			name := func(jar testutils.CookieJar) string {
 				t.Helper()
-				w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/userdb/3191868", nil)
+				w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/userdb/3002068", nil)
 				require.Equal(t, http.StatusOK, w.Code)
 				var e struct {
 					FName    string `json:"fname"`
 					Callsign string `json:"callsign"`
 				}
 				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &e))
-				assert.Equal(t, "KI5VMF", e.Callsign)
+				assert.Equal(t, "N6CALL", e.Callsign)
 				return e.FName
 			}
 
 			call := lastheard(visitor)
-			assert.Equal(t, "KI5VMF Jacob", call.TalkerAlias, "public by default")
+			assert.Equal(t, "N6CALL Jacob", call.TalkerAlias, "public by default")
 			assert.NotEmpty(t, call.Grid)
 			assert.NotEmpty(t, name(visitor))
 
 			testutils.SaveSetting(t, router, admin, "visibility", "hide-names")
 			call = lastheard(visitor)
-			assert.Equal(t, "KI5VMF", call.User.Callsign)
+			assert.Equal(t, "N6CALL", call.User.Callsign)
 			assert.Empty(t, call.TalkerAlias)
 			assert.Empty(t, call.Grid)
 			assert.Nil(t, call.Latitude)
 			assert.Empty(t, name(visitor))
 			call = lastheard(user)
-			assert.Equal(t, "KI5VMF Jacob", call.TalkerAlias, "a logged-in user sees the names")
+			assert.Equal(t, "N6CALL Jacob", call.TalkerAlias, "a logged-in user sees the names")
 			assert.NotEmpty(t, call.Grid)
 			assert.NotEmpty(t, name(user))
 
 			testutils.SaveSetting(t, router, admin, "visibility", "login")
-			for _, path := range []string{"/api/v1/lastheard", "/api/v1/lastheard/talkgroup/91", "/api/v1/talkgroups", "/api/v1/talkgroups/91", "/api/v1/nets", "/api/v1/nets/scheduled", "/api/v1/userdb/3191868", "/ws/lastheard"} {
+			for _, path := range []string{"/api/v1/lastheard", "/api/v1/lastheard/talkgroup/91", "/api/v1/talkgroups", "/api/v1/talkgroups/91", "/api/v1/nets", "/api/v1/nets/scheduled", "/api/v1/userdb/3002068", "/ws/lastheard"} {
 				assert.Equal(t, http.StatusUnauthorized, testutils.Do(t, router, visitor, http.MethodGet, path, nil).Code, path)
 			}
-			for _, path := range []string{"/api/v1/lastheard", "/api/v1/talkgroups", "/api/v1/nets", "/api/v1/userdb/3191868"} {
+			for _, path := range []string{"/api/v1/lastheard", "/api/v1/talkgroups", "/api/v1/nets", "/api/v1/userdb/3002068"} {
 				assert.Equal(t, http.StatusOK, testutils.Do(t, router, user, http.MethodGet, path, nil).Code, path)
 			}
 			w := testutils.Do(t, router, visitor, http.MethodGet, "/api/v1/network/features", nil)

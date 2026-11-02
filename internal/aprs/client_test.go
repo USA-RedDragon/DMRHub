@@ -30,11 +30,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const line = "KI5VMF-9>APZDMH,W5ABC-R*,qAR,N0HUB-10:!3016.03N/09744.59W>"
+const line = "N6CALL-9>APZDMH,K6CALL-R*,qAR,K0CALL-10:!3016.03N/09744.59W>"
 
 func start(t *testing.T, srv *aprstest.Server, passcode string) (*aprs.Client, <-chan bool) {
 	t.Helper()
-	c := aprs.NewClient(aprs.Config{Login: "N0HUB-10", Passcode: passcode, Server: srv.Addr()}, "1.2.3 dirty")
+	c := aprs.NewClient(aprs.Config{Login: "K0CALL-10", Passcode: passcode, Server: srv.Addr()}, "1.2.3 dirty")
 	aprs.SetBackoff(c, 50*time.Millisecond)
 	logins := make(chan bool, 16)
 	c.OnLogin(func(verified bool) { logins <- verified })
@@ -68,7 +68,7 @@ func TestTheClientLogsInAndSends(t *testing.T) {
 	srv := aprstest.NewServer(t, "12345")
 	c, logins := start(t, srv, "12345")
 	require.True(t, reply(t, logins))
-	assert.Equal(t, []string{"user N0HUB-10 pass 12345 vers DMRHub 1.2.3-dirty"}, srv.Logins())
+	assert.Equal(t, []string{"user K0CALL-10 pass 12345 vers DMRHub 1.2.3-dirty"}, srv.Logins())
 	require.NoError(t, c.Send(line))
 	assert.Equal(t, []string{line}, lines(t, srv, 1))
 }
@@ -100,7 +100,7 @@ func TestAClientWithoutAServerSendsNothing(t *testing.T) {
 	srv := aprstest.NewServer(t, "12345")
 	addr := srv.Addr()
 	srv.Close()
-	c := aprs.NewClient(aprs.Config{Login: "N0HUB-10", Passcode: "12345", Server: addr}, "1")
+	c := aprs.NewClient(aprs.Config{Login: "K0CALL-10", Passcode: "12345", Server: addr}, "1")
 	c.Start(context.Background())
 	defer c.Stop()
 	assert.ErrorIs(t, c.Send(line), aprs.ErrNotLoggedIn)

@@ -140,7 +140,7 @@ func TestPacerHangOfThePeerHoldsOnlyDataOnItsSlot(t *testing.T) {
 		hearVoiceCall(p, held, true)
 		p.enqueue(held, 2, []byte{'v'}, false, voiceBurst(2), nil, time.Time{})
 		assert.Equal(t, held, log.next(t, 100*time.Millisecond).key)
-		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
+		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
 			stream := uint(10 + i)
 			p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil, time.Time{})
 			assert.Equal(t, k, log.next(t, 100*time.Millisecond).key)

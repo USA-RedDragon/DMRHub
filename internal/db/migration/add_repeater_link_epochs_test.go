@@ -60,7 +60,7 @@ func TestAddRepeaterLinkEpochsKeepsRepeatersAndRollsBack(t *testing.T) {
 			}
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202611012200").Error)
 			require.NoError(t, database.Exec(
-				"INSERT INTO repeaters (id, callsign, type, password) VALUES (?, ?, ?, ?)", 311861, "N0CALL", models.RepeaterTypeMMDVM, "s3cret",
+				"INSERT INTO repeaters (id, callsign, type, password) VALUES (?, ?, ?, ?)", 990361, "N0CALL", models.RepeaterTypeMMDVM, "s3cret",
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))
@@ -68,7 +68,7 @@ func TestAddRepeaterLinkEpochsKeepsRepeatersAndRollsBack(t *testing.T) {
 				require.True(t, m.HasColumn(&models.Repeater{}, c), c)
 			}
 			var got models.Repeater
-			require.NoError(t, database.First(&got, 311861).Error)
+			require.NoError(t, database.First(&got, 990361).Error)
 			assert.Equal(t, "N0CALL", got.Callsign)
 			assert.Zero(t, got.SessionEpoch)
 			assert.Zero(t, got.TS1LinkEpoch)

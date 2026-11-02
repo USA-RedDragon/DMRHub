@@ -77,11 +77,11 @@ func (f *fakeMailer) take() []sentMail {
 }
 
 const (
-	owner    = uint(3191868)
-	cosysop  = uint(3191869)
-	noMail   = uint(3191870)
-	hotspot  = uint(319186801)
-	repeater = uint(311888)
+	owner    = uint(3002068)
+	cosysop  = uint(3002069)
+	noMail   = uint(3002070)
+	hotspot  = uint(300206801)
+	repeater = uint(990388)
 )
 
 type env struct {
@@ -111,14 +111,14 @@ func newEnv(t *testing.T, be testutils.Backend) *env {
 		_ = sqlDB.Close()
 	})
 	for _, u := range []models.User{
-		{ID: owner, Callsign: "KP4DJT", Username: "kp4djt", Email: "kp4djt@example.org", EmailVerified: true, Approved: true},
-		{ID: cosysop, Callsign: "KI5VMF", Username: "kevin", Email: "kevin@example.org", EmailVerified: true, Approved: true},
+		{ID: owner, Callsign: "N7CALL", Username: "n7call", Email: "n7call@example.org", EmailVerified: true, Approved: true},
+		{ID: cosysop, Callsign: "N6CALL", Username: "kevin", Email: "kevin@example.org", EmailVerified: true, Approved: true},
 		{ID: noMail, Callsign: "N0CALL", Username: "other", Email: "other@example.org", Approved: true},
 	} {
 		require.NoError(t, database.Create(&u).Error)
 	}
 	for _, id := range []uint{hotspot, repeater} {
-		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "KP4DJT"}, Type: models.RepeaterTypeMMDVM, Password: "pw", OwnerID: owner}).Error)
+		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "N7CALL"}, Type: models.RepeaterTypeMMDVM, Password: "pw", OwnerID: owner}).Error)
 	}
 	return &env{t: t, cfg: &cfg, db: database, kv: kvStore, mailer: &fakeMailer{}}
 }
@@ -165,11 +165,11 @@ func TestAnOfflineHotspotGetsOneEmailAndABackEmail(t *testing.T) {
 		assert.Equal(t, offlinealert.Result{Ran: true, Offline: 1}, e.run(t0().Add(10*time.Minute)))
 		sent := e.mailer.take()
 		require.Len(t, sent, 1)
-		assert.Equal(t, "kp4djt@example.org", sent[0].to)
-		assert.Equal(t, "Hotspot KP4DJT 319186801 is offline", sent[0].subject)
-		assert.Equal(t, "Your hotspot KP4DJT 319186801 has been offline on DMRHub Demo since Nov 1, 14:41 UTC (10 minutes).\n\n"+
+		assert.Equal(t, "n7call@example.org", sent[0].to)
+		assert.Equal(t, "Hotspot N7CALL 300206801 is offline", sent[0].subject)
+		assert.Equal(t, "Your hotspot N7CALL 300206801 has been offline on DMRHub Demo since Nov 1, 14:41 UTC (10 minutes).\n\n"+
 			"Last problem: Connection lost: no ping for 60 seconds. Check the internet connection of the hotspot.\n\n"+
-			"Open the connection log: https://dmrhub.example.org/repeaters/319186801\n\n"+
+			"Open the connection log: https://dmrhub.example.org/repeaters/300206801\n\n"+
 			"To stop these emails, turn off \"Email me when it is offline\" on the same page.\n", sent[0].body)
 
 		assert.Equal(t, offlinealert.Result{Ran: true}, e.run(t0().Add(time.Hour)))
@@ -179,7 +179,7 @@ func TestAnOfflineHotspotGetsOneEmailAndABackEmail(t *testing.T) {
 		assert.Equal(t, offlinealert.Result{Ran: true, Back: 1}, e.run(t0().Add(71*time.Minute)))
 		sent = e.mailer.take()
 		require.Len(t, sent, 1)
-		assert.Equal(t, "Hotspot KP4DJT 319186801 is back", sent[0].subject)
+		assert.Equal(t, "Hotspot N7CALL 300206801 is back", sent[0].subject)
 		assert.Contains(t, sent[0].body, "It was offline for 70 minutes.")
 		assert.Equal(t, offlinealert.Result{Ran: true}, e.run(t0().Add(72*time.Minute)))
 		assert.Empty(t, e.mailer.take())
@@ -265,7 +265,7 @@ func TestNoEmailWithoutAReasonToSend(t *testing.T) {
 		sent := e.mailer.take()
 		require.Len(t, sent, 1)
 		assert.Equal(t, "kevin@example.org", sent[0].to)
-		assert.Equal(t, "Repeater KP4DJT 311888 is offline", sent[0].subject)
+		assert.Equal(t, "Repeater N7CALL 990388 is offline", sent[0].subject)
 
 		_, err = models.RemoveCosysop(e.db, repeater, cosysop)
 		require.NoError(t, err)

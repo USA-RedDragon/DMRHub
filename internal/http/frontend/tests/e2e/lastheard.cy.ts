@@ -152,15 +152,15 @@ describe('Last Heard', () => {
       sentence: `Stored sentence for ${id}.`, target: 'ipsc', repeater_id: id, callsign, reason,
     });
     cy.fixture('lastheard-kinds.json').then((data) => {
-      data.calls[1].undeliverable = [entry(311304200, 'no_ipsc_form')];
+      data.calls[1].undeliverable = [entry(300344200, 'no_ipsc_form')];
       data.calls[1].undeliverable_scope = 'all';
       data.calls[2].undeliverable = [
-        entry(314926, 'slot_busy', 'W1XPR'),
-        entry(311304200, 'slot_busy', 'K5ABC'),
-        entry(311304201, 'slot_busy', 'N0XYZ'),
-        entry(311304202, 'slot_busy'),
-        entry(311305510, 'no_ipsc_form'),
-        entry(311306001, 'fec_uncorrectable', 'KD5QRS'),
+        entry(990626, 'slot_busy', 'W1XPR'),
+        entry(300344200, 'slot_busy', 'K3CALL'),
+        entry(300344201, 'slot_busy', 'K8CALL'),
+        entry(300344202, 'slot_busy'),
+        entry(300345510, 'no_ipsc_form'),
+        entry(300346001, 'fec_uncorrectable', 'KD5QRS'),
       ];
       data.calls[2].undeliverable_scope = 'all';
       cy.intercept('GET', '/api/v1/lastheard*', { statusCode: 200, body: data }).as('getLastHeard');
@@ -170,14 +170,14 @@ describe('Last Heard', () => {
     cy.wait('@getLastHeard');
 
     cy.get('[data-testid="undeliverable"]').should('have.length', 3);
-    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 311304200: could not carry this burst').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to IPSC repeater 300344200: could not carry this burst').should('be.visible');
     cy.contains('[data-testid="undeliverable"]', 'Not sent to 6 repeaters').should('be.visible');
     cy.contains('[data-testid="undeliverable"]', '4 busy on that slot · 1 could not carry this burst · 1 too damaged to repair').should('be.visible');
-    cy.contains('[data-testid="undeliverable-detail"]', 'Busy on that slot: W1XPR (314926), K5ABC (311304200), N0XYZ (311304201), and 1 more').should('not.be.visible');
+    cy.contains('[data-testid="undeliverable-detail"]', 'Busy on that slot: W1XPR (990626), K3CALL (300344200), K8CALL (300344201), and 1 more').should('not.be.visible');
     cy.contains('[data-testid="undeliverable-details"] summary', 'Show the 6 repeaters').click();
-    cy.contains('[data-testid="undeliverable-detail"]', 'Busy on that slot: W1XPR (314926), K5ABC (311304200), N0XYZ (311304201), and 1 more').should('be.visible');
-    cy.contains('[data-testid="undeliverable-detail"]', 'Could not carry this burst: 311305510').should('be.visible');
-    cy.contains('[data-testid="undeliverable-detail"]', 'Too damaged to repair: KD5QRS (311306001)').should('be.visible');
+    cy.contains('[data-testid="undeliverable-detail"]', 'Busy on that slot: W1XPR (990626), K3CALL (300344200), K8CALL (300344201), and 1 more').should('be.visible');
+    cy.contains('[data-testid="undeliverable-detail"]', 'Could not carry this burst: 300345510').should('be.visible');
+    cy.contains('[data-testid="undeliverable-detail"]', 'Too damaged to repair: KD5QRS (300346001)').should('be.visible');
     cy.contains('Stored sentence').should('not.exist');
     cy.contains('slot_busy').should('not.exist');
   });
@@ -185,7 +185,7 @@ describe('Last Heard', () => {
   it('shows the owner of a repeater only their repeater, and anyone else nothing', () => {
     cy.fixture('lastheard-kinds.json').then((data) => {
       data.calls[1].undeliverable = [
-        { sentence: 'IPSC repeater 314926 was busy on that slot.', target: 'ipsc', repeater_id: 314926, callsign: 'W1XPR', reason: 'slot_busy' },
+        { sentence: 'IPSC repeater 990626 was busy on that slot.', target: 'ipsc', repeater_id: 990626, callsign: 'W1XPR', reason: 'slot_busy' },
       ];
       data.calls[1].undeliverable_scope = 'own';
       data.calls[2].undeliverable = null;
@@ -197,7 +197,7 @@ describe('Last Heard', () => {
     cy.wait('@getLastHeard');
 
     cy.get('[data-testid="undeliverable"]').should('have.length', 1);
-    cy.contains('[data-testid="undeliverable"]', 'Not sent to your repeater W1XPR (314926): busy on that slot').should('be.visible');
+    cy.contains('[data-testid="undeliverable"]', 'Not sent to your repeater W1XPR (990626): busy on that slot').should('be.visible');
     cy.get('[data-testid="undeliverable-details"]').should('not.exist');
   });
 });

@@ -60,7 +60,7 @@ type goldenNet struct {
 
 func newGoldenNet(t *testing.T, stack *testutils.IntegrationStack, slot2 bool, ipscPeers ...uint32) *goldenNet {
 	t.Helper()
-	stack.SeedUser(t, anyTone, "KI5VMF")
+	stack.SeedUser(t, anyTone, "N6CALL")
 	stack.SeedUser(t, otherRadio, "KF5XYZ")
 	for _, id := range ipscPeers {
 		stack.SeedIPSCRepeater(t, uint(id), anyTone, ipscAuthKey)
@@ -346,7 +346,7 @@ func firstCopy(call [][]byte) [][]byte {
 func TestGoldenDMRGatewayAliasAndGPS(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		stack.SeedUser(t, anyTone, "KI5VMF")
+		stack.SeedUser(t, anyTone, "N6CALL")
 		stack.SeedMMDVMRepeater(t, gatewayRptID, anyTone, testPassword)
 		stack.StartServers(t)
 
@@ -390,7 +390,7 @@ func TestGoldenParrotCall(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		needs(t, "parrot fix")
 		const repeaterID = 3129101
-		stack.SeedUser(t, anyTone, "KI5VMF")
+		stack.SeedUser(t, anyTone, "N6CALL")
 		stack.SeedMMDVMRepeater(t, repeaterID, anyTone, testPassword)
 		stack.StartServers(t)
 		runParrot(t, stack)

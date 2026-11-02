@@ -40,7 +40,7 @@ import (
 // must answer its pings once the config is accepted.
 func TestARepeatedRPTKDoesNotEndTheLogin(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311960)
+	const id = uint32(990460)
 	d := dmrd.DialectMMDVM
 	r := newDialectRig(t, uint(id))
 	r.control(d, dmrd.Control{Command: dmrd.CommandRPTL, ID: id})

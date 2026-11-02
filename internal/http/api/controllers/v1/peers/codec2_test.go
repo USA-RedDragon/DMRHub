@@ -40,11 +40,11 @@ func TestPeerCodec2IsForAdmins(t *testing.T) {
 	defer tdb.CloseDB()
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
-	testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
+	testutils.SeedAccount(t, tdb.DB(), 3002068, "N6CALL", "owner")
 	ownerJar := testutils.Login(t, router, "owner")
 
 	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{
-		ID: 200003, OwnerID: 3191868, IP: "10.0.0.3", Port: 62035, Ingress: true, Egress: true,
+		ID: 200003, OwnerID: 3002068, IP: "10.0.0.3", Port: 62035, Ingress: true, Egress: true,
 	})
 	require.Equal(t, http.StatusOK, w.Code)
 	var stored models.Peer
@@ -52,7 +52,7 @@ func TestPeerCodec2IsForAdmins(t *testing.T) {
 	assert.False(t, stored.Codec2, "a new peer is AMBE only")
 
 	_, w = testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{
-		ID: 200004, OwnerID: 3191868, IP: "10.0.0.4", Port: 62035, Ingress: true, Egress: true, Codec2: true,
+		ID: 200004, OwnerID: 3002068, IP: "10.0.0.4", Port: 62035, Ingress: true, Egress: true, Codec2: true,
 	})
 	require.Equal(t, http.StatusOK, w.Code)
 	stored = models.Peer{}

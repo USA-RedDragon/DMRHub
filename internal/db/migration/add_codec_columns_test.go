@@ -68,10 +68,10 @@ func TestAddCodecColumnsKeepsEverySlotAMBE(t *testing.T) {
 
 			require.NoError(t, database.Create(&models.User{ID: 1000001, Callsign: "N0CALL", Username: "old"}).Error)
 			require.NoError(t, database.Exec(
-				"INSERT INTO repeaters (id, callsign, type, password, owner_id) VALUES (?, ?, ?, ?, ?)", 311860, "N0CALL", models.RepeaterTypeMMDVM, "s3cret", 1000001,
+				"INSERT INTO repeaters (id, callsign, type, password, owner_id) VALUES (?, ?, ?, ?, ?)", 990360, "N0CALL", models.RepeaterTypeMMDVM, "s3cret", 1000001,
 			).Error)
 			require.NoError(t, database.Exec(
-				"INSERT INTO peers (id, ip, port, password, owner_id, ingress, egress) VALUES (?, ?, ?, ?, ?, ?, ?)", 311999, "192.0.2.20", 62044, "s3cret", 1000001, true, true,
+				"INSERT INTO peers (id, ip, port, password, owner_id, ingress, egress) VALUES (?, ?, ?, ?, ?, ?, ?)", 990499, "192.0.2.20", 62044, "s3cret", 1000001, true, true,
 			).Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO calls (stream_id, start_time, duration, active, time_slot, group_call, destination_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -81,7 +81,7 @@ func TestAddCodecColumnsKeepsEverySlotAMBE(t *testing.T) {
 			require.NoError(t, migration.Migrate(database, &cfg))
 
 			var rpt models.Repeater
-			require.NoError(t, database.First(&rpt, 311860).Error)
+			require.NoError(t, database.First(&rpt, 990360).Error)
 			assert.Equal(t, "N0CALL", rpt.Callsign)
 			assert.Equal(t, models.CodecSettingAuto, rpt.TS1Codec)
 			assert.Equal(t, models.CodecSettingAuto, rpt.TS2Codec)
@@ -91,7 +91,7 @@ func TestAddCodecColumnsKeepsEverySlotAMBE(t *testing.T) {
 			assert.Equal(t, models.CodecAMBE, rpt.SlotCodec(true))
 
 			var peer models.Peer
-			require.NoError(t, database.First(&peer, 311999).Error)
+			require.NoError(t, database.First(&peer, 990499).Error)
 			assert.False(t, peer.Codec2)
 
 			var call models.Call

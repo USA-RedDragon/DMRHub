@@ -40,7 +40,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const accountBase = 3109500
+const accountBase = 3003100
 
 // web serves the HTTP API of the rig's hub.
 type web struct {

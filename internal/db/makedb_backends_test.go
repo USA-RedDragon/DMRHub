@@ -217,7 +217,7 @@ func TestMakeDBUpgradesTheSchemaOf20261026(t *testing.T) {
 			burst := []byte{0, 1, 2, 0xff, 0xfe}
 			hasUsers, hasCalls := gdb.Migrator().HasTable("users"), gdb.Migrator().HasTable("calls")
 			if hasUsers {
-				require.NoError(t, gdb.Create(&schemaUser{ID: 7, Callsign: "W1AW", Username: "w1aw"}).Error)
+				require.NoError(t, gdb.Create(&schemaUser{ID: 7, Callsign: "W4CALL", Username: "w4call"}).Error)
 			}
 			if hasCalls {
 				require.NoError(t, gdb.Create(&schemaCall{ID: 7, CallData: burst, StreamID: 99}).Error)
@@ -244,7 +244,7 @@ func TestMakeDBUpgradesTheSchemaOf20261026(t *testing.T) {
 			if hasUsers {
 				var u schemaUser
 				require.NoError(t, gdb.First(&u, 7).Error)
-				assert.Equal(t, schemaUser{ID: 7, Callsign: "W1AW", Username: "w1aw"}, u)
+				assert.Equal(t, schemaUser{ID: 7, Callsign: "W4CALL", Username: "w4call"}, u)
 				require.NoError(t, gdb.Delete(&schemaUser{}, 7).Error)
 			}
 			if hasCalls {

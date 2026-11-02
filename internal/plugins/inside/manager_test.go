@@ -409,7 +409,7 @@ func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
 	call := func(seq uint) {
 		t.Helper()
 		n := r.router.count()
-		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 5, Seq: seq}))
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3002068, Dst: 9100, StreamID: 5, Seq: seq}))
 		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond, "the guest echoes burst %d", seq)
 	}
 
@@ -533,7 +533,7 @@ func TestTheAdminAllowsAndRevokesTheHostsOfAPlugin(t *testing.T) {
 
 	probe := func() string {
 		n := r.router.count()
-		pkt := models.Packet{Src: 3191868, Dst: 9200, StreamID: 3}
+		pkt := models.Packet{Src: 3002068, Dst: 9200, StreamID: 3}
 		copy(pkt.DMRData[:], addr)
 		require.NoError(t, r.registry.Deliver(p.ID, pkt))
 		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond)

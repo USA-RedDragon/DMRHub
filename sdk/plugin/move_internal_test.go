@@ -101,7 +101,7 @@ func welcome(s pluginv1.PluginService_ConnectServer) {
 
 func sendBurst(s pluginv1.PluginService_ConnectServer, seq uint32) {
 	_ = s.Send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: &pluginv1.Burst{
-		Source: 3191868, Destination: 9990, Slot: 1, StreamId: 7, Sequence: seq,
+		Source: 3002068, Destination: 9990, Slot: 1, StreamId: 7, Sequence: seq,
 	}}})
 }
 

@@ -57,15 +57,15 @@ func TestEgressRuleMatches(t *testing.T) {
 		{"any talkgroup rule sends", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, dst, 31665, 31665)}, groupCall(radio, 31665), true},
 		{"talkgroup rules ignore the caller", []models.PeerRule{rule(false, dst, 3100, 3100)}, groupCall(1, 3100), true},
 		{"source rule sends its radios", []models.PeerRule{rule(false, src, 3000001, 3000099)}, groupCall(radio, 91), true},
-		{"source rule keeps other radios", []models.PeerRule{rule(false, src, 3000001, 3000099)}, groupCall(3100001, 91), false},
+		{"source rule keeps other radios", []models.PeerRule{rule(false, src, 3000001, 3000099)}, groupCall(3002401, 91), false},
 		{"default match is the source", []models.PeerRule{rule(false, "", 3000001, 3000099)}, groupCall(radio, 91), true},
 		{"default match ignores the talkgroup", []models.PeerRule{rule(false, "", 91, 91)}, groupCall(radio, 91), false},
 		{"both kinds pass", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, src, 3000001, 3000099)}, groupCall(radio, 3100), true},
 		{"both kinds, talkgroup fails", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, src, 3000001, 3000099)}, groupCall(radio, 91), false},
-		{"both kinds, source fails", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, src, 3000001, 3000099)}, groupCall(3100001, 3100), false},
-		{"talkgroup rule keeps a private call to another ID", []models.PeerRule{rule(false, dst, 3100, 3100)}, privateCall(3100001), false},
-		{"destination rule sends a private call to its range", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, dst, 1000000, 9999999)}, privateCall(3100001), true},
-		{"source rule sends a private call", []models.PeerRule{rule(false, src, 3000001, 3000099)}, privateCall(3100001), true},
+		{"both kinds, source fails", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, src, 3000001, 3000099)}, groupCall(3002401, 3100), false},
+		{"talkgroup rule keeps a private call to another ID", []models.PeerRule{rule(false, dst, 3100, 3100)}, privateCall(3002401), false},
+		{"destination rule sends a private call to its range", []models.PeerRule{rule(false, dst, 3100, 3100), rule(false, dst, 1000000, 9999999)}, privateCall(3002401), true},
+		{"source rule sends a private call", []models.PeerRule{rule(false, src, 3000001, 3000099)}, privateCall(3002401), true},
 		{"unknown match is ignored", []models.PeerRule{rule(false, "talkgroup", 1, 16777215)}, groupCall(radio, 3100), false},
 		{"unknown match does not restrict", []models.PeerRule{rule(false, "talkgroup", 9, 9), rule(false, dst, 3100, 3100)}, groupCall(radio, 3100), true},
 	}
@@ -95,9 +95,9 @@ func TestIngressRuleMatches(t *testing.T) {
 		{"default match ignores the caller", []models.PeerRule{rule(true, "", radio, radio)}, groupCall(radio, 3100), false},
 		{"destination rule", []models.PeerRule{rule(true, dst, 3100, 3100)}, groupCall(radio, 91), false},
 		{"source rule takes its radios", []models.PeerRule{rule(true, src, 3000001, 3000099)}, groupCall(radio, 91), true},
-		{"source rule drops other radios", []models.PeerRule{rule(true, src, 3000001, 3000099)}, groupCall(3100001, 91), false},
+		{"source rule drops other radios", []models.PeerRule{rule(true, src, 3000001, 3000099)}, groupCall(3002401, 91), false},
 		{"both kinds pass", []models.PeerRule{rule(true, dst, 3100, 3100), rule(true, src, 3000001, 3000099)}, groupCall(radio, 3100), true},
-		{"both kinds, source fails", []models.PeerRule{rule(true, dst, 3100, 3100), rule(true, src, 3000001, 3000099)}, groupCall(3100001, 3100), false},
+		{"both kinds, source fails", []models.PeerRule{rule(true, dst, 3100, 3100), rule(true, src, 3000001, 3000099)}, groupCall(3002401, 3100), false},
 		{"destination rule takes a private call to its range", []models.PeerRule{rule(true, dst, 1000000, 9999999)}, privateCall(2000001), true},
 	}
 	for _, c := range cases {
@@ -136,14 +136,14 @@ func TestPrivateCallSwitch(t *testing.T) {
 		packet  *models.Packet
 		want    bool
 	}{
-		{"off keeps a private call that no destination rule covers", talkgroup, false, privateCall(3100001), false},
-		{"on sends a private call past the destination rules", talkgroup, true, privateCall(3100001), true},
+		{"off keeps a private call that no destination rule covers", talkgroup, false, privateCall(3002401), false},
+		{"on sends a private call past the destination rules", talkgroup, true, privateCall(3002401), true},
 		{"on leaves group calls to the destination rules", talkgroup, true, groupCall(3000050, 91), false},
-		{"on keeps the source rules", both, true, &models.Packet{Src: 3100001, Dst: 3100002}, false},
-		{"on sends a private call from an allowed radio", both, true, privateCall(3100001), true},
-		{"on with no rules sends private calls", nil, true, privateCall(3100001), true},
+		{"on keeps the source rules", both, true, &models.Packet{Src: 3002401, Dst: 3002402}, false},
+		{"on sends a private call from an allowed radio", both, true, privateCall(3002401), true},
+		{"on with no rules sends private calls", nil, true, privateCall(3002401), true},
 		{"on with no rules keeps group calls", nil, true, groupCall(3000050, 3100), false},
-		{"off with no rules keeps private calls", nil, false, privateCall(3100001), false},
+		{"off with no rules keeps private calls", nil, false, privateCall(3002401), false},
 		{"on leaves group calls to the source rules", []models.PeerRule{rule(false, src, 3000001, 3000099)}, true, groupCall(3000050, 91), true},
 	}
 	for _, c := range cases {

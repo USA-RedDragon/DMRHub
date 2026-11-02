@@ -78,7 +78,7 @@ func TestAddPeerRuleMatchKeepsRules(t *testing.T) {
 			assert.True(t, rules.IngressAllows(ingress, false, &models.Packet{Src: 1, Dst: 3100, GroupCall: true}))
 			assert.False(t, rules.IngressAllows(ingress, false, &models.Packet{Src: 3100, Dst: 91, GroupCall: true}))
 			assert.True(t, rules.EgressAllows(egress, false, &models.Packet{Src: 3000050, Dst: 91, GroupCall: true}))
-			assert.False(t, rules.EgressAllows(egress, false, &models.Packet{Src: 3100001, Dst: 3000050, GroupCall: true}))
+			assert.False(t, rules.EgressAllows(egress, false, &models.Packet{Src: 3002401, Dst: 3000050, GroupCall: true}))
 		})
 	}
 }

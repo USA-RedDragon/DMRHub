@@ -46,9 +46,9 @@ import (
 )
 
 const (
-	userA     = uint(3191868)
-	userB     = uint(3140598)
-	repeaterA = uint(319186801)
+	userA     = uint(3002068)
+	userB     = uint(3002198)
+	repeaterA = uint(300206801)
 	tgID      = uint(3100)
 )
 
@@ -73,8 +73,8 @@ func openDB(t *testing.T) *gorm.DB {
 		sqlDB, _ := database.DB()
 		_ = sqlDB.Close()
 	})
-	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
-	require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "KD5SMP", Username: "b", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "N6CALL", Username: "a", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "N8CALL", Username: "b", Approved: true}).Error)
 	return database
 }
 

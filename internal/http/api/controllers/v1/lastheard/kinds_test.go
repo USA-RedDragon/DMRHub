@@ -41,9 +41,9 @@ import (
 )
 
 const (
-	alice     = uint(3191868)
-	bob       = uint(3140598)
-	aliceRptr = uint(319186801)
+	alice     = uint(3002068)
+	bob       = uint(3002198)
+	aliceRptr = uint(300206801)
 	tg        = uint(3100)
 )
 
@@ -153,7 +153,7 @@ func setup(t *testing.T) *gin.Engine {
 		}).Error)
 	}
 	priv(10, bob, alice)
-	priv(11, 3113042, 3999999)
+	priv(11, 3003442, 3999999)
 	return router
 }
 
@@ -212,19 +212,19 @@ func TestLastheardPrivateHistoryIsClosed(t *testing.T) {
 	bobJar := login(t, router, "bob")
 	_, _, admin := testutils.LoginAdmin(t, router)
 
-	p := getPage(t, router, "/api/v1/lastheard/user/3191868", &aliceJar)
+	p := getPage(t, router, "/api/v1/lastheard/user/3002068", &aliceJar)
 	assert.Equal(t, 2, p.Total, "alice sees her group call and the private call to her")
 
-	code, _ := get(t, router, "/api/v1/lastheard/user/3191868", &bobJar)
+	code, _ := get(t, router, "/api/v1/lastheard/user/3002068", &bobJar)
 	assert.Equal(t, http.StatusForbidden, code, "bob cannot read alice's history")
-	code, _ = get(t, router, "/api/v1/lastheard/user/3191868", nil)
+	code, _ = get(t, router, "/api/v1/lastheard/user/3002068", nil)
 	assert.Equal(t, http.StatusUnauthorized, code)
-	p = getPage(t, router, "/api/v1/lastheard/user/3191868", &admin)
+	p = getPage(t, router, "/api/v1/lastheard/user/3002068", &admin)
 	assert.Equal(t, 2, p.Total)
 
-	p = getPage(t, router, "/api/v1/lastheard/repeater/319186801", &aliceJar)
+	p = getPage(t, router, "/api/v1/lastheard/repeater/300206801", &aliceJar)
 	assert.Equal(t, 2, p.Total, "the owner sees the calls through her repeater")
-	code, _ = get(t, router, "/api/v1/lastheard/repeater/319186801", &bobJar)
+	code, _ = get(t, router, "/api/v1/lastheard/repeater/300206801", &bobJar)
 	assert.Equal(t, http.StatusForbidden, code)
 }
 

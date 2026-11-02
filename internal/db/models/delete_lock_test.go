@@ -77,7 +77,7 @@ func TestDeleteUserWhileACallStarts(t *testing.T) {
 		t.Run(be.backend.Name, func(t *testing.T) {
 			t.Parallel()
 			database := backendDB(t, be.backend)
-			const user, rpt = 3191868, 311871
+			const user, rpt = 3002068, 990371
 			require.NoError(t, database.Create(&models.User{ID: user, Callsign: "N0CALL", Username: "n0call"}).Error)
 			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: rpt}, Type: models.RepeaterTypeMMDVM, OwnerID: user}).Error)
 			userID, rptID := uint(user), uint(rpt)

@@ -44,7 +44,7 @@ func TestPositionDefaults(t *testing.T) {
 
 func TestPositionValidate(t *testing.T) {
 	t.Parallel()
-	valid := config.Positions{MinInterval: 10, MaxRetention: 365, APRSIS: config.APRSIS{Callsign: "N0HUB-10", Server: "rotate.aprs2.net:14580"}}
+	valid := config.Positions{MinInterval: 10, MaxRetention: 365, APRSIS: config.APRSIS{Callsign: "K0CALL-10", Server: "rotate.aprs2.net:14580"}}
 	if err := valid.Validate(); err != nil {
 		t.Errorf("expected valid, got %v", err)
 	}
@@ -56,8 +56,8 @@ func TestPositionValidate(t *testing.T) {
 		{"interval 7", func(p *config.Positions) { p.MinInterval = 7 }, config.ErrInvalidPositionInterval},
 		{"retention -1", func(p *config.Positions) { p.MaxRetention = -1 }, config.ErrInvalidPositionRetention},
 		{"retention 366", func(p *config.Positions) { p.MaxRetention = 366 }, config.ErrInvalidPositionRetention},
-		{"lower case callsign", func(p *config.Positions) { p.APRSIS.Callsign = "n0hub" }, config.ErrInvalidAPRSCallsign},
-		{"injected callsign", func(p *config.Positions) { p.APRSIS.Callsign = "N0HUB>APRS" }, config.ErrInvalidAPRSCallsign},
+		{"lower case callsign", func(p *config.Positions) { p.APRSIS.Callsign = "k0call" }, config.ErrInvalidAPRSCallsign},
+		{"injected callsign", func(p *config.Positions) { p.APRSIS.Callsign = "K0CALL>APRS" }, config.ErrInvalidAPRSCallsign},
 		{"server", func(p *config.Positions) { p.APRSIS.Server = "rotate.aprs2.net" }, config.ErrInvalidAPRSServer},
 	} {
 		p := valid

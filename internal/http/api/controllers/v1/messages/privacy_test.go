@@ -54,8 +54,8 @@ func newEnvOn(t *testing.T, be testutils.Backend) (*env, *config.Config) {
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	db := tdb.DB()
-	testutils.SeedAccount(t, db, owner, "KI5VMF", "owner")
-	testutils.SeedAccount(t, db, other, "KD5SMP", "other")
+	testutils.SeedAccount(t, db, owner, "N6CALL", "owner")
+	testutils.SeedAccount(t, db, other, "N8CALL", "other")
 	require.NoError(t, db.Create(&models.Talkgroup{ID: tg, Name: "Texas"}).Error)
 	return &env{t: t, router: router, db: db, jar: testutils.Login(t, router, "owner"), ps: tdb.PubSub()}, cfg
 }

@@ -71,7 +71,7 @@ func TestPATCHUserCallsign(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 
-			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 			_, _, adminJar := testutils.LoginAdmin(t, router)
 			require.NoError(t, database.Model(&models.User{}).Where("id = ?", user.DMRId).UpdateColumn("callsign", "OLDCALL").Error)
@@ -93,10 +93,10 @@ func TestPATCHUserCallsign(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "OLDCALL", stored().Callsign)
 
-			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "KI5VMF"}}, time.Now()))
-			resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "ki5vmf"})
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "N6CALL"}}, time.Now()))
+			resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "n6call"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
-			assert.Equal(t, "KI5VMF", stored().Callsign)
+			assert.Equal(t, "N6CALL", stored().Callsign)
 			_, drifted, err := models.FindRadioIDDrift(database, user.DMRId)
 			require.NoError(t, err)
 			assert.False(t, drifted, "a new callsign ends the drift")
@@ -105,8 +105,8 @@ func TestPATCHUserCallsign(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			a = patchAnswerOf(t, w.Body.Bytes())
 			assert.True(t, a.RadioIDMismatch)
-			assert.Equal(t, "KI5VMF", a.RadioIDCallsign)
-			assert.Equal(t, "KI5VMF", stored().Callsign)
+			assert.Equal(t, "N6CALL", a.RadioIDCallsign)
+			assert.Equal(t, "N6CALL", stored().Callsign)
 
 			resp, w = testutils.PatchUser(t, router, user.DMRId, adminJar, apimodels.UserPatch{Callsign: "n0call", OverrideRadioID: true})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
@@ -118,10 +118,10 @@ func TestPATCHUserCallsign(t *testing.T) {
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			assert.True(t, stored().CallsignOverride, "an edit that keeps the callsign keeps the override")
 
-			resp, w = testutils.PatchUser(t, router, user.DMRId, adminJar, apimodels.UserPatch{Callsign: "KI5VMF"})
+			resp, w = testutils.PatchUser(t, router, user.DMRId, adminJar, apimodels.UserPatch{Callsign: "N6CALL"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			u = stored()
-			assert.Equal(t, "KI5VMF", u.Callsign)
+			assert.Equal(t, "N6CALL", u.Callsign)
 			assert.False(t, u.CallsignOverride)
 		})
 	}
@@ -137,9 +137,9 @@ func TestPATCHUserCallsignWithoutRadioIDValidation(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 
-			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-			require.NoError(t, database.Create(&models.User{ID: 3140001, Callsign: "W1AW", Username: "other", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: 3004201, Callsign: "W4CALL", Username: "other", Approved: true}).Error)
 
 			resp, w := testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "n0call"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
@@ -148,7 +148,7 @@ func TestPATCHUserCallsignWithoutRadioIDValidation(t *testing.T) {
 			assert.Equal(t, "N0CALL", u.Callsign)
 			assert.False(t, u.CallsignOverride)
 
-			resp, w = testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "w1aw"})
+			resp, w = testutils.PatchUser(t, router, user.DMRId, userJar, apimodels.UserPatch{Callsign: "w4call"})
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "Callsign is already taken", resp.Error)
 		})
@@ -161,7 +161,7 @@ func TestPATCHUserUsernameIsChecked(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+	user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	for name, want := range map[string]string{
@@ -186,10 +186,10 @@ func TestDeleteUserRemovesItsRadioIDDrift(t *testing.T) {
 			require.NoError(t, err)
 			defer tdb.CloseDB()
 			database := tdb.DB()
-			require.NoError(t, database.Create(&models.User{ID: 3140001, Callsign: "W1AW", Username: "other", Approved: true}).Error)
-			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3140001, UserID: 3140001, RadioIDCallsign: "N0NEW"}}, time.Now()))
-			require.NoError(t, models.DeleteUser(database, 3140001))
-			_, drifted, err := models.FindRadioIDDrift(database, 3140001)
+			require.NoError(t, database.Create(&models.User{ID: 3004201, Callsign: "W4CALL", Username: "other", Approved: true}).Error)
+			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3004201, UserID: 3004201, RadioIDCallsign: "K2CALL"}}, time.Now()))
+			require.NoError(t, models.DeleteUser(database, 3004201))
+			_, drifted, err := models.FindRadioIDDrift(database, 3004201)
 			require.NoError(t, err)
 			assert.False(t, drifted)
 		})
@@ -253,19 +253,19 @@ func TestRadioIDDriftListAndFix(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 
-			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 			_, _, adminJar := testutils.LoginAdmin(t, router)
-			require.NoError(t, database.Exec("UPDATE users SET callsign = ?, email = ?, email_verified = ? WHERE id = ?", "OLDCALL", "ki5vmf@example.com", true, user.DMRId).Error)
+			require.NoError(t, database.Exec("UPDATE users SET callsign = ?, email = ?, email_verified = ? WHERE id = ?", "OLDCALL", "n6call@example.com", true, user.DMRId).Error)
 			require.NoError(t, database.Create(&models.User{ID: unknownDMRID, Callsign: "N0GONE", Username: "gone", Approved: true}).Error)
 			require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{
-				{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "KI5VMF"},
+				{RadioID: user.DMRId, UserID: user.DMRId, RadioIDCallsign: "N6CALL"},
 				{RadioID: unknownDMRID, UserID: unknownDMRID},
 			}, time.Now()))
 
 			w := driftRequest(t, router, userJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
 			assert.Equal(t, http.StatusForbidden, w.Code)
-			w = driftRequest(t, router, userJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", "")
+			w = driftRequest(t, router, userJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3002068/fix", "")
 			assert.Equal(t, http.StatusForbidden, w.Code)
 
 			w = driftRequest(t, router, adminJar, http.MethodGet, "/api/v1/admin/radio-id-drift", "")
@@ -278,7 +278,7 @@ func TestRadioIDDriftListAndFix(t *testing.T) {
 			for _, d := range list.Drifts {
 				byID[d.RadioID] = d
 			}
-			assert.Equal(t, apimodels.RadioIDDrift{RadioID: user.DMRId, UserID: user.DMRId, Username: "testuser", Callsign: "OLDCALL", RadioIDCallsign: "KI5VMF", CanFix: true, CanNotify: true},
+			assert.Equal(t, apimodels.RadioIDDrift{RadioID: user.DMRId, UserID: user.DMRId, Username: "testuser", Callsign: "OLDCALL", RadioIDCallsign: "N6CALL", CanFix: true, CanNotify: true},
 				withoutTimes(byID[user.DMRId]))
 			assert.Equal(t, apimodels.RadioIDDrift{RadioID: unknownDMRID, UserID: unknownDMRID, Username: "gone", Callsign: "N0GONE"}, withoutTimes(byID[unknownDMRID]))
 
@@ -286,28 +286,28 @@ func TestRadioIDDriftListAndFix(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "RadioID does not have this DMR ID", patchAnswerOf(t, w.Body.Bytes()).Error)
 
-			require.NoError(t, database.Model(&models.User{}).Where("id = ?", unknownDMRID).UpdateColumn("username", "ki5vmf").Error)
-			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+			require.NoError(t, database.Model(&models.User{}).Where("id = ?", unknownDMRID).UpdateColumn("username", "n6call").Error)
+			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3002068/fix", `{"notify":true}`)
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "Callsign is the username of another user", patchAnswerOf(t, w.Body.Bytes()).Error)
 			require.NoError(t, database.Model(&models.User{}).Where("id = ?", unknownDMRID).UpdateColumn("username", "gone").Error)
 
-			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+			w = driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3002068/fix", `{"notify":true}`)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			var fixed apimodels.RadioIDDriftFixed
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &fixed))
-			assert.Equal(t, apimodels.RadioIDDriftFixed{Message: "User updated", Callsign: "KI5VMF", Notified: true}, fixed)
+			assert.Equal(t, apimodels.RadioIDDriftFixed{Message: "User updated", Callsign: "N6CALL", Notified: true}, fixed)
 			u, err := models.FindUserWithoutRepeaters(database, user.DMRId)
 			require.NoError(t, err)
-			assert.Equal(t, "KI5VMF", u.Callsign)
+			assert.Equal(t, "N6CALL", u.Callsign)
 			_, drifted, err := models.FindRadioIDDrift(database, user.DMRId)
 			require.NoError(t, err)
 			assert.False(t, drifted)
 			select {
 			case m := <-mailer.sent:
-				assert.Equal(t, "ki5vmf@example.com", m.to)
-				assert.Equal(t, "Your Test Hub callsign is now KI5VMF", m.subject)
-				assert.Contains(t, m.body, "from OLDCALL to KI5VMF")
+				assert.Equal(t, "n6call@example.com", m.to)
+				assert.Equal(t, "Your Test Hub callsign is now N6CALL", m.subject)
+				assert.Contains(t, m.body, "from OLDCALL to N6CALL")
 			case <-time.After(testTimeout):
 				require.FailNow(t, "no callsign notice was sent")
 			}
@@ -323,17 +323,17 @@ func TestRadioIDDriftFixWithoutNotice(t *testing.T) {
 	defer tdb.CloseDB()
 	database := tdb.DB()
 	_, _, adminJar := testutils.LoginAdmin(t, router)
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "OLDCALL", Username: "testuser", Approved: true}).Error)
-	require.NoError(t, models.SetCallsignOverride(database, 3191868, true))
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "OLDCALL", Username: "testuser", Approved: true}).Error)
+	require.NoError(t, models.SetCallsignOverride(database, 3002068, true))
 
-	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", `{"notify":true}`)
+	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3002068/fix", `{"notify":true}`)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var fixed apimodels.RadioIDDriftFixed
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &fixed))
 	assert.False(t, fixed.Notified, "the user has no verified address")
-	u, err := models.FindUserWithoutRepeaters(database, 3191868)
+	u, err := models.FindUserWithoutRepeaters(database, 3002068)
 	require.NoError(t, err)
-	assert.Equal(t, "KI5VMF", u.Callsign)
+	assert.Equal(t, "N6CALL", u.Callsign)
 	assert.False(t, u.CallsignOverride)
 	assert.Empty(t, mailer.sent)
 }
@@ -344,7 +344,7 @@ func TestRadioIDDriftFixNeedsRadioIDValidation(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 	_, _, adminJar := testutils.LoginAdmin(t, router)
-	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3191868/fix", "")
+	w := driftRequest(t, router, adminJar, http.MethodPost, "/api/v1/admin/radio-id-drift/3002068/fix", "")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -357,7 +357,7 @@ func withoutTimes(d apimodels.RadioIDDrift) apimodels.RadioIDDrift {
 func twoRadioIDsOfOneCallsign(t *testing.T) (callsign string, first, second, other uint) {
 	t.Helper()
 	seen := map[string]uint{}
-	for id := uint(3100000); id < 3200000; id++ {
+	for id := uint(3000000); id < 3010000; id++ {
 		u, ok := userdb.Get(id)
 		if !ok || u.ID != id || u.Callsign == "" {
 			continue

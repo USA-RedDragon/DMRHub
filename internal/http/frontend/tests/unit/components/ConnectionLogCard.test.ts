@@ -36,7 +36,7 @@ const ev = (id: number, kind: string, extra: Partial<RepeaterEvent> = {}): Repea
 
 describe('logLine', () => {
   it('says what a wrong password is and what to change, with the folded count', () => {
-    const l = logLine(ev(1, 'wrong_password', { address: '203.0.113.7', count: 14 }), 319186801, 'hotspot');
+    const l = logLine(ev(1, 'wrong_password', { address: '203.0.113.7', count: 14 }), 300206801, 'hotspot');
     expect(l.title).toBe('Login refused: wrong password.');
     expect(l.note).toMatch(/^From 203\.0\.113\.7, 14 times since \d\d:\d\d$/);
     expect(l.fix).toContain('Rotate the password');
@@ -45,8 +45,8 @@ describe('logLine', () => {
   });
 
   it('names the ID that two devices share when one pushes the other off', () => {
-    const l = logLine(ev(2, 'pushed_off', { address: '198.51.100.24' }), 319186801, 'hotspot');
-    expect(l.fix).toBe('Two devices use ID 319186801. Give each one its own ID: your DMR ID and two more digits.');
+    const l = logLine(ev(2, 'pushed_off', { address: '198.51.100.24' }), 300206801, 'hotspot');
+    expect(l.fix).toBe('Two devices use ID 300206801. Give each one its own ID: your DMR ID and two more digits.');
   });
 
   it('shows a login with its address and software as good news', () => {
@@ -65,7 +65,7 @@ describe('logLine', () => {
     expect(logLine(ev(5, 'unknown_talkgroup', { detail: '1,2' }), 1, 'hotspot').title)
       .toBe('Talkgroups 1, 2 in the hotspot options do not exist.');
     expect(logLine(ev(6, 'password_rotated'), 1, 'hotspot').note).toBe('The password was rotated');
-    expect(logLine(ev(7, 'reset', { detail: 'KP4DJT' }), 1, 'hotspot').note).toBe('KP4DJT reset the connection');
+    expect(logLine(ev(7, 'reset', { detail: 'N7CALL' }), 1, 'hotspot').note).toBe('N7CALL reset the connection');
     expect(logLine(ev(8, 'closed'), 1, 'hotspot').problem).toBe(false);
   });
 });
@@ -77,9 +77,9 @@ describe('ConnectionLogCard', () => {
 
   it('lists the entries and hides the rest with Problems only', async () => {
     mockAPI.get.mockResolvedValue({ data: { events: [ev(1, 'timeout', { detail: '60' }), ev(2, 'connected', { address: '203.0.113.7' })] } });
-    const w = mount(ConnectionLogCard, { props: { repeaterId: 319186801, device: 'hotspot' } });
+    const w = mount(ConnectionLogCard, { props: { repeaterId: 300206801, device: 'hotspot' } });
     await flushPromises();
-    expect(mockAPI.get).toHaveBeenCalledWith('/repeaters/319186801/events');
+    expect(mockAPI.get).toHaveBeenCalledWith('/repeaters/300206801/events');
     expect(w.find('[data-test="log-1"]').text()).toContain('Connection lost: no ping for 60 seconds.');
     expect(w.find('[data-test="log-2"]').text()).toContain('Connected.');
 

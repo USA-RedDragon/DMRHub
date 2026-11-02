@@ -119,7 +119,7 @@ func TestNewWSCallResponseFromCall_User(t *testing.T) {
 func TestNewWSCallResponseFromCall_Repeater(t *testing.T) {
 	t.Parallel()
 
-	toRepID := uint(311999)
+	toRepID := uint(990499)
 	call := &models.Call{
 		ID:           77,
 		Active:       true,
@@ -128,7 +128,7 @@ func TestNewWSCallResponseFromCall_Repeater(t *testing.T) {
 		ToRepeaterID: &toRepID,
 		ToRepeater: models.Repeater{
 			RepeaterConfiguration: models.RepeaterConfiguration{
-				ID:       311999,
+				ID:       990499,
 				Callsign: "REP1",
 			},
 		},
@@ -144,7 +144,7 @@ func TestNewWSCallResponseFromCall_Repeater(t *testing.T) {
 
 	assert.Equal(t, uint(77), resp.ID)
 	assert.True(t, resp.IsToRepeater)
-	assert.Equal(t, uint(311999), resp.ToRepeater.RadioID)
+	assert.Equal(t, uint(990499), resp.ToRepeater.RadioID)
 	assert.Equal(t, "REP1", resp.ToRepeater.Callsign)
 	assert.False(t, resp.IsToTalkgroup)
 	assert.False(t, resp.IsToUser)

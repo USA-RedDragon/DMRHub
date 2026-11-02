@@ -44,8 +44,8 @@ const (
 	tcC2Listen    = 100103
 	tcAMBETalkRpt = 100104
 	tcIPSC        = 200101
-	tcOB          = 3129301
-	tcOBCodec2    = 3129302
+	tcOB          = 3004001
+	tcOBCodec2    = 3004002
 	tcBursts      = 6 * 3
 	tcFrames      = tcBursts * layer2.VoiceSlotsPerBurst
 	tcRowWait     = deliverWait

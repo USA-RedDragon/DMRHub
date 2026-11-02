@@ -217,7 +217,7 @@ func TestInspectingAFileShowsWhatThePluginAsks(t *testing.T) {
 	assert.Contains(t, body, "This file is not a WebAssembly module.")
 	code, _ = e.upload(e.admin, "/api/v1/admin/plugins/inspect", nil, nil, nil)
 	assert.Equal(t, http.StatusBadRequest, code)
-	testutils.SeedAccount(t, e.db, 1000001, "KI5VMF", "user")
+	testutils.SeedAccount(t, e.db, 1000001, "N6CALL", "user")
 	user := testutils.Login(t, e.router, "user")
 	code, _ = e.upload(user, "/api/v1/admin/plugins/inspect", guest(t, "netprobe"), nil, nil)
 	assert.Equal(t, http.StatusForbidden, code)

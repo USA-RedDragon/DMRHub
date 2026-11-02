@@ -33,7 +33,7 @@ import {
 } from '@/services/positions';
 
 const pos = (over: Partial<Position> = {}): Position => ({
-  radio_id: 3191868,
+  radio_id: 3002068,
   shared: false,
   latitude: 30.26717,
   longitude: -97.74317,
@@ -44,7 +44,7 @@ const pos = (over: Partial<Position> = {}): Position => ({
   altitude_m: null,
   fix_time: null,
   received_at: '2026-10-23T20:00:00Z',
-  repeater_id: 319186801,
+  repeater_id: 300206801,
   slot: 2,
   service_id: 5057,
   ...over,
@@ -82,9 +82,9 @@ describe('positions service', () => {
     expect(serviceSymbol(5059)).toBe('car');
     expect(serviceSymbol(5060)).toBeUndefined();
     expect(symbolLabel('pickup')).toBe('Pickup');
-    expect(aprsName('KI5VMF', '9')).toBe('KI5VMF-9');
-    expect(aprsName('KI5VMF', '')).toBe('KI5VMF');
-    expect(trackURL(3191868, 'gpx')).toBe('/api/v1/positions/3191868/track?format=gpx');
+    expect(aprsName('N6CALL', '9')).toBe('N6CALL-9');
+    expect(aprsName('N6CALL', '')).toBe('N6CALL');
+    expect(trackURL(3002068, 'gpx')).toBe('/api/v1/positions/3002068/track?format=gpx');
   });
 
   it('sums up a position for the list', () => {

@@ -73,11 +73,11 @@ func TestRegisterRefusesABreachedPassword(t *testing.T) {
 	t.Parallel()
 	router, _ := hibpRouter(t)
 
-	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "breached", Password: breachedPassword})
+	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "breached", Password: breachedPassword})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "Password has been reported in a data breach. Please use another one", resp.Error)
 
-	resp, w = testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "fine", Password: "a-fine-password"})
+	resp, w = testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "fine", Password: "a-fine-password"})
 	assert.Equal(t, http.StatusOK, w.Code, resp.Error)
 }
 
@@ -282,11 +282,11 @@ func TestAdminEmailsShowTheirLineBreaks(t *testing.T) {
 	t.Cleanup(tdb.CloseDB)
 	require.NoError(t, tdb.DB().Exec("UPDATE users SET email = ?, email_verified = ? WHERE username = ?", "admin@example.com", true, "Admin").Error)
 
-	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "newuser", Password: "a-fine-password"})
+	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "newuser", Password: "a-fine-password"})
 	require.Equal(t, http.StatusOK, w.Code, resp.Error)
 	mail := <-mails
 	assert.Contains(t, mail, "Content-Type: text/plain")
-	assert.Contains(t, mail, "\r\n\r\nA new user has registered.\r\n\r\nUsername: newuser\r\nCallsign: KI5VMF\r\nDMR ID: 3191868\r\n\r\nTo approve them, open https://hub.example.com/admin/users/approval\r\n")
+	assert.Contains(t, mail, "\r\n\r\nA new user has registered.\r\n\r\nUsername: newuser\r\nCallsign: N6CALL\r\nDMR ID: 3002068\r\n\r\nTo approve them, open https://hub.example.com/admin/users/approval\r\n")
 	assert.NotContains(t, mail, "&lt;")
 	assert.NotContains(t, mail, "<br>")
 }
@@ -303,7 +303,7 @@ func TestAdminEmailsGoOnlyToAVerifiedAddress(t *testing.T) {
 	t.Cleanup(tdb.CloseDB)
 	require.NoError(t, tdb.DB().Exec("UPDATE users SET email = ?, email_verified = ? WHERE username = ?", "admin@example.com", false, "Admin").Error)
 
-	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "newuser", Password: "a-fine-password"})
+	resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "newuser", Password: "a-fine-password"})
 	require.Equal(t, http.StatusOK, w.Code, resp.Error)
 	select {
 	case mail := <-mails:

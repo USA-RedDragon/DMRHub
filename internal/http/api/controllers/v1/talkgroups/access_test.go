@@ -37,9 +37,9 @@ import (
 
 const (
 	accessTG     = uint(50001)
-	tgOwner      = uint(3191868)
-	repeaterUser = uint(3191869)
-	ownRepeater  = uint(319186901)
+	tgOwner      = uint(3002068)
+	repeaterUser = uint(3002069)
+	ownRepeater  = uint(300206901)
 )
 
 type accessEnv struct {
@@ -53,7 +53,7 @@ func newAccessEnv(t *testing.T, be testutils.Backend) *accessEnv {
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	e := &accessEnv{router: router}
-	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: tgOwner, Callsign: "KI5VMF", Username: "owner", Password: "password"})
+	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: tgOwner, Callsign: "N6CALL", Username: "owner", Password: "password"})
 	_, _, e.user = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: repeaterUser, Callsign: "N0CALL", Username: "user", Password: "password"})
 	_, _, e.admin = testutils.LoginAdmin(t, router)
 	_, w := testutils.CreateTalkgroup(t, router, e.admin, apimodels.TalkgroupPost{ID: accessTG, Name: "Club", Description: "Club talkgroup"})
@@ -122,7 +122,7 @@ func TestATalkgroupOwnerRestrictsTheTalkgroup(t *testing.T) {
 
 			for body, want := range map[string]string{
 				`{"mode":"closed"}`:      "Mode must be open or approved",
-				`{"repeaters":[311999]}`: "Repeater does not exist",
+				`{"repeaters":[990499]}`: "Repeater does not exist",
 				`{"mode":`:               "JSON data is invalid",
 			} {
 				code, _, msg = e.access(t, http.MethodPatch, e.owner, body)

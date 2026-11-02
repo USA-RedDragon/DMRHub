@@ -35,7 +35,7 @@ import (
 
 const (
 	waitLink = modem.TestTimeout
-	testID   = 311860
+	testID   = 990360
 )
 
 func modemConfig(t *testing.T, duplex bool) *config.Config {

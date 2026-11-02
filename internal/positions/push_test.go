@@ -39,11 +39,11 @@ import (
 )
 
 const (
-	owner    = uint(3191868)
-	sharer   = uint(3140598)
-	private  = uint(3100001)
-	blocked  = uint(3100002)
-	repeater = uint(319186801)
+	owner    = uint(3002068)
+	sharer   = uint(3002198)
+	private  = uint(3002401)
+	blocked  = uint(3002402)
+	repeater = uint(300206801)
 )
 
 func rig(t *testing.T) (*gorm.DB, pubsub.PubSub, *positions.Pusher) {
@@ -61,10 +61,10 @@ func rig(t *testing.T) (*gorm.DB, pubsub.PubSub, *positions.Pusher) {
 		_ = sqlDB.Close()
 	})
 	for _, u := range []models.User{
-		{ID: owner, Callsign: "KI5VMF", Username: "a", Approved: true},
-		{ID: sharer, Callsign: "KD5SMP", Username: "b", Approved: true},
+		{ID: owner, Callsign: "N6CALL", Username: "a", Approved: true},
+		{ID: sharer, Callsign: "N8CALL", Username: "b", Approved: true},
 		{ID: private, Callsign: "N0CALL", Username: "c", Approved: true},
-		{ID: blocked, Callsign: "N0BAD", Username: "d", Approved: true, Suspended: true},
+		{ID: blocked, Callsign: "K4TEST", Username: "d", Approved: true, Suspended: true},
 	} {
 		require.NoError(t, database.Create(&u).Error)
 	}
@@ -117,7 +117,7 @@ func TestAPositionGoesToItsOwnerOnlyUntilTheyShare(t *testing.T) {
 	theirs := frames(t, subs[sharer])
 	require.Len(t, theirs, 1)
 	assert.True(t, theirs[0].Position.Shared)
-	assert.Equal(t, "KI5VMF", theirs[0].Position.Callsign)
+	assert.Equal(t, "N6CALL", theirs[0].Position.Callsign)
 	viewer := frames(t, subs[private])
 	require.Len(t, viewer, 1, "a user who does not share still sees shared radios")
 	assert.True(t, viewer[0].Position.Shared)

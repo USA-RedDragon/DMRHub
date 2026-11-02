@@ -91,7 +91,7 @@ func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 			p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 		}
 		<-log.got
-		for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 311861, slot: false}} {
+		for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
 			start := time.Now()
 			p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil, time.Time{})
 			for got := range log.got {

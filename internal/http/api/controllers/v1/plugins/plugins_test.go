@@ -71,7 +71,7 @@ func (e *env) do(jar testutils.CookieJar, method, path string, body any, out any
 func TestOnlyAdminsManagePlugins(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	testutils.SeedAccount(t, e.db, 1000001, "KI5VMF", "user")
+	testutils.SeedAccount(t, e.db, 1000001, "N6CALL", "user")
 	user := testutils.Login(t, e.router, "user")
 	assert.Equal(t, http.StatusForbidden, e.do(user, http.MethodGet, "/api/v1/admin/plugins", nil, nil), "RequireAdmin answers 403 to users who are not admins")
 	assert.Equal(t, http.StatusForbidden, e.do(user, http.MethodPost, "/api/v1/admin/plugins", map[string]any{"name": "x"}, nil))

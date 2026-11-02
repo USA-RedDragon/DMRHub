@@ -32,13 +32,13 @@ import { useUserStore } from '@/store';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock; patch: Mock; delete: Mock };
 
-const owner = { id: 3191868, callsign: 'W5DFW' };
+const owner = { id: 3002068, callsign: 'K1CALL' };
 const group = (extra: Record<string, unknown> = {}) => ({
   id: 5, name: 'North Texas', talkgroup: 8, owner, members: 2, mine: true, can_manage: true, involved: true,
   repeaters: [
-    { id: 311888, callsign: 'W5DFW', owner, slot: 2, state: 'member', mine: true },
-    { id: 319186801, callsign: 'KP4DJT', owner: { id: 3191869, callsign: 'KP4DJT' }, slot: 2, state: 'member', mine: false },
-    { id: 311902, callsign: 'N5ARL', owner: { id: 3191870, callsign: 'N5ARL' }, slot: 1, state: 'asked', mine: false },
+    { id: 990388, callsign: 'K1CALL', owner, slot: 2, state: 'member', mine: true },
+    { id: 300206801, callsign: 'N7CALL', owner: { id: 3002069, callsign: 'N7CALL' }, slot: 2, state: 'member', mine: false },
+    { id: 990402, callsign: 'W3CALL', owner: { id: 3002070, callsign: 'W3CALL' }, slot: 1, state: 'asked', mine: false },
   ],
   ...extra,
 });
@@ -78,10 +78,10 @@ describe('LocalGroupPage', () => {
     const { wrapper } = await mountGroup('5');
     expect(wrapper.find('[data-test="group-card"]').text()).toContain('A call to TG 8 on one of these repeaters goes to all of them, and nowhere else.');
     expect((wrapper.find('[data-test="group-name"]').element as HTMLInputElement).value).toBe('North Texas');
-    expect(wrapper.find('[data-test="member-311888"]').text()).toContain('W5DFW — 311888');
-    expect(wrapper.find('[data-test="member-311888"]').text()).toContain('You');
-    expect(wrapper.find('[data-test="member-311902"]').text()).toContain('Waiting for the owner');
-    expect(wrapper.find('[data-test="member-319186801"] [data-test="waiting"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="member-990388"]').text()).toContain('K1CALL — 990388');
+    expect(wrapper.find('[data-test="member-990388"]').text()).toContain('You');
+    expect(wrapper.find('[data-test="member-990402"]').text()).toContain('Waiting for the owner');
+    expect(wrapper.find('[data-test="member-300206801"] [data-test="waiting"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="group-delete"]').exists()).toBe(true);
     wrapper.unmount();
   });
@@ -94,10 +94,10 @@ describe('LocalGroupPage', () => {
     await wrapper.find('form').trigger('submit');
     expect(wrapper.find('[data-test="add-error"]').text()).toBe('Type the 6 to 9 digit ID of a repeater or hotspot');
     expect(mockAPI.post).not.toHaveBeenCalled();
-    await wrapper.find('[data-test="add-repeater"]').setValue('311999');
+    await wrapper.find('[data-test="add-repeater"]').setValue('990499');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/localgroups/5/repeaters', { repeater_id: 311999, slot: 2 });
+    expect(mockAPI.post).toHaveBeenCalledWith('/localgroups/5/repeaters', { repeater_id: 990499, slot: 2 });
     expect(wrapper.find('[data-test="add-error"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -106,7 +106,7 @@ describe('LocalGroupPage', () => {
     serve(group());
     mockAPI.post.mockRejectedValue({ response: { status: 409, data: { error: 'This repeater is already in a local group on that talkgroup' } } });
     const { wrapper } = await mountGroup('5');
-    await wrapper.find('[data-test="add-repeater"]').setValue('311999');
+    await wrapper.find('[data-test="add-repeater"]').setValue('990499');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(wrapper.find('[data-test="add-error"]').text()).toBe('This repeater is already in a local group on that talkgroup');
@@ -117,9 +117,9 @@ describe('LocalGroupPage', () => {
     serve(group());
     mockAPI.delete.mockResolvedValue({ data: {} });
     const { wrapper, push } = await mountGroup('5');
-    await wrapper.find('[data-test="remove-311902"]').trigger('click');
+    await wrapper.find('[data-test="remove-990402"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.delete).toHaveBeenCalledWith('/localgroups/5/repeaters/311902');
+    expect(mockAPI.delete).toHaveBeenCalledWith('/localgroups/5/repeaters/990402');
     await wrapper.find('[data-test="group-delete-ask"]').trigger('click');
     expect(mockAPI.delete).toHaveBeenCalledTimes(1);
     await wrapper.find('[data-test="group-delete-confirm"]').trigger('click');
@@ -130,14 +130,14 @@ describe('LocalGroupPage', () => {
   });
 
   it('lets the owner of a member repeater only take out that repeater', async () => {
-    serve(group({ mine: false, can_manage: false, owner: { id: 3191870, callsign: 'N5ARL' } }));
+    serve(group({ mine: false, can_manage: false, owner: { id: 3002070, callsign: 'W3CALL' } }));
     const { wrapper } = await mountGroup('5');
     expect(wrapper.find('[data-test="group-name"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-test="group-save"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="add-repeater"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="group-delete"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="remove-311888"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="remove-319186801"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="remove-990388"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="remove-300206801"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -166,7 +166,7 @@ describe('RepeatersPage local groups', () => {
       if (url === '/localgroups') {
         return Promise.resolve({
           data: {
-            groups: [group(), group({ id: 6, name: 'Club hotspots', talkgroup: 9, members: 2, mine: false, owner: { id: 3191871, callsign: 'KI5VMF' } })],
+            groups: [group(), group({ id: 6, name: 'Club hotspots', talkgroup: 9, members: 2, mine: false, owner: { id: 3002071, callsign: 'N6CALL' } })],
             talkgroups: [8, 9],
           },
         });
@@ -188,7 +188,7 @@ describe('RepeatersPage local groups', () => {
     const rows = wrapper.findAll('[data-test="local-groups"] tbody tr').map((r) => r.text());
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatch(/North Texas\s*TG 8\s*2\s*You/);
-    expect(rows[1]).toMatch(/Club hotspots\s*TG 9\s*2\s*KI5VMF/);
+    expect(rows[1]).toMatch(/Club hotspots\s*TG 9\s*2\s*N6CALL/);
     expect(wrapper.find('[data-test="new-local-group"]').exists()).toBe(true);
     await wrapper.findAll('input[type="radio"]')[0]!.setValue(true);
     expect(replace).toHaveBeenCalledWith({ query: {} });

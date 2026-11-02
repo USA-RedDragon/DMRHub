@@ -62,7 +62,7 @@ const scopes = [
   { name: 'messages:read', label: 'messages', description: 'Read your text messages, and get new ones as they arrive' },
 ];
 
-function serve(me: unknown = { id: 3191868, callsign: 'KI5VMF', username: 'ki5vmf' }) {
+function serve(me: unknown = { id: 3002068, callsign: 'N6CALL', username: 'n6call' }) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url === '/users/me') {
       return me ? Promise.resolve({ data: me }) : Promise.reject({ response: { status: 401 } });
@@ -93,7 +93,7 @@ describe('OAuthAuthorizePage', () => {
     const text = wrapper.text();
     expect(text).toContain('Allow this app to use your DMRHub account?');
     expect(wrapper.find('[data-test="oauth-origin"]').text()).toBe('https://app.example');
-    expect(text).toContain('Signed in as KI5VMF (3191868)');
+    expect(text).toContain('Signed in as N6CALL (3002068)');
     expect(wrapper.findAll('[data-test="oauth-scope"]').map((li) => li.text())).toEqual(scopes.map((s) => s.description));
     expect(text).toContain('It cannot change your password or account, and it never gets admin access.');
     expect(text).not.toMatch(/talkgroups:read|messages:read/);
@@ -133,7 +133,7 @@ describe('OAuthAuthorizePage', () => {
   it('explains a request that is not valid and never redirects to an unchecked place', async () => {
     mockAPI.get.mockImplementation((url: string) => {
       if (url === '/users/me') {
-        return Promise.resolve({ data: { id: 3191868, callsign: 'KI5VMF' } });
+        return Promise.resolve({ data: { id: 3002068, callsign: 'N6CALL' } });
       }
       return Promise.reject({ response: { status: 400, data: { error: 'invalid_client' } } });
     });

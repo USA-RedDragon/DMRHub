@@ -34,8 +34,8 @@ import (
 
 func TestPingWritesOnlyTheLastPingTime(t *testing.T) {
 	t.Parallel()
-	r := newDialectRig(t, 311860)
-	r.login(dmrd.DialectMMDVM, 311860)
+	r := newDialectRig(t, 990360)
+	r.login(dmrd.DialectMMDVM, 990360)
 	r.s.pingWG.Wait()
 
 	var statements atomic.Int64
@@ -48,19 +48,19 @@ func TestPingWritesOnlyTheLastPingTime(t *testing.T) {
 	require.NoError(t, cb.Update().After("gorm:update").Register("test:count_update", count))
 
 	before := time.Now()
-	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
+	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 990360})
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
 	r.s.pingWG.Wait()
 	assert.Equal(t, int64(1), statements.Load(), "statements for one ping")
 	var row models.Repeater
-	require.NoError(t, r.s.DB.First(&row, 311860).Error)
+	require.NoError(t, r.s.DB.First(&row, 990360).Error)
 	assert.False(t, row.LastPing.Before(before.Truncate(time.Second)), "last ping %v, want after %v", row.LastPing, before)
 }
 
 func TestASlowPingWriteDoesNotHoldUpThePackets(t *testing.T) {
 	t.Parallel()
-	r := newDialectRig(t, 311860)
-	r.login(dmrd.DialectMMDVM, 311860)
+	r := newDialectRig(t, 990360)
+	r.login(dmrd.DialectMMDVM, 990360)
 	r.s.pingWG.Wait()
 	var inHandler, stores atomic.Int32
 	require.NoError(t, r.s.DB.Callback().Update().Before("gorm:update").Register("test:store_stack", func(*gorm.DB) {
@@ -71,13 +71,13 @@ func TestASlowPingWriteDoesNotHoldUpThePackets(t *testing.T) {
 	}))
 
 	before := time.Now()
-	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 311860})
+	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTPING, ID: 990360})
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
 	r.s.pingWG.Wait()
 
 	require.NotZero(t, stores.Load(), "the last ping is written")
 	assert.Zero(t, inHandler.Load(), "the packet handler stored the last ping itself, so a slow store holds up the packets")
 	var row models.Repeater
-	require.NoError(t, r.s.DB.First(&row, 311860).Error)
+	require.NoError(t, r.s.DB.First(&row, 990360).Error)
 	assert.False(t, row.LastPing.Before(before.Truncate(time.Second)), "last ping %v, want after %v", row.LastPing, before)
 }

@@ -195,9 +195,9 @@ func TestSlowDatabaseHoldsNoBurst(t *testing.T) {
 		var rpt2 models.Repeater
 		require.NoError(t, database.First(&rpt2, 100002).Error)
 		require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
-		require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: testSrcID, Egress: true}).Error)
-		require.NoError(t, database.Create(&models.PeerRule{PeerID: 3100100, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
-		h.PeerChanged(3100100)
+		require.NoError(t, database.Create(&models.Peer{ID: 3002500, OwnerID: testSrcID, Egress: true}).Error)
+		require.NoError(t, database.Create(&models.PeerRule{PeerID: 3002500, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
+		h.PeerChanged(3002500)
 
 		arrivals := collect(t, map[string]*hub.ServerHandle{
 			"mmdvm": h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater}),
@@ -214,9 +214,9 @@ func TestSlowDatabaseHoldsNoBurst(t *testing.T) {
 			group   bool
 			targets []string
 		}{
-			{"group", 1, true, []string{"mmdvm:100002", "peers:3100100"}},
-			{"private to a repeater", 100002, false, []string{"mmdvm:100002", "peers:3100100"}},
-			{"private to a radio", 1000002, false, []string{"mmdvm:100002", "peers:3100100"}},
+			{"group", 1, true, []string{"mmdvm:100002", "peers:3002500"}},
+			{"private to a repeater", 100002, false, []string{"mmdvm:100002", "peers:3002500"}},
+			{"private to a radio", 1000002, false, []string{"mmdvm:100002", "peers:3002500"}},
 		}
 		userCall := models.Call{UserID: new(uint(1000002)), RepeaterID: new(uint(100002)), IngressID: 100002, CreatedAt: time.Now()}
 		require.NoError(t, database.Create(&userCall).Error)

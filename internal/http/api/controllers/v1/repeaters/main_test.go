@@ -26,5 +26,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	testutils.UseFictionalRadioID()
 	testutils.Main(m)
 }

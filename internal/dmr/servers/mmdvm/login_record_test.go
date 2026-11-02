@@ -293,7 +293,7 @@ func TestARepeaterResumesOnAnotherReplicaFromTheAckOfItsLogin(t *testing.T) {
 // subscribe the resumed session to its calls once the queue moves.
 func TestAResumeSubscribesWhileTheQueueIsFull(t *testing.T) {
 	t.Parallel()
-	r := newRecordRig(t, 311896)
+	r := newRecordRig(t, 990396)
 	r.storeSession()
 	free := r.hold(r.a, r.a.records.Do)
 	_, ok := r.a.resumeForEgress(context.Background(), uint(r.id))
@@ -310,7 +310,7 @@ func TestAResumeSubscribesWhileTheQueueIsFull(t *testing.T) {
 // keep a session that gets no calls.
 func TestAStuckQueueEndsAResumedSession(t *testing.T) {
 	t.Parallel()
-	r := newRecordRig(t, 311897)
+	r := newRecordRig(t, 990397)
 	r.storeSession()
 	r.hold(r.a, r.a.records.Must)
 	_, ok := r.a.resumeForEgress(context.Background(), uint(r.id))
@@ -326,7 +326,7 @@ func TestAStuckQueueEndsAResumedSession(t *testing.T) {
 // login with MSTCL and never ack it.
 func TestAStuckQueueEndsALogin(t *testing.T) {
 	t.Parallel()
-	r := newRecordRig(t, 311898)
+	r := newRecordRig(t, 990398)
 	r.auth()
 	r.hold(r.a, r.a.records.Must)
 	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
@@ -341,7 +341,7 @@ func TestAStuckQueueEndsALogin(t *testing.T) {
 // a session that ended.
 func TestAnEndedSessionLeavesNoRecordWhileTheQueueIsFull(t *testing.T) {
 	t.Parallel()
-	r := newRecordRig(t, 311899)
+	r := newRecordRig(t, 990399)
 	r.auth()
 	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())
 	require.Equal(t, dmrd.CommandRPTACK, r.next(r.pa, "RPTACK of the config"))
@@ -362,7 +362,7 @@ func TestAnEndedSessionLeavesNoRecordWhileTheQueueIsFull(t *testing.T) {
 // session that was never acked.
 func TestALoginThatEndsBeforeItsAckLeavesNoRecord(t *testing.T) {
 	t.Parallel()
-	r := newRecordRig(t, 311900)
+	r := newRecordRig(t, 990400)
 	r.auth()
 	free := r.hold(r.a, func(uint, func()) bool { return false })
 	r.a.handleFrom(context.Background(), r.from, rptc(t, dmrd.DialectMMDVM, r.id), time.Now())

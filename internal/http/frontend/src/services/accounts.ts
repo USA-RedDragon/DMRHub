@@ -74,7 +74,7 @@ export async function getMessageAccesses(q: MessageAccessQuery): Promise<{ total
   return { total: res.data.total ?? 0, accesses: res.data.accesses ?? [] };
 }
 
-/** The search of an access log entry as the admin typed it, such as "from 3191868". */
+/** The search of an access log entry as the admin typed it, such as "from 3002068". */
 export function accessWhat(a: MessageAccess): string {
   if (a.kind === 'read') {
     return `Message ${a.message_id ?? ''}`.trim();

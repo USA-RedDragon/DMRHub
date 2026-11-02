@@ -58,8 +58,8 @@ func newEnv(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	db := tdb.DB()
-	testutils.SeedAccount(t, db, owner, "KI5VMF", "owner")
-	testutils.SeedAccount(t, db, other, "KD5SMP", "other")
+	testutils.SeedAccount(t, db, owner, "N6CALL", "owner")
+	testutils.SeedAccount(t, db, other, "N8CALL", "other")
 	require.NoError(t, db.Create(&models.Talkgroup{ID: tg, Name: "Texas"}).Error)
 	return &env{t: t, router: router, db: db, jar: testutils.Login(t, router, "owner"), ps: tdb.PubSub()}
 }
@@ -239,7 +239,7 @@ func TestGroupMessagesAreInTheOutboxOnly(t *testing.T) {
 	assert.Equal(t, mine.ID, m.ID)
 	assert.True(t, m.Group)
 	assert.Equal(t, "Texas", m.TalkgroupName)
-	assert.Equal(t, "KI5VMF", m.SourceCallsign)
+	assert.Equal(t, "N6CALL", m.SourceCallsign)
 	assert.Empty(t, m.DestinationCallsign)
 	assert.Equal(t, "none", m.Response)
 }

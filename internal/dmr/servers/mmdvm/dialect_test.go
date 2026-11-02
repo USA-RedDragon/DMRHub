@@ -91,7 +91,7 @@ func TestPacketDialectOfEachMessage(t *testing.T) {
 	t.Parallel()
 	for _, d := range []dmrd.Dialect{dmrd.DialectMMDVM, dmrd.DialectHBRP} {
 		for _, c := range allTags() {
-			p, err := (&dmrd.Control{Command: c, ID: 311860}).AppendBinary(nil, d)
+			p, err := (&dmrd.Control{Command: c, ID: 990360}).AppendBinary(nil, d)
 			if err != nil {
 				continue
 			}
@@ -103,11 +103,11 @@ func TestPacketDialectOfEachMessage(t *testing.T) {
 			assert.True(t, ok, "%s %s", d, c)
 			assert.Equal(t, d, got, "%s %s", d, c)
 		}
-		got, ok := packetDialect(rptc(t, d, 311860))
+		got, ok := packetDialect(rptc(t, d, 990360))
 		assert.True(t, ok)
 		assert.Equal(t, d, got, "%s RPTC", d)
 	}
-	_, ok := packetDialect((&models.Packet{Signature: "DMRD", Repeater: 311860}).Encode())
+	_, ok := packetDialect((&models.Packet{Signature: "DMRD", Repeater: 990360}).Encode())
 	assert.False(t, ok, "DMRD is the same in both dialects")
 }
 
@@ -374,7 +374,7 @@ func TestLoginWithABadColorCodeIsAccepted(t *testing.T) {
 		for i, cc := range []string{"x1", "16", "99"} {
 			t.Run(d.String()+"/"+cc, func(t *testing.T) {
 				t.Parallel()
-				id := uint32(311870 + 10*at + i)
+				id := uint32(990370 + 10*at + i)
 				r := newDialectRig(t, uint(id))
 				require.NoError(t, r.s.DB.Model(&models.Repeater{}).Where("id = ?", id).Update("color_code", 7).Error)
 				config := rptc(t, d, id)
@@ -396,10 +396,10 @@ func TestLoginWithABadColorCodeIsAccepted(t *testing.T) {
 
 func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {
 	t.Parallel()
-	r := newDialectRig(t, 311860)
-	r.login(dmrd.DialectHBRP, 311860)
+	r := newDialectRig(t, 990360)
+	r.login(dmrd.DialectHBRP, 990360)
 
-	rec, err := r.kv.GetRepeater(context.Background(), 311860)
+	rec, err := r.kv.GetRepeater(context.Background(), 990360)
 	require.NoError(t, err)
 	assert.Equal(t, "HBRP", rec.Dialect)
 	assert.Equal(t, "Berlin", rec.Location)
@@ -408,14 +408,14 @@ func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {
 	assert.Equal(t, uint(438000000), rec.RXFrequency)
 	assert.Zero(t, rec.Slots)
 	var row models.Repeater
-	require.NoError(t, r.s.DB.First(&row, 311860).Error)
+	require.NoError(t, r.s.DB.First(&row, 990360).Error)
 	assert.Equal(t, "HBRP", row.Dialect)
 
-	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandMSTPING, ID: 311860})
-	assert.Equal(t, uint32(311860), r.expect(dmrd.DialectHBRP, dmrd.CommandRPTPONG).ID)
+	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandMSTPING, ID: 990360})
+	assert.Equal(t, uint32(990360), r.expect(dmrd.DialectHBRP, dmrd.CommandRPTPONG).ID)
 
 	_, _, d := r.link(r.s)
-	r.s.sendBeacon(311860, udpEndpoint(r.from), d)
+	r.s.sendBeacon(990360, udpEndpoint(r.from), d)
 	r.expect(dmrd.DialectHBRP, dmrd.CommandRPTSBKN)
 
 	r.s.closeSessions(context.Background())
@@ -424,14 +424,14 @@ func TestHBRPLoginIsAnsweredInHBRP(t *testing.T) {
 
 func TestMMDVMLoginRecordsItsDialect(t *testing.T) {
 	t.Parallel()
-	r := newDialectRig(t, 311861)
-	r.login(dmrd.DialectMMDVM, 311861)
-	rec, err := r.kv.GetRepeater(context.Background(), 311861)
+	r := newDialectRig(t, 990361)
+	r.login(dmrd.DialectMMDVM, 990361)
+	rec, err := r.kv.GetRepeater(context.Background(), 990361)
 	require.NoError(t, err)
 	assert.Equal(t, "MMDVM", rec.Dialect)
 	assert.Equal(t, uint(3), rec.Slots)
 	_, _, d := r.link(r.s)
-	r.s.sendBeacon(311861, udpEndpoint(r.from), d)
+	r.s.sendBeacon(990361, udpEndpoint(r.from), d)
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTSBKN)
 	r.s.closeSessions(context.Background())
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTCL)
@@ -465,24 +465,24 @@ func TestMixedDialectLoginIsIgnored(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			r := newDialectRig(t, 311863)
+			r := newDialectRig(t, 990363)
 			ack := dmrd.CommandRPTACK
 			if tc.login == dmrd.DialectHBRP {
 				ack = dmrd.CommandMSTACK
 			}
-			r.control(tc.login, dmrd.Control{Command: dmrd.CommandRPTL, ID: 311863})
+			r.control(tc.login, dmrd.Control{Command: dmrd.CommandRPTL, ID: 990363})
 			r.expect(tc.login, ack)
 			token, err := dmrdauth.Token(tc.then, testSalt, []byte(testPassword))
 			require.NoError(t, err)
-			r.control(tc.then, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311863, Token: token})
+			r.control(tc.then, dmrd.Control{Command: dmrd.CommandRPTK, ID: 990363, Token: token})
 			r.expectNothing()
-			r.send(rptc(t, tc.then, 311863))
+			r.send(rptc(t, tc.then, 990363))
 			r.expectNothing()
 			l, st, d := r.link(r.s)
 			require.NotNil(t, l)
 			assert.Equal(t, tc.login, d)
 			assert.Equal(t, dmrdsession.StateAuth, st)
-			_, ok := r.s.connected.Load(311863)
+			_, ok := r.s.connected.Load(990363)
 			assert.False(t, ok)
 		})
 	}
@@ -493,24 +493,24 @@ func TestMixedDialectLoginIsIgnored(t *testing.T) {
 // restarts with new settings does.
 func TestLoginInTheOtherDialectEndsTheSession(t *testing.T) {
 	t.Parallel()
-	r := newDialectRig(t, 311864)
-	r.login(dmrd.DialectMMDVM, 311864)
-	_, ok := r.s.connected.Load(311864)
+	r := newDialectRig(t, 990364)
+	r.login(dmrd.DialectMMDVM, 990364)
+	_, ok := r.s.connected.Load(990364)
 	require.True(t, ok)
 
-	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTL, ID: 311864})
+	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTL, ID: 990364})
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
-	_, ok = r.s.connected.Load(311864)
+	_, ok = r.s.connected.Load(990364)
 	assert.False(t, ok, "the old session should have ended")
-	assert.False(t, serves(r.s, 311864))
+	assert.False(t, serves(r.s, 990364))
 
 	token, err := dmrdauth.Token(dmrd.DialectHBRP, testSalt, []byte(testPassword))
 	require.NoError(t, err)
-	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTK, ID: 311864, Token: token})
+	r.control(dmrd.DialectHBRP, dmrd.Control{Command: dmrd.CommandRPTK, ID: 990364, Token: token})
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
-	r.send(rptc(t, dmrd.DialectHBRP, 311864))
+	r.send(rptc(t, dmrd.DialectHBRP, 990364))
 	r.expect(dmrd.DialectHBRP, dmrd.CommandMSTACK)
-	rec, err := r.kv.GetRepeater(context.Background(), 311864)
+	rec, err := r.kv.GetRepeater(context.Background(), 990364)
 	require.NoError(t, err)
 	assert.Equal(t, "HBRP", rec.Dialect)
 }
@@ -533,12 +533,12 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			r := newDialectRig(t, 311865)
+			r := newDialectRig(t, 990365)
 			check, err := secretCheck(testPassword)
 			require.NoError(t, err)
 			store := func() {
-				r.kv.StoreRepeater(context.Background(), 311865, models.Repeater{
-					RepeaterConfiguration: models.RepeaterConfiguration{ID: 311865},
+				r.kv.StoreRepeater(context.Background(), 990365, models.Repeater{
+					RepeaterConfiguration: models.RepeaterConfiguration{ID: 990365},
 					Connection:            models.RepeaterStateConnected,
 					IP:                    r.from.IP.String(),
 					Port:                  r.from.Port,
@@ -549,7 +549,7 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 			}
 			store()
 
-			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 311865})
+			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 990365})
 			r.expect(tc.dialect, tc.pong)
 			l, _, d := r.link(r.s)
 			require.NotNil(t, l)
@@ -562,19 +562,19 @@ func TestResumeKeepsTheDialect(t *testing.T) {
 			}
 			end()
 			store()
-			addr, ok := r.s.resumeForEgress(context.Background(), 311865)
+			addr, ok := r.s.resumeForEgress(context.Background(), 990365)
 			require.True(t, ok)
 			assert.Equal(t, r.from.String(), addr.String())
 			l, _, d = r.link(r.s)
 			require.NotNil(t, l)
 			assert.Equal(t, tc.dialect, d)
-			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 311865})
+			r.control(tc.dialect, dmrd.Control{Command: tc.ping, ID: 990365})
 			r.expect(tc.dialect, tc.pong)
 
 			end()
 			b := r.replica(r.store)
 			store()
-			r.sendTo(b, (&models.Packet{Signature: "DMRD", Repeater: 311865, Dst: 1, GroupCall: true}).Encode())
+			r.sendTo(b, (&models.Packet{Signature: "DMRD", Repeater: 990365, Dst: 1, GroupCall: true}).Encode())
 			r.handled(b)
 			l, st, d := r.link(b)
 			require.NotNil(t, l, "a DMRD should resume the session")

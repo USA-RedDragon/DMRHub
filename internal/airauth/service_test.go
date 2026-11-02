@@ -196,7 +196,7 @@ func TestACodeWorksOnlyForItsOwner(t *testing.T) {
 	code := e.code(secret, 0)
 	assert.Equal(t, airauth.Refused, e.svc.Attempt(ctx, airauth.Try{Src: other, Owner: other, Code: code, Repeater: repeater}),
 		"a user without an on-air code cannot unlock with the code of another")
-	assert.Equal(t, airauth.Refused, e.svc.Attempt(ctx, airauth.Try{Src: 3100001, Code: code, Repeater: repeater}),
+	assert.Equal(t, airauth.Refused, e.svc.Attempt(ctx, airauth.Try{Src: 3002401, Code: code, Repeater: repeater}),
 		"a radio ID without an owner cannot unlock")
 	assert.Equal(t, airauth.Refused, e.svc.Attempt(ctx, airauth.Try{Src: radio, Owner: owner, Code: code + 1, Repeater: repeater}))
 	assert.Equal(t, airauth.Granted, e.svc.Attempt(ctx, airauth.Try{Src: radio, Owner: owner, Code: code, Repeater: repeater}))

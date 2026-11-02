@@ -35,9 +35,9 @@ const mockAPI = API as unknown as { get: Mock };
 
 function access(id: number, over: Partial<MessageAccess> = {}): MessageAccess {
   return {
-    id, at: '2026-10-27T19:03:00Z', admin_id: 1, admin_callsign: 'N0ADM', kind: 'search', message_id: null,
-    filter: 'src=3191868', results: 25,
-    radio_ids: [{ radio_id: 3191868, user_id: 3191868, callsign: 'KI5VMF' }, { radio_id: 3100, user_id: null }],
+    id, at: '2026-10-27T19:03:00Z', admin_id: 1, admin_callsign: 'K4CALL', kind: 'search', message_id: null,
+    filter: 'src=3002068', results: 25,
+    radio_ids: [{ radio_id: 3002068, user_id: 3002068, callsign: 'N6CALL' }, { radio_id: 3100, user_id: null }],
     ...over,
   };
 }
@@ -48,7 +48,7 @@ function serve(accesses: MessageAccess[]) {
       return Promise.resolve({ data: { total: accesses.length, accesses } });
     }
     if (url.startsWith('/users?')) {
-      return Promise.resolve({ data: { users: [{ id: 1, callsign: 'N0ADM', admin: true, superAdmin: true }, { id: 2, callsign: 'N0USR', admin: false, superAdmin: false }] } });
+      return Promise.resolve({ data: { users: [{ id: 1, callsign: 'K4CALL', admin: true, superAdmin: true }, { id: 2, callsign: 'K7TEST', admin: false, superAdmin: false }] } });
     }
     return Promise.reject(new Error(url));
   });
@@ -66,12 +66,12 @@ describe('MessageAccessPage', () => {
     const rows = wrapper.findAll('[data-test="access-row"]');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('Message 4182');
-    expect(rows[1]!.text()).toContain('Search: from 3191868');
-    expect(rows[1]!.text()).toContain('N0ADM');
+    expect(rows[1]!.text()).toContain('Search: from 3002068');
+    expect(rows[1]!.text()).toContain('K4CALL');
     const ids = rows[1]!.findAll('[data-test="access-radio"]').map((r) => r.text());
-    expect(ids).toEqual(['3191868KI5VMF', '3100']);
+    expect(ids).toEqual(['3002068N6CALL', '3100']);
     const admins = wrapper.findAll('[data-test="access-admin"] option').map((o) => o.text());
-    expect(admins).toEqual(['All', 'N0ADM']);
+    expect(admins).toEqual(['All', 'K4CALL']);
   });
 
   it('filters by radio ID and admin', async () => {
@@ -79,12 +79,12 @@ describe('MessageAccessPage', () => {
     const wrapper = mount(MessageAccessPage);
     await flushPromises();
     expect(wrapper.find('[data-test="access-empty"]').text()).toBe('None');
-    await wrapper.find('[data-test="access-radio-id"]').setValue('3191868');
+    await wrapper.find('[data-test="access-radio-id"]').setValue('3002068');
     await wrapper.find('[data-test="access-radio-id"]').trigger('change');
     await wrapper.find('[data-test="access-admin"]').setValue('1');
     await flushPromises();
     const urls = mockAPI.get.mock.calls.map((c) => c[0] as string).filter((u) => u.startsWith('/admin/message-access?'));
-    expect(urls.at(-1)).toBe('/admin/message-access?page=1&limit=50&radio_id=3191868&admin=1');
+    expect(urls.at(-1)).toBe('/admin/message-access?page=1&limit=50&radio_id=3002068&admin=1');
   });
 
   it('names a search by its filters', () => {

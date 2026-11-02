@@ -74,10 +74,10 @@ func TestAddLocalGroupsMigratesAndRollsBack(t *testing.T) {
 
 			g := models.LocalGroup{Name: "North Texas", Talkgroup: 8, OwnerID: 1}
 			require.NoError(t, database.Create(&g).Error)
-			require.NoError(t, database.Create(&models.LocalGroupMember{LocalGroupID: g.ID, RepeaterID: 311888, Talkgroup: 8, Slot: 2, State: models.LocalMemberIn}).Error)
+			require.NoError(t, database.Create(&models.LocalGroupMember{LocalGroupID: g.ID, RepeaterID: 990388, Talkgroup: 8, Slot: 2, State: models.LocalMemberIn}).Error)
 			other := models.LocalGroup{Name: "Club", Talkgroup: 8, OwnerID: 1}
 			require.NoError(t, database.Create(&other).Error)
-			assert.Error(t, database.Create(&models.LocalGroupMember{LocalGroupID: other.ID, RepeaterID: 311888, Talkgroup: 8, Slot: 2, State: models.LocalMemberIn}).Error,
+			assert.Error(t, database.Create(&models.LocalGroupMember{LocalGroupID: other.ID, RepeaterID: 990388, Talkgroup: 8, Slot: 2, State: models.LocalMemberIn}).Error,
 				"the database keeps a repeater in one group for each talkgroup")
 		})
 	}

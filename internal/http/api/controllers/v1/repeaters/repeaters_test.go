@@ -107,8 +107,8 @@ func TestPOSTRepeaterMMDVM(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -117,7 +117,7 @@ func TestPOSTRepeaterMMDVM(t *testing.T) {
 
 	// Use a hotspot-style ID (user DMR ID + 2 digits) to bypass repeaterdb validation
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186801,
+		RadioID: 300206801,
 	}
 
 	resp, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -142,8 +142,8 @@ func TestPOSTRepeaterIPSC(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -151,7 +151,7 @@ func TestPOSTRepeaterIPSC(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186802,
+		RadioID: 300206802,
 		Type:    "ipsc",
 	}
 
@@ -177,8 +177,8 @@ func TestPATCHRepeaterPreservesType(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -187,7 +187,7 @@ func TestPATCHRepeaterPreservesType(t *testing.T) {
 
 	// Create an IPSC repeater
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186803,
+		RadioID: 300206803,
 		Type:    "ipsc",
 	}
 
@@ -218,8 +218,8 @@ func TestPATCHRepeaterPreservesPassword(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -227,7 +227,7 @@ func TestPATCHRepeaterPreservesPassword(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186804,
+		RadioID: 300206804,
 		Type:    "ipsc",
 	}
 
@@ -258,8 +258,8 @@ func TestPATCHRepeaterPreservesOwner(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -267,7 +267,7 @@ func TestPATCHRepeaterPreservesOwner(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186806,
+		RadioID: 300206806,
 		Type:    "ipsc",
 	}
 
@@ -296,8 +296,8 @@ func TestPOSTRepeaterTalkgroupsPreservesType(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -306,7 +306,7 @@ func TestPOSTRepeaterTalkgroupsPreservesType(t *testing.T) {
 
 	// Create an IPSC repeater
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186807,
+		RadioID: 300206807,
 		Type:    "ipsc",
 	}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -344,8 +344,8 @@ func TestPOSTRepeaterTalkgroupsPreservesPassword(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -353,7 +353,7 @@ func TestPOSTRepeaterTalkgroupsPreservesPassword(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186808,
+		RadioID: 300206808,
 		Type:    "ipsc",
 	}
 	createResp, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -391,8 +391,8 @@ func TestPOSTRepeaterLinkPreservesType(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -401,7 +401,7 @@ func TestPOSTRepeaterLinkPreservesType(t *testing.T) {
 
 	// Create an IPSC repeater
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186809,
+		RadioID: 300206809,
 		Type:    "ipsc",
 	}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -434,8 +434,8 @@ func TestPOSTRepeaterUnlinkPreservesType(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -444,7 +444,7 @@ func TestPOSTRepeaterUnlinkPreservesType(t *testing.T) {
 
 	// Create an IPSC repeater
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186810,
+		RadioID: 300206810,
 		Type:    "ipsc",
 	}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -481,8 +481,8 @@ func TestDELETERepeater(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -490,7 +490,7 @@ func TestDELETERepeater(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186811,
+		RadioID: 300206811,
 	}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -532,8 +532,8 @@ func TestPOSTRepeaterIPSCDisabledRejects(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -541,7 +541,7 @@ func TestPOSTRepeaterIPSCDisabledRejects(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186803,
+		RadioID: 300206803,
 		Type:    "ipsc",
 	}
 
@@ -561,8 +561,8 @@ func TestPOSTRepeaterIPSCDisabledAllowsMMDVM(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -570,7 +570,7 @@ func TestPOSTRepeaterIPSCDisabledAllowsMMDVM(t *testing.T) {
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
 	repeaterPost := apimodels.RepeaterPost{
-		RadioID: 319186804,
+		RadioID: 300206804,
 	}
 
 	resp, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
@@ -588,13 +588,13 @@ func TestPATCHRepeaterTrustedNeedsAdmin(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206807}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -627,13 +627,13 @@ func TestStaleRepeaterSaveKeepsTrust(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186808}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206808}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -661,13 +661,13 @@ func TestPOSTRepeaterTalkgroupsRejectsUnknownTalkgroup(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807, Type: "mmdvm"}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206807, Type: "mmdvm"}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 	_, _, adminJar := testutils.LoginAdmin(t, router)
@@ -720,12 +720,12 @@ func TestRepeaterEditsChangeRoutingAtOnce(t *testing.T) {
 	defer tdb.CloseDB()
 
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	})
-	const id = uint(319186811)
+	const id = uint(300206811)
 	_, w := testutils.CreateRepeater(t, router, userJar, apimodels.RepeaterPost{RadioID: id})
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)

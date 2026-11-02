@@ -44,7 +44,7 @@ func TestPublicCallShowsNoUndeliverable(t *testing.T) {
 
 		s := newSender(t, ct, userA, tgID, true, 7201)
 		p := s.send(dmrconst.FrameDataSync, uint(enums.DataTypeIdle), burstOf(t, &pdu.PRFill{}))
-		ct.Undeliverable(p, "IPSC repeater 314926 was busy on that slot.")
+		ct.Undeliverable(p, "IPSC repeater 990626 was busy on that slot.")
 		c := waitDone(t, ct, database, 1)[0]
 		require.Len(t, c.Undeliverable, 1, "the row keeps the repeater")
 

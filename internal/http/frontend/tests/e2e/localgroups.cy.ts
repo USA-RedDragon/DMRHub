@@ -21,8 +21,8 @@ const owner = { id: 1234567, callsign: 'W5TST' };
 const group = (repeaters: unknown[]) => ({
   id: 5, name: 'North Texas', talkgroup: 8, owner, members: 1, mine: true, can_manage: true, involved: true, repeaters,
 });
-const mine = { id: 311888, callsign: 'W5TST', owner, slot: 2, state: 'member', mine: true };
-const asked = { id: 319186801, callsign: 'KP4DJT', owner: { id: 3191869, callsign: 'KP4DJT' }, slot: 2, state: 'asked', mine: false };
+const mine = { id: 990388, callsign: 'W5TST', owner, slot: 2, state: 'member', mine: true };
+const asked = { id: 300206801, callsign: 'N7CALL', owner: { id: 3002069, callsign: 'N7CALL' }, slot: 2, state: 'asked', mine: false };
 
 describe('Local groups', () => {
   beforeEach(() => {
@@ -44,10 +44,10 @@ describe('Local groups', () => {
     cy.contains('a', 'North Texas').click();
     cy.wait('@group');
     cy.contains('A call to TG 8 on one of these repeaters goes to all of them, and nowhere else.');
-    cy.get('[data-test="add-repeater"]').type('319186801');
+    cy.get('[data-test="add-repeater"]').type('300206801');
     cy.contains('button', 'Add').click();
-    cy.wait('@add').its('request.body').should('deep.equal', { repeater_id: 319186801, slot: 2 });
-    cy.get('[data-test="member-319186801"]').should('contain', 'Waiting for the owner');
+    cy.wait('@add').its('request.body').should('deep.equal', { repeater_id: 300206801, slot: 2 });
+    cy.get('[data-test="member-300206801"]').should('contain', 'Waiting for the owner');
   });
 
   it('makes a new group', () => {
@@ -67,29 +67,29 @@ describe('Local groups', () => {
 
   it('lets the owner of a repeater say yes to a group', () => {
     const repeater = {
-      id: 319186801, callsign: 'W5TST', type: 'mmdvm', last_ping_time: '2024-06-10T14:05:00Z', connected_time: '2024-06-10T14:00:00Z',
+      id: 300206801, callsign: 'W5TST', type: 'mmdvm', last_ping_time: '2024-06-10T14:05:00Z', connected_time: '2024-06-10T14:00:00Z',
       created_at: '2024-01-10T09:00:00Z', ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 },
       ts2_dynamic_talkgroup: { id: 0 }, latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1, owner,
     };
-    const ask = { id: 5, name: 'North Texas', talkgroup: 8, slot: 2, owner: { id: 3191870, callsign: 'W5DFW' }, asked_by: { id: 3191870, callsign: 'W5DFW' }, repeaters: 4 };
-    cy.intercept('GET', '/api/v1/repeaters/319186801', { statusCode: 200, body: repeater });
-    cy.intercept('GET', '/api/v1/repeaters/319186801/rules', { statusCode: 200, body: { ts1_users: [], ts2_users: [], talkgroup_mode: 'off', talkgroups: [] } });
-    cy.intercept('GET', '/api/v1/lastheard/repeater/319186801*', { statusCode: 200, body: { calls: [], total: 0 } });
-    cy.intercept('GET', '/api/v1/repeaters/319186801/cosysops', { statusCode: 200, body: { owner, role: 'owner', cosysops: [] } });
-    cy.intercept('GET', '/api/v1/repeaters/319186801/on-air', { statusCode: 200, body: [] });
-    cy.intercept('GET', '/api/v1/repeaters/319186801/events*', { statusCode: 200, body: { events: [], total: 0 } });
-    cy.intercept('GET', '/api/v1/repeaters/319186801/alert', { statusCode: 200, body: { enabled: false } });
+    const ask = { id: 5, name: 'North Texas', talkgroup: 8, slot: 2, owner: { id: 3002070, callsign: 'K1CALL' }, asked_by: { id: 3002070, callsign: 'K1CALL' }, repeaters: 4 };
+    cy.intercept('GET', '/api/v1/repeaters/300206801', { statusCode: 200, body: repeater });
+    cy.intercept('GET', '/api/v1/repeaters/300206801/rules', { statusCode: 200, body: { ts1_users: [], ts2_users: [], talkgroup_mode: 'off', talkgroups: [] } });
+    cy.intercept('GET', '/api/v1/lastheard/repeater/300206801*', { statusCode: 200, body: { calls: [], total: 0 } });
+    cy.intercept('GET', '/api/v1/repeaters/300206801/cosysops', { statusCode: 200, body: { owner, role: 'owner', cosysops: [] } });
+    cy.intercept('GET', '/api/v1/repeaters/300206801/on-air', { statusCode: 200, body: [] });
+    cy.intercept('GET', '/api/v1/repeaters/300206801/events*', { statusCode: 200, body: { events: [], total: 0 } });
+    cy.intercept('GET', '/api/v1/repeaters/300206801/alert', { statusCode: 200, body: { enabled: false } });
     let answered = false;
-    cy.intercept('GET', '/api/v1/repeaters/319186801/localgroups', (req) => {
+    cy.intercept('GET', '/api/v1/repeaters/300206801/localgroups', (req) => {
       req.reply({ statusCode: 200, body: [{ ...ask, state: answered ? 'member' : 'asked' }] });
     });
-    cy.intercept('POST', '/api/v1/localgroups/5/repeaters/319186801/accept', (req) => {
+    cy.intercept('POST', '/api/v1/localgroups/5/repeaters/300206801/accept', (req) => {
       answered = true;
       req.reply({ statusCode: 200, body: {} });
     }).as('accept');
 
-    cy.visit('/repeaters/319186801');
-    cy.contains('W5DFW asks to add this repeater to the local group North Texas.');
+    cy.visit('/repeaters/300206801');
+    cy.contains('K1CALL asks to add this repeater to the local group North Texas.');
     cy.contains('button', 'Add it').click();
     cy.wait('@accept');
     cy.get('[data-test="local-ask-5"]').should('not.exist');

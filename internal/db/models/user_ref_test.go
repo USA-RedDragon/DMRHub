@@ -30,22 +30,22 @@ import (
 
 func TestNestedUsersSerializeAsRefs(t *testing.T) {
 	t.Parallel()
-	u := models.User{ID: 3191868, Callsign: "KI5VMF", Username: "ki5vmf", Email: "a@example.com", Admin: true, Approved: true}
+	u := models.User{ID: 3002068, Callsign: "N6CALL", Username: "n6call", Email: "a@example.com", Admin: true, Approved: true}
 
 	tg, err := json.Marshal(models.Talkgroup{ID: 91, Name: "TG91", Admins: []models.User{u}, NCOs: []models.User{u}})
 	require.NoError(t, err)
 	var gotTG map[string]any
 	require.NoError(t, json.Unmarshal(tg, &gotTG))
-	ref := map[string]any{"id": float64(3191868), "callsign": "KI5VMF"}
+	ref := map[string]any{"id": float64(3002068), "callsign": "N6CALL"}
 	assert.Equal(t, []any{ref}, gotTG["admins"])
 	assert.Equal(t, []any{ref}, gotTG["ncos"])
 	assert.Equal(t, "TG91", gotTG["name"])
 
-	rpt, err := json.Marshal(models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311860, Callsign: "KI5VMF"}, Owner: u})
+	rpt, err := json.Marshal(models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990360, Callsign: "N6CALL"}, Owner: u})
 	require.NoError(t, err)
 	var gotRpt map[string]any
 	require.NoError(t, json.Unmarshal(rpt, &gotRpt))
 	assert.Equal(t, ref, gotRpt["owner"])
-	assert.EqualValues(t, 311860, gotRpt["id"])
-	assert.Equal(t, "KI5VMF", gotRpt["callsign"])
+	assert.EqualValues(t, 990360, gotRpt["id"])
+	assert.Equal(t, "N6CALL", gotRpt["callsign"])
 }

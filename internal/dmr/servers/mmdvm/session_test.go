@@ -54,8 +54,8 @@ func TestPendingSessionsAreCapped(t *testing.T) {
 func TestHalfOpenLoginEndsAfterLoginTimeout(t *testing.T) {
 	t.Parallel()
 	fake := clock.NewFake(time.Now())
-	r := newRig(t, []uint{311860}, withClock(fake))
-	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTL, ID: 311860})
+	r := newRig(t, []uint{990360}, withClock(fake))
+	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTL, ID: 990360})
 	r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTACK)
 	l, st, _ := r.link(r.s)
 	require.NotNil(t, l)
@@ -84,7 +84,7 @@ func TestConfigAcceptOrRefuse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			const id = 311861
+			const id = 990361
 			r := newDialectRig(t, id)
 			read := func() dmrd.Command {
 				return dmrd.Classify(r.next("answer"), dmrd.DialectMMDVM)

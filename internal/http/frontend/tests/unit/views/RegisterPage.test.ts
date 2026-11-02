@@ -37,7 +37,7 @@ async function register(smtp: boolean, email?: string, add = vi.fn()) {
     global: { plugins: [createPinia()], mocks: { $toast: { add }, $router: { push: vi.fn() } } },
   });
   await flushPromises();
-  await wrapper.find('input#dmr_id').setValue('3100001');
+  await wrapper.find('input#dmr_id').setValue('3002401');
   await wrapper.find('input#username').setValue('n0call');
   await wrapper.find('input#callsign').setValue('N0CALL');
   if (email !== undefined) {
@@ -111,7 +111,7 @@ describe('RegisterPage modes', () => {
   it('sends the invite of the link', async () => {
     window.location.hash = '#invite=4f1c0e9a7b2d43e8a1c5f60b9d7e2a13';
     const wrapper = await mountWith('invite');
-    await wrapper.find('input#dmr_id').setValue('3100001');
+    await wrapper.find('input#dmr_id').setValue('3002401');
     await wrapper.find('input#username').setValue('n0call');
     await wrapper.find('input#callsign').setValue('N0CALL');
     await wrapper.find('input#password').setValue('a long unique password');

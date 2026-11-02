@@ -72,7 +72,7 @@ func uncarriedPacket(t *testing.T, c uncarried) models.Packet {
 	t.Helper()
 	return models.Packet{
 		Signature:   "DMRD",
-		Src:         3191868,
+		Src:         3002068,
 		Dst:         91,
 		GroupCall:   true,
 		FrameType:   c.frame,
@@ -181,7 +181,7 @@ func TestTranslateToIPSCReportsADataBurstInAVoiceStream(t *testing.T) {
 	t.Parallel()
 	var c pdu.CSBK
 	c.LastBlock = true
-	if err := c.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: 91, SourceAddress: 3191868}); err != nil {
+	if err := c.SetMotorolaCallAlert(pdu.MotorolaCallAlertPDU{TargetAddress: 91, SourceAddress: 3002068}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := layer2.BuildBurst(&c, 1, layer2.SyncSourceMS)

@@ -71,7 +71,7 @@ func setupFanout(tb testing.TB, targets int) *fanout {
 	handle := h.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	tb.Cleanup(func() { h.UnregisterServer(models.RepeaterTypeMMDVM) })
 	for i := range targets {
-		id := uint(311000 + i)
+		id := uint(990100 + i)
 		seedRepeater(tb, database, id, 1000001)
 		rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}}
 		require.NoError(tb, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: fanoutTG}))

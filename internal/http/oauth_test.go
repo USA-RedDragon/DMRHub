@@ -462,7 +462,7 @@ func seedHotspot(t *testing.T, e *oauthEnv, id uint, owner string) {
 func TestOAuthUsersMeShowsHotspotsOnlyToAHotspotScope(t *testing.T) {
 	t.Parallel()
 	e := newOAuthEnv(t)
-	seedHotspot(t, e, 311860, "Admin")
+	seedHotspot(t, e, 990360, "Admin")
 	repeaters := func(w *httptest.ResponseRecorder) (json.RawMessage, bool) {
 		t.Helper()
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -480,19 +480,19 @@ func TestOAuthUsersMeShowsHotspotsOnlyToAHotspotScope(t *testing.T) {
 		tok = e.token(t, scope)
 		r, ok := repeaters(e.bearer(t, http.MethodGet, "/api/v1/users/me", tok.AccessToken))
 		require.True(t, ok, scope)
-		assert.Contains(t, string(r), `"id":311860`, scope)
+		assert.Contains(t, string(r), `"id":990360`, scope)
 	}
 
 	r, ok := repeaters(testutils.Do(t, e.router, e.jar, http.MethodGet, "/api/v1/users/me", nil))
 	require.True(t, ok, "the web session keeps the hotspots")
-	assert.Contains(t, string(r), `"id":311860`)
+	assert.Contains(t, string(r), `"id":990360`)
 }
 
 func TestChangingTheTalkgroupsOfAnotherUsersHotspotIsForbidden(t *testing.T) {
 	t.Parallel()
 	e := newOAuthEnv(t)
 	testutils.SeedAccount(t, e.tdb.DB(), 1000099, "N0CALL", "other")
-	seedHotspot(t, e, 311860, "Admin")
+	seedHotspot(t, e, 990360, "Admin")
 	seedHotspot(t, e, 100009901, "other")
 	body := `{"ts1_static_talkgroups":[],"ts2_static_talkgroups":[]}`
 	forbidden := func(w *httptest.ResponseRecorder) {
@@ -506,8 +506,8 @@ func TestChangingTheTalkgroupsOfAnotherUsersHotspotIsForbidden(t *testing.T) {
 	forbidden(e.request(t, http.MethodPost, "/api/v1/repeaters/100009901/talkgroups", h, body))
 
 	jar := testutils.Login(t, e.router, "other")
-	forbidden(testutils.Do(t, e.router, jar, http.MethodPost, "/api/v1/repeaters/311860/talkgroups", map[string]any{"ts1_static_talkgroups": []any{}, "ts2_static_talkgroups": []any{}}))
-	w := testutils.Do(t, e.router, testutils.CookieJar{}, http.MethodPost, "/api/v1/repeaters/311860/talkgroups", map[string]any{})
+	forbidden(testutils.Do(t, e.router, jar, http.MethodPost, "/api/v1/repeaters/990360/talkgroups", map[string]any{"ts1_static_talkgroups": []any{}, "ts2_static_talkgroups": []any{}}))
+	w := testutils.Do(t, e.router, testutils.CookieJar{}, http.MethodPost, "/api/v1/repeaters/990360/talkgroups", map[string]any{})
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "no session is still 401")
 }
 
@@ -515,21 +515,21 @@ func TestOAuthTokenSeesOnlyTheHotspotsOfItsUser(t *testing.T) {
 	t.Parallel()
 	e := newOAuthEnv(t)
 	testutils.SeedAccount(t, e.tdb.DB(), 1000099, "N0CALL", "other")
-	seedHotspot(t, e, 311860, "Admin")
+	seedHotspot(t, e, 990360, "Admin")
 	seedHotspot(t, e, 100009901, "other")
 
 	for _, scope := range []string{"hotspots:read", "hotspots:talkgroups"} {
 		tok := e.token(t, scope)
-		w := e.bearer(t, http.MethodGet, "/api/v1/repeaters/311860", tok.AccessToken)
+		w := e.bearer(t, http.MethodGet, "/api/v1/repeaters/990360", tok.AccessToken)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-		assert.Contains(t, w.Body.String(), `"id":311860`)
+		assert.Contains(t, w.Body.String(), `"id":990360`)
 		w = e.bearer(t, http.MethodGet, "/api/v1/repeaters/100009901", tok.AccessToken)
 		require.Equal(t, http.StatusForbidden, w.Code, "%s: %s", scope, w.Body.String())
 		assert.JSONEq(t, `{"error":"You do not own this repeater"}`, w.Body.String())
 	}
 
 	jar := testutils.Login(t, e.router, "other")
-	w := testutils.Do(t, e.router, jar, http.MethodGet, "/api/v1/repeaters/311860", nil)
+	w := testutils.Do(t, e.router, jar, http.MethodGet, "/api/v1/repeaters/990360", nil)
 	require.Equal(t, http.StatusOK, w.Code, "a web session still sees the repeaters of other users")
-	assert.Contains(t, w.Body.String(), `"id":311860`)
+	assert.Contains(t, w.Body.String(), `"id":990360`)
 }

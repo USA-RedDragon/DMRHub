@@ -82,8 +82,8 @@ func TestConfigRoutesRequireAdmin(t *testing.T) {
 	defer tdb.CloseDB()
 
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	})

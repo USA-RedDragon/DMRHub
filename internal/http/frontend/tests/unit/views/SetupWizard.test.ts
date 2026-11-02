@@ -198,13 +198,13 @@ describe('Setup wizard menu', () => {
 
   it('saves every tab at once, then opens the first admin page', async () => {
     const { wrapper, toast } = await mountAt('/setup#general');
-    await wrapper.find('#setup-network-name').setValue('W5DMR Network');
+    await wrapper.find('#setup-network-name').setValue('N6TEST Network');
     await go('#http');
     await wrapper.find('#setup-http-canonical-host').setValue('https://dmrhub.example.org');
     await save(wrapper);
     expect(mockAPI.put).toHaveBeenCalledTimes(1);
     const sent = mockAPI.put.mock.calls[0]![1];
-    expect(sent['network-name']).toBe('W5DMR Network');
+    expect(sent['network-name']).toBe('N6TEST Network');
     expect(sent.http['canonical-host']).toBe('https://dmrhub.example.org');
     expect(sent).not.toHaveProperty('secret');
     expect(sent.dmr.modem.port).toBe('/dev/ttyACM0');

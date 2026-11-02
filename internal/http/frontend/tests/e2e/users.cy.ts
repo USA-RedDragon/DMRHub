@@ -48,7 +48,7 @@ describe('User Management', () => {
         {
           id: 7654321, callsign: 'N0CALL', username: 'anotheruser',
           approved: true, suspended: false, admin: false,
-          repeaters: [{ id: 311001 }], created_at: '2024-02-20T08:00:00Z',
+          repeaters: [{ id: 990101 }], created_at: '2024-02-20T08:00:00Z',
         },
       ],
     };
@@ -125,10 +125,10 @@ describe('User Management', () => {
     cy.visit('/admin/users/approval');
     cy.wait('@getUnapproved');
 
-    cy.contains('KB0NEW').should('be.visible');
+    cy.contains('W8CALL').should('be.visible');
 
     // Click Approve button
-    cy.contains('tr', 'KB0NEW').find('button').contains('Approve').click();
+    cy.contains('tr', 'W8CALL').find('button').contains('Approve').click();
 
     cy.wait('@approveUser');
   });

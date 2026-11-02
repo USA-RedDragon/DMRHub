@@ -37,8 +37,8 @@ describe('Repeater CRUD', () => {
     cy.wait('@getRepeaters');
 
     // Table should render with repeater data
-    cy.contains('311001').should('be.visible');
-    cy.contains('311002').should('be.visible');
+    cy.contains('990101').should('be.visible');
+    cy.contains('990102').should('be.visible');
   });
 
   it('deletes a repeater and removes it from the table (regression test)', () => {
@@ -46,7 +46,7 @@ describe('Repeater CRUD', () => {
       total: 2,
       repeaters: [
         {
-          id: 311001,
+          id: 990101,
           type: 'mmdvm',
           connected_time: '2024-06-10T14:00:00Z',
           created_at: '2024-01-10T09:00:00Z',
@@ -60,7 +60,7 @@ describe('Repeater CRUD', () => {
           simplex_repeater: false,
         },
         {
-          id: 311002,
+          id: 990102,
           type: 'mmdvm',
           connected_time: '2024-06-09T12:00:00Z',
           created_at: '2024-02-20T11:00:00Z',
@@ -94,13 +94,13 @@ describe('Repeater CRUD', () => {
 
     cy.visit('/repeaters');
     cy.wait('@getRepeaters');
-    cy.contains('311001').should('be.visible');
+    cy.contains('990101').should('be.visible');
 
     // Click Edit on the first repeater to enter edit mode (Delete is only visible in edit mode)
-    cy.contains('tr', '311001').find('button').contains('Edit').click();
+    cy.contains('tr', '990101').find('button').contains('Edit').click();
 
     // Set up delete and re-fetch intercepts
-    cy.intercept('DELETE', '/api/v1/repeaters/311001', {
+    cy.intercept('DELETE', '/api/v1/repeaters/990101', {
       statusCode: 200,
       body: {},
     }).as('deleteRepeater');
@@ -115,13 +115,13 @@ describe('Repeater CRUD', () => {
     cy.on('window:confirm', () => true);
 
     // Click Delete
-    cy.contains('tr', '311001').find('button').contains('Delete').click();
+    cy.contains('tr', '990101').find('button').contains('Delete').click();
 
     cy.wait('@deleteRepeater');
 
     // The deleted repeater should be gone from the table
-    cy.get('table').should('not.contain', '311001');
-    cy.get('table').contains('311002').should('be.visible');
+    cy.get('table').should('not.contain', '990101');
+    cy.get('table').contains('990102').should('be.visible');
   });
 
   it('edits repeater talkgroups and saves', () => {
@@ -135,12 +135,12 @@ describe('Repeater CRUD', () => {
       fixture: 'repeaters.json',
     }).as('getRepeaters');
 
-    cy.intercept('POST', '/api/v1/repeaters/311001/talkgroups', {
+    cy.intercept('POST', '/api/v1/repeaters/990101/talkgroups', {
       statusCode: 200,
       body: {},
     }).as('saveTalkgroups');
 
-    cy.intercept('PATCH', '/api/v1/repeaters/311001', {
+    cy.intercept('PATCH', '/api/v1/repeaters/990101', {
       statusCode: 200,
       body: {},
     }).as('patchRepeater');
@@ -149,10 +149,10 @@ describe('Repeater CRUD', () => {
     cy.wait('@getRepeaters');
 
     // Click Edit on first repeater
-    cy.contains('tr', '311001').find('button').contains('Edit').click();
+    cy.contains('tr', '990101').find('button').contains('Edit').click();
 
     // Click Save
-    cy.contains('tr', '311001').find('button').contains('Save').click();
+    cy.contains('tr', '990101').find('button').contains('Save').click();
 
     cy.wait('@saveTalkgroups');
     cy.wait('@patchRepeater');
@@ -173,16 +173,16 @@ describe('Repeater CRUD', () => {
     cy.wait('@getRepeaters');
 
     // Click Edit
-    cy.contains('tr', '311001').find('button').contains('Edit').click();
+    cy.contains('tr', '990101').find('button').contains('Edit').click();
 
     // Verify Cancel button is visible
-    cy.contains('tr', '311001').find('button').contains('Cancel').should('be.visible');
+    cy.contains('tr', '990101').find('button').contains('Cancel').should('be.visible');
 
     // Click Cancel
-    cy.contains('tr', '311001').find('button').contains('Cancel').click();
+    cy.contains('tr', '990101').find('button').contains('Cancel').click();
 
     // Should go back to view mode with Edit button
-    cy.contains('tr', '311001').find('button').contains('Edit').should('be.visible');
+    cy.contains('tr', '990101').find('button').contains('Edit').should('be.visible');
   });
 
   it('enrolls a new repeater', () => {
@@ -190,18 +190,18 @@ describe('Repeater CRUD', () => {
       statusCode: 200,
       body: { password: 'test-secret-password' },
     }).as('createRepeater');
-    cy.intercept('GET', '/api/v1/repeaters/311099', {
+    cy.intercept('GET', '/api/v1/repeaters/990199', {
       statusCode: 200,
-      body: { id: 311099, type: 'mmdvm', connected_time: '0001-01-01T00:00:00Z', last_ping_time: '0001-01-01T00:00:00Z' },
+      body: { id: 990199, type: 'mmdvm', connected_time: '0001-01-01T00:00:00Z', last_ping_time: '0001-01-01T00:00:00Z' },
     });
 
     cy.visit('/repeaters/new');
 
-    cy.get('#radioID').type('311099');
+    cy.get('#radioID').type('990199');
     cy.get('button[type="submit"]').click();
 
     cy.wait('@createRepeater');
-    cy.location('pathname').should('eq', '/repeaters/311099/connect');
+    cy.location('pathname').should('eq', '/repeaters/990199/connect');
     cy.get('[data-test="secret"]').should('have.text', 'test-secret-password');
   });
 
@@ -230,18 +230,18 @@ describe('Admin repeater trust', () => {
       statusCode: 200,
       fixture: 'repeaters.json',
     }).as('getRepeaters');
-    cy.intercept('POST', '/api/v1/repeaters/311001/talkgroups', { statusCode: 200, body: {} });
+    cy.intercept('POST', '/api/v1/repeaters/990101/talkgroups', { statusCode: 200, body: {} });
   });
 
   it('lets an admin mark a repeater trusted', () => {
-    cy.intercept('PATCH', '/api/v1/repeaters/311001', { statusCode: 200, body: {} }).as('patchRepeater');
+    cy.intercept('PATCH', '/api/v1/repeaters/990101', { statusCode: 200, body: {} }).as('patchRepeater');
     cy.visit('/admin/repeaters');
     cy.wait('@getRepeaters');
     cy.contains('th', 'Trusted').should('be.visible');
 
-    cy.contains('tr', '311001').find('button').contains('Edit').click();
-    cy.contains('tr', '311001').find('input[type="checkbox"]').last().check();
-    cy.contains('tr', '311001').find('button').contains('Save').click();
+    cy.contains('tr', '990101').find('button').contains('Edit').click();
+    cy.contains('tr', '990101').find('input[type="checkbox"]').last().check();
+    cy.contains('tr', '990101').find('button').contains('Save').click();
     cy.wait('@patchRepeater').its('request.body').should('deep.include', { trusted: true });
   });
 });
@@ -252,18 +252,18 @@ describe('Owner repeater page', () => {
     cy.login();
     cy.intercept('GET', '/api/v1/talkgroups?limit=none', { statusCode: 200, body: { talkgroups: [] } });
     cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, fixture: 'repeaters.json' }).as('getRepeaters');
-    cy.intercept('POST', '/api/v1/repeaters/311001/talkgroups', { statusCode: 200, body: {} });
-    cy.intercept('PATCH', '/api/v1/repeaters/311001', { statusCode: 200, body: {} }).as('patchRepeater');
+    cy.intercept('POST', '/api/v1/repeaters/990101/talkgroups', { statusCode: 200, body: {} });
+    cy.intercept('PATCH', '/api/v1/repeaters/990101', { statusCode: 200, body: {} }).as('patchRepeater');
     cy.visit('/repeaters');
     cy.wait('@getRepeaters');
     cy.contains('th', 'Trusted').should('not.exist');
-    cy.contains('tr', '311001').find('button').contains('Edit').click();
-    cy.contains('tr', '311001').find('button').contains('Save').click();
+    cy.contains('tr', '990101').find('button').contains('Edit').click();
+    cy.contains('tr', '990101').find('button').contains('Save').click();
     cy.wait('@patchRepeater').its('request.body').should('not.have.property', 'trusted');
   });
   it('accepts a co-sysop invite and lists the repeater with a Co-sysop badge', () => {
     const shared = {
-      id: 311888,
+      id: 990388,
       type: 'mmdvm',
       connected_time: '2024-06-10T14:00:00Z',
       created_at: '2024-01-10T09:00:00Z',
@@ -275,14 +275,14 @@ describe('Owner repeater page', () => {
       ts2_dynamic_talkgroup: { id: 0, name: 'None' },
       hotspot: false,
       simplex_repeater: false,
-      owner: { id: 3191868, callsign: 'KP4DJT' },
+      owner: { id: 3002068, callsign: 'N7CALL' },
     };
     cy.intercept('GET', '/api/v1/talkgroups?limit=none', { statusCode: 200, body: { talkgroups: [] } });
     cy.intercept('GET', '/api/v1/repeaters/cosysop-invites', {
       statusCode: 200,
       body: {
         invites: [{
-          repeater_id: 311888, repeater_callsign: 'W5DFW', owner: { id: 3191868, callsign: 'KP4DJT' },
+          repeater_id: 990388, repeater_callsign: 'K1CALL', owner: { id: 3002068, callsign: 'N7CALL' },
           invited_at: '2026-11-01T12:00:00Z', expires_at: '2026-11-08T12:00:00Z',
         }],
       },
@@ -290,14 +290,14 @@ describe('Owner repeater page', () => {
     cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, body: { total: 0, repeaters: [] } }).as('before');
     cy.visit('/repeaters');
     cy.wait('@before');
-    cy.contains('KP4DJT invited you to manage W5DFW 311888.').should('be.visible');
+    cy.contains('N7CALL invited you to manage K1CALL 990388.').should('be.visible');
 
-    cy.intercept('POST', '/api/v1/repeaters/311888/cosysop-invite/accept', { statusCode: 200, body: { message: 'Done' } }).as('accept');
+    cy.intercept('POST', '/api/v1/repeaters/990388/cosysop-invite/accept', { statusCode: 200, body: { message: 'Done' } }).as('accept');
     cy.intercept('GET', '/api/v1/repeaters/my*', { statusCode: 200, body: { total: 1, repeaters: [shared] } }).as('after');
-    cy.get('[data-test="accept-311888"]').click();
+    cy.get('[data-test="accept-990388"]').click();
     cy.wait('@accept');
     cy.wait('@after');
     cy.get('[data-test="cosysop-invites"]').should('not.exist');
-    cy.get('[data-test="cosysop-badge-311888"]').should('have.text', 'Co-sysop');
+    cy.get('[data-test="cosysop-badge-990388"]').should('have.text', 'Co-sysop');
   });
 });

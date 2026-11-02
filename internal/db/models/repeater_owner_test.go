@@ -52,7 +52,7 @@ func foreignKeyDB(t *testing.T) *gorm.DB {
 func TestARepeaterWithNoOwnerSavesAndWaitsForAnOwner(t *testing.T) {
 	t.Parallel()
 	database := foreignKeyDB(t)
-	const id, owner = 311860, 3191868
+	const id, owner = 990360, 3002068
 	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeModem}).Error)
 	var null int64
 	require.NoError(t, database.Model(&models.Repeater{}).Where("id = ? AND owner_id IS NULL", id).Count(&null).Error)
@@ -61,7 +61,7 @@ func TestARepeaterWithNoOwnerSavesAndWaitsForAnOwner(t *testing.T) {
 	r, err := models.FindRepeaterByID(database, id)
 	require.NoError(t, err)
 	require.Zero(t, r.OwnerID)
-	r.Callsign = "KI5VMF"
+	r.Callsign = "N6CALL"
 	require.NoError(t, database.Save(&r).Error)
 
 	list, err := models.ListUnassignedRepeaters(database)
@@ -72,12 +72,12 @@ func TestARepeaterWithNoOwnerSavesAndWaitsForAnOwner(t *testing.T) {
 	require.Equal(t, 1, n)
 
 	require.True(t, errors.Is(models.AssignRepeaterOwner(database, id+1, owner), gorm.ErrRecordNotFound))
-	require.NoError(t, database.Create(&models.User{ID: owner, Callsign: "KI5VMF", Username: "ki5vmf", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: owner, Callsign: "N6CALL", Username: "n6call", Approved: true}).Error)
 	require.NoError(t, models.AssignRepeaterOwner(database, id, owner))
 	r, err = models.FindRepeaterByID(database, id)
 	require.NoError(t, err)
 	require.EqualValues(t, owner, r.OwnerID)
-	require.Equal(t, "KI5VMF", r.Callsign)
+	require.Equal(t, "N6CALL", r.Callsign)
 	require.True(t, errors.Is(models.AssignRepeaterOwner(database, id, owner), models.ErrRepeaterHasOwner))
 	n, err = models.CountUnassignedRepeaters(database)
 	require.NoError(t, err)

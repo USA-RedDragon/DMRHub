@@ -397,7 +397,7 @@ func (c *CallTracker) peerStream(key chanKey, p *models.Packet, now time.Time) u
 	return stream
 }
 
-// Undeliverable records why, such as "IPSC repeater 311304200 cannot
+// Undeliverable records why, such as "IPSC repeater 300344200 cannot
 // carry this kind of burst.", a target could not take the burst of p, a packet that Track got, on the transmission that
 // holds the burst. Call it after Track for the same packet. p.TrackID
 // names the burst; without it the mark goes on the latest transmission of

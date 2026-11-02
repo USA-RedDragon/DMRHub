@@ -36,11 +36,11 @@ func TestResumeTokens(t *testing.T) {
 	t.Parallel()
 	s, _ := webTransportServer(t)
 	now := time.Now()
-	token := s.resumeToken(311860, now)
+	token := s.resumeToken(990360, now)
 
 	id, ok := s.checkResumeToken(token, now)
 	assert.True(t, ok, "a fresh token is good")
-	assert.Equal(t, uint32(311860), id)
+	assert.Equal(t, uint32(990360), id)
 
 	_, ok = s.checkResumeToken(token, now.Add(2*ResumeTTL))
 	assert.False(t, ok, "an old token is not good")
@@ -104,10 +104,10 @@ func TestResumeTokenSurvivesABusySession(t *testing.T) {
 	s.mu.Lock()
 	s.newSalt = func() (uint32, error) { return testSalt, nil }
 	s.mu.Unlock()
-	wtLogin(t, s, cfg, 311860)
-	busy := wtLogin(t, s, cfg, 311861)
+	wtLogin(t, s, cfg, 990360)
+	busy := wtLogin(t, s, cfg, 990361)
 
-	token := s.resumeToken(311860, time.Now())
+	token := s.resumeToken(990360, time.Now())
 	r := s.resumeWebTransport(busy, wtResume{Resume: token})
 	assert.False(t, r.Resumed)
 	assert.Equal(t, "busy", r.Reason)

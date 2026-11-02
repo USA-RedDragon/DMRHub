@@ -116,7 +116,7 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 		const gatewayID = 0x3010AF
 		capture := readCapture(t, "testdata/dmrgateway-master.txt")
 
-		stack.SeedUser(t, 3191868, "KI5VMF")
+		stack.SeedUser(t, 3191868, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
 		stack.SeedMMDVMRepeater(t, gatewayID, 3191868, "passw0rd")
 		stack.SeedMMDVMRepeater(t, 100001, 3191868, testPassword)
@@ -202,7 +202,7 @@ func TestGoldenHBlink3OpenBridgeIngress(t *testing.T) {
 		capture := readCapture(t, "testdata/hblink3-openbridge.txt")
 		require.Len(t, capture, 8)
 
-		stack.SeedUser(t, 3191868, "KI5VMF")
+		stack.SeedUser(t, 3191868, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
 		stack.SeedMMDVMRepeater(t, 100001, 3191868, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 91)
@@ -242,7 +242,7 @@ func TestGoldenHBlink3OpenBridgeEgress(t *testing.T) {
 		capture := readCapture(t, "testdata/hblink3-openbridge.txt")
 		require.Len(t, capture, 8)
 
-		stack.SeedUser(t, 3191868, "KI5VMF")
+		stack.SeedUser(t, 3191868, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
 		stack.SeedMMDVMRepeater(t, 100001, 3191868, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 91)

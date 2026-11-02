@@ -42,7 +42,7 @@ const apps = [
   },
   {
     id: 'g2',
-    origin: 'https://ki5vmf.github.io',
+    origin: 'https://n6call.github.io',
     can_use: 'Talkgroups, last heard',
     allowed: '2026-09-30T06:00:00Z',
     last_used: '2026-10-20T12:00:00Z',
@@ -89,6 +89,6 @@ describe('AppsCard', () => {
     await flushPromises();
     expect(mockAPI.delete).toHaveBeenCalledWith('/oauth/apps/g2');
     expect(wrapper.findAll('tbody tr')).toHaveLength(1);
-    expect(wrapper.text()).toContain('Removed https://ki5vmf.github.io. It is signed out.');
+    expect(wrapper.text()).toContain('Removed https://n6call.github.io. It is signed out.');
   });
 });

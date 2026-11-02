@@ -57,7 +57,7 @@ func TestAddPositionsKeepsUsersNotSharing(t *testing.T) {
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610232100").Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO users (id, callsign, username, password, admin, super_admin, email, approved, suspended, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				3191868, "KI5VMF", "old", "", false, false, "", true, false, time.Now(), time.Now(),
+				3002068, "N6CALL", "old", "", false, false, "", true, false, time.Now(), time.Now(),
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))
@@ -66,11 +66,11 @@ func TestAddPositionsKeepsUsersNotSharing(t *testing.T) {
 				assert.True(t, m.HasTable(table))
 			}
 			var got models.User
-			require.NoError(t, database.First(&got, 3191868).Error)
+			require.NoError(t, database.First(&got, 3002068).Error)
 			assert.False(t, got.SharePositions)
-			require.NoError(t, models.SetPositionTracking(database, 3191868, 3191868, true, time.Now()))
-			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801, Callsign: "KI5VMF"}, Trusted: true}).Error)
-			stored, err := models.StorePosition(database, models.Position{RadioID: 3191868, Latitude: 1, Longitude: 2, Format: models.PositionFormatNMEA, ReceivedAt: time.Now().Add(time.Second), RepeaterID: 319186801})
+			require.NoError(t, models.SetPositionTracking(database, 3002068, 3002068, true, time.Now()))
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300206801, Callsign: "N6CALL"}, Trusted: true}).Error)
+			stored, err := models.StorePosition(database, models.Position{RadioID: 3002068, Latitude: 1, Longitude: 2, Format: models.PositionFormatNMEA, ReceivedAt: time.Now().Add(time.Second), RepeaterID: 300206801})
 			require.NoError(t, err)
 			assert.True(t, stored)
 		})

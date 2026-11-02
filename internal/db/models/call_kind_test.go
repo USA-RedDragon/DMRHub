@@ -40,10 +40,10 @@ func TestCallStoresKindAndDataFields(t *testing.T) {
 		StartTime:     time.Now(),
 		Kind:          models.CallKindData,
 		SubKind:       "sms",
-		SourceID:      3140598,
+		SourceID:      3002198,
 		Transport:     models.RepeaterTypeMMDVM,
-		IngressID:     314059801,
-		DestinationID: 3191868,
+		IngressID:     300219801,
+		DestinationID: 3002068,
 		Bursts:        9,
 		FID:           &fid,
 		Opcode:        &opcode,
@@ -55,13 +55,13 @@ func TestCallStoresKindAndDataFields(t *testing.T) {
 		BadCRC:        1,
 		LostBlocks:    2,
 		Response:      models.CallResponseACK,
-		TalkerAlias:   "KI5VMF Jacob",
+		TalkerAlias:   "N6CALL Jacob",
 		AliasFormat:   "7-bit",
 		Latitude:      &lat,
 		Longitude:     &lon,
 		PositionError: &posErr,
 		Partial:       true,
-		Undeliverable: []string{"ipsc:311304200"},
+		Undeliverable: []string{"ipsc:300344200"},
 	}
 	require.NoError(t, database.Create(&call).Error)
 
@@ -117,7 +117,7 @@ func TestNetCallsCountVoiceOnly(t *testing.T) {
 	toTG := tg
 	for i, kind := range []models.CallKind{models.CallKindVoice, models.CallKindData, models.CallKindCSBK, models.CallKindGPS} {
 		userID := uint(1000001 + i)
-		require.NoError(t, database.Create(&models.User{ID: userID, Callsign: "N0CAL" + string(rune('A'+i)), Username: string(kind)}).Error)
+		require.NoError(t, database.Create(&models.User{ID: userID, Callsign: "N2TEST" + string(rune('A'+i)), Username: string(kind)}).Error)
 		require.NoError(t, database.Create(&models.Call{
 			StreamID: uint(i + 1), StartTime: start.Add(time.Minute), Kind: kind, UserID: &userID, SourceID: userID,
 			GroupCall: true, DestinationID: tg, IsToTalkgroup: true, ToTalkgroupID: &toTG,

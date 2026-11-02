@@ -39,9 +39,9 @@ import (
 )
 
 const (
-	repeater      = 319186801
-	otherRepeater = 310000101
-	other         = 3100001
+	repeater      = 300206801
+	otherRepeater = 300240101
+	other         = 3002401
 )
 
 type sent struct {
@@ -87,13 +87,13 @@ func openDB(t *testing.T) *gorm.DB {
 		_ = sqlDB.Close()
 	})
 	for _, u := range []models.User{
-		{ID: recipient, Callsign: "KI5VMF", Username: "recipient", Approved: true},
-		{ID: sender, Callsign: "KD5SMP", Username: "sender", Approved: true},
+		{ID: recipient, Callsign: "N6CALL", Username: "recipient", Approved: true},
+		{ID: sender, Callsign: "N8CALL", Username: "sender", Approved: true},
 		{ID: other, Callsign: "N0CALL", Username: "other", Approved: true},
 	} {
 		require.NoError(t, database.Create(&u).Error)
 	}
-	require.NoError(t, database.Create(&models.Repeater{ID: repeater, OwnerID: recipient, Callsign: "KI5VMF", Type: models.RepeaterTypeMMDVM}).Error)
+	require.NoError(t, database.Create(&models.Repeater{ID: repeater, OwnerID: recipient, Callsign: "N6CALL", Type: models.RepeaterTypeMMDVM}).Error)
 	require.NoError(t, database.Create(&models.Repeater{ID: otherRepeater, OwnerID: other, Callsign: "N0CALL", Type: models.RepeaterTypeMMDVM}).Error)
 	require.NoError(t, models.SetStoreForward(database, recipient, true, time.Now()))
 	return database
@@ -168,7 +168,7 @@ func TestOnlyPrivateTextsToUsersWithTheSwitchOnAreHeld(t *testing.T) {
 		"to a talkgroup":        text(t, database, sender, recipient, "group", now, func(m *models.Message) { m.IsGroup = true }),
 		"not text":              text(t, database, sender, recipient, "data", now, func(m *models.Message) { m.Format = models.MessageFormatData }),
 		"with a bad CRC":        text(t, database, sender, recipient, "bad", now, func(m *models.Message) { m.BadCRC = true }),
-		"to a radio no one has": text(t, database, sender, 3199999, "nobody", now, nil),
+		"to a radio no one has": text(t, database, sender, 3004799, "nobody", now, nil),
 	} {
 		assert.False(t, s.Hold(m, now, false), name)
 	}

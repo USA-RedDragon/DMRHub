@@ -52,11 +52,11 @@ func makeTestDB(t *testing.T) (*gorm.DB, func()) {
 	return database, cleanup
 }
 
-const ownerID = 3191868
+const ownerID = 3002068
 
 func createOwner(tb testing.TB, database *gorm.DB) {
 	tb.Helper()
-	require.NoError(tb, database.Create(&models.User{ID: ownerID, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
+	require.NoError(tb, database.Create(&models.User{ID: ownerID, Callsign: "N6CALL", Username: "owner", Approved: true}).Error)
 }
 
 func TestPeerShouldEgressNoEgress(t *testing.T) {

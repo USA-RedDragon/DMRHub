@@ -201,7 +201,7 @@ func TestAPluginIsWelcomedWithItsNameAndIDs(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
-		p, token := r.add("Weather", rng(310001, 310009), rng(9998, 9998))
+		p, token := r.add("Weather", rng(990001, 990009), rng(9998, 9998))
 		m, err := recv(t, r.connect(token))
 		require.NoError(t, err)
 		w := m.GetWelcome()
@@ -229,18 +229,18 @@ func TestTheBurstsToAPluginsIDsReachIt(t *testing.T) {
 		_, ok = r.registry.Owner(9991)
 		assert.False(t, ok)
 
-		pkt := models.Packet{Src: 3191868, Dst: 9990, Slot: true, StreamID: 5, FrameType: dmrconst.FrameVoiceSync, DTypeOrVSeq: 0, Seq: 1, Repeater: 319186801}
+		pkt := models.Packet{Src: 3002068, Dst: 9990, Slot: true, StreamID: 5, FrameType: dmrconst.FrameVoiceSync, DTypeOrVSeq: 0, Seq: 1, Repeater: 300206801}
 		pkt.DMRData[0] = 0xAB
 		require.NoError(t, r.registry.Deliver(p.ID, pkt))
 		m, err := recv(t, s)
 		require.NoError(t, err)
 		b := m.GetBurst()
 		require.NotNil(t, b)
-		assert.Equal(t, uint32(3191868), b.GetSource())
+		assert.Equal(t, uint32(3002068), b.GetSource())
 		assert.Equal(t, uint32(9990), b.GetDestination())
 		assert.Equal(t, uint32(2), b.GetSlot())
 		assert.Equal(t, pluginv1.FrameType_FRAME_TYPE_VOICE_SYNC, b.GetFrameType())
-		assert.Equal(t, uint32(319186801), b.GetRepeater())
+		assert.Equal(t, uint32(300206801), b.GetRepeater())
 		assert.Equal(t, byte(0xAB), b.GetPayload()[0])
 	})
 }
@@ -249,18 +249,18 @@ func TestAPluginSendsOnlyFromItsIDsAndNeverToAnotherPlugin(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
-		p, token := r.add("Weather", rng(310001, 310009))
+		p, token := r.add("Weather", rng(990001, 990009))
 		r.add("Parrot", rng(9990, 9990))
 		s := r.connect(token)
 		_, err := recv(t, s)
 		require.NoError(t, err)
 
-		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310001, 3191868, false)}}))
-		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(310002, 310009, true)}}))
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(990001, 3002068, false)}}))
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(990002, 990009, true)}}))
 		bubble.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 2 }, 3*time.Second, 10*time.Millisecond)
 		pkts, srcs := r.router.all()
-		assert.Equal(t, uint(310001), pkts[0].Src)
-		assert.Equal(t, uint(3191868), pkts[0].Dst)
+		assert.Equal(t, uint(990001), pkts[0].Src)
+		assert.Equal(t, uint(3002068), pkts[0].Dst)
 		assert.True(t, pkts[0].Slot)
 		assert.Equal(t, dmrconst.FrameVoice, pkts[0].FrameType)
 		assert.Equal(t, string(dmrconst.CommandDMRD), pkts[0].Signature)
@@ -268,15 +268,15 @@ func TestAPluginSendsOnlyFromItsIDsAndNeverToAnotherPlugin(t *testing.T) {
 		assert.True(t, pkts[1].GroupCall)
 
 		bad := map[pluginv1.RefusalReason]*pluginv1.Burst{
-			pluginv1.RefusalReason_REFUSAL_REASON_SOURCE:      burst(3191868, 3140598, false),
-			pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION: burst(310001, 91, true),
+			pluginv1.RefusalReason_REFUSAL_REASON_SOURCE:      burst(3002068, 3002198, false),
+			pluginv1.RefusalReason_REFUSAL_REASON_DESTINATION: burst(990001, 91, true),
 		}
-		toParrot := burst(310001, 9990, false)
-		short := burst(310001, 3191868, false)
+		toParrot := burst(990001, 9990, false)
+		short := burst(990001, 3002068, false)
 		short.Payload = short.GetPayload()[:20]
-		noFrame := burst(310001, 3191868, false)
+		noFrame := burst(990001, 3002068, false)
 		noFrame.FrameType = pluginv1.FrameType_FRAME_TYPE_UNSPECIFIED
-		slot3 := burst(310001, 3191868, false)
+		slot3 := burst(990001, 3002068, false)
 		slot3.Slot = 3
 		for reason, b := range bad {
 			require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: b}}))
@@ -335,7 +335,7 @@ func TestAdminChangesReachAConnectedPlugin(t *testing.T) {
 		assert.Equal(t, uint32(9991), m.GetRanges().GetRanges()[0].GetLast())
 		bubble.Eventually(t, func() bool { _, ok := r.registry.Owner(9991); return ok }, 3*time.Second, 10*time.Millisecond)
 
-		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(9991, 3191868, false)}}))
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Burst{Burst: burst(9991, 3002068, false)}}))
 		bubble.Eventually(t, func() bool { pkts, _ := r.router.all(); return len(pkts) == 1 }, 3*time.Second, 10*time.Millisecond, "the new IDs are the plugin's")
 
 		_, err = models.RotatePluginToken(r.db, p.ID, time.Now())

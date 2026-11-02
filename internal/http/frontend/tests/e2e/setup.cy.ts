@@ -26,7 +26,7 @@ describe('Admin Setup: OpenBridge', () => {
       dmr: {
         'radio-id-url': 'https://radioid.net/static/users.json',
         mmdvm: { bind: '[::]', port: 62031 },
-        ipsc: { enabled: true, bind: '[::]', port: 50000, 'network-id': 311860 },
+        ipsc: { enabled: true, bind: '[::]', port: 50000, 'network-id': 990360 },
         openbridge: { enabled: true, bind: '[::]', port: 62035 },
         retention: { messages: 0, transmissions: 0, bursts: 0 },
       },

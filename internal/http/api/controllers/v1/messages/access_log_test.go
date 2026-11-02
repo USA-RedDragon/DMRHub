@@ -43,8 +43,8 @@ func TestAdminMessageReadsAreLogged(t *testing.T) {
 			require.NoError(t, err)
 			defer tdb.CloseDB()
 			db := tdb.DB()
-			testutils.SeedAccount(t, db, owner, "KI5VMF", "owner")
-			testutils.SeedAccount(t, db, other, "KD5SMP", "other")
+			testutils.SeedAccount(t, db, owner, "N6CALL", "owner")
+			testutils.SeedAccount(t, db, other, "N8CALL", "other")
 			require.NoError(t, db.Create(&models.UserRadioID{UserID: owner, RadioID: addedID, VerifiedAt: time.Now()}).Error)
 			text := "hello"
 			a := models.Message{ReceivedAt: time.Now().Add(-time.Minute), SourceID: other, DestinationID: owner, Format: models.MessageFormatIP, Text: &text}
@@ -82,9 +82,9 @@ func TestAdminMessageReadsAreLogged(t *testing.T) {
 			assert.Equal(t, addedID, read.RadioIDs[1].RadioID)
 			require.NotNil(t, read.RadioIDs[1].UserID)
 			assert.Equal(t, owner, *read.RadioIDs[1].UserID, "an added radio ID shows its user")
-			assert.Equal(t, "KI5VMF", read.RadioIDs[1].Callsign)
+			assert.Equal(t, "N6CALL", read.RadioIDs[1].Callsign)
 			assert.Equal(t, other, read.RadioIDs[0].RadioID)
-			assert.Equal(t, "KD5SMP", read.RadioIDs[0].Callsign)
+			assert.Equal(t, "N8CALL", read.RadioIDs[0].Callsign)
 
 			assert.Equal(t, models.MessageAccessSearch, search.Kind)
 			assert.Nil(t, search.MessageID)

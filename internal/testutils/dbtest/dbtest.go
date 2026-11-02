@@ -22,6 +22,7 @@ package dbtest
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -61,6 +62,25 @@ func Decompress(t testing.TB, data []byte) []byte {
 		t.Fatalf("xz read: %v", err)
 	}
 	return out
+}
+
+// FirstEntry returns a decoder of the xz-compressed RadioID dump that stands
+// before the first entry of its key array, so a test can take a real entry
+// without naming one.
+func FirstEntry(t testing.TB, compressed []byte, key string) *json.Decoder {
+	t.Helper()
+	r, err := xz.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatalf("xz.NewReader: %v", err)
+	}
+	dec := json.NewDecoder(r)
+	for _, want := range []json.Token{json.Delim('{'), key, json.Delim('[')} {
+		tok, err := dec.Token()
+		if err != nil || tok != want {
+			t.Fatalf("the dump does not start with {%q: [, got %v (%v)", key, tok, err)
+		}
+	}
+	return dec
 }
 
 // Server is an HTTP server standing in for RadioID.net.

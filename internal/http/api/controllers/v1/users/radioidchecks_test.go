@@ -69,7 +69,7 @@ func TestRadioIDChecksTurnOnAndOffOneByOne(t *testing.T) {
 				resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 99999999, Callsign: "N0NONE", Username: "nolist", Password: "password"})
 				assert.Equal(t, http.StatusBadRequest, w.Code)
 				assert.Equal(t, "DMR ID is not valid", resp.Error)
-				resp, w = testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "N0CALL", Username: "othercall", Password: "password"})
+				resp, w = testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N0CALL", Username: "othercall", Password: "password"})
 				assert.Equal(t, http.StatusOK, w.Code, "callsign off: %s", resp.Error)
 			})
 
@@ -78,11 +78,11 @@ func TestRadioIDChecksTurnOnAndOffOneByOne(t *testing.T) {
 				c := all
 				c.UserID = false
 				router, _ := checksRouter(t, be, c)
-				resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "N0CALL", Username: "othercall", Password: "password"})
+				resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N0CALL", Username: "othercall", Password: "password"})
 				assert.Equal(t, http.StatusBadRequest, w.Code)
 				assert.Equal(t, "Callsign does not match DMR ID", resp.Error)
-				_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "rightcall", Password: "password"})
-				resp, w = testutils.PatchUser(t, router, 3191868, jar, apimodels.UserPatch{Callsign: "N0CALL"})
+				_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "rightcall", Password: "password"})
+				resp, w = testutils.PatchUser(t, router, 3002068, jar, apimodels.UserPatch{Callsign: "N0CALL"})
 				assert.Equal(t, http.StatusBadRequest, w.Code)
 				assert.Equal(t, "Callsign does not match DMR ID", resp.Error)
 			})
@@ -92,8 +92,8 @@ func TestRadioIDChecksTurnOnAndOffOneByOne(t *testing.T) {
 				c := all
 				c.Callsign = false
 				router, _ := checksRouter(t, be, c)
-				_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "rightcall", Password: "password"})
-				resp, w := testutils.PatchUser(t, router, 3191868, jar, apimodels.UserPatch{Callsign: "N0CALL"})
+				_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "rightcall", Password: "password"})
+				resp, w := testutils.PatchUser(t, router, 3002068, jar, apimodels.UserPatch{Callsign: "N0CALL"})
 				assert.Equal(t, http.StatusOK, w.Code, resp.Error)
 			})
 

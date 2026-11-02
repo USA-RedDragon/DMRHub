@@ -43,9 +43,9 @@ func TestAnOwnerSetsTheTalkgroupsOfTheirRepeater(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "owner", Password: "password"}
+	user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "owner", Password: "password"}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807, Type: "mmdvm"}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206807, Type: "mmdvm"}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 	_, _, adminJar := testutils.LoginAdmin(t, router)
@@ -89,9 +89,9 @@ func TestADynamicTalkgroupLeftOutOfTheBodyStays(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "owner", Password: "password"}
+	user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "owner", Password: "password"}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186807, Type: "mmdvm"}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206807, Type: "mmdvm"}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 	_, _, adminJar := testutils.LoginAdmin(t, router)

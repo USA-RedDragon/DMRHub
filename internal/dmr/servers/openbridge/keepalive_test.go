@@ -67,7 +67,7 @@ func TestKeepalivesDoNotReadThePeersEachTick(t *testing.T) {
 	require.True(t, ok)
 	owner := models.User{ID: 1000001, Callsign: "N0CALL", Username: "n0call", Approved: true}
 	require.NoError(t, database.Create(&owner).Error)
-	require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: owner.ID, Password: "x", IP: "127.0.0.1", Port: farAddr.Port, Enhanced: true}).Error)
+	require.NoError(t, database.Create(&models.Peer{ID: 3002500, OwnerID: owner.ID, Password: "x", IP: "127.0.0.1", Port: farAddr.Port, Enhanced: true}).Error)
 
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	t.Cleanup(ct.Stop)

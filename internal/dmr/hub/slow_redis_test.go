@@ -118,9 +118,9 @@ func seedStalledRedisHub(t *testing.T, h *hub.Hub, database *gorm.DB) {
 	require.NoError(t, database.First(&rpt2, 100002).Error)
 	require.NoError(t, database.Model(&rpt2).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 1}))
 	require.NoError(t, database.Model(&rpt2).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 2}))
-	require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: testSrcID, Egress: true}).Error)
-	require.NoError(t, database.Create(&models.PeerRule{PeerID: 3100100, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
-	h.PeerChanged(3100100)
+	require.NoError(t, database.Create(&models.Peer{ID: 3002500, OwnerID: testSrcID, Egress: true}).Error)
+	require.NoError(t, database.Create(&models.PeerRule{PeerID: 3002500, SubjectIDMin: 1, SubjectIDMax: 9999999}).Error)
+	h.PeerChanged(3002500)
 	require.NoError(t, database.Create(&models.Call{UserID: new(uint(1000002)), RepeaterID: new(uint(100002)), IngressID: 100002, CreatedAt: time.Now()}).Error)
 }
 
@@ -141,8 +141,8 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
 	settleDB(t, database)
-	worstDelay(t, arrivals, 70200, sendStream(h, 1, 70200, true, 4), "mmdvm:100002", "peers:3100100")
-	worstDelay(t, arrivals, 70210, sendSlotStream(h, 2, 70210, true, 4), "mmdvm:100002", "peers:3100100")
+	worstDelay(t, arrivals, 70200, sendStream(h, 1, 70200, true, 4), "mmdvm:100002", "peers:3002500")
+	worstDelay(t, arrivals, 70210, sendSlotStream(h, 2, 70210, true, 4), "mmdvm:100002", "peers:3002500")
 	return h, stalled, arrivals
 }
 
@@ -225,12 +225,12 @@ func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 		sent[other] = <-sentOther
 
 		held := gather(arrivals, sent, map[string]int{
-			"70201 peers:3100100": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3100100": bursts,
+			"70201 peers:3002500": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3002500": bursts,
 		}, 0)
 		t.Logf("while Redis held %d publishes the targets got %v", stalled.held.Load(), held.seqs)
 		assert.Positive(t, stalled.held.Load(), "the call sent no publish for Redis to hold")
 		assert.Empty(t, held.seqs["70201 mmdvm:100002"], "a burst reached the repeater through a held publish")
-		for _, k := range []string{"70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
+		for _, k := range []string{"70201 peers:3002500", "70211 mmdvm:100002", "70211 peers:3002500"} {
 			assert.Len(t, held.seqs[k], bursts, "%s: a burst waited on a held publish", k)
 		}
 		stalled.resume()
@@ -239,7 +239,7 @@ func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 		for k, seqs := range held.seqs {
 			d.seqs[k] = slices.Concat(seqs, d.seqs[k])
 		}
-		for _, k := range []string{"70201 mmdvm:100002", "70201 peers:3100100", "70211 mmdvm:100002", "70211 peers:3100100"} {
+		for _, k := range []string{"70201 mmdvm:100002", "70201 peers:3002500", "70211 mmdvm:100002", "70211 peers:3002500"} {
 			assertAllInOrder(t, d, k, bursts)
 		}
 	})
@@ -259,11 +259,11 @@ func TestAPublishThatDidNotReachRedisIsSentAgain(t *testing.T) {
 		time.AfterFunc(2*time.Second, stalled.resume)
 		sent := map[uint][]time.Time{stream: sendStream(h, 1, stream, true, bursts)}
 
-		d := gather(arrivals, sent, map[string]int{"70202 mmdvm:100002": bursts, "70202 peers:3100100": bursts}, time.Second)
+		d := gather(arrivals, sent, map[string]int{"70202 mmdvm:100002": bursts, "70202 peers:3002500": bursts}, time.Second)
 		t.Logf("the repeater got %d of %d bursts after %d failed publishes, worst delays %v", len(d.seqs["70202 mmdvm:100002"]), bursts, stalled.calls.Load(), d.worst)
 		assertAllInOrder(t, d, "70202 mmdvm:100002", bursts)
-		assertAllInOrder(t, d, "70202 peers:3100100", bursts)
-		assert.Less(t, d.worst["70202 peers:3100100"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
+		assertAllInOrder(t, d, "70202 peers:3002500", bursts)
+		assert.Less(t, d.worst["70202 peers:3002500"], stalledRedisCall/4, "a burst to the peer waited on a failed publish")
 	})
 }
 
@@ -355,10 +355,10 @@ func TestAStalledPluginDeliveryHoldsNoBurst(t *testing.T) {
 		plugin := &stalledPlugins{}
 		h.SetPlugins(plugin)
 		time.Sleep(100 * time.Millisecond)
-		worstDelay(t, arrivals, 70400, sendStream(h, 1, 70400, true, 4), "mmdvm:100002", "peers:3100100")
+		worstDelay(t, arrivals, 70400, sendStream(h, 1, 70400, true, 4), "mmdvm:100002", "peers:3002500")
 
 		plugin.on.Store(true)
-		worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 20), "peers:3100100")
+		worst := worstDelay(t, arrivals, 70401, sendStream(h, 1, 70401, true, 20), "peers:3002500")
 		plugin.on.Store(false)
 		t.Logf("worst delay to the peer %v with %v per hand-off to the plugin", worst, stalledRedisCall)
 		assert.Less(t, worst, stalledRedisCall/4, "a burst to the peer waited on the plugin")

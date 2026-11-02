@@ -90,16 +90,16 @@ func TestSignupEmailIsVerifiedByItsLinkOnce(t *testing.T) {
 		router, db, mailer := emailRouter(t, true)
 
 		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, "/api/v1/users", map[string]any{
-			"id": 3100001, "callsign": "N0NEW", "username": "newbie", "password": "a long unique password", "email": "n0new@example.com",
+			"id": 3002401, "callsign": "K2CALL", "username": "newbie", "password": "a long unique password", "email": "k2call@example.com",
 		})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-		email, verified := storedEmail(t, db, 3100001)
-		assert.Equal(t, "n0new@example.com", email)
+		email, verified := storedEmail(t, db, 3002401)
+		assert.Equal(t, "k2call@example.com", email)
 		assert.False(t, verified, "a new email is not verified")
 
-		token := verificationToken(t, mailer, "n0new@example.com")
+		token := verificationToken(t, mailer, "k2call@example.com")
 		assert.Equal(t, http.StatusOK, verify(t, router, token))
-		_, verified = storedEmail(t, db, 3100001)
+		_, verified = storedEmail(t, db, 3002401)
 		assert.True(t, verified, "the link verifies the email")
 		assert.Equal(t, http.StatusBadRequest, verify(t, router, token), "a link works once")
 	})
@@ -110,10 +110,10 @@ func TestSignupWithoutEmailSendsNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		router, db, mailer := emailRouter(t, true)
 		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, "/api/v1/users", map[string]any{
-			"id": 3100001, "callsign": "N0NEW", "username": "newbie", "password": "a long unique password",
+			"id": 3002401, "callsign": "K2CALL", "username": "newbie", "password": "a long unique password",
 		})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-		email, _ := storedEmail(t, db, 3100001)
+		email, _ := storedEmail(t, db, 3002401)
 		assert.Empty(t, email)
 		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent)
@@ -131,7 +131,7 @@ func TestEmailFormatIsChecked(t *testing.T) {
 			assert.JSONEq(t, `{"error":"Enter an email address, such as n0call@example.com"}`, w.Body.String(), bad)
 		}
 		w := testutils.Do(t, router, testutils.CookieJar{}, http.MethodPost, "/api/v1/users", map[string]any{
-			"id": 3100001, "callsign": "N0NEW", "username": "newbie", "password": "a long unique password", "email": "nope",
+			"id": 3002401, "callsign": "K2CALL", "username": "newbie", "password": "a long unique password", "email": "nope",
 		})
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		bubble.SettleDB(t, db, time.Minute)

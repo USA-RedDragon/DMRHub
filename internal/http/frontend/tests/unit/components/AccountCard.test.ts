@@ -37,13 +37,13 @@ async function card(opts: { validation: boolean; listed: string; callsign?: stri
     if (url === '/network/features') {
       return Promise.resolve({ data: { radio_id_validation: opts.validation } });
     }
-    if (url === '/userdb/3191868') {
+    if (url === '/userdb/3002068') {
       return opts.listed ? Promise.resolve({ data: { callsign: opts.listed } }) : Promise.reject(new Error('404'));
     }
     return Promise.reject(new Error(url));
   });
   const wrapper = mount(AccountCard, {
-    props: { id: 3191868, username: 'testuser', callsign: opts.callsign ?? 'OLDCALL' },
+    props: { id: 3002068, username: 'testuser', callsign: opts.callsign ?? 'OLDCALL' },
     global: { plugins: [pinia] },
   });
   await flushPromises();
@@ -57,7 +57,7 @@ describe('AccountCard', () => {
 
   it('shows the DMR ID read only and the username and callsign to edit', async () => {
     const wrapper = await card({ validation: true, listed: 'OLDCALL' });
-    expect((wrapper.find('input#account-dmr-id').element as HTMLInputElement).value).toBe('3191868');
+    expect((wrapper.find('input#account-dmr-id').element as HTMLInputElement).value).toBe('3002068');
     expect(wrapper.find('input#account-dmr-id').attributes('readonly')).toBeDefined();
     expect((wrapper.find('input#account-username').element as HTMLInputElement).value).toBe('testuser');
     expect((wrapper.find('input#account-callsign').element as HTMLInputElement).value).toBe('OLDCALL');
@@ -65,30 +65,30 @@ describe('AccountCard', () => {
   });
 
   it('offers the callsign that RadioID lists when it differs', async () => {
-    const wrapper = await card({ validation: true, listed: 'ki5vmf' });
-    expect(wrapper.find('[data-test="account-radioid"]').text()).toContain('RadioID lists DMR ID 3191868 as KI5VMF.');
+    const wrapper = await card({ validation: true, listed: 'n6call' });
+    expect(wrapper.find('[data-test="account-radioid"]').text()).toContain('RadioID lists DMR ID 3002068 as N6CALL.');
     await wrapper.find('[data-test="account-use-radioid"]').trigger('click');
-    expect((wrapper.find('input#account-callsign').element as HTMLInputElement).value).toBe('KI5VMF');
+    expect((wrapper.find('input#account-callsign').element as HTMLInputElement).value).toBe('N6CALL');
     mockAPI.patch.mockResolvedValue({ data: { message: 'User updated' } });
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3191868', { username: 'testuser', callsign: 'KI5VMF' });
+    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3002068', { username: 'testuser', callsign: 'N6CALL' });
     expect(wrapper.find('[data-test="account-ok"]').text()).toBe('Saved');
     expect(wrapper.find('[data-test="account-radioid"]').exists()).toBe(false);
   });
 
   it('hides the RadioID hint when radio ID validation is off', async () => {
-    const wrapper = await card({ validation: false, listed: 'KI5VMF' });
+    const wrapper = await card({ validation: false, listed: 'N6CALL' });
     expect(wrapper.find('[data-test="account-radioid"]').exists()).toBe(false);
   });
 
   it('shows the server error under the callsign', async () => {
-    const wrapper = await card({ validation: true, listed: 'KI5VMF' });
+    const wrapper = await card({ validation: true, listed: 'N6CALL' });
     mockAPI.patch.mockRejectedValue({ response: { data: { error: 'Callsign does not match DMR ID' } } });
     await wrapper.find('input#account-callsign').setValue('n0call');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3191868', { username: 'testuser', callsign: 'N0CALL' });
+    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3002068', { username: 'testuser', callsign: 'N0CALL' });
     expect(wrapper.find('[data-test="account-error"]').text()).toBe('Callsign does not match DMR ID');
   });
 });

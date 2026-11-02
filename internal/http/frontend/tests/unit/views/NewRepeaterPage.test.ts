@@ -64,31 +64,31 @@ describe('NewRepeaterPage', () => {
   it('opens the connect page with the password of a new hotspot, once', async () => {
     mockAPI.post.mockResolvedValue({ data: { password: 'Ab3dE6gH9jK2' } });
     const { wrapper, router } = await mountPage({ ipsc: false, mmdvm_port: 62040, ipsc_port: 50010 });
-    await wrapper.find('input#radioID').setValue('310000101');
+    await wrapper.find('input#radioID').setValue('300240101');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters', { id: 310000101, type: 'mmdvm', simplex_repeater: false });
-    expect(router.push).toHaveBeenCalledWith('/repeaters/310000101/connect');
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters', { id: 300240101, type: 'mmdvm', simplex_repeater: false });
+    expect(router.push).toHaveBeenCalledWith('/repeaters/300240101/connect');
     expect(alert).not.toHaveBeenCalled();
-    expect(takeSecret(310000101)).toBe('Ab3dE6gH9jK2');
-    expect(takeSecret(310000101)).toBeUndefined();
+    expect(takeSecret(300240101)).toBe('Ab3dE6gH9jK2');
+    expect(takeSecret(300240101)).toBeUndefined();
   });
 
   it('opens the connect page with the auth key of a new IPSC repeater', async () => {
     mockAPI.post.mockResolvedValue({ data: { password: 'abcd' } });
     const { wrapper, router } = await mountPage({ ipsc: true, mmdvm_port: 62040, ipsc_port: 50010 });
     await wrapper.find('select#repeaterType').setValue('ipsc');
-    await wrapper.find('input#radioID').setValue('310001');
+    await wrapper.find('input#radioID').setValue('990001');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(router.push).toHaveBeenCalledWith('/repeaters/310001/connect');
-    expect(takeSecret(310001)).toBe('abcd');
+    expect(router.push).toHaveBeenCalledWith('/repeaters/990001/connect');
+    expect(takeSecret(990001)).toBe('abcd');
   });
 
   it('says the repeater could not be created when the API refuses it', async () => {
     mockAPI.post.mockRejectedValue(new Error('network'));
     const { wrapper, toast, router } = await mountPage({ ipsc: false, mmdvm_port: 62031, ipsc_port: 50000 });
-    await wrapper.find('input#radioID').setValue('310000101');
+    await wrapper.find('input#radioID').setValue('300240101');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ detail: 'Error creating repeater' }));

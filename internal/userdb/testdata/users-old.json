@@ -1,4 +1,4 @@
 {"users": [
-{"name": "Hans Juergen", "fname": "Hans Juergen", "surname": "", "country": "Canada", "callsign": "VA3BOC", "city": "Cornwall", "radio_id": 1023007, "id": 1023007, "state": "Ontario", "has_valid_callsign": "0", "has_valid_email": 0},
-{"name": "Jacob", "fname": "Jacob", "surname": "", "country": "United States", "callsign": "KI5VMF", "city": "Moore", "radio_id": 3191868, "id": 3191868, "state": "Oklahoma", "has_valid_callsign": "1", "has_valid_email": 1}
+{"name": "Pat Example", "fname": "Pat Example", "surname": "", "country": "Canada", "callsign": "K9CALL", "city": "Anytown", "radio_id": 3002207, "id": 3002207, "state": "Ontario", "has_valid_callsign": "0", "has_valid_email": 0},
+{"name": "Sam", "fname": "Sam", "surname": "", "country": "United States", "callsign": "N0CALL", "city": "Springfield", "radio_id": 3002068, "id": 3002068, "state": "Oklahoma", "has_valid_callsign": "1", "has_valid_email": 1}
 ]}

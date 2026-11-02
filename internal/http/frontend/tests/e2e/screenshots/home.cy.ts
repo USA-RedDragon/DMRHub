@@ -21,23 +21,23 @@ import { addMilliseconds, addSeconds, differenceInMilliseconds, max, parseISO, s
 
 // https://docs.cypress.io/api/introduction/api.html
 
-// DMR radio IDs lifted randomly from radioid.net
+// Fictional DMR radio IDs and callsigns
 const radioIds = [
   {
-    id: 3110691,
-    callsign: 'KF6FM',
+    id: 3003291,
+    callsign: 'K0TEST',
   },
   {
-    id: 2353426,
-    callsign: 'MW6ABC',
+    id: 3002226,
+    callsign: 'K3TEST',
   },
   {
-    id: 3163099,
-    callsign: 'KO4CVD',
+    id: 3004699,
+    callsign: 'K2TEST',
   },
   {
-    id: 2626282,
-    callsign: 'DK4FC',
+    id: 3002382,
+    callsign: 'N8TEST',
   },
 ];
 
@@ -165,8 +165,8 @@ function generateCallTime(lastStart, lastDuration) {
 
 beforeEach(() => {
   cy.intercept('/api/v1/users/me', {
-    id: 3191868,
-    callsign: 'KI5VMF',
+    id: 3002068,
+    callsign: 'N6CALL',
     username: 'USA-RedDragon',
     admin: true,
     approved: true,

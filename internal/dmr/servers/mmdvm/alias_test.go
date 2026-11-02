@@ -47,7 +47,7 @@ import (
 func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		const repeaterID, radio = uint(311862), uint(3191868)
+		const repeaterID, radio = uint(311862), uint(3002068)
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
 		memdb.Use(t, &cfg)
@@ -69,7 +69,7 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 		})
 		s := Server{clock: clock.Real(), DB: database, hub: h}
 
-		lcs, err := pdu.EncodeTalkerAlias("KI5VMF", layer3.TalkerAliasSevenBit)
+		lcs, err := pdu.EncodeTalkerAlias("N6CALL", layer3.TalkerAliasSevenBit)
 		require.NoError(t, err)
 		for i := range lcs {
 			a := dmrd.TalkerAlias{Repeater: uint32(repeaterID), Source: uint32(radio), Type: uint8(i), Data: lcs[i].RawPayload, Size: 19}
@@ -88,7 +88,7 @@ func TestDMRAAndDMRGAreRecorded(t *testing.T) {
 			return database.Where("active = ?", false).Order("kind").Find(&calls).Error == nil && len(calls) == 2
 		}, 5*time.Second, 50*time.Millisecond, "the alias and the position must be recorded as ended calls")
 		assert.Equal(t, models.CallKindAlias, calls[0].Kind)
-		assert.Equal(t, "KI5VMF", calls[0].TalkerAlias)
+		assert.Equal(t, "N6CALL", calls[0].TalkerAlias)
 		assert.Equal(t, models.CallKindGPS, calls[1].Kind)
 		assert.True(t, calls[1].Partial)
 		for _, c := range calls {

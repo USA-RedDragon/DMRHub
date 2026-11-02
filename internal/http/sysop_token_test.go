@@ -40,7 +40,7 @@ func TestAScopedTokenCannotUseTheSysopRoutes(t *testing.T) {
 	admin, found, err := models.FindUserByUsername(db, "Admin")
 	require.NoError(t, err)
 	require.True(t, found)
-	require.NoError(t, db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801}, Type: models.RepeaterTypeMMDVM, Password: "password1234", OwnerID: admin.ID}).Error)
+	require.NoError(t, db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300206801}, Type: models.RepeaterTypeMMDVM, Password: "password1234", OwnerID: admin.ID}).Error)
 	scopes := make([]string, 0, len(oauth.Scopes()))
 	for _, s := range oauth.Scopes() {
 		scopes = append(scopes, s.Name)
@@ -49,18 +49,18 @@ func TestAScopedTokenCannotUseTheSysopRoutes(t *testing.T) {
 	full := makeToken(t, e, e.jar, map[string]any{"name": "full", "full": true, "expires_in_days": 30})
 
 	routes := []struct{ method, path, body string }{
-		{http.MethodGet, "/api/v1/repeaters/319186801/cosysops", ""},
-		{http.MethodPost, "/api/v1/repeaters/319186801/cosysops", `{"user":"nobody"}`},
-		{http.MethodDelete, "/api/v1/repeaters/319186801/cosysops/1", ""},
+		{http.MethodGet, "/api/v1/repeaters/300206801/cosysops", ""},
+		{http.MethodPost, "/api/v1/repeaters/300206801/cosysops", `{"user":"nobody"}`},
+		{http.MethodDelete, "/api/v1/repeaters/300206801/cosysops/1", ""},
 		{http.MethodGet, "/api/v1/repeaters/cosysop-invites", ""},
-		{http.MethodPost, "/api/v1/repeaters/319186801/cosysop-invite/accept", ""},
-		{http.MethodPost, "/api/v1/repeaters/319186801/cosysop-invite/decline", ""},
-		{http.MethodGet, "/api/v1/repeaters/319186801/events", ""},
-		{http.MethodGet, "/api/v1/repeaters/319186801/on-air", ""},
-		{http.MethodPost, "/api/v1/repeaters/319186801/drop-call", `{"call_id":1}`},
-		{http.MethodPost, "/api/v1/repeaters/319186801/reset", ""},
-		{http.MethodGet, "/api/v1/repeaters/319186801/alert", ""},
-		{http.MethodPut, "/api/v1/repeaters/319186801/alert", `{"enabled":false}`},
+		{http.MethodPost, "/api/v1/repeaters/300206801/cosysop-invite/accept", ""},
+		{http.MethodPost, "/api/v1/repeaters/300206801/cosysop-invite/decline", ""},
+		{http.MethodGet, "/api/v1/repeaters/300206801/events", ""},
+		{http.MethodGet, "/api/v1/repeaters/300206801/on-air", ""},
+		{http.MethodPost, "/api/v1/repeaters/300206801/drop-call", `{"call_id":1}`},
+		{http.MethodPost, "/api/v1/repeaters/300206801/reset", ""},
+		{http.MethodGet, "/api/v1/repeaters/300206801/alert", ""},
+		{http.MethodPut, "/api/v1/repeaters/300206801/alert", `{"enabled":false}`},
 	}
 	for _, r := range routes {
 		header := http.Header{"Authorization": {"Bearer " + scoped.Secret}, "Origin": {appOrigin}, "Content-Type": {"application/json"}}
@@ -68,7 +68,7 @@ func TestAScopedTokenCannotUseTheSysopRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code, "%s %s: %s", r.method, r.path, w.Body.String())
 		assert.Contains(t, w.Body.String(), "insufficient_scope", "%s %s", r.method, r.path)
 	}
-	for _, path := range []string{"/api/v1/repeaters/319186801/cosysops", "/api/v1/repeaters/319186801/events", "/api/v1/repeaters/319186801/alert"} {
+	for _, path := range []string{"/api/v1/repeaters/300206801/cosysops", "/api/v1/repeaters/300206801/events", "/api/v1/repeaters/300206801/alert"} {
 		w := e.bearer(t, http.MethodGet, path, full.Secret)
 		assert.Equal(t, http.StatusOK, w.Code, "%s: %s", path, w.Body.String())
 	}

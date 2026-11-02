@@ -95,14 +95,14 @@ func TestUndeliverableBurstIsRecordedOnItsTransmission(t *testing.T) {
 		h.RoutePacket(context.Background(), pkt, models.RepeaterTypeMMDVM)
 
 		egress := pkt
-		egress.Repeater = 311304
+		egress.Repeater = 990204
 		bubble.Eventually(t, func() bool {
 			h.ReportUndeliverable(egress, models.RepeaterTypeIPSC, "test")
 			var call models.Call
 			if database.Where("stream_id = ?", pkt.StreamID).First(&call).Error != nil {
 				return false
 			}
-			return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "The burst could not be prepared for IPSC repeater 311304."
+			return len(call.Undeliverable) == 1 && call.Undeliverable[0] == "The burst could not be prepared for IPSC repeater 990204."
 		}, 5*time.Second, 50*time.Millisecond)
 	})
 }

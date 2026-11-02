@@ -43,7 +43,7 @@ type rulesEnv struct {
 	ownerID, otherID uint
 }
 
-const rulesRepeater = uint(319186807)
+const rulesRepeater = uint(300206807)
 
 func newRulesEnv(t *testing.T, be testutils.Backend) *rulesEnv {
 	t.Helper()
@@ -52,8 +52,8 @@ func newRulesEnv(t *testing.T, be testutils.Backend) *rulesEnv {
 	})
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
-	e := &rulesEnv{router: router, ownerID: 3191868, otherID: 3191869}
-	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: e.ownerID, Callsign: "KI5VMF", Username: "owner", Password: "password"})
+	e := &rulesEnv{router: router, ownerID: 3002068, otherID: 3002069}
+	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: e.ownerID, Callsign: "N6CALL", Username: "owner", Password: "password"})
 	_, _, e.other = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: e.otherID, Callsign: "N0CALL", Username: "other", Password: "password"})
 	_, _, e.admin = testutils.LoginAdmin(t, router)
 	_, w := testutils.CreateRepeater(t, router, e.owner, apimodels.RepeaterPost{RadioID: rulesRepeater, Type: "mmdvm"})
@@ -106,15 +106,15 @@ func TestAnOwnerLocksASlotToListedUsers(t *testing.T) {
 
 			code, rules, msg := e.do(t, http.MethodPatch, e.owner, fmt.Sprintf(`{"ts2_users":[%d,%d,%d]}`, e.otherID, e.ownerID, e.otherID))
 			require.Equal(t, http.StatusOK, code, msg)
-			assert.ElementsMatch(t, []models.UserRef{{ID: e.otherID, Callsign: "N0CALL"}, {ID: e.ownerID, Callsign: "KI5VMF"}}, rules.TS2Users)
+			assert.ElementsMatch(t, []models.UserRef{{ID: e.otherID, Callsign: "N0CALL"}, {ID: e.ownerID, Callsign: "N6CALL"}}, rules.TS2Users)
 			assert.Empty(t, rules.TS1Users)
 
 			code, rules, msg = e.do(t, http.MethodPatch, e.admin, fmt.Sprintf(`{"ts1_users":[%d]}`, e.ownerID))
 			require.Equal(t, http.StatusOK, code, msg)
-			assert.Equal(t, []models.UserRef{{ID: e.ownerID, Callsign: "KI5VMF"}}, rules.TS1Users)
+			assert.Equal(t, []models.UserRef{{ID: e.ownerID, Callsign: "N6CALL"}}, rules.TS1Users)
 			assert.Len(t, rules.TS2Users, 2, "a slot left out keeps its users")
 
-			code, _, msg = e.do(t, http.MethodPatch, e.owner, `{"ts1_users":[3199999]}`)
+			code, _, msg = e.do(t, http.MethodPatch, e.owner, `{"ts1_users":[3004799]}`)
 			assert.Equal(t, http.StatusBadRequest, code)
 			assert.Equal(t, "User does not exist", msg)
 
@@ -195,16 +195,16 @@ func TestAnOwnerFindsAUserForASlotLock(t *testing.T) {
 				return w.Code, ref
 			}
 			want := models.UserRef{ID: e.otherID, Callsign: "N0CALL"}
-			for _, q := range []string{"3191869", "n0call", "N0CALL"} {
+			for _, q := range []string{"3002069", "n0call", "N0CALL"} {
 				code, ref := find(e.owner, q)
 				assert.Equal(t, http.StatusOK, code, q)
 				assert.Equal(t, want, ref, q)
 			}
-			for _, q := range []string{"3199999", "N0NE", ""} {
+			for _, q := range []string{"3004799", "N3TEST", ""} {
 				code, _ := find(e.owner, q)
 				assert.Equal(t, http.StatusNotFound, code, q)
 			}
-			code, _ := find(e.other, "3191868")
+			code, _ := find(e.other, "3002068")
 			assert.Equal(t, http.StatusForbidden, code)
 		})
 	}

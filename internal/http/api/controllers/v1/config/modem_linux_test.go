@@ -194,7 +194,7 @@ func TestModemTestOfThePortOfTheRunningModem(t *testing.T) {
 		t.Cleanup(func() { _ = store.Close() })
 		cfg, err := configulator.New(config.ConfigSchema()).Default()
 		require.NoError(t, err)
-		cfg.DMR.Modem.Port, cfg.DMR.Modem.RepeaterID = "/dev/ttyACM0", 311860
+		cfg.DMR.Modem.Port, cfg.DMR.Modem.RepeaterID = "/dev/ttyACM0", 990360
 		cfg.DMR.Modem.RXFrequency, cfg.DMR.Modem.TXFrequency = 438800000, 438800000
 		srv := modem.NewServerWithOptions(&cfg, nil, nil, "test", modem.Options{KV: store, Replica: "r2", Reply: 200 * time.Millisecond,
 			Reopen: time.Hour, Retry: time.Hour, Open: func(string, int) (modem.Port, error) {

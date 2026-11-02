@@ -97,7 +97,7 @@ func TestAPluginInsideDMRHubConnectsWithoutAToken(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatal("no Welcome")
 		}
-		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 4}))
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3002068, Dst: 9100, StreamID: 4}))
 		select {
 		case m := <-s.out:
 			assert.Equal(t, uint32(9100), m.GetBurst().GetDestination())
@@ -113,7 +113,7 @@ func TestAnExternalPluginCannotConnectAsOneInside(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
-		p, _ := r.add("Weather", rng(310001, 310009))
+		p, _ := r.add("Weather", rng(990001, 990009))
 		s := newInnerStream(plugins.InProcess(context.Background(), p.ID))
 		err := r.svc.Connect(s)
 		assert.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -137,7 +137,7 @@ func TestTheHubNotesTheVersionAnExternalPluginSays(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
-		p, token := r.add("Weather", rng(310001, 310009))
+		p, token := r.add("Weather", rng(990001, 990009))
 		s := r.connect(token)
 		_, err := recv(t, s)
 		require.NoError(t, err)
@@ -154,14 +154,14 @@ func TestTheRegistryLeavesOutThePluginsInsideWhenTheyAreOff(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
 		p := uploaded(t, r, "Net check-in", rng(9100, 9100))
-		ext, _ := r.add("Weather", rng(310001, 310009))
+		ext, _ := r.add("Weather", rng(990001, 990009))
 		owner, ok := r.registry.Owner(9100)
 		require.True(t, ok, "plugins run inside DMRHub by default")
 		assert.Equal(t, p.ID, owner)
 		require.NoError(t, r.registry.SetInProcess(false))
 		_, ok = r.registry.Owner(9100)
 		assert.False(t, ok, "nobody runs the plugins inside DMRHub when they are off")
-		owner, ok = r.registry.Owner(310005)
+		owner, ok = r.registry.Owner(990005)
 		assert.True(t, ok)
 		assert.Equal(t, ext.ID, owner)
 		require.NoError(t, r.registry.SetInProcess(true))

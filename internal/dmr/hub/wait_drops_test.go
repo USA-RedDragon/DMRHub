@@ -336,7 +336,7 @@ func TestABurstToThePeersThatThePeerLookupGaveUpOnIsCountedAsALookupWait(t *test
 		seedTalkgroup(t, database, 1, "TG1")
 		knowTalkgroups(t, h)
 		h.RegisterServer(hub.ServerConfig{Name: "openbridge", Role: hub.RolePeer})
-		require.NoError(t, database.Create(&models.Peer{ID: 3100100, OwnerID: testSrcID, Egress: true}).Error)
+		require.NoError(t, database.Create(&models.Peer{ID: 3002500, OwnerID: testSrcID, Egress: true}).Error)
 		var failing atomic.Bool
 		settleDB(t, database)
 		require.NoError(t, database.Callback().Query().After("gorm:query").Register("test:fail_peers", func(tx *gorm.DB) {
@@ -347,7 +347,7 @@ func TestABurstToThePeersThatThePeerLookupGaveUpOnIsCountedAsALookupWait(t *test
 		synctest.Wait()
 		held := holdQueries(t, database, "peers")
 		failing.Store(true)
-		h.PeerChanged(3100100)
+		h.PeerChanged(3002500)
 		failing.Store(false)
 		held.armed.Store(true)
 		before := dropped(metrics.DropReasonLookupWait)

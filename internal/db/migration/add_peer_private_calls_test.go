@@ -75,7 +75,7 @@ func TestAddPeerPrivateCallsKeepsRules(t *testing.T) {
 
 			require.True(t, m.HasColumn(&models.Peer{}, "IngressPrivate"))
 			require.True(t, m.HasColumn(&models.Peer{}, "EgressPrivate"))
-			private := &models.Packet{Src: 3000050, Dst: 3100001}
+			private := &models.Packet{Src: 3000050, Dst: 3002401}
 			for _, c := range []struct {
 				id   uint
 				want bool

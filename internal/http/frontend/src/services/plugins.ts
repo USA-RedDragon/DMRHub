@@ -150,7 +150,7 @@ export async function deletePlugin(id: number): Promise<void> {
   await API.delete(`/admin/plugins/${id}`);
 }
 
-/** formatRanges is the IDs of a plugin as the list shows them: 310001–310009, 9998. */
+/** formatRanges is the IDs of a plugin as the list shows them: 990001–990009, 9998. */
 export function formatRanges(ranges: PluginRange[]): string {
   if (ranges.length === 0) {
     return 'None';

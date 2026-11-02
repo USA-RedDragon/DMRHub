@@ -43,9 +43,9 @@ func TestOnlyTalkgroupAdminsNCOsAndAdminsRunNets(t *testing.T) {
 	var tg models.Talkgroup
 	require.NoError(t, tdb.DB().Where("name = ?", "Perm TG").First(&tg).Error)
 
-	plain := testutils.SeedAccount(t, tdb.DB(), 3100001, "N0CALL", "plain")
-	nco := testutils.SeedAccount(t, tdb.DB(), 3100002, "N0NCO", "nco")
-	owner := testutils.SeedAccount(t, tdb.DB(), 3100003, "N0OWN", "owner")
+	plain := testutils.SeedAccount(t, tdb.DB(), 3002401, "N0CALL", "plain")
+	nco := testutils.SeedAccount(t, tdb.DB(), 3002402, "W0CALL", "nco")
+	owner := testutils.SeedAccount(t, tdb.DB(), 3002403, "W9CALL", "owner")
 	require.NoError(t, tdb.DB().Model(&tg).Association("NCOs").Append(&nco))
 	require.NoError(t, tdb.DB().Model(&tg).Association("Admins").Append(&owner))
 

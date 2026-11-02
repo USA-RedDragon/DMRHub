@@ -53,14 +53,14 @@ func TestRepeaterAndHotspotIDChecksAreApart(t *testing.T) {
 					})
 					require.NoError(t, err)
 					defer tdb.CloseDB()
-					_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "owner", Password: "password"})
+					_, _, jar := testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "owner", Password: "password"})
 
 					resp, w := testutils.CreateRepeater(t, router, jar, apimodels.RepeaterPost{RadioID: 999998})
 					assert.Equal(t, tc.repeaterCode, w.Code, resp.Error)
 					if tc.repeater {
 						assert.Equal(t, "Repeater ID does not match assigned callsign", resp.Error)
 					}
-					resp, w = testutils.CreateRepeater(t, router, jar, apimodels.RepeaterPost{RadioID: 312345601})
+					resp, w = testutils.CreateRepeater(t, router, jar, apimodels.RepeaterPost{RadioID: 300375601})
 					assert.Equal(t, tc.spot, w.Code, resp.Error)
 					if tc.hotspot {
 						assert.Equal(t, "Hotspot ID must start with user ID", resp.Error)

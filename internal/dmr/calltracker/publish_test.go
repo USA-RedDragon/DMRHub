@@ -67,8 +67,8 @@ func TestMarksForOtherReplicasWaitOnNoPublish(t *testing.T) {
 
 		p := models.Packet{StreamID: 777, Src: userA, Dst: tgID, GroupCall: true}
 		start := time.Now()
-		ct.Undeliverable(p, "ipsc:311304200:slot_busy")
-		ct.Converted(t.Context(), p, "codec2", "repeater:311860")
+		ct.Undeliverable(p, "ipsc:300344200:slot_busy")
+		ct.Converted(t.Context(), p, "codec2", "repeater:990360")
 		waited := time.Since(start)
 		t.Logf("marking two bursts waited %v with %v per publish", waited, slowPublish)
 		assert.Less(t, waited, 20*time.Millisecond, "a mark waited on pubsub")

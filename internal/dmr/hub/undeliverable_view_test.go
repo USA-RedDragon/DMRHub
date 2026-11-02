@@ -49,16 +49,16 @@ type wsUndeliverableEntry struct {
 func TestWebsocketShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 	t.Parallel()
 	const (
-		callerID = 3191868
-		ownerID  = 3140001
-		otherID  = 3150001
-		adminID  = 3160001
+		callerID = 3002068
+		ownerID  = 3004201
+		otherID  = 3004401
+		adminID  = 3004501
 		tg       = 91
 	)
 	all := []wsUndeliverableEntry{
-		{Sentence: "IPSC repeater 314926 was busy on that slot.", Target: "ipsc", RepeaterID: 314926, Callsign: "W1XPR", Reason: "slot_busy"},
-		{Sentence: "IPSC repeater 311304200 was busy on that slot.", Target: "ipsc", RepeaterID: 311304200, Callsign: "K5ABC", Reason: "slot_busy"},
-		{Sentence: "IPSC repeater 311305510 cannot carry this kind of burst.", Target: "ipsc", RepeaterID: 311305510, Reason: "no_ipsc_form"},
+		{Sentence: "IPSC repeater 990626 was busy on that slot.", Target: "ipsc", RepeaterID: 990626, Callsign: "W1XPR", Reason: "slot_busy"},
+		{Sentence: "IPSC repeater 300344200 was busy on that slot.", Target: "ipsc", RepeaterID: 300344200, Callsign: "K3CALL", Reason: "slot_busy"},
+		{Sentence: "IPSC repeater 300345510 cannot carry this kind of burst.", Target: "ipsc", RepeaterID: 300345510, Reason: "no_ipsc_form"},
 	}
 	viewers := []struct {
 		name  string
@@ -77,16 +77,16 @@ func TestWebsocketShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				h, database, ps, listening := makeTestHubWatching(t)
 				seedTalkgroup(t, database, tg, "TG91")
-				for id, call := range map[uint]string{callerID: "KI5VMF", ownerID: "W1OWN", otherID: "N0OTH", otherID + 1: "K5OWN", adminID: "N0ADM"} {
+				for id, call := range map[uint]string{callerID: "N6CALL", ownerID: "W1OWN", otherID: "W1CALL", otherID + 1: "K5OWN", adminID: "K4CALL"} {
 					seedUser(t, database, id, call)
 				}
 				require.NoError(t, database.Model(&models.User{}).Where("id = ?", adminID).Update("admin", true).Error)
 				tgID := uint(tg)
 				for _, r := range []models.Repeater{
-					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 314926, Callsign: "W1XPR"}, OwnerID: ownerID},
-					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304200, Callsign: "K5ABC"}, OwnerID: otherID + 1},
-					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304201, Callsign: "N0OTH"}, OwnerID: otherID},
-					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 311304202, Callsign: "N0ADM"}, OwnerID: adminID},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990626, Callsign: "W1XPR"}, OwnerID: ownerID},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300344200, Callsign: "K3CALL"}, OwnerID: otherID + 1},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300344201, Callsign: "W1CALL"}, OwnerID: otherID},
+					{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300344202, Callsign: "K4CALL"}, OwnerID: adminID},
 				} {
 					r.Type = models.RepeaterTypeIPSC
 					r.TS1DynamicTalkgroupID = &tgID
@@ -105,7 +105,7 @@ func TestWebsocketShowsEachViewerOnlyTheirUndeliverable(t *testing.T) {
 					sentences = append(sentences, e.Sentence)
 				}
 				callJSON, err := json.Marshal(models.Call{
-					ID: 1, SourceID: callerID, User: models.User{ID: callerID, Callsign: "KI5VMF"},
+					ID: 1, SourceID: callerID, User: models.User{ID: callerID, Callsign: "N6CALL"},
 					GroupCall: true, IsToTalkgroup: true, ToTalkgroupID: &tgID, DestinationID: tg,
 					Undeliverable: sentences,
 				})

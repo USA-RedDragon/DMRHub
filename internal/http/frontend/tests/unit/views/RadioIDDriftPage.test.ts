@@ -41,7 +41,7 @@ function drift(radioID: number, over: Partial<RadioIDDrift> = {}): RadioIDDrift 
     user_id: radioID,
     username: 'testuser',
     callsign: 'OLDCALL',
-    radio_id_callsign: 'KI5VMF',
+    radio_id_callsign: 'N6CALL',
     found_at: '2026-10-20T01:00:00Z',
     checked_at: '2026-10-27T01:00:00Z',
     can_fix: true,
@@ -76,15 +76,15 @@ describe('RadioIDDriftPage', () => {
 
   it('lists the radio IDs with a Fix only where one applies', async () => {
     serve([
-      drift(3191868),
-      drift(3125552, { username: 'n0gone', callsign: 'N0GONE', radio_id_callsign: '', can_fix: false }),
+      drift(3002068),
+      drift(3003852, { username: 'n0gone', callsign: 'N0GONE', radio_id_callsign: '', can_fix: false }),
     ]);
     const wrapper = await page();
     const rows = wrapper.findAll('[data-test="drift-row"]');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('testuser');
-    expect(rows[0]!.text()).toContain('3191868');
-    expect(rows[0]!.text()).toContain('KI5VMF');
+    expect(rows[0]!.text()).toContain('3002068');
+    expect(rows[0]!.text()).toContain('N6CALL');
     expect(rows[0]!.find('[data-test="drift-fix"]').exists()).toBe(true);
     expect(rows[1]!.text()).toContain('Not listed');
     expect(rows[1]!.find('[data-test="drift-fix"]').exists()).toBe(false);
@@ -98,42 +98,42 @@ describe('RadioIDDriftPage', () => {
   });
 
   it('fixes a radio ID and emails the user when asked', async () => {
-    serve([drift(3191868)]);
+    serve([drift(3002068)]);
     const wrapper = await page();
     await wrapper.find('[data-test="drift-fix"]').trigger('click');
     await flushPromises();
-    expect(document.body.textContent).toContain('Change the callsign of testuser to KI5VMF?');
+    expect(document.body.textContent).toContain('Change the callsign of testuser to N6CALL?');
     const notify = document.querySelector('[data-test="drift-notify"]') as HTMLInputElement;
     expect(notify.checked).toBe(true);
-    mockAPI.post.mockResolvedValue({ data: { message: 'User updated', callsign: 'KI5VMF', notified: true } });
+    mockAPI.post.mockResolvedValue({ data: { message: 'User updated', callsign: 'N6CALL', notified: true } });
     serve([]);
     (document.querySelector('[data-test="drift-confirm"]') as HTMLButtonElement).click();
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/admin/radio-id-drift/3191868/fix', { notify: true });
-    expect(wrapper.find('[data-test="drift-ok"]').text()).toBe('testuser is now KI5VMF. Email sent.');
+    expect(mockAPI.post).toHaveBeenCalledWith('/admin/radio-id-drift/3002068/fix', { notify: true });
+    expect(wrapper.find('[data-test="drift-ok"]').text()).toBe('testuser is now N6CALL. Email sent.');
     expect(wrapper.find('[data-test="drift-empty"]').exists()).toBe(true);
   });
 
   it('offers no email when the user cannot get one', async () => {
-    serve([drift(3191868, { can_notify: false })]);
+    serve([drift(3002068, { can_notify: false })]);
     const wrapper = await page();
     await wrapper.find('[data-test="drift-fix"]').trigger('click');
     await flushPromises();
     expect(document.querySelector('[data-test="drift-notify"]')).toBeNull();
-    mockAPI.post.mockResolvedValue({ data: { message: 'User updated', callsign: 'KI5VMF', notified: false } });
+    mockAPI.post.mockResolvedValue({ data: { message: 'User updated', callsign: 'N6CALL', notified: false } });
     (document.querySelector('[data-test="drift-confirm"]') as HTMLButtonElement).click();
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/admin/radio-id-drift/3191868/fix', { notify: false });
+    expect(mockAPI.post).toHaveBeenCalledWith('/admin/radio-id-drift/3002068/fix', { notify: false });
   });
 
   it('shows the server error of a fix', async () => {
-    serve([drift(3191868)]);
+    serve([drift(3002068)]);
     const wrapper = await page();
     await wrapper.find('[data-test="drift-fix"]').trigger('click');
     await flushPromises();
-    mockAPI.post.mockRejectedValue({ response: { data: { error: 'Another user has the callsign KI5VMF' } } });
+    mockAPI.post.mockRejectedValue({ response: { data: { error: 'Another user has the callsign N6CALL' } } });
     (document.querySelector('[data-test="drift-confirm"]') as HTMLButtonElement).click();
     await flushPromises();
-    expect(wrapper.find('[data-test="drift-error"]').text()).toBe('Another user has the callsign KI5VMF');
+    expect(wrapper.find('[data-test="drift-error"]').text()).toBe('Another user has the callsign N6CALL');
   });
 });

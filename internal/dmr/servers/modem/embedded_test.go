@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	benchAlias = "KI5VMF Jacob M"
+	benchAlias = "N6CALL Jacob M"
 	benchLat   = 32.7767
 	benchLon   = -96.797
 )

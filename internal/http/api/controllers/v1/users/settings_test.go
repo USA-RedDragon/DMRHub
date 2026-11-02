@@ -39,9 +39,9 @@ import (
 
 const (
 	ownerAccountID  = uint(1000001)
-	ownerCallsign   = "KQ4APS"
-	ownerSecondID   = uint(3191877)
-	otherCallsignID = uint(3191869)
+	ownerCallsign   = "K7CALL"
+	ownerSecondID   = uint(3002077)
+	otherCallsignID = uint(3002069)
 )
 
 func settingsRouter(t *testing.T, validation bool) (*gin.Engine, *gorm.DB) {
@@ -173,7 +173,7 @@ func TestAddVerifiedRadioID(t *testing.T) {
 	require.Len(t, ids, 2)
 	assert.Equal(t, ownerSecondID, ids[1].ID)
 
-	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3191877", nil)
+	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3002077", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Len(t, radioIDs(t, router, jar, "/api/v1/users/me/radio-ids"), 1)
 }
@@ -182,21 +182,21 @@ func TestAddRadioIDErrors(t *testing.T) {
 	t.Parallel()
 	router, db := settingsRouter(t, true)
 	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
-	testutils.SeedAccount(t, db, otherCallsignID, "KC1RHO", "other")
+	testutils.SeedAccount(t, db, otherCallsignID, "N9TEST", "other")
 	jar := testutils.Login(t, router, "owner")
-	require.NoError(t, db.Create(&models.UserRadioID{UserID: otherCallsignID, RadioID: 3191870, VerifiedAt: time.Now()}).Error)
+	require.NoError(t, db.Create(&models.UserRadioID{UserID: otherCallsignID, RadioID: 3002070, VerifiedAt: time.Now()}).Error)
 
 	cases := []struct {
 		body any
 		code int
 		text string
 	}{
-		{apimodels.RadioIDPost{ID: 319186801}, http.StatusBadRequest, "Enter a 7-digit DMR ID"},
+		{apimodels.RadioIDPost{ID: 300206801}, http.StatusBadRequest, "Enter a 7-digit DMR ID"},
 		{map[string]string{"id": "x"}, http.StatusBadRequest, "Enter a 7-digit DMR ID"},
 		{apimodels.RadioIDPost{ID: ownerAccountID}, http.StatusBadRequest, "1000001 is already on your list"},
-		{apimodels.RadioIDPost{ID: otherCallsignID}, http.StatusBadRequest, "3191869 belongs to another DMRHub user"},
-		{apimodels.RadioIDPost{ID: 3191870}, http.StatusBadRequest, "3191870 belongs to another DMRHub user"},
-		{apimodels.RadioIDPost{ID: 3191868}, http.StatusBadRequest, "RadioID.net does not list 3191868 under your callsign"},
+		{apimodels.RadioIDPost{ID: otherCallsignID}, http.StatusBadRequest, "3002069 belongs to another DMRHub user"},
+		{apimodels.RadioIDPost{ID: 3002070}, http.StatusBadRequest, "3002070 belongs to another DMRHub user"},
+		{apimodels.RadioIDPost{ID: 3002068}, http.StatusBadRequest, "RadioID.net does not list 3002068 under your callsign"},
 	}
 	for _, tc := range cases {
 		w := testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/me/radio-ids", tc.body)
@@ -213,10 +213,10 @@ func TestAddRadioIDErrors(t *testing.T) {
 
 	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/1000001", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3191870", nil)
+	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3002070", nil)
 	assert.Equal(t, http.StatusNotFound, w.Code, "another user's ID is not on this list")
 	var n int64
-	require.NoError(t, db.Model(&models.UserRadioID{}).Where("radio_id = ?", 3191870).Count(&n).Error)
+	require.NoError(t, db.Model(&models.UserRadioID{}).Where("radio_id = ?", 3002070).Count(&n).Error)
 	assert.Equal(t, int64(1), n)
 }
 
@@ -238,20 +238,20 @@ func TestUsersAddRadioIDsWithoutValidation(t *testing.T) {
 	w = testutils.Do(t, router, jar, http.MethodDelete, "/api/v1/users/me/radio-ids/3000002", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3191868})
+	w = testutils.Do(t, router, jar, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3002068})
 	assert.Equal(t, http.StatusForbidden, w.Code, "a user is not an admin")
 	w = testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/1000001/radio-ids", nil)
 	assert.Equal(t, http.StatusForbidden, w.Code)
 
 	admin := testutils.Login(t, router, "Admin")
-	w = testutils.Do(t, router, admin, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3191868})
+	w = testutils.Do(t, router, admin, http.MethodPost, "/api/v1/users/1000001/radio-ids", apimodels.RadioIDPost{ID: 3002068})
 	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 	ids := radioIDs(t, router, admin, "/api/v1/users/1000001/radio-ids")
 	require.Len(t, ids, 2)
-	assert.Equal(t, uint(3191868), ids[1].ID)
+	assert.Equal(t, uint(3002068), ids[1].ID)
 	assert.Len(t, radioIDs(t, router, jar, "/api/v1/users/me/radio-ids"), 2)
 
-	w = testutils.Do(t, router, admin, http.MethodDelete, "/api/v1/users/1000001/radio-ids/3191868", nil)
+	w = testutils.Do(t, router, admin, http.MethodDelete, "/api/v1/users/1000001/radio-ids/3002068", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 	w = testutils.Do(t, router, admin, http.MethodGet, "/api/v1/users/4242424/radio-ids", nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -262,7 +262,7 @@ func TestRegistrationRefusesAnAddedRadioID(t *testing.T) {
 	router, db := settingsRouter(t, false)
 	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
 	require.NoError(t, db.Create(&models.UserRadioID{UserID: ownerAccountID, RadioID: ownerSecondID, VerifiedAt: time.Now()}).Error)
-	_, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: ownerSecondID, Callsign: "KQ4APS", Username: "second", Password: "a long pass phrase 123"})
+	_, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: ownerSecondID, Callsign: "K7CALL", Username: "second", Password: "a long pass phrase 123"})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "DMR ID is already registered")
 }
@@ -317,7 +317,7 @@ func TestHeldTextsListOnlyTheTextsWaitingForMyRadios(t *testing.T) {
 	t.Parallel()
 	router, db := settingsRouter(t, false)
 	testutils.SeedAccount(t, db, ownerAccountID, ownerCallsign, "owner")
-	testutils.SeedAccount(t, db, otherCallsignID, "KD5SMP", "other")
+	testutils.SeedAccount(t, db, otherCallsignID, "N8CALL", "other")
 	jar := testutils.Login(t, router, "owner")
 	storeForward(t, router, jar, true)
 	require.NoError(t, db.Create(&models.UserRadioID{UserID: ownerAccountID, RadioID: ownerSecondID, VerifiedAt: time.Now()}).Error)
@@ -341,7 +341,7 @@ func TestHeldTextsListOnlyTheTextsWaitingForMyRadios(t *testing.T) {
 	assert.Equal(t, "account radio", got[0].Text)
 	assert.Equal(t, ownerAccountID, got[0].RadioID)
 	assert.Equal(t, otherCallsignID, got[0].SourceID)
-	assert.Equal(t, "KD5SMP", got[0].SourceCallsign)
+	assert.Equal(t, "N8CALL", got[0].SourceCallsign)
 	assert.True(t, now.Equal(got[0].HeldAt))
 	assert.Equal(t, "second radio", got[1].Text)
 	assert.False(t, got[1].FormatKnown, "the second radio never sent a text")

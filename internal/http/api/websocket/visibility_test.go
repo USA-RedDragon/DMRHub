@@ -56,7 +56,7 @@ func TestPublicCallsFollowTheVisibility(t *testing.T) {
 		synctest.Wait()
 
 		lat := 32.7767
-		sent, err := json.Marshal(apimodels.WSCallResponse{ID: 1, TalkerAlias: "KI5VMF Jacob", Grid: "EM12", Latitude: &lat, Longitude: &lat})
+		sent, err := json.Marshal(apimodels.WSCallResponse{ID: 1, TalkerAlias: "N6CALL Jacob", Grid: "EM12", Latitude: &lat, Longitude: &lat})
 		require.NoError(t, err)
 		read := func() apimodels.WSCallResponse {
 			t.Helper()
@@ -70,7 +70,7 @@ func TestPublicCallsFollowTheVisibility(t *testing.T) {
 		}
 
 		require.NoError(t, ps.Publish("calls:public", sent))
-		assert.Equal(t, "KI5VMF Jacob", read().TalkerAlias)
+		assert.Equal(t, "N6CALL Jacob", read().TalkerAlias)
 
 		hidden := *cfg
 		hidden.Visibility = config.VisibilityHideNames

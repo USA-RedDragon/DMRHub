@@ -42,15 +42,15 @@ const (
 	rptBase  = 310000
 	userBase = 3100000
 	tgBase   = 50000
-	obPeerID = 3109001
+	obPeerID = 3002701
 	parrotID = 9990
 	burstGap = 60 * time.Millisecond
 
 	spRptID     = 319001
 	ipscRptID   = 329001
 	ipscSrcID   = 329002
-	obSrcPeerID = 3109002
-	xportUser   = 3109101
+	obSrcPeerID = 3002702
+	xportUser   = 3002801
 )
 
 // topology is the network of the rig: repeater i is owned by user i and

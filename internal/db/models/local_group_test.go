@@ -50,10 +50,10 @@ func localGroupDB(t *testing.T, be testutils.Backend) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
-	for _, u := range []models.User{{ID: 3191868, Callsign: "KI5VMF", Username: "ki5vmf"}, {ID: 3191869, Callsign: "W5DFW", Username: "w5dfw"}} {
+	for _, u := range []models.User{{ID: 3002068, Callsign: "N6CALL", Username: "n6call"}, {ID: 3002069, Callsign: "K1CALL", Username: "k1call"}} {
 		require.NoError(t, database.Create(&u).Error)
 	}
-	for _, r := range []struct{ id, owner uint }{{311888, 3191868}, {311889, 3191868}, {319186901, 3191869}} {
+	for _, r := range []struct{ id, owner uint }{{990388, 3002068}, {311889, 3002068}, {300206901, 3002069}} {
 		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: r.id}, OwnerID: r.owner}).Error)
 	}
 	return database
@@ -65,45 +65,45 @@ func TestARepeaterIsInOneLocalGroupForEachTalkgroup(t *testing.T) {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			database := localGroupDB(t, be)
-			north := models.LocalGroup{Name: "North Texas", Talkgroup: 8, OwnerID: 3191868}
-			club := models.LocalGroup{Name: "Club", Talkgroup: 8, OwnerID: 3191869}
-			regional := models.LocalGroup{Name: "Regional", Talkgroup: 9, OwnerID: 3191869}
+			north := models.LocalGroup{Name: "North Texas", Talkgroup: 8, OwnerID: 3002068}
+			club := models.LocalGroup{Name: "Club", Talkgroup: 8, OwnerID: 3002069}
+			regional := models.LocalGroup{Name: "Regional", Talkgroup: 9, OwnerID: 3002069}
 			for _, g := range []*models.LocalGroup{&north, &club, &regional} {
 				require.NoError(t, database.Create(g).Error)
 			}
 
-			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: north.ID, RepeaterID: 311888, Slot: 2, State: models.LocalMemberIn}))
-			require.ErrorIs(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: north.ID, RepeaterID: 311888, Slot: 1, State: models.LocalMemberIn}), gorm.ErrDuplicatedKey)
-			require.ErrorIs(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: club.ID, RepeaterID: 311888, Slot: 2, State: models.LocalMemberAsked}), models.ErrLocalNumberTaken,
+			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: north.ID, RepeaterID: 990388, Slot: 2, State: models.LocalMemberIn}))
+			require.ErrorIs(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: north.ID, RepeaterID: 990388, Slot: 1, State: models.LocalMemberIn}), gorm.ErrDuplicatedKey)
+			require.ErrorIs(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: club.ID, RepeaterID: 990388, Slot: 2, State: models.LocalMemberAsked}), models.ErrLocalNumberTaken,
 				"a repeater is in one group for each local talkgroup")
-			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: regional.ID, RepeaterID: 311888, Slot: 1, State: models.LocalMemberAsked}),
+			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: regional.ID, RepeaterID: 990388, Slot: 1, State: models.LocalMemberAsked}),
 				"a repeater may be in groups on other local talkgroups")
 
-			rpt, err := models.FindRepeaterByID(database, 311888)
+			rpt, err := models.FindRepeaterByID(database, 990388)
 			require.NoError(t, err)
 			assert.Equal(t, []models.LocalMembership{{GroupID: north.ID, Name: "North Texas", Talkgroup: 8, Slot: true}}, rpt.LocalGroups,
 				"a repeater only asked to join a group takes none of its calls")
 
-			require.NoError(t, models.SetLocalGroupMember(database, regional.ID, 311888, 0, true))
-			require.NoError(t, models.SetLocalGroupMember(database, regional.ID, 311888, 1, true), "a change to the values a repeater has is no error")
+			require.NoError(t, models.SetLocalGroupMember(database, regional.ID, 990388, 0, true))
+			require.NoError(t, models.SetLocalGroupMember(database, regional.ID, 990388, 1, true), "a change to the values a repeater has is no error")
 			require.NoError(t, models.UpdateLocalGroup(database, regional.ID, "Regional", 9), "a save with no change is no error")
 			require.ErrorIs(t, models.SetLocalGroupMember(database, regional.ID, 311889, 1, true), gorm.ErrRecordNotFound)
 			require.ErrorIs(t, models.UpdateLocalGroup(database, regional.ID+100, "Gone", 9), gorm.ErrRecordNotFound)
-			rpt, err = models.FindRepeaterByID(database, 311888)
+			rpt, err = models.FindRepeaterByID(database, 990388)
 			require.NoError(t, err)
 			assert.Equal(t, []models.LocalMembership{
 				{GroupID: north.ID, Name: "North Texas", Talkgroup: 8, Slot: true},
 				{GroupID: regional.ID, Name: "Regional", Talkgroup: 9, Slot: false},
 			}, rpt.LocalGroups)
 
-			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: club.ID, RepeaterID: 319186901, Slot: 2, State: models.LocalMemberIn}))
+			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: club.ID, RepeaterID: 300206901, Slot: 2, State: models.LocalMemberIn}))
 			require.NoError(t, models.AddLocalGroupMember(database, models.LocalGroupMember{LocalGroupID: club.ID, RepeaterID: 311889, Slot: 2, State: models.LocalMemberIn}))
 			require.ErrorIs(t, models.UpdateLocalGroup(database, regional.ID, "Regional", 8), models.ErrLocalNumberTaken,
 				"a group cannot move to a number that one of its repeaters has another group on")
 			require.NoError(t, models.UpdateLocalGroup(database, club.ID, "Club hotspots", 9))
 			ids, err := models.LocalGroupRepeaterIDs(database, club.ID)
 			require.NoError(t, err)
-			assert.Equal(t, []uint{311889, 319186901}, ids)
+			assert.Equal(t, []uint{311889, 300206901}, ids)
 		})
 	}
 }
@@ -114,15 +114,15 @@ func TestDeletingARepeaterOrItsOwnerEndsItsLocalGroups(t *testing.T) {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			database := localGroupDB(t, be)
-			mine := models.LocalGroup{Name: "Mine", Talkgroup: 8, OwnerID: 3191868}
-			theirs := models.LocalGroup{Name: "Theirs", Talkgroup: 9, OwnerID: 3191869}
+			mine := models.LocalGroup{Name: "Mine", Talkgroup: 8, OwnerID: 3002068}
+			theirs := models.LocalGroup{Name: "Theirs", Talkgroup: 9, OwnerID: 3002069}
 			require.NoError(t, database.Create(&mine).Error)
 			require.NoError(t, database.Create(&theirs).Error)
 			for _, m := range []models.LocalGroupMember{
-				{LocalGroupID: mine.ID, RepeaterID: 311888, Slot: 2, State: models.LocalMemberIn},
-				{LocalGroupID: mine.ID, RepeaterID: 319186901, Slot: 2, State: models.LocalMemberIn},
+				{LocalGroupID: mine.ID, RepeaterID: 990388, Slot: 2, State: models.LocalMemberIn},
+				{LocalGroupID: mine.ID, RepeaterID: 300206901, Slot: 2, State: models.LocalMemberIn},
 				{LocalGroupID: theirs.ID, RepeaterID: 311889, Slot: 1, State: models.LocalMemberIn},
-				{LocalGroupID: theirs.ID, RepeaterID: 319186901, Slot: 1, State: models.LocalMemberIn},
+				{LocalGroupID: theirs.ID, RepeaterID: 300206901, Slot: 1, State: models.LocalMemberIn},
 			} {
 				require.NoError(t, models.AddLocalGroupMember(database, m))
 			}
@@ -130,22 +130,22 @@ func TestDeletingARepeaterOrItsOwnerEndsItsLocalGroups(t *testing.T) {
 			require.NoError(t, models.DeleteRepeater(database, 311889))
 			ids, err := models.LocalGroupRepeaterIDs(database, theirs.ID)
 			require.NoError(t, err)
-			assert.Equal(t, []uint{319186901}, ids)
+			assert.Equal(t, []uint{300206901}, ids)
 
-			require.NoError(t, models.DeleteUser(database, 3191868))
+			require.NoError(t, models.DeleteUser(database, 3002068))
 			var n int64
 			require.NoError(t, database.Model(&models.LocalGroup{}).Where("id = ?", mine.ID).Count(&n).Error)
 			assert.Zero(t, n, "the groups of a deleted user go")
-			require.NoError(t, database.Model(&models.LocalGroupMember{}).Where("local_group_id = ? OR repeater_id = ?", mine.ID, 311888).Count(&n).Error)
+			require.NoError(t, database.Model(&models.LocalGroupMember{}).Where("local_group_id = ? OR repeater_id = ?", mine.ID, 990388).Count(&n).Error)
 			assert.Zero(t, n, "the rows of the groups and repeaters of a deleted user go")
 			ids, err = models.LocalGroupRepeaterIDs(database, theirs.ID)
 			require.NoError(t, err)
-			assert.Equal(t, []uint{319186901}, ids, "the groups of other users keep their other repeaters")
+			assert.Equal(t, []uint{300206901}, ids, "the groups of other users keep their other repeaters")
 
 			members, err := models.DeleteLocalGroup(database, theirs.ID)
 			require.NoError(t, err)
-			assert.Equal(t, []uint{319186901}, members)
-			rpt, err := models.FindRepeaterByID(database, 319186901)
+			assert.Equal(t, []uint{300206901}, members)
+			rpt, err := models.FindRepeaterByID(database, 300206901)
 			require.NoError(t, err)
 			assert.Empty(t, rpt.LocalGroups)
 		})

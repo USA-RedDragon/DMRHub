@@ -31,14 +31,14 @@ const mockAPI = API as unknown as { get: Mock; patch: Mock };
 
 const ACCESS = {
   mode: 'approved',
-  repeaters: [{ id: 311860, callsign: 'KI5VMF' }, { id: 311861, callsign: 'W5ABC' }],
+  repeaters: [{ id: 990360, callsign: 'N6CALL' }, { id: 990361, callsign: 'K6CALL' }],
 };
-const CALLSIGNS: Record<number, string> = { 311860: 'KI5VMF', 311861: 'W5ABC', 319186801: 'KI5VMF' };
+const CALLSIGNS: Record<number, string> = { 990360: 'N6CALL', 990361: 'K6CALL', 300206801: 'N6CALL' };
 
 async function card(access: Record<string, unknown> = ACCESS) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url === '/talkgroups/31665/access') return Promise.resolve({ data: access });
-    if (url === '/repeaters/319186801') return Promise.resolve({ data: { id: 319186801, callsign: 'KI5VMF' } });
+    if (url === '/repeaters/300206801') return Promise.resolve({ data: { id: 300206801, callsign: 'N6CALL' } });
     return Promise.reject({ response: { status: 400, data: { error: 'Repeater does not exist' } } });
   });
   mockAPI.patch.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({
@@ -66,7 +66,7 @@ describe('TalkgroupAccessCard', () => {
     const wrapper = await card();
     expect(wrapper.text()).toContain('Who can link');
     expect((radio(wrapper, 'approved').element as HTMLInputElement).checked).toBe(true);
-    expect(chips(wrapper)).toEqual(['311860KI5VMF×', '311861W5ABC×']);
+    expect(chips(wrapper)).toEqual(['990360N6CALL×', '990361K6CALL×']);
   });
 
   it('shows no repeater list for an open talkgroup', async () => {
@@ -78,21 +78,21 @@ describe('TalkgroupAccessCard', () => {
 
   it('adds a repeater by ID, removes one and saves the IDs', async () => {
     const wrapper = await card();
-    await wrapper.find('[data-test="add-repeater"]').setValue('319186801');
+    await wrapper.find('[data-test="add-repeater"]').setValue('300206801');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(chips(wrapper)).toContain('319186801KI5VMF×');
-    await wrapper.find('button[aria-label="Remove 311861"]').trigger('click');
+    expect(chips(wrapper)).toContain('300206801N6CALL×');
+    await wrapper.find('button[aria-label="Remove 990361"]').trigger('click');
     await wrapper.find('[data-test="access-save"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.patch).toHaveBeenCalledWith('/talkgroups/31665/access', { mode: 'approved', repeaters: [311860, 319186801] });
+    expect(mockAPI.patch).toHaveBeenCalledWith('/talkgroups/31665/access', { mode: 'approved', repeaters: [990360, 300206801] });
     expect(wrapper.find('[data-test="access-message"]').text()).toBe('Saved.');
-    expect(chips(wrapper)).toEqual(['311860KI5VMF×', '319186801KI5VMF×']);
+    expect(chips(wrapper)).toEqual(['990360N6CALL×', '300206801N6CALL×']);
   });
 
   it('shows an unknown repeater and adds nothing', async () => {
     const wrapper = await card();
-    for (const q of ['999999', 'W5ABC']) {
+    for (const q of ['999999', 'K6CALL']) {
       await wrapper.find('[data-test="add-repeater"]').setValue(q);
       await wrapper.find('form').trigger('submit');
       await flushPromises();
@@ -113,7 +113,7 @@ describe('TalkgroupAccessCard', () => {
 
   it('resets the draft to the saved access', async () => {
     const wrapper = await card();
-    await wrapper.find('button[aria-label="Remove 311860"]').trigger('click');
+    await wrapper.find('button[aria-label="Remove 990360"]').trigger('click');
     await radio(wrapper, 'open').trigger('change');
     await wrapper.find('[data-test="access-reset"]').trigger('click');
     expect((radio(wrapper, 'approved').element as HTMLInputElement).checked).toBe(true);

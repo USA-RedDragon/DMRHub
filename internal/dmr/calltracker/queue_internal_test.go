@@ -59,7 +59,7 @@ func TestTrackNeverBlocksOnAFullQueue(t *testing.T) {
 			_ = kvStore.Close()
 		})
 
-		p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
+		p := models.Packet{Src: 3002068, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
 		idx := chanKey{server: models.RepeaterTypeMMDVM, repeater: p.Repeater, slot: p.Slot}.shard()
 		ct.shards[idx].in <- task{fn: func(*shard) { <-release }}
 
@@ -97,7 +97,7 @@ func TestACallEndsWhileTasksThatAreNotPacketsKeepTheQueueBusy(t *testing.T) {
 			_ = kvStore.Close()
 		})
 
-		p := models.Packet{Src: 3191868, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
+		p := models.Packet{Src: 3002068, Dst: 42, Repeater: 100001, GroupCall: true, StreamID: 1, FrameType: dmrconst.FrameVoice}
 		idx := chanKey{server: models.RepeaterTypeMMDVM, repeater: p.Repeater, slot: p.Slot}.shard()
 		ct.Track(context.Background(), p, models.RepeaterTypeMMDVM, false)
 		ct.Flush()

@@ -24,7 +24,7 @@ import type { CallRow, UndeliverableEntry } from '@/lib/transmissions';
 
 const call = (fields: Partial<CallRow>): CallRow => ({
   id: 1, active: false, start_time: new Date(), time_slot: false, group_call: true, repeater_id: 0,
-  repeater: { id: 0, callsign: '' }, user: { id: 3191868, callsign: 'KI5VMF' }, is_to_talkgroup: true,
+  repeater: { id: 0, callsign: '' }, user: { id: 3002068, callsign: 'N6CALL' }, is_to_talkgroup: true,
   to_talkgroup: { id: 91 }, is_to_repeater: false, to_repeater: { id: 0, callsign: '' }, is_to_user: false,
   to_user: { id: 0, callsign: '' }, destination_id: 91, duration: '6.2', ber: '0', loss: '0', jitter: '0', rssi: '0',
   kind: 'voice',
@@ -40,7 +40,7 @@ const render = (fields: Partial<CallRow>) => mount(TransmissionType, { props: { 
 describe('TransmissionType', () => {
   it('shows the caller a count by reason with the repeaters folded under it', () => {
     const wrapper = render({
-      undeliverable: [entry(314926, 'slot_busy', 'W1XPR'), entry(311304200, 'slot_busy', 'K5ABC'), entry(311305510, 'no_ipsc_form')],
+      undeliverable: [entry(990626, 'slot_busy', 'W1XPR'), entry(300344200, 'slot_busy', 'K3CALL'), entry(300345510, 'no_ipsc_form')],
       undeliverable_scope: 'all',
     });
     expect(wrapper.findAll('[data-testid="undeliverable"]').map((w) => w.text())).toEqual([
@@ -52,15 +52,15 @@ describe('TransmissionType', () => {
     expect((details.element as HTMLDetailsElement).open).toBe(false);
     expect(details.find('summary').text()).toBe('Show the 3 repeaters');
     expect(wrapper.findAll('[data-testid="undeliverable-detail"]').map((w) => w.text())).toEqual([
-      'Busy on that slot: W1XPR (314926), K5ABC (311304200)',
-      'Could not carry this burst: 311305510',
+      'Busy on that slot: W1XPR (990626), K3CALL (300344200)',
+      'Could not carry this burst: 300345510',
     ]);
   });
 
   it('shows the owner of a repeater one line and no list', () => {
-    const wrapper = render({ undeliverable: [entry(314926, 'slot_busy', 'W1XPR')], undeliverable_scope: 'own' });
+    const wrapper = render({ undeliverable: [entry(990626, 'slot_busy', 'W1XPR')], undeliverable_scope: 'own' });
     expect(wrapper.findAll('[data-testid="undeliverable"]').map((w) => w.text())).toEqual([
-      'Not sent to your repeater W1XPR (314926): busy on that slot',
+      'Not sent to your repeater W1XPR (990626): busy on that slot',
     ]);
     expect(wrapper.find('[data-testid="undeliverable-details"]').exists()).toBe(false);
   });

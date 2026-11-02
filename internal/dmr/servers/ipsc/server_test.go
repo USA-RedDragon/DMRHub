@@ -334,13 +334,13 @@ func TestAutoRegisterOnKeepaliveFromUnregisteredPeer(t *testing.T) {
 	t.Parallel()
 	s, srv := newTestServerWithUDP(t)
 	client, addr := dialServer(t, srv)
-	if err := s.handlePacket(context.Background(), signTestPacket(t, control(t, ipscwire.OpAliveRequest, 3191868)), addr); err != nil {
+	if err := s.handlePacket(context.Background(), signTestPacket(t, control(t, ipscwire.OpAliveRequest, 3002068)), addr); err != nil {
 		t.Fatalf("keepalive: %v", err)
 	}
 	if r := readUDP(t, client); ipscwire.Opcode(r[0]) != ipscwire.OpAliveReply {
 		t.Fatalf("reply opcode 0x%02x, want alive reply", r[0])
 	}
-	if peers(s, 3191868) != 1 {
+	if peers(s, 3002068) != 1 {
 		t.Fatal("expected the peer to register")
 	}
 }
@@ -351,10 +351,10 @@ func TestAutoRegisterOnDataFromUnregisteredPeer(t *testing.T) {
 	client, addr := dialServer(t, srv)
 	got := make(chan []byte, 1)
 	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr, _ time.Time) { got <- data })
-	if err := s.handlePacket(context.Background(), signTestPacket(t, voicePacket(3191868)), addr); err != nil {
+	if err := s.handlePacket(context.Background(), signTestPacket(t, voicePacket(3002068)), addr); err != nil {
 		t.Fatalf("voice: %v", err)
 	}
-	if peers(s, 3191868) != 1 {
+	if peers(s, 3002068) != 1 {
 		t.Fatal("expected the peer to register")
 	}
 	select {
@@ -389,10 +389,10 @@ func TestAutoRegisterKeylessPeerOnData(t *testing.T) {
 	client, addr := dialServer(t, srv)
 	got := make(chan []byte, 1)
 	s.SetBurstHandler(func(_ byte, data []byte, _ *net.UDPAddr, _ time.Time) { got <- data })
-	if err := s.handlePacket(context.Background(), voicePacket(3191868), addr); err != nil {
+	if err := s.handlePacket(context.Background(), voicePacket(3002068), addr); err != nil {
 		t.Fatalf("voice: %v", err)
 	}
-	if peers(s, 3191868) != 1 {
+	if peers(s, 3002068) != 1 {
 		t.Fatal("expected the keyless peer to register")
 	}
 	select {

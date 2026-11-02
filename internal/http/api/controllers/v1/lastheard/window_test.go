@@ -62,7 +62,7 @@ func TestLastheardShowsDataOnlyInsideTheMessageWindow(t *testing.T) {
 	row(3, "lrrp", since.Add(-2*time.Minute))
 
 	aliceJar := login(t, router, "alice")
-	p := getPage(t, router, "/api/v1/lastheard/user/3191868", &aliceJar)
+	p := getPage(t, router, "/api/v1/lastheard/user/3002068", &aliceJar)
 	require.Len(t, p.Calls, 3)
 	byStream := map[uint]int{}
 	for i := range p.Calls {
@@ -82,12 +82,12 @@ func TestLastheardShowsDataOnlyInsideTheMessageWindow(t *testing.T) {
 		assert.Equal(t, models.CallResponseNone, c.Response, "stream %d is outside the window", stream)
 	}
 
-	p = getPage(t, router, "/api/v1/lastheard/user/3191868?types=sms", &aliceJar)
+	p = getPage(t, router, "/api/v1/lastheard/user/3002068?types=sms", &aliceJar)
 	require.Len(t, p.Calls, 1)
 	assert.Equal(t, models.SubKindSMS, p.Calls[0].SubKind)
 
 	_, _, admin := testutils.LoginAdmin(t, router)
-	p = getPage(t, router, "/api/v1/lastheard/user/3191868", &admin)
+	p = getPage(t, router, "/api/v1/lastheard/user/3002068", &admin)
 	require.Len(t, p.Calls, 3)
 	for _, c := range p.Calls {
 		assert.NotEmpty(t, c.SubKind, "an admin sees every row")

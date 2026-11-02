@@ -49,8 +49,9 @@ func TestLiveUpdate(t *testing.T) {
 	if db.Len() < 231290 {
 		t.Errorf("live user database looks truncated, found %d users", db.Len())
 	}
-	user, ok := db.Get(3191868)
-	if !ok || !strings.EqualFold(user.Callsign, "KI5VMF") {
-		t.Errorf("unexpected live user 3191868: %+v", user)
+	first := firstEmbeddedUser(t)
+	user, ok := db.Get(first.ID)
+	if !ok || !strings.EqualFold(user.Callsign, first.Callsign) {
+		t.Errorf("unexpected live user %d: %+v", first.ID, user)
 	}
 }

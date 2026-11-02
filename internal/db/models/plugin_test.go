@@ -70,7 +70,7 @@ func TestPluginRangesAreValidAndNeverOverlap(t *testing.T) {
 	t.Parallel()
 	database, cleanup := openDB(t)
 	defer cleanup()
-	a, _, err := models.CreatePlugin(database, "A", []models.PluginRange{rng(310001, 310009), rng(9998, 9998)}, time.Now())
+	a, _, err := models.CreatePlugin(database, "A", []models.PluginRange{rng(990001, 990009), rng(9998, 9998)}, time.Now())
 	require.NoError(t, err)
 
 	for name, ranges := range map[string][]models.PluginRange{
@@ -78,7 +78,7 @@ func TestPluginRangesAreValidAndNeverOverlap(t *testing.T) {
 		"backwards":      {rng(10, 5)},
 		"too big":        {rng(1, models.MaxDMRID+1)},
 		"overlap itself": {rng(1, 10), rng(10, 20)},
-		"overlap other":  {rng(310005, 310020)},
+		"overlap other":  {rng(990005, 990020)},
 		"inside other":   {rng(9998, 9998)},
 		"on-air codes":   {rng(8999990, 9000000)},
 	} {
@@ -97,7 +97,7 @@ func TestPluginRangesAreValidAndNeverOverlap(t *testing.T) {
 	_, _, err = models.CreatePlugin(database, "many", many, time.Now())
 	assert.ErrorIs(t, err, models.ErrPluginRange)
 
-	_, err = models.UpdatePlugin(database, a.ID, "A", false, []models.PluginRange{rng(310001, 310020)})
+	_, err = models.UpdatePlugin(database, a.ID, "A", false, []models.PluginRange{rng(990001, 990020)})
 	require.NoError(t, err, "a plugin may grow over its own IDs")
 	_, _, err = models.CreatePlugin(database, "B", []models.PluginRange{rng(9998, 9998)}, time.Now())
 	require.NoError(t, err, "IDs a plugin gave up are free")
@@ -188,10 +188,10 @@ func TestCallsToAPluginsIDsAreCounted(t *testing.T) {
 	for i, c := range []struct {
 		dst uint
 		at  time.Time
-	}{{9990, now}, {9990, now.Add(-time.Hour)}, {310005, now}, {310005, now.Add(-48 * time.Hour)}, {91, now}} {
+	}{{9990, now}, {9990, now.Add(-time.Hour)}, {990005, now}, {990005, now.Add(-48 * time.Hour)}, {91, now}} {
 		require.NoError(t, database.Create(&models.Call{StreamID: uint(i + 1), StartTime: c.at, DestinationID: c.dst}).Error)
 	}
-	n, err := models.CountCallsTo(database, []models.PluginRange{rng(9990, 9990), rng(310001, 310009)}, now.Add(-24*time.Hour))
+	n, err := models.CountCallsTo(database, []models.PluginRange{rng(9990, 9990), rng(990001, 990009)}, now.Add(-24*time.Hour))
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), n)
 	n, err = models.CountCallsTo(database, nil, now.Add(-24*time.Hour))

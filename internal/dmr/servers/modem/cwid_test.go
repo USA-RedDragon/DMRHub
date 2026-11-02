@@ -32,7 +32,7 @@ import (
 func cwBench(t *testing.T, duplex bool) *bench {
 	t.Helper()
 	return newBenchWith(t, duplex, 2, rssiMap{}, func(m *config.Modem) {
-		m.CWID = config.ModemCWID{Enabled: true, Time: 1, Callsign: "ki5vmf"}
+		m.CWID = config.ModemCWID{Enabled: true, Time: 1, Callsign: "n6call"}
 	})
 }
 
@@ -55,8 +55,8 @@ func TestCWIDGoesOutAQuarterOfTheTimeAfterStartAndThenEveryTime(t *testing.T) {
 		t.Fatalf("%d CW IDs before a quarter of the time", n)
 	}
 	b.run(400 * time.Millisecond)
-	if ids := b.cwIDs(); len(ids) != 1 || ids[0] != "KI5VMF" {
-		t.Fatalf("CW IDs %q after a quarter of the time, want one of KI5VMF", ids)
+	if ids := b.cwIDs(); len(ids) != 1 || ids[0] != "N6CALL" {
+		t.Fatalf("CW IDs %q after a quarter of the time, want one of N6CALL", ids)
 	}
 	b.run(59 * time.Second)
 	if n := len(b.cwIDs()); n != 1 {

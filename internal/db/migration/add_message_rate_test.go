@@ -60,7 +60,7 @@ func TestAddMessageRateLeavesOldMessagesWithoutARate(t *testing.T) {
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202611011800").Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO messages (received_at, source_id, destination_id, format, checksum_ok) VALUES (?, ?, ?, ?, ?)",
-				time.Now().UTC(), 3140598, 3191868, models.MessageFormatAnyTone, true,
+				time.Now().UTC(), 3002198, 3002068, models.MessageFormatAnyTone, true,
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))

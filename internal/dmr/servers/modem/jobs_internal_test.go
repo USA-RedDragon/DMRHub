@@ -65,7 +65,7 @@ func (f *watchedFeed) Close() error {
 // still deactivate the repeater of the modem once the queue moves.
 func TestAModemThatStopsWhileItsQueueIsFullIsDeactivated(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311901)
+	const id = uint32(990401)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)

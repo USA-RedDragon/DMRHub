@@ -46,9 +46,9 @@ const save = () => {
 const createAdmin = (name: string) => {
   cy.location('pathname', { timeout: 20000 }).should('eq', '/setup/user');
   cy.get('[data-test="first-admin-banner"]').should('contain.text', 'Whoever creates this account first becomes the admin.');
-  cy.get('#dmr_id').type('3191868');
+  cy.get('#dmr_id').type('3002068');
   cy.get('#username').type('admin');
-  cy.get('#callsign').type('KI5VMF');
+  cy.get('#callsign').type('N6CALL');
   cy.get('#password').type(password);
   cy.get('#confirmPassword').type(password);
   cy.contains('button', 'Create User').click();

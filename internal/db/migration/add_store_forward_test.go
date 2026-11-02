@@ -60,17 +60,17 @@ func TestAddStoreForwardLeavesItOff(t *testing.T) {
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202611011810").Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO users (id, callsign, username, password, admin, super_admin, email, approved, suspended, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				3191868, "KI5VMF", "old", "", false, false, "", true, false, time.Now(), time.Now(),
+				3002068, "N6CALL", "old", "", false, false, "", true, false, time.Now(), time.Now(),
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))
 
 			var got models.User
-			require.NoError(t, database.First(&got, 3191868).Error)
+			require.NoError(t, database.First(&got, 3002068).Error)
 			assert.False(t, got.StoreForward)
-			msg := models.Message{ReceivedAt: time.Now(), SourceID: 3140598, DestinationID: 3191868, Format: models.MessageFormatAnyTone}
+			msg := models.Message{ReceivedAt: time.Now(), SourceID: 3002198, DestinationID: 3002068, Format: models.MessageFormatAnyTone}
 			require.NoError(t, database.Create(&msg).Error)
-			require.NoError(t, database.Create(&models.HeldMessage{MessageID: msg.ID, RadioID: 3191868, UserID: 3191868, State: models.HeldStateHeld, HeldAt: time.Now()}).Error)
+			require.NoError(t, database.Create(&models.HeldMessage{MessageID: msg.ID, RadioID: 3002068, UserID: 3002068, State: models.HeldStateHeld, HeldAt: time.Now()}).Error)
 		})
 	}
 }

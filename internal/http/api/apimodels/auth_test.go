@@ -30,7 +30,7 @@ func TestAuthLoginMarshalJSON(t *testing.T) {
 	t.Parallel()
 	login := apimodels.AuthLogin{
 		Username: "testuser",
-		Callsign: "KI5VMF",
+		Callsign: "N6CALL",
 		Password: "secret",
 	}
 	data, err := json.Marshal(login)
@@ -44,8 +44,8 @@ func TestAuthLoginMarshalJSON(t *testing.T) {
 	if result["username"] != "testuser" {
 		t.Errorf("Expected username 'testuser', got '%s'", result["username"])
 	}
-	if result["callsign"] != "KI5VMF" {
-		t.Errorf("Expected callsign 'KI5VMF', got '%s'", result["callsign"])
+	if result["callsign"] != "N6CALL" {
+		t.Errorf("Expected callsign 'N6CALL', got '%s'", result["callsign"])
 	}
 	if result["password"] != "secret" {
 		t.Errorf("Expected password 'secret', got '%s'", result["password"])
@@ -54,7 +54,7 @@ func TestAuthLoginMarshalJSON(t *testing.T) {
 
 func TestAuthLoginUnmarshalJSON(t *testing.T) {
 	t.Parallel()
-	data := `{"username":"user1","callsign":"AB1CD","password":"pass123"}`
+	data := `{"username":"user1","callsign":"W6CALL","password":"pass123"}`
 	var login apimodels.AuthLogin
 	if err := json.Unmarshal([]byte(data), &login); err != nil {
 		t.Fatalf("Unmarshal failed: %v", err)
@@ -62,8 +62,8 @@ func TestAuthLoginUnmarshalJSON(t *testing.T) {
 	if login.Username != "user1" {
 		t.Errorf("Expected 'user1', got '%s'", login.Username)
 	}
-	if login.Callsign != "AB1CD" {
-		t.Errorf("Expected 'AB1CD', got '%s'", login.Callsign)
+	if login.Callsign != "W6CALL" {
+		t.Errorf("Expected 'W6CALL', got '%s'", login.Callsign)
 	}
 	if login.Password != "pass123" {
 		t.Errorf("Expected 'pass123', got '%s'", login.Password)

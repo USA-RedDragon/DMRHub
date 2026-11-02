@@ -43,17 +43,17 @@ func TestDeletesAnnounceARulesChange(t *testing.T) {
 		router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { c.DMR.DisableRadioIDValidation = true })
 		require.NoError(t, err)
 		t.Cleanup(tdb.CloseDB)
-		testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
-		testutils.SeedAccount(t, tdb.DB(), 3191869, "N0CALL", "listed")
+		testutils.SeedAccount(t, tdb.DB(), 3002068, "N6CALL", "owner")
+		testutils.SeedAccount(t, tdb.DB(), 3002069, "N0CALL", "listed")
 		_, _, admin := testutils.LoginAdmin(t, router)
-		_, w := testutils.CreateRepeater(t, router, testutils.Login(t, router, "owner"), apimodels.RepeaterPost{RadioID: 311860, Type: "mmdvm"})
+		_, w := testutils.CreateRepeater(t, router, testutils.Login(t, router, "owner"), apimodels.RepeaterPost{RadioID: 990360, Type: "mmdvm"})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		_, w = testutils.CreateTalkgroup(t, router, admin, apimodels.TalkgroupPost{ID: 50001, Name: "Club", Description: "Club talkgroup"})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 		sub := tdb.PubSub().Subscribe("hub:rules:changed")
 		t.Cleanup(func() { _ = sub.Close() })
-		for _, path := range []string{"/api/v1/users/3191869", "/api/v1/repeaters/311860", "/api/v1/talkgroups/50001"} {
+		for _, path := range []string{"/api/v1/users/3002069", "/api/v1/repeaters/990360", "/api/v1/talkgroups/50001"} {
 			w := testutils.Do(t, router, admin, http.MethodDelete, path, nil)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			id := path[strings.LastIndex(path, "/")+1:]

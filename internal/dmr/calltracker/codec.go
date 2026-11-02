@@ -61,7 +61,7 @@ func (c *CallTracker) Busy(ctx context.Context, p models.Packet) {
 	c.noteCodec(ctx, codecNote{Stream: p.StreamID, Track: p.TrackID, Busy: true})
 }
 
-// Converted records that target, such as "repeater:311860", got the voice
+// Converted records that target, such as "repeater:990360", got the voice
 // call of p converted to codec. Any replica may call it: a call that
 // another replica tracks gets it over pubsub.
 func (c *CallTracker) Converted(ctx context.Context, p models.Packet, codec, target string) {

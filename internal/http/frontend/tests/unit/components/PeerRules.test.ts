@@ -79,21 +79,21 @@ describe('PeerRules', () => {
   it('adds a source rule', async () => {
     const w = await mountRules();
     mockAPI.post.mockResolvedValue({
-      data: { rule: { id: 20, direction: true, match: 'source', subject_id_min: 3100001, subject_id_max: 3199999 } },
+      data: { rule: { id: 20, direction: true, match: 'source', subject_id_min: 3002401, subject_id_max: 3004799 } },
     });
     await w.find('[data-test="add-rx"]').trigger('click');
     await w.find('[data-test="form-rx"] [data-test="kind-source"]').trigger('click');
-    await w.find('[data-test="form-rx"] [data-test="min"]').setValue('3100001');
-    await w.find('[data-test="form-rx"] [data-test="max"]').setValue('3199999');
+    await w.find('[data-test="form-rx"] [data-test="min"]').setValue('3002401');
+    await w.find('[data-test="form-rx"] [data-test="max"]').setValue('3004799');
     await w.find('[data-test="form-rx"]').trigger('submit');
     await flushPromises();
     expect(mockAPI.post).toHaveBeenCalledWith('/peers/3000/rules', {
       direction: true,
       match: 'source',
-      subject_id_min: 3100001,
-      subject_id_max: 3199999,
+      subject_id_min: 3002401,
+      subject_id_max: 3004799,
     });
-    expect(w.find('[data-test="summary-rx"]').text()).toBe('Receives calls to 91 from radios 3100001 to 3199999.');
+    expect(w.find('[data-test="summary-rx"]').text()).toBe('Receives calls to 91 from radios 3002401 to 3004799.');
     expect(w.find('[data-test="form-rx"]').exists()).toBe(false);
   });
 

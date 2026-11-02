@@ -31,28 +31,28 @@ const mockAPI = API as unknown as { get: Mock; patch: Mock };
 
 const RULES = {
   ts1_users: [],
-  ts2_users: [{ id: 3191868, callsign: 'KI5VMF' }],
+  ts2_users: [{ id: 3002068, callsign: 'N6CALL' }],
   talkgroup_mode: 'block',
   talkgroups: [{ id: 91, name: 'Worldwide' }],
 };
 
 async function card(rules: Record<string, unknown> = RULES) {
   mockAPI.get.mockImplementation((url: string) => {
-    if (url === '/repeaters/311860/rules') return Promise.resolve({ data: rules });
-    if (url === '/repeaters/311860/rules/user?q=n0call') return Promise.resolve({ data: { id: 3191869, callsign: 'N0CALL' } });
-    if (url.startsWith('/repeaters/311860/rules/user')) return Promise.reject({ response: { status: 404, data: { error: 'User does not exist' } } });
+    if (url === '/repeaters/990360/rules') return Promise.resolve({ data: rules });
+    if (url === '/repeaters/990360/rules/user?q=n0call') return Promise.resolve({ data: { id: 3002069, callsign: 'N0CALL' } });
+    if (url.startsWith('/repeaters/990360/rules/user')) return Promise.reject({ response: { status: 404, data: { error: 'User does not exist' } } });
     if (url === '/talkgroups/3100') return Promise.resolve({ data: { id: 3100, name: 'USA' } });
     return Promise.reject({ response: { status: 404, data: { error: 'Talkgroup does not exist' } } });
   });
   mockAPI.patch.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({
     data: {
-      ts1_users: (body.ts1_users as number[]).map((id) => ({ id, callsign: id === 3191869 ? 'N0CALL' : 'KI5VMF' })),
-      ts2_users: (body.ts2_users as number[]).map((id) => ({ id, callsign: id === 3191869 ? 'N0CALL' : 'KI5VMF' })),
+      ts1_users: (body.ts1_users as number[]).map((id) => ({ id, callsign: id === 3002069 ? 'N0CALL' : 'N6CALL' })),
+      ts2_users: (body.ts2_users as number[]).map((id) => ({ id, callsign: id === 3002069 ? 'N0CALL' : 'N6CALL' })),
       talkgroup_mode: body.talkgroup_mode,
       talkgroups: (body.talkgroups as number[]).map((id) => ({ id, name: '' })),
     },
   }));
-  const wrapper = mount(RepeaterRulesCard, { props: { repeaterId: 311860 } });
+  const wrapper = mount(RepeaterRulesCard, { props: { repeaterId: 990360 } });
   await flushPromises();
   return wrapper;
 }
@@ -70,7 +70,7 @@ describe('RepeaterRulesCard', () => {
     const wrapper = await card();
     expect((radio(wrapper, 'ts1-lock', 'open').element as HTMLInputElement).checked).toBe(true);
     expect((radio(wrapper, 'ts2-lock', 'lock').element as HTMLInputElement).checked).toBe(true);
-    expect(wrapper.find('[data-test="ts2-users"]').text()).toContain('KI5VMF');
+    expect(wrapper.find('[data-test="ts2-users"]').text()).toContain('N6CALL');
     expect(wrapper.find('[data-test="ts1-users"]').exists()).toBe(false);
     expect((radio(wrapper, 'tg-mode', 'block').element as HTMLInputElement).checked).toBe(true);
     expect(wrapper.find('[data-test="talkgroups"]').text()).toContain('Worldwide');
@@ -85,15 +85,15 @@ describe('RepeaterRulesCard', () => {
     expect(wrapper.find('[data-test="ts1-users"]').text()).toContain('N0CALL');
     await wrapper.find('[data-test="rules-save"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.patch).toHaveBeenCalledWith('/repeaters/311860/rules', {
-      ts1_users: [3191869], ts2_users: [3191868], talkgroup_mode: 'block', talkgroups: [91],
+    expect(mockAPI.patch).toHaveBeenCalledWith('/repeaters/990360/rules', {
+      ts1_users: [3002069], ts2_users: [3002068], talkgroup_mode: 'block', talkgroups: [91],
     });
     expect(wrapper.find('[data-test="rules-message"]').text()).toBe('Saved.');
   });
 
   it('shows an unknown user and adds nothing', async () => {
     const wrapper = await card();
-    await wrapper.find('[data-test="ts2-add-user"]').setValue('N0NE');
+    await wrapper.find('[data-test="ts2-add-user"]').setValue('N3TEST');
     await wrapper.find('[data-test="ts2-lock"] form').trigger('submit');
     await flushPromises();
     expect(wrapper.text()).toContain('User does not exist');
@@ -147,7 +147,7 @@ describe('RepeaterRulesCard', () => {
     const wrapper = await card();
     await radio(wrapper, 'ts2-lock', 'open').trigger('change');
     await wrapper.find('[data-test="rules-reset"]').trigger('click');
-    expect(wrapper.find('[data-test="ts2-users"]').text()).toContain('KI5VMF');
+    expect(wrapper.find('[data-test="ts2-users"]').text()).toContain('N6CALL');
   });
 
   it('shows the error of a failed save', async () => {

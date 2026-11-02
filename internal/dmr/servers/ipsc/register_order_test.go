@@ -71,7 +71,7 @@ func (p *registerProbe) WriteToUDP(b []byte, _ *net.UDPAddr) (int, error) {
 // before that reply.
 func TestAPeerGetsItsCallsFromTheReplyToItsRegistration(t *testing.T) {
 	t.Parallel()
-	const id, stream = uint32(311891), uint(76102)
+	const id, stream = uint32(990391), uint(76102)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)
@@ -231,7 +231,7 @@ func (r *registerRig) next(what string) []byte {
 // peer, so that the call reaches it.
 func TestAPeerThatRegistersWhileTheQueueIsFullGetsItsCalls(t *testing.T) {
 	t.Parallel()
-	r := newRegisterRig(t, 311892)
+	r := newRegisterRig(t, 990392)
 	call := models.Packet{
 		Signature:   string(dmrconst.CommandDMRD),
 		Src:         1000001,
@@ -269,7 +269,7 @@ func TestAPeerThatRegistersWhileTheQueueIsFullGetsItsCalls(t *testing.T) {
 // the hub does not serve.
 func TestAStuckQueueDropsAPeerThatRegisters(t *testing.T) {
 	t.Parallel()
-	r := newRegisterRig(t, 311893)
+	r := newRegisterRig(t, 990393)
 	r.hold(r.s.peerJobs.Must)
 	err := r.s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, r.id), r.from)
 	require.NoError(t, err)

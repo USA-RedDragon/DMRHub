@@ -35,8 +35,8 @@ import (
 )
 
 const (
-	trackedRadio   = uint(3191868)
-	untrackedRadio = uint(3140598)
+	trackedRadio   = uint(3002068)
+	untrackedRadio = uint(3002198)
 	locatorID      = uint32(5050)
 )
 
@@ -45,8 +45,8 @@ const (
 func trackingRig(t *testing.T, opts ...plugins.ServiceOption) (*rig, pluginv1.PluginService_ConnectClient) {
 	t.Helper()
 	r := newRig(t, opts...)
-	require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "KI5VMF", Username: "tracked", Approved: true}).Error)
-	require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "KD5SMP", Username: "untracked", Approved: true}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "N6CALL", Username: "tracked", Approved: true}).Error)
+	require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "N8CALL", Username: "untracked", Approved: true}).Error)
 	require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, true, time.Now().Add(-time.Minute)))
 	_, token := r.add("Location", rng(5050, 5059))
 	s := r.connect(token)
@@ -126,7 +126,7 @@ func TestAPluginHearsAnOldReplicaOnceWithNoTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r, s := trackingRig(t)
 		subscribe(t, s)
-		old := []byte{0, 0x30, 0xB4, 0x3C, 0, 0x01, 0x86, 0xA2, 2, 7}
+		old := []byte{0, 0x2D, 0xCE, 0xD4, 0, 0x01, 0x86, 0xA2, 2, 7}
 		require.NoError(t, r.ps.Publish(plugins.HeardTopic, old))
 		h := nextHeard(t, s)
 		assert.True(t, proto.Equal(&pluginv1.Heard{Radio: uint32(trackedRadio), Slot: 2, ColorCode: 7}, h), "got %v", h)
@@ -208,7 +208,7 @@ func TestTheHubKeepsOnlyPositionsOfTrackedRadiosToThePluginsIDs(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r, s := trackingRig(t)
-		require.NoError(t, r.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002, Callsign: "KI5VMF"}, OwnerID: trackedRadio}).Error)
+		require.NoError(t, r.db.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100002, Callsign: "N6CALL"}, OwnerID: trackedRadio}).Error)
 		subscribe(t, s)
 		require.NoError(t, plugins.PublishHeard(r.ps, trackedRadio, 100002, 2, 7))
 		_, err := recv(t, s)
@@ -240,18 +240,18 @@ func TestTheHubKeepsPositionsOnlyThroughTheOwnersOrTrustedRepeaters(t *testing.T
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig(t)
-		const witness = uint(3191870)
-		require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "KI5VMF", Username: "tracked", Approved: true}).Error)
-		require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "KD5SMP", Username: "untracked", Approved: true}).Error)
-		require.NoError(t, r.db.Create(&models.User{ID: witness, Callsign: "N5WIT", Username: "witness", Approved: true}).Error)
+		const witness = uint(3002070)
+		require.NoError(t, r.db.Create(&models.User{ID: trackedRadio, Callsign: "N6CALL", Username: "tracked", Approved: true}).Error)
+		require.NoError(t, r.db.Create(&models.User{ID: untrackedRadio, Callsign: "N8CALL", Username: "untracked", Approved: true}).Error)
+		require.NoError(t, r.db.Create(&models.User{ID: witness, Callsign: "N5TEST", Username: "witness", Approved: true}).Error)
 		require.NoError(t, models.SetPositionTracking(r.db, trackedRadio, trackedRadio, true, time.Now().Add(-time.Minute)))
 		require.NoError(t, models.SetPositionTracking(r.db, witness, witness, true, time.Now().Add(-time.Minute)))
 		const own, spoof, trusted, witnessed = uint(100002), uint(100009), uint(100010), uint(100011)
 		for _, rpt := range []models.Repeater{
-			{RepeaterConfiguration: models.RepeaterConfiguration{ID: own, Callsign: "KI5VMF"}, OwnerID: trackedRadio},
-			{RepeaterConfiguration: models.RepeaterConfiguration{ID: spoof, Callsign: "KD5SMP"}, OwnerID: untrackedRadio},
-			{RepeaterConfiguration: models.RepeaterConfiguration{ID: trusted, Callsign: "KD5SMP"}, OwnerID: untrackedRadio, Trusted: true},
-			{RepeaterConfiguration: models.RepeaterConfiguration{ID: witnessed, Callsign: "N5WIT"}, OwnerID: witness},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: own, Callsign: "N6CALL"}, OwnerID: trackedRadio},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: spoof, Callsign: "N8CALL"}, OwnerID: untrackedRadio},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: trusted, Callsign: "N8CALL"}, OwnerID: untrackedRadio, Trusted: true},
+			{RepeaterConfiguration: models.RepeaterConfiguration{ID: witnessed, Callsign: "N5TEST"}, OwnerID: witness},
 		} {
 			require.NoError(t, r.db.Create(&rpt).Error)
 		}

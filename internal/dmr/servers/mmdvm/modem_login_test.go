@@ -52,7 +52,7 @@ func TestALoginWithTheIDOfAModemIsRefused(t *testing.T) {
 	require.NoError(t, err)
 	h := hub.NewHub(database, kvStore, ps, nil)
 	t.Cleanup(func() { h.Stop(context.Background()) })
-	const modemID, networkID = 311871, 311872
+	const modemID, networkID = 990371, 990372
 	for id, typ := range map[uint]string{modemID: models.RepeaterTypeModem, networkID: models.RepeaterTypeMMDVM} {
 		require.NoError(t, database.Create(&models.Repeater{
 			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},

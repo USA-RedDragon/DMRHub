@@ -38,9 +38,9 @@ import (
 )
 
 const (
-	benchRepeater = 311860
+	benchRepeater = 990360
 	benchTG       = 3100
-	benchRadio    = 3191868
+	benchRadio    = 3002068
 	benchStep     = 5 * time.Millisecond
 )
 

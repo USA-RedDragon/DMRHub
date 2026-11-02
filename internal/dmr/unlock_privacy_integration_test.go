@@ -298,7 +298,7 @@ func TestAnOnAirCodeReachesNoSink(t *testing.T) {
 			require.Equal(t, airauth.Granted, result())
 			require.NoError(t, ic.SendPrivateVoice(codeRadio, dmrconst.UnlockFirst+uint(wrong), false, 9002))
 			require.Equal(t, airauth.Refused, result())
-			call(3100001, code, 9003)
+			call(3002401, code, 9003)
 			require.Equal(t, airauth.Refused, result())
 			sendText(t, mc, false, codeRadio, dmrconst.UnlockFirst+uint(code), "a text to a code", 9011)
 

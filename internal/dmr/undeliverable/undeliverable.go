@@ -118,7 +118,7 @@ func targetName(target string) (string, bool) {
 }
 
 // Sentence words why the target server, such as "ipsc", could not carry a
-// burst to the repeater for reason, such as "IPSC repeater 314926 was busy
+// burst to the repeater for reason, such as "IPSC repeater 990626 was busy
 // on that slot.". A repeater of 0 is one that the report does not name.
 func Sentence(target string, repeater uint, reason string) string {
 	kind, known := targetName(target)
@@ -143,7 +143,7 @@ func capitalize(s string) string {
 var oldForm = regexp.MustCompile(`^([a-z0-9]+):([0-9]*)(?::([a-z0-9_]+))?$`)
 
 // FromOldForm turns an entry of the old form "<target>:<repeater>:<reason>",
-// such as "ipsc:314926:slot_busy", into its sentence. It reports false
+// such as "ipsc:990626:slot_busy", into its sentence. It reports false
 // for an entry of any other form.
 func FromOldForm(entry string) (string, bool) {
 	m := oldForm.FindStringSubmatch(entry)

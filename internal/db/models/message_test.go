@@ -34,7 +34,7 @@ func TestMessageStoresEveryField(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	call := models.Call{StartTime: time.Now(), Kind: models.CallKindData, SourceID: 3140598, DestinationID: 3191868}
+	call := models.Call{StartTime: time.Now(), Kind: models.CallKindData, SourceID: 3002198, DestinationID: 3002068}
 	require.NoError(t, database.Create(&call).Error)
 
 	sap, ns, fsn := uint8(4), uint8(3), uint8(0)
@@ -43,9 +43,9 @@ func TestMessageStoresEveryField(t *testing.T) {
 	msg := models.Message{
 		ReceivedAt:     at,
 		TransmissionID: &call.ID,
-		SourceID:       3140598,
-		DestinationID:  3191868,
-		RepeaterID:     314059801,
+		SourceID:       3002198,
+		DestinationID:  3002068,
+		RepeaterID:     300219801,
 		Slot:           2,
 		Transport:      models.RepeaterTypeMMDVM,
 		StreamID:       77,
@@ -107,10 +107,10 @@ func TestUserRadioIDIsUnique(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a"}).Error)
-	require.NoError(t, database.Create(&models.User{ID: 3140598, Callsign: "KD5SMP", Username: "b"}).Error)
-	require.NoError(t, database.Create(&models.UserRadioID{UserID: 3191868, RadioID: 3191877, VerifiedAt: time.Now()}).Error)
-	assert.Error(t, database.Create(&models.UserRadioID{UserID: 3140598, RadioID: 3191877, VerifiedAt: time.Now()}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "a"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002198, Callsign: "N8CALL", Username: "b"}).Error)
+	require.NoError(t, database.Create(&models.UserRadioID{UserID: 3002068, RadioID: 3002077, VerifiedAt: time.Now()}).Error)
+	assert.Error(t, database.Create(&models.UserRadioID{UserID: 3002198, RadioID: 3002077, VerifiedAt: time.Now()}).Error)
 }
 
 func TestDeleteUserDeletesTheirRadioIDs(t *testing.T) {
@@ -118,9 +118,9 @@ func TestDeleteUserDeletesTheirRadioIDs(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a"}).Error)
-	require.NoError(t, database.Create(&models.UserRadioID{UserID: 3191868, RadioID: 3191877, VerifiedAt: time.Now()}).Error)
-	require.NoError(t, models.DeleteUser(database, 3191868))
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "a"}).Error)
+	require.NoError(t, database.Create(&models.UserRadioID{UserID: 3002068, RadioID: 3002077, VerifiedAt: time.Now()}).Error)
+	require.NoError(t, models.DeleteUser(database, 3002068))
 	var n int64
 	require.NoError(t, database.Model(&models.UserRadioID{}).Count(&n).Error)
 	assert.Zero(t, n)
@@ -129,7 +129,7 @@ func TestDeleteUserDeletesTheirRadioIDs(t *testing.T) {
 func TestUserJSONHasNoSMSStorageFields(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	b, err := json.Marshal(models.User{ID: 3191868, Callsign: "KI5VMF", SMSStorageEnabled: true, SMSStorageSince: &now})
+	b, err := json.Marshal(models.User{ID: 3002068, Callsign: "N6CALL", SMSStorageEnabled: true, SMSStorageSince: &now})
 	require.NoError(t, err)
 	var keys map[string]any
 	require.NoError(t, json.Unmarshal(b, &keys))

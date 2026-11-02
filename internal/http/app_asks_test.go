@@ -60,9 +60,9 @@ func TestRadioIDLookupWorksWithAnAppToken(t *testing.T) {
 	t.Parallel()
 	e := newOAuthEnv(t)
 	tok := e.token(t, "messages:read")
-	w := e.bearer(t, http.MethodGet, "/api/v1/userdb/3191868", tok.AccessToken)
+	w := e.bearer(t, http.MethodGet, "/api/v1/userdb/3002068", tok.AccessToken)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Contains(t, w.Body.String(), `"callsign":"KI5VMF"`)
+	assert.Contains(t, w.Body.String(), `"callsign":"N6CALL"`)
 	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
 }
 

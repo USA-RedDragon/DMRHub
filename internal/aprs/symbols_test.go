@@ -53,7 +53,7 @@ func TestEachLocationServiceHasItsSymbol(t *testing.T) {
 func TestCommentsAndSSIDs(t *testing.T) {
 	t.Parallel()
 	assert.True(t, aprs.ValidComment(""))
-	assert.True(t, aprs.ValidComment("DMR 3191868"))
+	assert.True(t, aprs.ValidComment("DMR 3002068"))
 	assert.True(t, aprs.ValidComment(strings.Repeat("a", 43)))
 	assert.False(t, aprs.ValidComment(strings.Repeat("a", 44)))
 	assert.False(t, aprs.ValidComment("a|b"))

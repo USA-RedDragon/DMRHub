@@ -58,7 +58,7 @@ func TestAHubWithNoDatabaseTakesEveryChangeNotice(t *testing.T) {
 		ctx := context.Background()
 		two.TalkgroupChanged(9)
 		two.UserChanged(1000001)
-		two.PeerChanged(3100100)
+		two.PeerChanged(3002500)
 		two.RulesChanged(100001)
 		two.RepeaterSecretChanged(100001)
 		two.CodecChanged(100001)

@@ -59,8 +59,8 @@ func newEnv(t *testing.T, opts ...testutils.ConfigOption) *env {
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	db := tdb.DB()
-	testutils.SeedAccount(t, db, owner, "KI5VMF", "owner")
-	testutils.SeedAccount(t, db, other, "KD5SMP", "other")
+	testutils.SeedAccount(t, db, owner, "N6CALL", "owner")
+	testutils.SeedAccount(t, db, other, "N8CALL", "other")
 	testutils.SeedAccount(t, db, third, "N0CALL", "third")
 	return &env{t: t, router: router, db: db, ps: tdb.PubSub(), jar: testutils.Login(t, router, "owner")}
 }
@@ -71,7 +71,7 @@ func (e *env) track(radio uint, ages ...time.Duration) {
 	for i, age := range ages {
 		acc := 10.0
 		p := models.Position{RadioID: radio, Latitude: 30.25 + float64(i)/100, Longitude: -97.75, Format: models.PositionFormatLRRP,
-			AccuracyM: &acc, ReceivedAt: time.Now().Add(-age), RepeaterID: 319186801, Slot: 2, ServiceID: 5057}
+			AccuracyM: &acc, ReceivedAt: time.Now().Add(-age), RepeaterID: 300206801, Slot: 2, ServiceID: 5057}
 		require.NoError(e.t, e.db.Create(&p).Error)
 	}
 }
@@ -91,7 +91,7 @@ func TestPositionsListsTheViewersRadiosOfTheLastDay(t *testing.T) {
 	e.track(owner, 2*time.Hour, time.Hour)
 	e.track(other, time.Hour)
 	stale := uint(1000004)
-	testutils.SeedAccount(t, e.db, stale, "N1OLD", "stale")
+	testutils.SeedAccount(t, e.db, stale, "K8TEST", "stale")
 	e.track(stale, 30*time.Hour)
 
 	var l apimodels.PositionList
@@ -103,7 +103,7 @@ func TestPositionsListsTheViewersRadiosOfTheLastDay(t *testing.T) {
 	assert.Equal(t, "lrrp", p.Format)
 	require.NotNil(t, p.AccuracyM)
 	assert.Nil(t, p.SpeedMPS)
-	assert.Equal(t, uint(319186801), p.RepeaterID)
+	assert.Equal(t, uint(300206801), p.RepeaterID)
 	assert.Equal(t, uint8(2), p.Slot)
 }
 
@@ -124,7 +124,7 @@ func TestPositionsOfAnotherUsersRadioAreHiddenUnlessItsOwnerShares(t *testing.T)
 	require.Len(t, l.Positions, 1)
 	assert.Equal(t, other, l.Positions[0].RadioID)
 	assert.True(t, l.Positions[0].Shared)
-	assert.Equal(t, "KD5SMP", l.Positions[0].Callsign)
+	assert.Equal(t, "N8CALL", l.Positions[0].Callsign)
 }
 
 func TestARadiosTrackIsTheLastDayOldestFirst(t *testing.T) {

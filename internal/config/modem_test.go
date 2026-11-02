@@ -57,7 +57,7 @@ func TestModemValidation(t *testing.T) {
 	good := func(m *config.Modem) {
 		m.Enabled = true
 		m.Port = "/dev/ttyAMA0"
-		m.RepeaterID = 311860199
+		m.RepeaterID = 300350199
 		m.RXFrequency = 438800000
 		m.TXFrequency = 438800000
 	}
@@ -84,10 +84,10 @@ func TestModemValidation(t *testing.T) {
 		{"tx delay", func(m *config.Modem) { m.TXDelay = 510 }, "dmr.modem.tx-delay", config.ErrInvalidModemTXDelay},
 		{"dmr delay", func(m *config.Modem) { m.DMRDelay = 256 }, "dmr.modem.dmr-delay", config.ErrInvalidModemDMRDelay},
 		{"cw id without a callsign", func(m *config.Modem) { m.CWID.Enabled = true }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
-		{"cw id callsign with a symbol morse lacks", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, "KI5VMF!" }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
+		{"cw id callsign with a symbol morse lacks", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, "N6CALL!" }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
 		{"cw id callsign too long", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign = true, strings.Repeat("K", 201) }, "dmr.modem.cw-id.callsign", config.ErrInvalidModemCWIDCallsign},
-		{"cw id time 0", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 0 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
-		{"cw id time above a day", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "KI5VMF", 1441 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
+		{"cw id time 0", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "N6CALL", 0 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
+		{"cw id time above a day", func(m *config.Modem) { m.CWID.Enabled, m.CWID.Callsign, m.CWID.Time = true, "N6CALL", 1441 }, "dmr.modem.cw-id.time", config.ErrInvalidModemCWIDTime},
 		{"beacons on a simplex modem", func(m *config.Modem) { m.Beacons.Enabled = true }, "dmr.modem.beacons.enabled", config.ErrInvalidModemBeaconsSimplex},
 		{"beacon interval 0", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Interval = true, true, 0 }, "dmr.modem.beacons.interval", config.ErrInvalidModemBeaconInterval},
 		{"beacon interval above a day", func(m *config.Modem) { m.Duplex, m.Beacons.Enabled, m.Beacons.Interval = true, true, 86401 }, "dmr.modem.beacons.interval", config.ErrInvalidModemBeaconInterval},

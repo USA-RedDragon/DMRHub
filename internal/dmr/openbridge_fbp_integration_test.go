@@ -124,13 +124,13 @@ func TestEnhancedOpenBridgeCarriesTheOrigin(t *testing.T) {
 
 		burst := makeBurst(1000001, 1, 9602, true, dmrconst.FrameDataSync, uint(enums.DataTypeCSBK), 0)
 		burst.Repeater = 500001
-		require.NoError(t, s.a.SendBridge(dmrd.Bridge{Version: 5, Data: burst.Data(), SourceServer: 3129, SourceRepeater: 312910, Hops: 3}))
+		require.NoError(t, s.a.SendBridge(dmrd.Bridge{Version: 5, Data: burst.Data(), SourceServer: 3129, SourceRepeater: 990510, Hops: 3}))
 		fwd := receiveData(s.b, 9602)
 		if assert.Len(t, fwd, 1, "the other enhanced peer gets the call") {
 			assert.Equal(t, uint8(5), fwd[0].Version)
 			assert.Equal(t, uint8(4), fwd[0].Hops, "one more hop")
 			assert.Equal(t, uint32(3129), fwd[0].SourceServer, "the source server is kept")
-			assert.Equal(t, uint32(312910), fwd[0].SourceRepeater, "the source repeater is kept")
+			assert.Equal(t, uint32(990510), fwd[0].SourceRepeater, "the source repeater is kept")
 			assert.Equal(t, burst.DMRData, [33]byte(fwd[0].Data.Burst))
 		}
 		v1 = receiveData(s.c, 9602)

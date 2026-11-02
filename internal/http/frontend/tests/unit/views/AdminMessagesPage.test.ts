@@ -41,10 +41,10 @@ function msg(id: number, over: Partial<AdminMessage> = {}): AdminMessage {
   return {
     id,
     received_at: '2026-10-22T22:21:05Z',
-    source_id: 3140598,
-    source_callsign: 'KD5SMP',
-    destination_id: 3191868,
-    destination_callsign: 'KI5VMF',
+    source_id: 3002198,
+    source_callsign: 'N8CALL',
+    destination_id: 3002068,
+    destination_callsign: 'N6CALL',
     group: false,
     talkgroup_name: '',
     format: 'ip',
@@ -53,7 +53,7 @@ function msg(id: number, over: Partial<AdminMessage> = {}): AdminMessage {
     response: 'ack',
     checksum_ok: true,
     transmission_id: 4711,
-    repeater_id: 314059801,
+    repeater_id: 300219801,
     slot: 2,
     transport: 'mmdvm',
     stream_id: 1,
@@ -145,7 +145,7 @@ describe('Admin MessagesPage', () => {
   it('sends the filters, with local days as times', async () => {
     serve({ total: 1, messages: [msg(1)] });
     const wrapper = await mountPage();
-    await wrapper.find('#f-src').setValue(' 3191868 ');
+    await wrapper.find('#f-src').setValue(' 3002068 ');
     await wrapper.find('#f-dst').setValue('3100');
     await wrapper.find('#f-from').setValue('2026-10-01');
     await wrapper.find('#f-to').setValue('2026-10-22');
@@ -153,7 +153,7 @@ describe('Admin MessagesPage', () => {
     await wrapper.find('[data-test="admin-search"]').trigger('submit');
     await flushPromises();
     const q = new URLSearchParams(searchCalls().at(-1)!.split('?')[1]);
-    expect(q.get('src')).toBe('3191868');
+    expect(q.get('src')).toBe('3002068');
     expect(q.get('dst')).toBe('3100');
     expect(q.get('text')).toBe('net');
     expect(q.get('from')).toBe('2026-10-01T05:00:00.000Z');
@@ -182,7 +182,7 @@ describe('Admin MessagesPage', () => {
     expect(detail.text()).toContain('Message 2');
     expect(detail.text()).toContain('Proprietary (9)');
     expect(detail.text()).toContain('Bad');
-    expect(detail.text()).toContain('IPSC / 314059801 / TS1');
+    expect(detail.text()).toContain('IPSC / 300219801 / TS1');
     expect(wrapper.find('[data-test="admin-raw"]').text()).toBe(
       '0000  40 45 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n0010  00 00 54 45 53 54',
     );

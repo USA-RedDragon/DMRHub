@@ -33,10 +33,10 @@ func TestSavingAStaleUserKeepsSMSStorage(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "a"}).Error)
 	var stale, fresh models.User
-	require.NoError(t, database.First(&stale, 3191868).Error)
-	require.NoError(t, database.First(&fresh, 3191868).Error)
+	require.NoError(t, database.First(&stale, 3002068).Error)
+	require.NoError(t, database.First(&fresh, 3002068).Error)
 	require.NoError(t, models.SetSMSStorage(database, &fresh, true, time.Now().Add(-48*time.Hour)))
 	require.NoError(t, models.SetSMSStorage(database, &fresh, false, time.Now()))
 	require.NoError(t, models.SetSMSStorage(database, &fresh, true, time.Now()))
@@ -44,7 +44,7 @@ func TestSavingAStaleUserKeepsSMSStorage(t *testing.T) {
 	stale.Approved = true
 	require.NoError(t, database.Save(&stale).Error)
 	var got models.User
-	require.NoError(t, database.First(&got, 3191868).Error)
+	require.NoError(t, database.First(&got, 3002068).Error)
 	assert.True(t, got.Approved)
 	assert.True(t, got.SMSStorageEnabled)
 	require.NotNil(t, got.SMSStorageSince)
@@ -54,7 +54,7 @@ func TestSavingAStaleUserKeepsSMSStorage(t *testing.T) {
 	require.NoError(t, models.SetSMSStorage(database, &fresh, false, time.Now()))
 	require.NoError(t, database.Save(&stale).Error)
 	var after models.User
-	require.NoError(t, database.First(&after, 3191868).Error)
+	require.NoError(t, database.First(&after, 3002068).Error)
 	assert.False(t, after.SMSStorageEnabled, "a stale save does not turn it back on")
 	assert.Nil(t, after.SMSStorageSince)
 }

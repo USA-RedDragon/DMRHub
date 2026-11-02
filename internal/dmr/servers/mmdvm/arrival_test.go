@@ -38,7 +38,7 @@ import (
 // key-up of no length.
 func TestACallIsTimedFromWhenItsBurstsCame(t *testing.T) {
 	t.Parallel()
-	const repeaterID, stream = uint32(311880), uint(76001)
+	const repeaterID, stream = uint32(990380), uint(76001)
 	r := newDialectRig(t, uint(repeaterID))
 	r.login(dmrd.DialectMMDVM, repeaterID)
 

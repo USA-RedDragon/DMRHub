@@ -59,7 +59,7 @@ const locator: AdminPlugin = {
   last_seen_at: '2026-10-21T12:00:00Z', address: '', calls_today: 0,
 };
 const weather: AdminPlugin = {
-  ...parrot, id: 3, name: 'Weather net', enabled: false, ranges: [{ first: 9998, last: 9998 }, { first: 310001, last: 310009 }],
+  ...parrot, id: 3, name: 'Weather net', enabled: false, ranges: [{ first: 9998, last: 9998 }, { first: 990001, last: 990009 }],
   online: false, connected_since: null, last_seen_at: null, calls_today: 0,
 };
 const connection = { enabled: true, address: 'dmrhub.example.org:3006', fingerprint: '4F:2A:91', own_certificate: true };
@@ -71,7 +71,7 @@ function serve(plugins: AdminPlugin[] = [parrot, locator, weather]) {
 describe('plugins service', () => {
   it('words ranges, spans and status as the mockup does', () => {
     expect(formatRanges([{ first: 9990, last: 9990 }])).toBe('9990');
-    expect(formatRanges([{ first: 310001, last: 310009 }, { first: 9998, last: 9998 }])).toBe('310001–310009, 9998');
+    expect(formatRanges([{ first: 990001, last: 990009 }, { first: 9998, last: 9998 }])).toBe('990001–990009, 9998');
     expect(formatRanges([])).toBe('None');
     const now = Date.parse('2026-10-24T12:00:00Z');
     expect(formatSpan('2026-10-24T10:00:00Z', now)).toBe('2 hours');
@@ -101,7 +101,7 @@ describe('PluginsPage', () => {
     expect(row).toContain('9990');
     expect(row).toContain('Connected for 2 hours, from 10.0.4.7');
     expect(row).toContain('12');
-    expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('310001–310009');
+    expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('990001–990009');
     expect(wrapper.find('[data-test="plugin-3"]').text()).toContain('Off');
     expect(wrapper.find('[data-test="add-plugin"]').attributes('href')).toBe('/admin/plugins/new');
     expect(wrapper.text()).not.toMatch(/dmr\.plugins|cert-file/);

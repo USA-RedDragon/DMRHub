@@ -41,7 +41,7 @@ async function badge(lastPing: string, extra: Record<string, unknown> = {}) {
     }
     return Promise.resolve({
       data: {
-        id: 310000101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: lastPing,
+        id: 300240101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: lastPing,
         connected_time: lastPing, created_at: lastPing, ts1_static_talkgroups: [], ts2_static_talkgroups: [],
         ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
         latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
@@ -52,7 +52,7 @@ async function badge(lastPing: string, extra: Record<string, unknown> = {}) {
   const wrapper = mount(RepeaterDetailsPage, {
     global: {
       plugins: [createPinia()],
-      mocks: { $route: { params: { id: '310000101' } }, $toast: { add: vi.fn() } },
+      mocks: { $route: { params: { id: '300240101' } }, $toast: { add: vi.fn() } },
       stubs: { RouterLink: true },
     },
   });
@@ -111,7 +111,7 @@ async function asRole(role: string | null, userID: number, extra: Record<string,
     const t = new Date().toISOString();
     return Promise.resolve({
       data: {
-        id: 310000101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: t, connected_time: t, created_at: t,
+        id: 300240101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: t, connected_time: t, created_at: t,
         ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
         latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
         owner: { id: 3000001, callsign: 'N0DEMO' },
@@ -127,7 +127,7 @@ async function asRole(role: string | null, userID: number, extra: Record<string,
   const wrapper = mount(RepeaterDetailsPage, {
     global: {
       plugins: [pinia],
-      mocks: { $route: { params: { id: '310000101' } }, $toast: { add: vi.fn() } },
+      mocks: { $route: { params: { id: '300240101' } }, $toast: { add: vi.fn() } },
       stubs: { RouterLink: true, RepeaterRulesCard: true },
     },
   });
@@ -179,7 +179,7 @@ describe('RepeaterDetailsPage sysop actions', () => {
     expect(dialog?.textContent).toContain('The hotspot logs in again by itself.');
     (document.querySelector('[data-test="reset-confirm"]') as HTMLElement).click();
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/310000101/reset');
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/300240101/reset');
     w.unmount();
   });
 
@@ -189,14 +189,14 @@ describe('RepeaterDetailsPage sysop actions', () => {
     expect(w.find('[data-test="drop-dynamic-ts1"]').exists()).toBe(false);
     await w.find('[data-test="drop-dynamic-ts2"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/310000101/unlink/dynamic/2/3148', {});
+    expect(mockAPI.post).toHaveBeenCalledWith('/repeaters/300240101/unlink/dynamic/2/3148', {});
     w.unmount();
   });
 
   it('shows no sysop actions to another user', async () => {
     const w = await asRole(null, 3000003);
     expect(w.find('[data-test="reset-connection"]').exists()).toBe(false);
-    expect(mockAPI.get).not.toHaveBeenCalledWith('/repeaters/310000101/on-air');
+    expect(mockAPI.get).not.toHaveBeenCalledWith('/repeaters/300240101/on-air');
     w.unmount();
   });
 });
@@ -207,14 +207,14 @@ describe('RepeaterDetailsPage local groups', () => {
   });
 
   const repeater = {
-    id: 319186801, callsign: 'KP4DJT', type: 'mmdvm', last_ping_time: '2026-11-01T12:00:00Z', connected_time: '2026-11-01T12:00:00Z', created_at: '2026-10-01T12:00:00Z',
+    id: 300206801, callsign: 'N7CALL', type: 'mmdvm', last_ping_time: '2026-11-01T12:00:00Z', connected_time: '2026-11-01T12:00:00Z', created_at: '2026-10-01T12:00:00Z',
     ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
     latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
-    owner: { id: 3191869, callsign: 'KP4DJT' },
+    owner: { id: 3002069, callsign: 'N7CALL' },
   };
   const groups = [
-    { id: 5, name: 'North Texas', talkgroup: 8, slot: 2, state: 'member', owner: { id: 1, callsign: 'W5DFW' }, asked_by: { id: 1, callsign: 'W5DFW' }, repeaters: 4 },
-    { id: 6, name: 'Club hotspots', talkgroup: 9, slot: 1, state: 'asked', owner: { id: 2, callsign: 'KI5VMF' }, asked_by: { id: 2, callsign: 'KI5VMF' }, repeaters: 2 },
+    { id: 5, name: 'North Texas', talkgroup: 8, slot: 2, state: 'member', owner: { id: 1, callsign: 'K1CALL' }, asked_by: { id: 1, callsign: 'K1CALL' }, repeaters: 4 },
+    { id: 6, name: 'Club hotspots', talkgroup: 9, slot: 1, state: 'asked', owner: { id: 2, callsign: 'N6CALL' }, asked_by: { id: 2, callsign: 'N6CALL' }, repeaters: 2 },
   ];
 
   async function mountAs(userID: number, role: string | null) {
@@ -238,7 +238,7 @@ describe('RepeaterDetailsPage local groups', () => {
     const wrapper = mount(RepeaterDetailsPage, {
       global: {
         plugins: [pinia],
-        mocks: { $route: { params: { id: '319186801' } }, $toast: { add: vi.fn() } },
+        mocks: { $route: { params: { id: '300206801' } }, $toast: { add: vi.fn() } },
         stubs: { RouterLink: { template: '<a><slot /></a>' }, RepeaterRulesCard: true },
       },
     });
@@ -256,13 +256,13 @@ describe('RepeaterDetailsPage local groups', () => {
   });
 
   it('asks the owner to add the repeater to a group, and adds it', async () => {
-    const { wrapper, post } = await mountAs(3191869, 'owner');
+    const { wrapper, post } = await mountAs(3002069, 'owner');
     const ask = wrapper.find('[data-test="local-ask-6"]');
-    expect(ask.text()).toContain('KI5VMF asks to add this repeater to the local group Club hotspots.');
+    expect(ask.text()).toContain('N6CALL asks to add this repeater to the local group Club hotspots.');
     expect(ask.text()).toContain('Calls to TG 9 on timeslot 1 here then go to the 2 repeaters of the group.');
     await ask.find('[data-test="local-accept"]').trigger('click');
     await flushPromises();
-    expect(post).toHaveBeenCalledWith('/localgroups/6/repeaters/319186801/accept');
+    expect(post).toHaveBeenCalledWith('/localgroups/6/repeaters/300206801/accept');
     wrapper.unmount();
   });
 });

@@ -37,7 +37,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const orderPeerID = uint(3100100)
+const orderPeerID = uint(3002500)
 
 // heldPublish holds the publish of the terminator of stream until a burst
 // of next is published, or until release is closed. It closes holding
@@ -175,7 +175,7 @@ func TestTheNextStreamOfASourceDoesNotOvertakeItsLastOne(t *testing.T) {
 		}, 30*time.Second, time.Millisecond, "the terminator of the first stream and the bursts of the second did not reach the outbox")
 		close(held.release)
 
-		got := receiveOrder(t, arrivals, map[uint]bool{first: true, second: true}, len(sent), "mmdvm:100002", "peers:3100100")
+		got := receiveOrder(t, arrivals, map[uint]bool{first: true, second: true}, len(sent), "mmdvm:100002", "peers:3002500")
 		for target, order := range got {
 			assert.Equal(t, orderOf(sent), order, "the order of the bursts at %s", target)
 		}
@@ -203,7 +203,7 @@ func TestBackToBackStreamsOfASourceKeepTheirOrder(t *testing.T) {
 			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
 		}
 
-		got := receiveOrder(t, arrivals, streams, len(sent), "mmdvm:100002", "peers:3100100")
+		got := receiveOrder(t, arrivals, streams, len(sent), "mmdvm:100002", "peers:3002500")
 		for target, order := range got {
 			assert.Equal(t, orderOf(sent), order, "the order of the bursts at %s", target)
 		}

@@ -52,9 +52,9 @@ describe('API tokens on two replicas', () => {
           expect(wizard, 'the first admin page must open').to.eq(true);
           cy.visit(hub);
           cy.location('pathname', { timeout: 20000 }).should('eq', '/setup/user');
-          cy.get('#dmr_id').type('3191868');
+          cy.get('#dmr_id').type('3002068');
           cy.get('#username').type('admin');
-          cy.get('#callsign').type('KI5VMF');
+          cy.get('#callsign').type('N6CALL');
           cy.get('#password').type(password);
           cy.get('#confirmPassword').type(password);
           cy.contains('button', 'Create User').click();
@@ -109,7 +109,7 @@ describe('API tokens on two replicas', () => {
       bearer(replica, 'GET', '/api/v1/config', full).its('status').should('eq', 403);
       bearer(replica, 'GET', '/api/v1/users/me/tokens', full).its('status').should('eq', 403);
       bearer(replica, 'PUT', '/api/v1/users/me/email', full).its('status').should('eq', 403);
-      bearer(replica, 'PATCH', '/api/v1/users/3191868', full).its('status').should('eq', 403);
+      bearer(replica, 'PATCH', '/api/v1/users/3002068', full).its('status').should('eq', 403);
     });
   });
 });

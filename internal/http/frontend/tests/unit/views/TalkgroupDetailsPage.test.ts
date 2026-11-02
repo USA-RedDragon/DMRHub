@@ -50,13 +50,13 @@ const mockWS = ws as unknown as { connect: Mock };
 
 const talkgroup = {
   id: 3100, name: 'USA', description: '', created_at: '2026-10-01T00:00:00Z',
-  admins: [{ id: 3100003, callsign: 'N0OWN' }], ncos: [{ id: 3100002, callsign: 'N0NCO' }],
+  admins: [{ id: 3002403, callsign: 'W9CALL' }], ncos: [{ id: 3002402, callsign: 'W0CALL' }],
 };
 const activeNet = {
   id: 7, talkgroup_id: 3100, active: true, description: '', check_in_count: 0,
-  started_by_user: { id: 3100002, callsign: 'N0NCO' }, start_time: '2026-10-26T00:00:00Z',
+  started_by_user: { id: 3002402, callsign: 'W0CALL' }, start_time: '2026-10-26T00:00:00Z',
 };
-const access = { mode: 'approved', repeaters: [{ id: 311860, callsign: 'KI5VMF' }] };
+const access = { mode: 'approved', repeaters: [{ id: 990360, callsign: 'N6CALL' }] };
 const scheduled = { id: 9, name: 'Weekly', day_of_week: 3, time_of_day: '19:00', timezone: 'America/Chicago', enabled: true };
 
 async function page(user: { loggedIn: boolean; id?: number; admin?: boolean }, active: boolean) {
@@ -90,7 +90,7 @@ describe('TalkgroupDetailsPage net controls', () => {
 
   for (const [who, user] of [
     ['a visitor', { loggedIn: false }],
-    ['a user who is not an NCO or admin of the talkgroup', { loggedIn: true, id: 3100001 }],
+    ['a user who is not an NCO or admin of the talkgroup', { loggedIn: true, id: 3002401 }],
   ] as const) {
     it(`hides the net controls from ${who}`, async () => {
       const idle = await page(user, false);
@@ -103,9 +103,9 @@ describe('TalkgroupDetailsPage net controls', () => {
   }
 
   for (const [who, user] of [
-    ['an NCO', { loggedIn: true, id: 3100002 }],
-    ['an admin of the talkgroup', { loggedIn: true, id: 3100003 }],
-    ['an admin', { loggedIn: true, id: 3100009, admin: true }],
+    ['an NCO', { loggedIn: true, id: 3002402 }],
+    ['an admin of the talkgroup', { loggedIn: true, id: 3002403 }],
+    ['an admin', { loggedIn: true, id: 3002409, admin: true }],
   ] as const) {
     it(`shows the net controls to ${who}`, async () => {
       const idle = await page(user, false);
@@ -126,8 +126,8 @@ describe('TalkgroupDetailsPage details', () => {
   it('shows when the talkgroup was made and its admins and NCOs', async () => {
     await page({ loggedIn: false }, false);
     expect(lastText).toMatch(/Created\s*\d+ \w+ ago/);
-    expect(lastText).toContain('N0OWN');
-    expect(lastText).toContain('N0NCO');
+    expect(lastText).toContain('W9CALL');
+    expect(lastText).toContain('W0CALL');
   });
 });
 
@@ -138,8 +138,8 @@ describe('TalkgroupDetailsPage access', () => {
 
   for (const [who, user] of [
     ['a visitor', { loggedIn: false }],
-    ['a user who is not an admin of the talkgroup', { loggedIn: true, id: 3100001 }],
-    ['an NCO', { loggedIn: true, id: 3100002 }],
+    ['a user who is not an admin of the talkgroup', { loggedIn: true, id: 3002401 }],
+    ['an NCO', { loggedIn: true, id: 3002402 }],
   ] as const) {
     it(`shows no access card to ${who}`, async () => {
       await page(user, false);
@@ -149,13 +149,13 @@ describe('TalkgroupDetailsPage access', () => {
   }
 
   for (const [who, user] of [
-    ['an admin of the talkgroup', { loggedIn: true, id: 3100003 }],
-    ['an admin', { loggedIn: true, id: 3100009, admin: true }],
+    ['an admin of the talkgroup', { loggedIn: true, id: 3002403 }],
+    ['an admin', { loggedIn: true, id: 3002409, admin: true }],
   ] as const) {
     it(`shows the access card to ${who}`, async () => {
       await page(user, false);
       expect(lastText).toContain('Who can link');
-      expect(lastText).toContain('KI5VMF');
+      expect(lastText).toContain('N6CALL');
     });
   }
 });

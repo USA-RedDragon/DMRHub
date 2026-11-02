@@ -369,7 +369,7 @@ func TestSaveStoresOnlyChangedSetupSettings(t *testing.T) {
 // when that is the file that DMRHub used to write, and only once.
 func TestBootImportsOnlyTheFileThatDMRHubWroteAndLoads(t *testing.T) {
 	t.Parallel()
-	written := validDeployment + "network-name: Written\nlog-level: info\ndmr:\n  ipsc:\n    network-id: 311860\n"
+	written := validDeployment + "network-name: Written\nlog-level: info\ndmr:\n  ipsc:\n    network-id: 990360\n"
 	legacy := func(t *testing.T) string {
 		t.Helper()
 		dir := filepath.Join(t.TempDir(), "DMRHub")
@@ -387,12 +387,12 @@ func TestBootImportsOnlyTheFileThatDMRHubWroteAndLoads(t *testing.T) {
 		saved, err := liveconfig.LoadSaved(context.Background(), database)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]json.RawMessage{
-			"dmr.ipsc.network-id": json.RawMessage("311860"), "http.canonical-host": json.RawMessage(`"http://localhost"`),
+			"dmr.ipsc.network-id": json.RawMessage("990360"), "http.canonical-host": json.RawMessage(`"http://localhost"`),
 		}, saved.Values, "only Setup settings that differ from the default and that the environment leaves alone")
 
 		require.NoError(t, os.WriteFile(path, []byte(validDeployment), 0o600))
 		again := boot(t, database, deployment{file: validDeployment})
-		assert.Equal(t, uint32(311860), again.Current().Get().DMR.IPSC.NetworkID, "the imported value outlives its line in the file")
+		assert.Equal(t, uint32(990360), again.Current().Get().DMR.IPSC.NetworkID, "the imported value outlives its line in the file")
 
 		require.NoError(t, os.WriteFile(path, []byte(validDeployment+"dmr:\n  retention:\n    messages: 5\n"), 0o600))
 		base, report = load(t, path, deployment{})

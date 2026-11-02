@@ -59,15 +59,15 @@ func TestRemovingTheBuiltinServicesDropsTheParrotSeeds(t *testing.T) {
 			database, cfg := builtinsDB(t, be)
 			require.NoError(t, database.Create(&models.User{ID: 9990, Callsign: "Parrot", Approved: true}).Error)
 			require.NoError(t, database.Create(&models.Talkgroup{ID: 9990, Name: "DMRHub Parrot", Description: "This talkgroup will not be routed to any repeaters and Parrot will respond with a private call."}).Error)
-			require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "owner", Approved: true}).Error)
 			tg := uint(9990)
-			rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801, Callsign: "KI5VMF"}, OwnerID: 3191868,
+			rpt := models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300206801, Callsign: "N6CALL"}, OwnerID: 3002068,
 				Type: models.RepeaterTypeMMDVM, TS2DynamicTalkgroupID: &tg}
 			require.NoError(t, database.Create(&rpt).Error)
 			require.NoError(t, database.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 9990}))
-			from, to := uint(9990), uint(3191868)
-			require.NoError(t, database.Create(&models.Call{StreamID: 1, StartTime: time.Now(), UserID: &from, SourceID: 9990, DestinationID: 3191868, IsToUser: true, ToUserID: &to}).Error)
-			require.NoError(t, database.Create(&models.Call{StreamID: 2, StartTime: time.Now(), UserID: &to, SourceID: 3191868, DestinationID: 9990, IsToTalkgroup: true, ToTalkgroupID: &tg}).Error)
+			from, to := uint(9990), uint(3002068)
+			require.NoError(t, database.Create(&models.Call{StreamID: 1, StartTime: time.Now(), UserID: &from, SourceID: 9990, DestinationID: 3002068, IsToUser: true, ToUserID: &to}).Error)
+			require.NoError(t, database.Create(&models.Call{StreamID: 2, StartTime: time.Now(), UserID: &to, SourceID: 3002068, DestinationID: 9990, IsToTalkgroup: true, ToTalkgroupID: &tg}).Error)
 
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610240200").Error)
 			require.NoError(t, migration.Migrate(database, cfg))
@@ -80,7 +80,7 @@ func TestRemovingTheBuiltinServicesDropsTheParrotSeeds(t *testing.T) {
 			require.NoError(t, database.Table("repeater_ts1_static_talkgroups").Where("talkgroup_id = ?", 9990).Count(&n).Error)
 			assert.Zero(t, n)
 			var got models.Repeater
-			require.NoError(t, database.First(&got, 319186801).Error)
+			require.NoError(t, database.First(&got, 300206801).Error)
 			assert.Nil(t, got.TS2DynamicTalkgroupID)
 			var calls []models.Call
 			require.NoError(t, database.Order("stream_id").Find(&calls).Error)

@@ -45,7 +45,7 @@ func TestRegisterWithAutoApproveLogsInAtOnce(t *testing.T) {
 		router, tdb, err := testutils.CreateTestDBRouterWithConfig(func(c *config.Config) { c.AutoApprove = auto })
 		require.NoError(t, err)
 
-		user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "autouser", Password: "password"}
+		user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "autouser", Password: "password"}
 		resp, w := testutils.RegisterUser(t, router, user)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -149,7 +149,7 @@ func TestRegisterBadCallsign(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
+		DMRId:    3002068,
 		Callsign: "N0CALL",
 		Username: "n0call",
 		Password: "password",
@@ -172,8 +172,8 @@ func TestRegisterLowercaseCallsign(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -195,8 +195,8 @@ func TestRegisterUppercaseCallsign(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -218,8 +218,8 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -231,8 +231,8 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
 
 	user = apimodels.UserRegistration{
-		DMRId:    3140598,
-		Callsign: "KP4DJT",
+		DMRId:    3002198,
+		Callsign: "N7CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -254,8 +254,8 @@ func TestRegisterDuplicateDMRID(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -267,8 +267,8 @@ func TestRegisterDuplicateDMRID(t *testing.T) {
 	assert.Equal(t, "User created, please wait for admin approval", resp.Message)
 
 	user = apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username2",
 		Password: "password",
 	}
@@ -320,8 +320,8 @@ func TestDeleteUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -355,8 +355,8 @@ func TestDeleteInvalidUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -390,8 +390,8 @@ func TestApproveUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -413,8 +413,8 @@ func TestSuspendUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -459,8 +459,8 @@ func TestUnsuspendUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "ki5vmf",
+		DMRId:    3002068,
+		Callsign: "n6call",
 		Username: "username",
 		Password: "password",
 	}
@@ -518,8 +518,8 @@ func TestGetUserByID(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -594,8 +594,8 @@ func TestGetUserMe(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -624,8 +624,8 @@ func TestPromoteUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -667,8 +667,8 @@ func TestDemoteUser(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "username",
 		Password: "password",
 	}
@@ -724,8 +724,8 @@ func TestPATCHUserPreservesAdmin(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -792,8 +792,8 @@ func TestPATCHUserPreservesApproved(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -824,8 +824,8 @@ func TestPATCHUserPreservesSuspended(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -861,8 +861,8 @@ func TestPATCHUserPreservesPassword(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -895,8 +895,8 @@ func TestPATCHUserChangesPassword(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -937,8 +937,8 @@ func TestSuspendUserPreservesAdmin(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -973,8 +973,8 @@ func TestApproveUserPreservesCallsign(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -1007,8 +1007,8 @@ func TestPromoteUserPreservesSuspended(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
@@ -1041,13 +1041,13 @@ func TestDeleteUserStopsTrafficToTheirRepeaters(t *testing.T) {
 	defer tdb.CloseDB()
 
 	user := apimodels.UserRegistration{
-		DMRId:    3191868,
-		Callsign: "KI5VMF",
+		DMRId:    3002068,
+		Callsign: "N6CALL",
 		Username: "testuser",
 		Password: "password",
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	const id = uint(319186811)
+	const id = uint(300206811)
 	_, w := testutils.CreateRepeater(t, router, userJar, apimodels.RepeaterPost{RadioID: id})
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NoError(t, tdb.DB().Create(&models.Talkgroup{ID: 91, Name: "TG91"}).Error)
@@ -1076,11 +1076,11 @@ func TestDeleteUserKeepsHistory(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 
-			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 			_, _, adminJar := testutils.LoginAdmin(t, router)
 
-			const otherID, repeaterID, tgID, peerID = uint(3140001), uint(314000101), uint(91), uint(100010)
+			const otherID, repeaterID, tgID, peerID = uint(3004201), uint(300420101), uint(91), uint(100010)
 			require.NoError(t, database.Create(&models.User{ID: otherID, Callsign: "N0CALL", Username: "other", Approved: true}).Error)
 			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: repeaterID, Callsign: "N0CALL"}, OwnerID: otherID}).Error)
 
@@ -1153,7 +1153,7 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			defer tdb.CloseDB()
 			database := tdb.DB()
 
-			user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+			user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 			_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 			_, _, adminJar := testutils.LoginAdmin(t, router)
 
@@ -1165,8 +1165,8 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			_, err = models.CreatePasswordReset(database, user.DMRId, now)
 			require.NoError(t, err)
 			require.NoError(t, models.SetPositionTracking(database, user.DMRId, user.DMRId, true, now.Add(-time.Minute)))
-			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 319186801, Callsign: "KI5VMF"}, Trusted: true}).Error)
-			stored, err := models.StorePosition(database, models.Position{RadioID: user.DMRId, Latitude: 32.7, Longitude: -96.8, Format: models.PositionFormatNMEA, ReceivedAt: now, RepeaterID: 319186801})
+			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 300206801, Callsign: "N6CALL"}, Trusted: true}).Error)
+			stored, err := models.StorePosition(database, models.Position{RadioID: user.DMRId, Latitude: 32.7, Longitude: -96.8, Format: models.PositionFormatNMEA, ReceivedAt: now, RepeaterID: 300206801})
 			require.NoError(t, err)
 			require.True(t, stored)
 
@@ -1187,7 +1187,7 @@ func TestDeleteUserEndsTheirAccess(t *testing.T) {
 			assert.Zero(t, count("SELECT COUNT(*) FROM o_auth_refresh_tokens WHERE grant_id = ?", "grant"))
 			assert.Zero(t, count("SELECT COUNT(*) FROM positions WHERE radio_id = ?", user.DMRId))
 
-			again := apimodels.UserRegistration{DMRId: user.DMRId, Callsign: "KI5VMF", Username: "newuser", Password: "password"}
+			again := apimodels.UserRegistration{DMRId: user.DMRId, Callsign: "N6CALL", Username: "newuser", Password: "password"}
 			testutils.CreateAndLoginUser(t, router, again)
 			_, w = testutils.GetUserMe(t, router, userJar)
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -1282,12 +1282,12 @@ func TestUsernamesAreNotOtherCallsigns(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "Username is the callsign of another user", resp.Error)
 
-			_, w, _ = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3000005, Callsign: "N4CALL", Username: "ki5vmf", Password: "password"})
+			_, w, _ = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3000005, Callsign: "N4CALL", Username: "n6call", Password: "password"})
 			require.Equal(t, http.StatusOK, w.Code)
-			erin := apimodels.UserRegistration{DMRId: 3191868, Callsign: "N5CALL", Username: "erin", Password: "password"}
+			erin := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N5CALL", Username: "erin", Password: "password"}
 			_, w, erinJar := testutils.CreateAndLoginUser(t, router, erin)
 			require.Equal(t, http.StatusOK, w.Code)
-			resp, w = testutils.PatchUser(t, router, erin.DMRId, erinJar, apimodels.UserPatch{Callsign: "ki5vmf"})
+			resp, w = testutils.PatchUser(t, router, erin.DMRId, erinJar, apimodels.UserPatch{Callsign: "n6call"})
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 			assert.Equal(t, "Callsign is the username of another user", resp.Error)
 

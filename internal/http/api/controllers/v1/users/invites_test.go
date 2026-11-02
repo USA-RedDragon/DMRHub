@@ -50,7 +50,7 @@ func TestRegistrationModes(t *testing.T) {
 			require.NoError(t, err)
 			defer tdb.CloseDB()
 			admin := testutils.Login(t, router, "Admin")
-			reg := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "invited", Password: "password"}
+			reg := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "invited", Password: "password"}
 
 			testutils.SaveSetting(t, router, admin, "registration", "closed")
 			resp, w := testutils.RegisterUser(t, router, reg)
@@ -84,7 +84,7 @@ func TestRegistrationModes(t *testing.T) {
 			assert.Equal(t, "Your account is ready. You can log in now.", resp.Message, "an invite approves the user")
 			testutils.Login(t, router, "invited")
 
-			reg2 := apimodels.UserRegistration{DMRId: 3191877, Callsign: "KQ4APS", Username: "second", Password: "password", Invite: made.Code}
+			reg2 := apimodels.UserRegistration{DMRId: 3002077, Callsign: "K7CALL", Username: "second", Password: "password", Invite: made.Code}
 			resp, w = testutils.RegisterUser(t, router, reg2)
 			assert.Equal(t, http.StatusBadRequest, w.Code, "an invite works once")
 			assert.Equal(t, msgBadInvite, resp.Error)
@@ -96,8 +96,8 @@ func TestRegistrationModes(t *testing.T) {
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
 			require.Len(t, list.Invites, 1)
 			require.NotNil(t, list.Invites[0].UsedBy)
-			assert.Equal(t, uint(3191868), *list.Invites[0].UsedBy)
-			assert.Equal(t, "KI5VMF", list.Invites[0].UsedByCallsign)
+			assert.Equal(t, uint(3002068), *list.Invites[0].UsedBy)
+			assert.Equal(t, "N6CALL", list.Invites[0].UsedByCallsign)
 			assert.Equal(t, http.StatusNotFound, testutils.Do(t, router, admin, http.MethodDelete, "/api/v1/admin/invites/"+itoa(made.ID), nil).Code, "a used invite stays")
 
 			w = testutils.Do(t, router, admin, http.MethodPost, "/api/v1/admin/invites", nil)

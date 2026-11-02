@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	radio   = 3191868
+	radio   = 3002068
 	service = 5057
 )
 
@@ -161,7 +161,7 @@ func radioBursts(t *testing.T, payload []byte, confirmed bool) []*pluginv1.Burst
 			bursts = append(bursts, &pluginv1.Burst{
 				Source: radio, Destination: service, Slot: 2, StreamId: stream, Sequence: uint32(len(bursts)), //nolint:gosec // a few bursts
 				FrameType: pluginv1.FrameType_FRAME_TYPE_DATA_SYNC, DataTypeOrVoiceSequence: uint32(o.Hint.DataType),
-				Payload: append([]byte(nil), o.Burst[:]...), Repeater: 319186801,
+				Payload: append([]byte(nil), o.Burst[:]...), Repeater: 300206801,
 			})
 		}
 		if tx.State() == data.SenderIdle && len(bursts) > 0 {

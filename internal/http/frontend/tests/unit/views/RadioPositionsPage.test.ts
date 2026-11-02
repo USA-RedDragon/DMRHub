@@ -30,7 +30,7 @@ vi.mock('@unhead/vue', () => ({
   useHead: vi.fn(),
 }));
 
-const route = vi.hoisted(() => ({ params: { id: '3191868' } }));
+const route = vi.hoisted(() => ({ params: { id: '3002068' } }));
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -43,25 +43,25 @@ import RadioPositionsPage from '@/views/positions/RadioPositionsPage.vue';
 const mockAPI = API as unknown as { get: Mock; put: Mock };
 
 const setting = {
-  radio_id: 3191868,
+  radio_id: 3002068,
   tracking: true,
   interval_minutes: 10,
   retention_hours: 24,
   aprs: true,
   aprs_ssid: '9',
   aprs_symbol: '',
-  aprs_comment: 'DMR 3191868',
+  aprs_comment: 'DMR 3002068',
 };
 
 function serve(aprs = true) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url === '/positions/radios') {
       return Promise.resolve({
-        data: { radios: [setting], intervals: [5, 10, 15, 30, 60], retention_hours: [24, 168, 720], aprs, callsign: 'KI5VMF' },
+        data: { radios: [setting], intervals: [5, 10, 15, 30, 60], retention_hours: [24, 168, 720], aprs, callsign: 'N6CALL' },
       });
     }
-    if (url === '/positions/3191868') {
-      const latest = { radio_id: 3191868, received_at: new Date(Date.now() - 4 * 60000).toISOString(), service_id: 5059 };
+    if (url === '/positions/3002068') {
+      const latest = { radio_id: 3002068, received_at: new Date(Date.now() - 4 * 60000).toISOString(), service_id: 5059 };
       return Promise.resolve({ data: { latest, track: [latest] } });
     }
     return Promise.reject({ response: { status: 404 } });
@@ -78,47 +78,47 @@ describe('RadioPositionsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
-    route.params.id = '3191868';
+    route.params.id = '3002068';
   });
 
   it('shows the setting of the radio as the mockup does', async () => {
     serve();
     const wrapper = await mountPage();
-    expect(wrapper.find('[data-test="radio-subtitle"]').text()).toBe('KI5VMF · last report 4 min ago');
+    expect(wrapper.find('[data-test="radio-subtitle"]').text()).toBe('N6CALL · last report 4 min ago');
     expect((wrapper.find('#interval').element as HTMLSelectElement).value).toBe('10');
     expect(wrapper.findAll('#keep option').map((o) => o.text())).toEqual(['24 hours', '7 days', '30 days']);
-    expect(wrapper.find('[data-test="aprs-status"]').text()).toBe('On, as KI5VMF-9.');
+    expect(wrapper.find('[data-test="aprs-status"]').text()).toBe('On, as N6CALL-9.');
     expect(wrapper.find('#symbol option').text()).toBe('As the radio reports it (car)');
     expect(wrapper.findAll('#ssid option').map((o) => o.text())).toEqual(['-7 handheld', '-9 mobile', '-5 other network', '-10 internet', 'none']);
-    expect(wrapper.find('[data-test="download-gpx"]').attributes('href')).toBe('/api/v1/positions/3191868/track?format=gpx');
+    expect(wrapper.find('[data-test="download-gpx"]').attributes('href')).toBe('/api/v1/positions/3002068/track?format=gpx');
     expect(wrapper.text()).not.toMatch(/interval_minutes|aprs_ssid|min-interval/);
   });
 
   it('saves the whole setting', async () => {
     serve();
-    mockAPI.put.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({ data: { radio_id: 3191868, ...body } }));
+    mockAPI.put.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({ data: { radio_id: 3002068, ...body } }));
     const wrapper = await mountPage();
     await wrapper.find('#interval').setValue('30');
     await wrapper.find('#symbol').setValue('bike');
     await wrapper.find('#ssid').setValue('7');
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(mockAPI.put).toHaveBeenCalledWith('/positions/3191868/settings', {
+    expect(mockAPI.put).toHaveBeenCalledWith('/positions/3002068/settings', {
       tracking: true,
       interval_minutes: 30,
       retention_hours: 24,
       aprs: true,
       aprs_ssid: '7',
       aprs_symbol: 'bike',
-      aprs_comment: 'DMR 3191868',
+      aprs_comment: 'DMR 3002068',
     });
     expect(wrapper.find('[data-test="save-message"]').text()).toBe('Saved.');
-    expect(wrapper.find('[data-test="aprs-status"]').text()).toBe('On, as KI5VMF-7.');
+    expect(wrapper.find('[data-test="aprs-status"]').text()).toBe('On, as N6CALL-7.');
   });
 
   it('turns APRS-IS off with tracking', async () => {
     serve();
-    mockAPI.put.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({ data: { radio_id: 3191868, ...body } }));
+    mockAPI.put.mockImplementation((_url: string, body: Record<string, unknown>) => Promise.resolve({ data: { radio_id: 3002068, ...body } }));
     const wrapper = await mountPage();
     wrapper.findAllComponents({ name: 'Switch' })[0]!.vm.$emit('update:modelValue', false);
     await flushPromises();
@@ -146,7 +146,7 @@ describe('RadioPositionsPage', () => {
 
   it('refuses a radio the user does not own', async () => {
     serve();
-    route.params.id = '3140598';
+    route.params.id = '3002198';
     const wrapper = await mountPage();
     expect(wrapper.find('[data-test="radio-missing"]').exists()).toBe(true);
     expect(wrapper.find('form').exists()).toBe(false);

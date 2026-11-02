@@ -72,7 +72,7 @@ func TestAddMessagesKeepsUsersWithSMSStorageOff(t *testing.T) {
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610222000").Error)
 			require.NoError(t, database.Exec(
 				"INSERT INTO users (id, callsign, username, password, admin, super_admin, email, approved, suspended, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				3191868, "KI5VMF", "old", "", false, false, "", true, false, time.Now(), time.Now(),
+				3002068, "N6CALL", "old", "", false, false, "", true, false, time.Now(), time.Now(),
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))
@@ -80,11 +80,11 @@ func TestAddMessagesKeepsUsersWithSMSStorageOff(t *testing.T) {
 			assert.True(t, m.HasTable(&models.Message{}))
 			assert.True(t, m.HasTable(&models.UserRadioID{}))
 			var got models.User
-			require.NoError(t, database.First(&got, 3191868).Error)
+			require.NoError(t, database.First(&got, 3002068).Error)
 			assert.False(t, got.SMSStorageEnabled)
 			assert.Nil(t, got.SMSStorageSince)
-			require.NoError(t, database.Create(&messageOf202610222000{ReceivedAt: time.Now(), SourceID: 1, DestinationID: 3191868, Format: string(models.MessageFormatIP)}).Error)
-			require.NoError(t, database.Create(&models.UserRadioID{UserID: 3191868, RadioID: 3191877, VerifiedAt: time.Now()}).Error)
+			require.NoError(t, database.Create(&messageOf202610222000{ReceivedAt: time.Now(), SourceID: 1, DestinationID: 3002068, Format: string(models.MessageFormatIP)}).Error)
+			require.NoError(t, database.Create(&models.UserRadioID{UserID: 3002068, RadioID: 3002077, VerifiedAt: time.Now()}).Error)
 		})
 	}
 }

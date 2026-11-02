@@ -66,7 +66,7 @@ func webTransportServerWith(t *testing.T, set func(*config.Config)) (*Server, *c
 	require.NoError(t, err)
 	h := hub.NewHub(database, kvStore, ps, nil)
 	t.Cleanup(func() { h.Stop(context.Background()) })
-	for _, id := range []uint{311860, 311861} {
+	for _, id := range []uint{990360, 990361} {
 		require.NoError(t, database.Create(&models.Repeater{
 			RepeaterConfiguration: models.RepeaterConfiguration{ID: id},
 			Type:                  models.RepeaterTypeMMDVM,
@@ -175,9 +175,9 @@ func TestWebTransportCarriesTheMMDVMLogin(t *testing.T) {
 	one := dialByHash(t, s, cfg)
 	two := dialByHash(t, s, cfg)
 
-	ack := rptlAck(t, one, 311860)
+	ack := rptlAck(t, one, 990360)
 	assert.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(ack, dmrd.DialectMMDVM), "an RPTL in a datagram gets its RPTACK in a datagram")
-	ack2 := rptlAck(t, two, 311861)
+	ack2 := rptlAck(t, two, 990361)
 	assert.Equal(t, dmrd.CommandRPTACK, dmrd.Classify(ack2, dmrd.DialectMMDVM), "each session is its own peer")
 
 	s.mu.Lock()

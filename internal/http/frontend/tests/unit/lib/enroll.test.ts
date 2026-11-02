@@ -24,9 +24,9 @@ describe('enroll', () => {
   it('knows the kind of a repeater from its type and ID', () => {
     expect(connectKind('mmdvm', 300000101)).toBe('hotspot');
     expect(connectKind('mmdvm', 3000001)).toBe('hotspot');
-    expect(connectKind('', 311860)).toBe('repeater');
-    expect(connectKind('ipsc', 311860)).toBe('ipsc');
-    expect(connectKind('modem', 311860)).toBeNull();
+    expect(connectKind('', 990360)).toBe('repeater');
+    expect(connectKind('ipsc', 990360)).toBe('ipsc');
+    expect(connectKind('modem', 990360)).toBeNull();
   });
 
   it('lists only the clients of the kind', () => {

@@ -34,15 +34,15 @@ func TestSavingAStaleUserKeepsTheNewPassword(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a", Password: "old-hash"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "a", Password: "old-hash"}).Error)
 	var stale models.User
-	require.NoError(t, database.First(&stale, 3191868).Error)
-	require.NoError(t, models.SetPassword(database, 3191868, "new-hash", false))
+	require.NoError(t, database.First(&stale, 3002068).Error)
+	require.NoError(t, models.SetPassword(database, 3002068, "new-hash", false))
 
 	stale.Suspended = true
 	require.NoError(t, database.Save(&stale).Error)
 	var got models.User
-	require.NoError(t, database.First(&got, 3191868).Error)
+	require.NoError(t, database.First(&got, 3002068).Error)
 	assert.True(t, got.Suspended)
 	assert.Equal(t, "new-hash", got.Password)
 }

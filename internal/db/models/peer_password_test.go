@@ -35,9 +35,9 @@ import (
 func TestAStaleSaveKeepsTheRotatedPeerPassword(t *testing.T) {
 	t.Parallel()
 	database := foreignKeyDB(t)
-	require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "ki5vmf"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "n6call"}).Error)
 	const id = 3000
-	require.NoError(t, database.Create(&models.Peer{ID: id, OwnerID: 3191868, Password: "oldPassword1!", IP: "192.0.2.10", Port: 62035}).Error)
+	require.NoError(t, database.Create(&models.Peer{ID: id, OwnerID: 3002068, Password: "oldPassword1!", IP: "192.0.2.10", Port: 62035}).Error)
 	stale, err := models.FindPeerByID(database, id)
 	require.NoError(t, err)
 	require.NoError(t, models.SetPeerPassword(database, id, "newPassword2!"))

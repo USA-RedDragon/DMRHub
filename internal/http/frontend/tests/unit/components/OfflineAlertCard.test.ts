@@ -35,7 +35,7 @@ const state = (extra: Record<string, unknown> = {}) => ({
 });
 
 function card() {
-  return mount(OfflineAlertCard, { props: { repeaterId: 319186801, device: 'hotspot' }, global: { stubs: { RouterLink: true } } });
+  return mount(OfflineAlertCard, { props: { repeaterId: 300206801, device: 'hotspot' }, global: { stubs: { RouterLink: true } } });
 }
 
 describe('OfflineAlertCard', () => {
@@ -60,15 +60,15 @@ describe('OfflineAlertCard', () => {
 
     await w.find('[data-test="alert-on"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/319186801/alert', { enabled: true, delay_minutes: 10, back: false });
+    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/300206801/alert', { enabled: true, delay_minutes: 10, back: false });
     expect(w.find('[data-test="alert-email"]').text()).toBe('Emails go to k***@example.org.');
 
     await w.find('[data-test="alert-delay"]').setValue('30');
     await flushPromises();
-    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/319186801/alert', { enabled: true, delay_minutes: 30, back: false });
+    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/300206801/alert', { enabled: true, delay_minutes: 30, back: false });
     await w.find('[data-test="alert-back"]').setValue(true);
     await flushPromises();
-    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/319186801/alert', { enabled: true, delay_minutes: 30, back: true });
+    expect(mockAPI.put).toHaveBeenLastCalledWith('/repeaters/300206801/alert', { enabled: true, delay_minutes: 30, back: true });
   });
 
   it('asks for a verified email before the alert can be turned on', async () => {

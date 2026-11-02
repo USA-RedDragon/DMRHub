@@ -46,7 +46,7 @@ const row = (id: number, callsign: string, username: string) => ({
 });
 
 async function saveCallsign(callsign: string) {
-  mockAPI.get.mockResolvedValue({ data: { total: 1, users: [row(3191868, 'KI5VMF', 'testuser')] } });
+  mockAPI.get.mockResolvedValue({ data: { total: 1, users: [row(3002068, 'N6CALL', 'testuser')] } });
   const add = vi.fn();
   const wrapper = mount(UserTable, {
     attachTo: document.body,
@@ -71,26 +71,26 @@ describe('UserTable RadioID override', () => {
 
   it('asks before it saves a callsign that RadioID does not list', async () => {
     mockAPI.patch.mockRejectedValueOnce({
-      response: { status: 400, data: { error: 'Callsign does not match DMR ID', radio_id_mismatch: true, radio_id_callsign: 'KI5VMF' } },
+      response: { status: 400, data: { error: 'Callsign does not match DMR ID', radio_id_mismatch: true, radio_id_callsign: 'N6CALL' } },
     });
     const { wrapper, add } = await saveCallsign('n0call');
     expect(add).not.toHaveBeenCalled();
     const prompt = wrapper.find('[data-test="user-radioid-prompt"]');
-    expect(prompt.text()).toContain('RadioID lists 3191868 as KI5VMF.');
+    expect(prompt.text()).toContain('RadioID lists 3002068 as N6CALL.');
     expect(prompt.text()).toContain('Save N0CALL anyway');
     expect(wrapper.findAll('button').some((b) => b.text() === 'Save Changes')).toBe(false);
 
     mockAPI.patch.mockResolvedValueOnce({ data: { message: 'User updated' } });
     await wrapper.find('[data-test="user-radioid-override"]').trigger('click');
     await flushPromises();
-    expect(mockAPI.patch).toHaveBeenLastCalledWith('/users/3191868', { callsign: 'n0call', username: 'testuser', override_radio_id: true });
+    expect(mockAPI.patch).toHaveBeenLastCalledWith('/users/3002068', { callsign: 'n0call', username: 'testuser', override_radio_id: true });
     expect(add).toHaveBeenCalledWith(expect.objectContaining({ severity: 'success' }));
     expect(wrapper.find('[data-test="user-radioid-prompt"]').exists()).toBe(false);
   });
 
   it('cancels the override', async () => {
     mockAPI.patch.mockRejectedValueOnce({
-      response: { status: 400, data: { error: 'Callsign does not match DMR ID', radio_id_mismatch: true, radio_id_callsign: 'KI5VMF' } },
+      response: { status: 400, data: { error: 'Callsign does not match DMR ID', radio_id_mismatch: true, radio_id_callsign: 'N6CALL' } },
     });
     const { wrapper } = await saveCallsign('n0call');
     await wrapper.find('[data-test="user-radioid-prompt"]').findAll('button').find((b) => b.text() === 'Cancel')!.trigger('click');

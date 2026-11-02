@@ -209,7 +209,7 @@ func TestTransports(t *testing.T) { //nolint:paralleltest
 
 func (x *xport) payload(r *rig, rnd *rand.Rand, kind string, src xsource) script {
 	w := x.want(r, src)
-	from := uint(3109200 + r.streams.Load()%500)
+	from := uint(3002900 + r.streams.Load()%500)
 	switch kind {
 	case "sms":
 		s := smsScript("sms", true, x.tg, from, w, sms.FormatIP, enums.DataTypeRate12)
@@ -414,7 +414,7 @@ func portOf(addr string) int {
 func (r *rig) runExternal(t *testing.T, s settings, res *result, ec extClient, k int, script string, hubPort, obPort int) {
 	const pass = "passw0rd"
 	id := uint(319800 + k)    //nolint:gosec
-	obID := uint(3109300 + k) //nolint:gosec
+	obID := uint(3003000 + k) //nolint:gosec
 	tg := tgID(0)
 	r.stack.SeedMMDVMRepeater(t, id, xportUser, pass)
 	if ec.slot2 {

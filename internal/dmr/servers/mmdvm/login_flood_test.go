@@ -57,7 +57,7 @@ func rptl(id uint32) []byte {
 // RPTACK while they wait, within the LoginTimeoutDefault of a repeater.
 func TestALoginFloodDoesNotDelayARealLogin(t *testing.T) {
 	t.Parallel()
-	const realID = 311870
+	const realID = 990370
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)

@@ -37,7 +37,7 @@ const future = new Date(Date.now() + 86400000).toISOString();
 const past = new Date(Date.now() - 86400000).toISOString();
 
 function invite(id: number, over: Partial<Invite> = {}): Invite {
-  return { id, created_by: 1, created_by_callsign: 'N0ADM', created_at: past, expires_at: future, used_by: null, used_at: null, ...over };
+  return { id, created_by: 1, created_by_callsign: 'K4CALL', created_at: past, expires_at: future, used_by: null, used_at: null, ...over };
 }
 
 function serve(invites: Invite[]) {
@@ -58,7 +58,7 @@ describe('InvitesPage', () => {
 
   it('lists the invites with Delete only on the unused ones', async () => {
     serve([
-      invite(1, { used_by: 3191868, used_by_callsign: 'KI5VMF', used_at: past }),
+      invite(1, { used_by: 3002068, used_by_callsign: 'N6CALL', used_at: past }),
       invite(2),
       invite(3, { expires_at: past }),
     ]);
@@ -66,7 +66,7 @@ describe('InvitesPage', () => {
     const rows = wrapper.findAll('[data-test="invite-row"]');
     expect(rows).toHaveLength(3);
     expect(rows[0]!.text()).toContain('Used');
-    expect(rows[0]!.text()).toContain('KI5VMF');
+    expect(rows[0]!.text()).toContain('N6CALL');
     expect(rows[0]!.find('[data-test="invite-delete"]').exists()).toBe(false);
     expect(rows[1]!.find('[data-test="invite-delete"]').exists()).toBe(true);
     expect(rows[2]!.text()).toContain('Expired');

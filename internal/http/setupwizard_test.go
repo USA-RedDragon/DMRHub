@@ -565,7 +565,7 @@ func TestSetupWizardKeepsTheSettingsOfAnAdmin(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
-	require.NoError(t, models.ClaimFirstAdmin(database, &models.User{ID: 3000001, Callsign: "N0ADM", Username: "admin", Password: "x"}))
+	require.NoError(t, models.ClaimFirstAdmin(database, &models.User{ID: 3000001, Callsign: "K4CALL", Username: "admin", Password: "x"}))
 	live := liveconfig.New(liveconfig.Options{Base: &base, DB: database})
 	require.NoError(t, live.Boot(context.Background()))
 	require.Error(t, live.Current().Get().Validate())
@@ -601,7 +601,7 @@ func sqliteHub(t *testing.T, n int, store liveconfig.DatabaseState) (*config.Con
 	database, err := db.MakeDB(&base)
 	require.NoError(t, err)
 	for i := range n {
-		require.NoError(t, database.Create(&models.User{ID: uint(3000001 + i), Callsign: fmt.Sprintf("N0US%c", 'A'+i), Username: fmt.Sprintf("user%d", i), Password: "x"}).Error)
+		require.NoError(t, database.Create(&models.User{ID: uint(3000001 + i), Callsign: fmt.Sprintf("K6TEST%c", 'A'+i), Username: fmt.Sprintf("user%d", i), Password: "x"}).Error)
 	}
 	sqlDB, err := database.DB()
 	require.NoError(t, err)

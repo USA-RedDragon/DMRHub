@@ -38,9 +38,9 @@ import (
 )
 
 const (
-	ownerHotspot  = uint(319186801)
-	ownerHotspot2 = uint(319186802)
-	otherHotspot  = uint(319186901)
+	ownerHotspot  = uint(300206801)
+	ownerHotspot2 = uint(300206802)
+	otherHotspot  = uint(300206901)
 )
 
 type env struct {
@@ -57,8 +57,8 @@ func newEnv(t *testing.T, be testutils.Backend) *env {
 	require.NoError(t, err)
 	t.Cleanup(tdb.CloseDB)
 	e := &env{router: router, tdb: tdb}
-	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "owner", Password: "password"})
-	_, _, e.other = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3191869, Callsign: "W5DFW", Username: "other", Password: "password"})
+	_, _, e.owner = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "owner", Password: "password"})
+	_, _, e.other = testutils.CreateAndLoginUser(t, router, apimodels.UserRegistration{DMRId: 3002069, Callsign: "K1CALL", Username: "other", Password: "password"})
 	_, _, e.admin = testutils.LoginAdmin(t, router)
 	for _, r := range []struct {
 		jar testutils.CookieJar
@@ -129,7 +129,7 @@ func TestAnOwnerMakesALocalGroupAndAnotherOwnerSaysYes(t *testing.T) {
 			code, msg = e.do(t, http.MethodPost, path+"/repeaters", e.owner, fmt.Sprintf(`{"repeater_id":%d,"slot":1}`, otherHotspot), &g)
 			require.Equal(t, http.StatusOK, code, msg)
 			require.Len(t, g.Repeaters, 2)
-			assert.Equal(t, apimodels.LocalGroupRepeater{ID: ownerHotspot, Callsign: g.Repeaters[0].Callsign, Owner: models.UserRef{ID: 3191868, Callsign: "KI5VMF"}, Slot: 2, State: models.LocalMemberIn, Mine: true}, g.Repeaters[0],
+			assert.Equal(t, apimodels.LocalGroupRepeater{ID: ownerHotspot, Callsign: g.Repeaters[0].Callsign, Owner: models.UserRef{ID: 3002068, Callsign: "N6CALL"}, Slot: 2, State: models.LocalMemberIn, Mine: true}, g.Repeaters[0],
 				"a repeater of the group owner joins at once")
 			assert.Equal(t, models.LocalMemberAsked, g.Repeaters[1].State, "a repeater of another owner waits for that owner")
 			assert.Equal(t, 1, g.Members)
@@ -143,7 +143,7 @@ func TestAnOwnerMakesALocalGroupAndAnotherOwnerSaysYes(t *testing.T) {
 			require.Equal(t, http.StatusOK, code, msg)
 			require.Len(t, asks, 1)
 			assert.Equal(t, apimodels.RepeaterLocalGroup{ID: g.ID, Name: "North Texas", Talkgroup: 8, Slot: 1, State: models.LocalMemberAsked,
-				Owner: models.UserRef{ID: 3191868, Callsign: "KI5VMF"}, AskedBy: models.UserRef{ID: 3191868, Callsign: "KI5VMF"}, Repeaters: 1}, asks[0])
+				Owner: models.UserRef{ID: 3002068, Callsign: "N6CALL"}, AskedBy: models.UserRef{ID: 3002068, Callsign: "N6CALL"}, Repeaters: 1}, asks[0])
 			code, _ = e.do(t, http.MethodGet, fmt.Sprintf("/repeaters/%d/localgroups", otherHotspot), e.owner, "", &asks)
 			require.Equal(t, http.StatusOK, code)
 			assert.Empty(t, asks, "only the owner of a repeater sees the requests to add it")
@@ -204,7 +204,7 @@ func TestARepeaterIsInOneGroupForEachLocalTalkgroupThroughTheAPI(t *testing.T) {
 
 			code, _ = e.do(t, http.MethodPost, fmt.Sprintf("/localgroups/%d/repeaters", club.ID), e.owner, fmt.Sprintf(`{"repeater_id":%d}`, ownerHotspot2), nil)
 			assert.Equal(t, http.StatusForbidden, code, "only the group owner adds repeaters")
-			code, _ = e.do(t, http.MethodPost, fmt.Sprintf("/localgroups/%d/repeaters", club.ID), e.other, `{"repeater_id":319186899}`, nil)
+			code, _ = e.do(t, http.MethodPost, fmt.Sprintf("/localgroups/%d/repeaters", club.ID), e.other, `{"repeater_id":300206899}`, nil)
 			assert.Equal(t, http.StatusNotFound, code)
 
 			var list apimodels.LocalGroupList
@@ -228,9 +228,9 @@ func TestACosysopManagesTheLocalGroupsOfItsRepeater(t *testing.T) {
 		t.Run(be.Name, func(t *testing.T) {
 			t.Parallel()
 			e := newEnv(t, be)
-			_, _, cosysop := testutils.CreateAndLoginUser(t, e.router, apimodels.UserRegistration{DMRId: 3191870, Callsign: "N5ARL", Username: "cosysop", Password: "password"})
+			_, _, cosysop := testutils.CreateAndLoginUser(t, e.router, apimodels.UserRegistration{DMRId: 3002070, Callsign: "W3CALL", Username: "cosysop", Password: "password"})
 			now := time.Now()
-			require.NoError(t, e.tdb.DB().Create(&models.RepeaterCosysop{RepeaterID: otherHotspot, UserID: 3191870, InvitedBy: 3191869, InvitedAt: now, ExpiresAt: now.Add(time.Hour), AcceptedAt: &now}).Error)
+			require.NoError(t, e.tdb.DB().Create(&models.RepeaterCosysop{RepeaterID: otherHotspot, UserID: 3002070, InvitedBy: 3002069, InvitedAt: now, ExpiresAt: now.Add(time.Hour), AcceptedAt: &now}).Error)
 
 			g := e.create(t, e.owner, "North Texas", 8)
 			path := fmt.Sprintf("/localgroups/%d", g.ID)

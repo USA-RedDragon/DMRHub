@@ -103,7 +103,7 @@ describe('RepeaterConnectPage', () => {
   });
 
   it('shows an IPSC repeater only the IPSC port, the auth key and its clients', async () => {
-    const w = await mountPage({ id: 311860, type: 'ipsc' });
+    const w = await mountPage({ id: 990360, type: 'ipsc' });
     expect(tabNames(w)).toEqual(['Motorola CPS', 'Other']);
     const details = w.find('[data-test="details"]').text();
     expect(details).toContain('50010');

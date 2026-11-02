@@ -67,7 +67,7 @@ func TestConfigSavesOpenBridgeSettings(t *testing.T) {
 	assert.Equal(t, map[string]string{"server-id": "the OpenBridge server ID must be 0 or 4 to 7 digits"}, res.Errors.DMR.OpenBridge)
 
 	section(t, cfg, "http")["canonical-host"] = "http://localhost"
-	section(t, dmr, "ipsc")["network-id"] = 311860
+	section(t, dmr, "ipsc")["network-id"] = 990360
 	ob["server-id"] = 3129
 	ob["bind"] = "127.0.0.1"
 	ob["port"] = 62040

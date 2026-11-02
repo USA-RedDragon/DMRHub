@@ -40,9 +40,9 @@ func TestTheConnectionLogShowsTheLastDayToSysops(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newCosysopEnv(t)
 		now := time.Now()
-		_, err := models.InviteCosysop(e.db, cosysopRepeater, 3191869, 3191868, now)
+		_, err := models.InviteCosysop(e.db, cosysopRepeater, 3002069, 3002068, now)
 		require.NoError(t, err)
-		_, err = models.AnswerCosysopInvite(e.db, cosysopRepeater, 3191869, true, now)
+		_, err = models.AnswerCosysopInvite(e.db, cosysopRepeater, 3002069, true, now)
 		require.NoError(t, err)
 		for _, ev := range []models.RepeaterEvent{
 			{RepeaterID: cosysopRepeater, Kind: "connected", Address: "203.0.113.7", LastAt: now.Add(-25 * time.Hour)},
@@ -56,7 +56,7 @@ func TestTheConnectionLogShowsTheLastDayToSysops(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, jar := range []testutils.CookieJar{e.owner, e.kevin} {
-			w := testutils.Do(t, e.router, jar, http.MethodGet, "/api/v1/repeaters/319186801/events", nil)
+			w := testutils.Do(t, e.router, jar, http.MethodGet, "/api/v1/repeaters/300206801/events", nil)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			var out struct {
 				Events []models.RepeaterEvent `json:"events"`
@@ -69,7 +69,7 @@ func TestTheConnectionLogShowsTheLastDayToSysops(t *testing.T) {
 			require.WithinDuration(t, now.Add(-time.Hour), out.Events[0].FirstAt, time.Second)
 			require.Equal(t, "timeout", out.Events[1].Kind)
 		}
-		w := testutils.Do(t, e.router, e.other, http.MethodGet, "/api/v1/repeaters/319186801/events", nil)
+		w := testutils.Do(t, e.router, e.other, http.MethodGet, "/api/v1/repeaters/300206801/events", nil)
 		require.Equal(t, http.StatusForbidden, w.Code)
 	})
 }

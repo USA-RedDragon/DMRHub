@@ -72,7 +72,7 @@ func TestHandOverEveryBurstOfASlowPeerMove(t *testing.T) {
 // the report to the subscription before HandOver returns.
 func TestHandOverWhatWaitsForAnEarlierPeerHandover(t *testing.T) {
 	t.Parallel()
-	const peer = 311861
+	const peer = 990361
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
@@ -80,7 +80,7 @@ func TestHandOverWhatWaitsForAnEarlierPeerHandover(t *testing.T) {
 	t.Cleanup(func() { _ = ps.Close() })
 	h := hub.NewHub(nil, nil, ps, nil)
 	t.Cleanup(func() { h.Stop(context.Background()) })
-	sub := ps.Subscribe("hub:handover:" + models.RepeaterTypeIPSC + ":311861")
+	sub := ps.Subscribe("hub:handover:" + models.RepeaterTypeIPSC + ":990361")
 	t.Cleanup(func() { _ = sub.Close() })
 	s := &IPSCServer{clock: clock.Real(), localID: 1, translator: NewIPSCTranslator(1), hub: h, peers: map[uint32]*peerState{peer: {}},
 		pacer: newPacer(clock.Real(), func(slotKey, []byte) {}, nil)}

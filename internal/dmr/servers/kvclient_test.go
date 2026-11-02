@@ -163,7 +163,7 @@ func TestKeyFormatConsistency(t *testing.T) {
 	client := MakeKVClient(store)
 	ctx := context.Background()
 
-	ids := []uint{1, 42, 311860}
+	ids := []uint{1, 42, 990360}
 	for _, id := range ids {
 		r := models.Repeater{}
 		r.ID = id

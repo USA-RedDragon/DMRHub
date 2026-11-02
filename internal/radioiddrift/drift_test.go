@@ -86,26 +86,26 @@ func TestCheckFindsRadioIDsThatRadioIDNoLongerMatches(t *testing.T) {
 			cfg, database, kvStore := setup(t, be)
 			cfg.DMR.DisableRadioIDValidation = false
 			for _, u := range []models.User{
-				{ID: 3100001, Callsign: "N0SAME", Username: "same"},
-				{ID: 3100002, Callsign: "N0OLD", Username: "moved"},
-				{ID: 3100003, Callsign: "N0GONE", Username: "gone"},
-				{ID: 3100004, Callsign: "N0ADMIN", Username: "chosen"},
-				{ID: 3100005, Callsign: "N0DEL", Username: "deleted"},
+				{ID: 3002401, Callsign: "N0SAME", Username: "same"},
+				{ID: 3002402, Callsign: "K5CALL", Username: "moved"},
+				{ID: 3002403, Callsign: "N0GONE", Username: "gone"},
+				{ID: 3002404, Callsign: "N0ADMIN", Username: "chosen"},
+				{ID: 3002405, Callsign: "K5TEST", Username: "deleted"},
 			} {
 				require.NoError(t, database.Create(&u).Error)
 			}
 			for _, r := range []models.UserRadioID{
-				{UserID: 3100001, RadioID: 3100011},
-				{UserID: 3100001, RadioID: 3100012},
-				{UserID: 3100001, RadioID: 3100013},
-				{UserID: 3100004, RadioID: 3100041},
+				{UserID: 3002401, RadioID: 3002411},
+				{UserID: 3002401, RadioID: 3002412},
+				{UserID: 3002401, RadioID: 3002413},
+				{UserID: 3002404, RadioID: 3002441},
 			} {
 				r.VerifiedAt = time.Now()
 				require.NoError(t, database.Create(&r).Error)
 			}
-			require.NoError(t, models.SetCallsignOverride(database, 3100004, true))
-			require.NoError(t, database.Delete(&models.User{ID: 3100005}).Error)
-			dir := directory{3100001: "n0same", 3100011: "N0SAME", 3100012: "N0OTHER", 3100002: "N0NEW", 3100004: "N0RID", 3100041: "N0RID", 3100005: "N0RID2", 9999999: "N0NONE"}
+			require.NoError(t, models.SetCallsignOverride(database, 3002404, true))
+			require.NoError(t, database.Delete(&models.User{ID: 3002405}).Error)
+			dir := directory{3002401: "n0same", 3002411: "N0SAME", 3002412: "N0OTHER", 3002402: "K2CALL", 3002404: "N4TEST", 3002441: "N4TEST", 3002405: "N4TEST2", 9999999: "N0NONE"}
 
 			first := time.Date(2026, 10, 27, 1, 0, 0, 0, time.UTC)
 			res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), first)
@@ -113,23 +113,23 @@ func TestCheckFindsRadioIDsThatRadioIDNoLongerMatches(t *testing.T) {
 			assert.Equal(t, radioiddrift.Result{Ran: true, Checked: 6, Drifts: 4}, res)
 			got := drifts(t, database)
 			require.Len(t, got, 4)
-			assert.Equal(t, models.RadioIDDrift{RadioID: 3100002, UserID: 3100002, RadioIDCallsign: "N0NEW"}, bare(got[3100002]))
-			assert.Equal(t, models.RadioIDDrift{RadioID: 3100003, UserID: 3100003}, bare(got[3100003]))
-			assert.Equal(t, models.RadioIDDrift{RadioID: 3100012, UserID: 3100001, RadioIDCallsign: "N0OTHER"}, bare(got[3100012]))
-			assert.Equal(t, models.RadioIDDrift{RadioID: 3100013, UserID: 3100001}, bare(got[3100013]))
-			assert.WithinDuration(t, first, got[3100003].FoundAt, time.Second)
+			assert.Equal(t, models.RadioIDDrift{RadioID: 3002402, UserID: 3002402, RadioIDCallsign: "K2CALL"}, bare(got[3002402]))
+			assert.Equal(t, models.RadioIDDrift{RadioID: 3002403, UserID: 3002403}, bare(got[3002403]))
+			assert.Equal(t, models.RadioIDDrift{RadioID: 3002412, UserID: 3002401, RadioIDCallsign: "N0OTHER"}, bare(got[3002412]))
+			assert.Equal(t, models.RadioIDDrift{RadioID: 3002413, UserID: 3002401}, bare(got[3002413]))
+			assert.WithinDuration(t, first, got[3002403].FoundAt, time.Second)
 
 			rows, err := models.ListRadioIDDrifts(database)
 			require.NoError(t, err)
 			require.Len(t, rows, 4)
-			assert.Equal(t, uint(3100002), rows[0].RadioID)
+			assert.Equal(t, uint(3002402), rows[0].RadioID)
 			assert.Equal(t, "moved", rows[0].Username)
-			assert.Equal(t, "N0OLD", rows[0].Callsign)
+			assert.Equal(t, "K5CALL", rows[0].Callsign)
 			n, err := models.CountRadioIDDrifts(database)
 			require.NoError(t, err)
 			assert.Equal(t, int64(4), n)
 
-			dir[3100002] = "N0OLD"
+			dir[3002402] = "K5CALL"
 			second := first.Add(24 * time.Hour)
 			require.NoError(t, kvStore.Delete(context.Background(), radioiddrift.LockKey))
 			res, err = radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), second)
@@ -137,8 +137,8 @@ func TestCheckFindsRadioIDsThatRadioIDNoLongerMatches(t *testing.T) {
 			assert.Equal(t, radioiddrift.Result{Ran: true, Checked: 6, Drifts: 3}, res)
 			got = drifts(t, database)
 			require.Len(t, got, 3)
-			assert.WithinDuration(t, first, got[3100003].FoundAt, time.Second)
-			assert.WithinDuration(t, second, got[3100003].CheckedAt, time.Second)
+			assert.WithinDuration(t, first, got[3002403].FoundAt, time.Second)
+			assert.WithinDuration(t, second, got[3002403].CheckedAt, time.Second)
 		})
 	}
 }
@@ -178,12 +178,12 @@ func TestCheckEmailsAUserOnceForEachFinding(t *testing.T) {
 			cfg.NetworkName = "Test Hub"
 			dir := directory{}
 			for i := uint(0); i < 40; i++ {
-				seedVerified(t, database, 3100100+i, fmt.Sprintf("N%dAA", i))
-				dir[3100100+i] = fmt.Sprintf("N%dAA", i)
+				seedVerified(t, database, 3002500+i, fmt.Sprintf("N%dUSER", i))
+				dir[3002500+i] = fmt.Sprintf("N%dUSER", i)
 			}
-			require.NoError(t, database.Create(&models.User{ID: 3100200, Callsign: "N0MAIL", Username: "nomail"}).Error)
-			dir[3100100] = "K5NEW"
-			dir[3100200] = "K5NEW2"
+			require.NoError(t, database.Create(&models.User{ID: 3002600, Callsign: "N0MAIL", Username: "nomail"}).Error)
+			dir[3002500] = "W7CALL"
+			dir[3002600] = "W7CALL2"
 			mailer := &fakeMailer{}
 			check := func(at time.Time) radioiddrift.Result {
 				t.Helper()
@@ -197,11 +197,11 @@ func TestCheckEmailsAUserOnceForEachFinding(t *testing.T) {
 			res := check(now)
 			assert.Equal(t, radioiddrift.Result{Ran: true, Checked: 41, Drifts: 2, Notified: 1}, res)
 			require.Len(t, mailer.sent, 1)
-			assert.Equal(t, "u3100100@example.com", mailer.sent[0].to)
+			assert.Equal(t, "u3002500@example.com", mailer.sent[0].to)
 			assert.Equal(t, "Your callsign on Test Hub does not match RadioID", mailer.sent[0].subject)
-			assert.Contains(t, mailer.sent[0].body, "RadioID lists DMR ID 3100100 under K5NEW")
-			assert.Contains(t, mailer.sent[0].body, "N0AA")
-			d, ok, err := models.FindRadioIDDrift(database, 3100100)
+			assert.Contains(t, mailer.sent[0].body, "RadioID lists DMR ID 3002500 under W7CALL")
+			assert.Contains(t, mailer.sent[0].body, "N0USER")
+			d, ok, err := models.FindRadioIDDrift(database, 3002500)
 			require.NoError(t, err)
 			require.True(t, ok)
 			require.NotNil(t, d.NotifiedAt)
@@ -210,11 +210,11 @@ func TestCheckEmailsAUserOnceForEachFinding(t *testing.T) {
 			assert.Equal(t, 0, res.Notified, "the same finding is not mailed again")
 			assert.Len(t, mailer.sent, 1)
 
-			dir[3100101] = "K5NEW3"
+			dir[3002501] = "W7CALL3"
 			res = check(now.Add(48 * time.Hour))
 			assert.Equal(t, 1, res.Notified)
 			require.Len(t, mailer.sent, 2)
-			assert.Equal(t, "u3100101@example.com", mailer.sent[1].to)
+			assert.Equal(t, "u3002501@example.com", mailer.sent[1].to)
 		})
 	}
 }
@@ -226,18 +226,18 @@ func TestCheckMailsNobodyWhenTooManyDrift(t *testing.T) {
 	cfg.SMTP.Enabled = true
 	dir := directory{}
 	for i := uint(0); i < 100; i++ {
-		seedVerified(t, database, 3100100+i, fmt.Sprintf("N%dAA", i))
-		dir[3100100+i] = fmt.Sprintf("N%dAA", i)
+		seedVerified(t, database, 3002500+i, fmt.Sprintf("N%dUSER", i))
+		dir[3002500+i] = fmt.Sprintf("N%dUSER", i)
 	}
 	for i := uint(0); i < 6; i++ {
-		dir[3100100+i] = "BAD"
+		dir[3002500+i] = "BAD"
 	}
 	mailer := &fakeMailer{}
 	res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).WithMailer(mailer).Run(context.Background(), time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, radioiddrift.Result{Ran: true, Checked: 100, Drifts: 6}, res)
 	assert.Empty(t, mailer.sent)
-	d, ok, err := models.FindRadioIDDrift(database, 3100100)
+	d, ok, err := models.FindRadioIDDrift(database, 3002500)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Nil(t, d.NotifiedAt, "a skipped email can go out on a later night")
@@ -250,11 +250,11 @@ func TestCheckMailsAFewDriftsOfASmallHub(t *testing.T) {
 	cfg.SMTP.Enabled = true
 	dir := directory{}
 	for i := uint(0); i < 10; i++ {
-		seedVerified(t, database, 3100100+i, fmt.Sprintf("N%dAA", i))
-		dir[3100100+i] = fmt.Sprintf("N%dAA", i)
+		seedVerified(t, database, 3002500+i, fmt.Sprintf("N%dUSER", i))
+		dir[3002500+i] = fmt.Sprintf("N%dUSER", i)
 	}
 	for i := uint(0); i < 5; i++ {
-		dir[3100100+i] = "MOVED"
+		dir[3002500+i] = "MOVED"
 	}
 	mailer := &fakeMailer{}
 	res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).WithMailer(mailer).Run(context.Background(), time.Now())
@@ -268,8 +268,8 @@ func TestCheckMailsNobodyWithoutSMTP(t *testing.T) {
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	cfg.DMR.DisableRadioIDValidation = false
 	cfg.SMTP.Enabled = false
-	seedVerified(t, database, 3100100, "N0AA")
-	dir := directory{3100100: "K5NEW"}
+	seedVerified(t, database, 3002500, "N1TEST")
+	dir := directory{3002500: "W7CALL"}
 	mailer := &fakeMailer{}
 	res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).WithMailer(mailer).Run(context.Background(), time.Now())
 	require.NoError(t, err)
@@ -281,8 +281,8 @@ func TestCheckRunsOnOneReplica(t *testing.T) {
 	t.Parallel()
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	cfg.DMR.DisableRadioIDValidation = false
-	require.NoError(t, database.Create(&models.User{ID: 3100002, Callsign: "N0OLD", Username: "moved"}).Error)
-	dir := directory{3100002: "N0NEW"}
+	require.NoError(t, database.Create(&models.User{ID: 3002402, Callsign: "K5CALL", Username: "moved"}).Error)
+	dir := directory{3002402: "K2CALL"}
 	now := time.Now()
 	res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), now)
 	require.NoError(t, err)
@@ -296,10 +296,10 @@ func TestCheckClearsTheListWithoutRadioIDValidation(t *testing.T) {
 	t.Parallel()
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	cfg.DMR.DisableRadioIDValidation = true
-	require.NoError(t, database.Create(&models.User{ID: 3100002, Callsign: "N0OLD", Username: "moved"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002402, Callsign: "K5CALL", Username: "moved"}).Error)
 	now := time.Now()
-	require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3100002, UserID: 3100002, RadioIDCallsign: "N0NEW"}}, now))
-	dir := directory{3100002: "N0NEW"}
+	require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3002402, UserID: 3002402, RadioIDCallsign: "K2CALL"}}, now))
+	dir := directory{3002402: "K2CALL"}
 	res, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), now)
 	require.NoError(t, err)
 	assert.False(t, res.Ran)
@@ -310,9 +310,9 @@ func TestCheckRefusesAnEmptyRadioIDDatabase(t *testing.T) {
 	t.Parallel()
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	cfg.DMR.DisableRadioIDValidation = false
-	require.NoError(t, database.Create(&models.User{ID: 3100002, Callsign: "N0OLD", Username: "moved"}).Error)
+	require.NoError(t, database.Create(&models.User{ID: 3002402, Callsign: "K5CALL", Username: "moved"}).Error)
 	now := time.Now()
-	require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3100002, UserID: 3100002, RadioIDCallsign: "N0NEW"}}, now))
+	require.NoError(t, models.ReplaceRadioIDDrifts(database, []models.RadioIDDrift{{RadioID: 3002402, UserID: 3002402, RadioIDCallsign: "K2CALL"}}, now))
 	dir := directory{}
 	_, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), now)
 	require.Error(t, err)
@@ -341,9 +341,9 @@ func TestCheckCoversOnlyTheIDsOfTheChecksThatAreOn(t *testing.T) {
 				checks   config.RadioIDChecks
 				expected []uint
 			}{
-				{"callsign", config.RadioIDChecks{Callsign: true}, []uint{3100002}},
-				{"radio-ids", config.RadioIDChecks{RadioIDs: true}, []uint{3100012}},
-				{"both", config.RadioIDChecks{Callsign: true, RadioIDs: true}, []uint{3100002, 3100012}},
+				{"callsign", config.RadioIDChecks{Callsign: true}, []uint{3002402}},
+				{"radio-ids", config.RadioIDChecks{RadioIDs: true}, []uint{3002412}},
+				{"both", config.RadioIDChecks{Callsign: true, RadioIDs: true}, []uint{3002402, 3002412}},
 				{"neither", config.RadioIDChecks{UserID: true, RepeaterIDs: true, HotspotIDs: true}, nil},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
@@ -351,9 +351,9 @@ func TestCheckCoversOnlyTheIDsOfTheChecksThatAreOn(t *testing.T) {
 					cfg, database, kvStore := setup(t, be)
 					cfg.DMR.DisableRadioIDValidation = false
 					cfg.DMR.RadioIDChecks = tc.checks
-					require.NoError(t, database.Create(&models.User{ID: 3100002, Callsign: "N0OLD", Username: "moved"}).Error)
-					require.NoError(t, database.Create(&models.UserRadioID{UserID: 3100002, RadioID: 3100012, VerifiedAt: time.Now()}).Error)
-					dir := directory{3100002: "N0NEW", 3100012: "N0OTHER"}
+					require.NoError(t, database.Create(&models.User{ID: 3002402, Callsign: "K5CALL", Username: "moved"}).Error)
+					require.NoError(t, database.Create(&models.UserRadioID{UserID: 3002402, RadioID: 3002412, VerifiedAt: time.Now()}).Error)
+					dir := directory{3002402: "K2CALL", 3002412: "N0OTHER"}
 					_, err := radioiddrift.NewCheckerWith(cfg, database, kvStore, dir.lookup, dir.size).Run(context.Background(), time.Now())
 					require.NoError(t, err)
 					got := drifts(t, database)

@@ -33,7 +33,7 @@ func TestVisibleTransmissions(t *testing.T) {
 	database, cleanup := openDB(t)
 	defer cleanup()
 
-	user := models.User{ID: 3191868, Callsign: "KI5VMF", Username: "a"}
+	user := models.User{ID: 3002068, Callsign: "N6CALL", Username: "a"}
 	require.NoError(t, database.Create(&user).Error)
 	require.NoError(t, models.SetSMSStorage(database, &user, true, time.Now()))
 

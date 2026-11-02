@@ -61,10 +61,10 @@ function msg(id: number, over: Partial<Message> = {}): Message {
   return {
     id,
     received_at: new Date(Date.now() - id * 60000).toISOString(),
-    source_id: 3140598,
-    source_callsign: 'KD5SMP',
-    destination_id: 3191868,
-    destination_callsign: 'KI5VMF',
+    source_id: 3002198,
+    source_callsign: 'N8CALL',
+    destination_id: 3002068,
+    destination_callsign: 'N6CALL',
     group: false,
     talkgroup_name: '',
     format: 'ip',
@@ -93,8 +93,8 @@ function serve(f: Fixture) {
       return Promise.resolve({
         data: {
           radio_ids: [
-            { id: 3191868, callsign: 'KI5VMF', account: true, verified_at: null },
-            { id: 3191877, callsign: 'KI5VMF', account: false, verified_at: '2026-10-10T20:41:37Z' },
+            { id: 3002068, callsign: 'N6CALL', account: true, verified_at: null },
+            { id: 3002077, callsign: 'N6CALL', account: false, verified_at: '2026-10-10T20:41:37Z' },
           ],
         },
       });
@@ -182,7 +182,7 @@ describe('MessagesPage', () => {
       },
     });
     const wrapper = await mountPage();
-    expect(wrapper.find('[data-test="messages-ids"]').text()).toContain('(3191868, 3191877)');
+    expect(wrapper.find('[data-test="messages-ids"]').text()).toContain('(3002068, 3002077)');
     expect(wrapper.find('[data-test="tab-inbox"]').text()).toBe('Inbox2');
     expect(wrapper.find('[data-test="tab-outbox"]').text()).toBe('Outbox1');
     const text = wrapper.text();

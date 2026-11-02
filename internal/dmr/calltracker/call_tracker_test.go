@@ -54,8 +54,8 @@ import (
 )
 
 const (
-	userA      = uint(3191868)
-	userB      = uint(3140598)
+	userA      = uint(3002068)
+	userB      = uint(3002198)
 	strangerID = uint(3999999)
 	repeaterA  = uint(100001)
 	tgID       = uint(42)
@@ -112,8 +112,8 @@ func trackerDeps(t *testing.T) (*gorm.DB, pubsub.PubSub, kv.KV) {
 		_ = kvStore.Close()
 	})
 
-	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
-	require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "KD5SMP", Username: "b", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "N6CALL", Username: "a", Approved: true}).Error)
+	require.NoError(t, database.Create(&models.User{ID: userB, Callsign: "N8CALL", Username: "b", Approved: true}).Error)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: repeaterA, Callsign: "RPT1"},
 		OwnerID:               userA,
@@ -855,12 +855,12 @@ func TestTrackUndeliverable(t *testing.T) {
 
 		s := newSender(t, ct, userA, tgID, true, 7018)
 		p := s.send(dmrconst.FrameDataSync, uint(enums.DataTypeIdle), burstOf(t, &pdu.PRFill{}))
-		ct.Undeliverable(p, "ipsc:311304200")
-		ct.Undeliverable(p, "ipsc:311304200")
-		ct.Undeliverable(p, "ipsc:311304201")
+		ct.Undeliverable(p, "ipsc:300344200")
+		ct.Undeliverable(p, "ipsc:300344200")
+		ct.Undeliverable(p, "ipsc:300344201")
 
 		c := waitDone(t, ct, database, 1)[0]
-		assert.Equal(t, []string{"ipsc:311304200", "ipsc:311304201"}, c.Undeliverable)
+		assert.Equal(t, []string{"ipsc:300344200", "ipsc:300344201"}, c.Undeliverable)
 	})
 }
 
@@ -964,7 +964,7 @@ func TestNetCheckInsComeFromVoiceOnly(t *testing.T) {
 		require.NoError(t, err)
 		ps, err := pubsub.MakePubSub(context.TODO(), &defConfig)
 		require.NoError(t, err)
-		require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "KI5VMF", Username: "a", Approved: true}).Error)
+		require.NoError(t, database.Create(&models.User{ID: userA, Callsign: "N6CALL", Username: "a", Approved: true}).Error)
 		require.NoError(t, database.Create(&models.Talkgroup{ID: tgID, Name: "TG42"}).Error)
 		net := models.Net{TalkgroupID: tgID, StartedByUserID: new(userA), StartTime: time.Now(), Active: true}
 		require.NoError(t, database.Create(&net).Error)
@@ -1059,7 +1059,7 @@ func TestTrackTalkerAlias(t *testing.T) {
 
 		s := newSender(t, ct, userA, tgID, true, 7023)
 		s.voiceCall(1, false)
-		for _, b := range aliasBlocks(t, userA, "KI5VMF Jacob") {
+		for _, b := range aliasBlocks(t, userA, "N6CALL Jacob") {
 			ct.TalkerAlias(b, models.RepeaterTypeMMDVM, repeaterA)
 		}
 		time.Sleep(150 * time.Millisecond)
@@ -1071,13 +1071,13 @@ func TestTrackTalkerAlias(t *testing.T) {
 			byKind[c.Kind] = c
 		}
 		alias := byKind[models.CallKindAlias]
-		assert.Equal(t, "KI5VMF Jacob", alias.TalkerAlias)
+		assert.Equal(t, "N6CALL Jacob", alias.TalkerAlias)
 		assert.Equal(t, "7-bit", alias.AliasFormat)
 		assert.Equal(t, userA, alias.SourceID)
 		assert.Equal(t, tgID, alias.DestinationID, "an alias row takes the destination of the call of its source")
 		assert.True(t, alias.IsToTalkgroup)
 		assert.False(t, alias.Partial)
-		assert.Equal(t, "KI5VMF Jacob", byKind[models.CallKindVoice].TalkerAlias, "the alias names the voice call")
+		assert.Equal(t, "N6CALL Jacob", byKind[models.CallKindVoice].TalkerAlias, "the alias names the voice call")
 	})
 }
 
@@ -1086,7 +1086,7 @@ func TestTrackShortTalkerAliasIsPartial(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ct, database, _ := newTracker(t)
 
-		b := aliasBlocks(t, userA, "KI5VMF")[0]
+		b := aliasBlocks(t, userA, "N6CALL")[0]
 		b.Size = 15
 		ct.TalkerAlias(b, models.RepeaterTypeMMDVM, repeaterA)
 

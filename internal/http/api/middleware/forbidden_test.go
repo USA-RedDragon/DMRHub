@@ -87,7 +87,7 @@ func TestASignedInUserWithoutTheRightIsForbidden(t *testing.T) {
 	defer tdb.CloseDB()
 	seedForbiddenTargets(t, tdb)
 
-	user := apimodels.UserRegistration{Username: "plain", Password: "testpassword123!", Callsign: "KI5VMF", DMRId: 3191868}
+	user := apimodels.UserRegistration{Username: "plain", Password: "testpassword123!", Callsign: "N6CALL", DMRId: 3002068}
 	_, _, jar := testutils.CreateAndLoginUser(t, router, user)
 
 	for _, r := range forbiddenRoutes() {

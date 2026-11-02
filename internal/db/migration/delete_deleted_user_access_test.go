@@ -54,9 +54,9 @@ func TestDeleteDeletedUserAccess(t *testing.T) {
 				}
 			})
 
-			const kept, deleted = uint(3191868), uint(3140001)
+			const kept, deleted = uint(3002068), uint(3004201)
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610251010").Error)
-			require.NoError(t, database.Create(&models.User{ID: kept, Callsign: "KI5VMF", Username: "kept", Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: kept, Callsign: "N6CALL", Username: "kept", Approved: true}).Error)
 			now := time.Now()
 			for i, user := range []uint{kept, deleted} {
 				key := fmt.Sprint(user)

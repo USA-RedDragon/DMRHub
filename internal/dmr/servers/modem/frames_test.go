@@ -63,7 +63,7 @@ func readCapture(t testing.TB, name string) []captured {
 // 9384d68 with its MMDVM-Host.ini levels, simplex, color code 7 and the
 // placeholder frequencies.
 func mmdvmhostModem() config.Modem {
-	return config.Modem{Enabled: true, Port: "/dev/null", Baud: 115200, RepeaterID: 311860, ColorCode: 7,
+	return config.Modem{Enabled: true, Port: "/dev/null", Baud: 115200, RepeaterID: 990360, ColorCode: 7,
 		RXFrequency: 430000000, TXFrequency: 440000000, RFLevel: 100, RXLevel: 50, TXLevel: 50,
 		TXInvert: true, TXDelay: 100}
 }

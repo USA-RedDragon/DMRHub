@@ -38,7 +38,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const repeater = 319186801
+const repeater = 300206801
 
 func packetOf(b *pluginv1.Burst) models.Packet {
 	return models.Packet{

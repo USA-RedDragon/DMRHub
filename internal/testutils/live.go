@@ -173,7 +173,7 @@ func setupLiveStack(t *testing.T, register bool, opts LiveOptions, backends []Ba
 
 	hash, err := utils.HashPassword(TestPassword, cfg.PasswordSalt)
 	require.NoError(t, err)
-	require.NoError(t, stack.DB.Create(&models.User{ID: 9999901, Callsign: "N0ADM", Username: "liveadmin", Password: hash, Approved: true, Admin: true, SuperAdmin: true}).Error)
+	require.NoError(t, stack.DB.Create(&models.User{ID: 9999901, Callsign: "K4CALL", Username: "liveadmin", Password: hash, Approved: true, Admin: true, SuperAdmin: true}).Error)
 
 	l := &LiveStack{IntegrationStack: stack}
 	l.first = l.startReplica(t, stack.Hub, cfg, opts)

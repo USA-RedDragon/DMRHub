@@ -53,11 +53,11 @@ func TestPATCHRepeaterCodec(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	owner := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+	owner := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 	_, _, ownerJar := testutils.CreateAndLoginUser(t, router, owner)
-	other := apimodels.UserRegistration{DMRId: 3191869, Callsign: "N0CALL", Username: "other", Password: "password"}
+	other := apimodels.UserRegistration{DMRId: 3002069, Callsign: "N0CALL", Username: "other", Password: "password"}
 	_, _, otherJar := testutils.CreateAndLoginUser(t, router, other)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186811}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206811}
 	_, w := testutils.CreateRepeater(t, router, ownerJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -113,9 +113,9 @@ func TestStaleRepeaterSaveKeepsCodec(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+	user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186812}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206812}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -144,9 +144,9 @@ func TestPATCHRepeaterCodecIPSCIsAMBE(t *testing.T) {
 	require.NoError(t, err)
 	defer tdb.CloseDB()
 
-	user := apimodels.UserRegistration{DMRId: 3191868, Callsign: "KI5VMF", Username: "testuser", Password: "password"}
+	user := apimodels.UserRegistration{DMRId: 3002068, Callsign: "N6CALL", Username: "testuser", Password: "password"}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
-	repeaterPost := apimodels.RepeaterPost{RadioID: 319186813, Type: models.RepeaterTypeIPSC}
+	repeaterPost := apimodels.RepeaterPost{RadioID: 300206813, Type: models.RepeaterTypeIPSC}
 	_, w := testutils.CreateRepeater(t, router, userJar, repeaterPost)
 	require.Equal(t, http.StatusOK, w.Code)
 

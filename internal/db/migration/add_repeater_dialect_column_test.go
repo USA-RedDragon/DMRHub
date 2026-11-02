@@ -54,14 +54,14 @@ func TestAddRepeaterDialectColumnKeepsRepeaters(t *testing.T) {
 			require.NoError(t, m.DropColumn(&models.Repeater{}, "Dialect"))
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610231200").Error)
 			require.NoError(t, database.Exec(
-				"INSERT INTO repeaters (id, callsign, type, password) VALUES (?, ?, ?, ?)", 311860, "N0CALL", models.RepeaterTypeMMDVM, "s3cret",
+				"INSERT INTO repeaters (id, callsign, type, password) VALUES (?, ?, ?, ?)", 990360, "N0CALL", models.RepeaterTypeMMDVM, "s3cret",
 			).Error)
 
 			require.NoError(t, migration.Migrate(database, &cfg))
 
 			require.True(t, m.HasColumn(&models.Repeater{}, "Dialect"))
 			var got models.Repeater
-			require.NoError(t, database.First(&got, 311860).Error)
+			require.NoError(t, database.First(&got, 990360).Error)
 			assert.Equal(t, "N0CALL", got.Callsign)
 			assert.Empty(t, got.Dialect)
 		})

@@ -47,7 +47,7 @@ func TestDeleteRepeaterWhileACallStarts(t *testing.T) {
 		t.Run(be.backend.Name, func(t *testing.T) {
 			t.Parallel()
 			database := backendDB(t, be.backend)
-			const id = 311870
+			const id = 990370
 			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeMMDVM}).Error)
 
 			started := false

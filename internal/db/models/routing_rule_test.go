@@ -62,7 +62,7 @@ func forAllBackends(t *testing.T, f func(t *testing.T, database *gorm.DB)) {
 func TestRoutingRulesReplaceOnlyTheirKinds(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
-		const rpt, other = 311860, 311861
+		const rpt, other = 990360, 990361
 		for _, id := range []uint{rpt, other} {
 			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeMMDVM}).Error)
 		}
@@ -70,9 +70,9 @@ func TestRoutingRulesReplaceOnlyTheirKinds(t *testing.T) {
 		tgs := []models.RoutingRuleKind{models.RoutingRuleBlockTalkgroup, models.RoutingRuleAllowTalkgroup}
 
 		require.NoError(t, models.ReplaceRoutingRules(database, rpt, slots, []models.RoutingRule{
-			{Kind: models.RoutingRuleSlotUser, Slot: 2, SubjectID: 3191868},
-			{Kind: models.RoutingRuleSlotUser, Slot: 2, SubjectID: 3191868},
-			{Kind: models.RoutingRuleSlotUser, Slot: 1, SubjectID: 3191869},
+			{Kind: models.RoutingRuleSlotUser, Slot: 2, SubjectID: 3002068},
+			{Kind: models.RoutingRuleSlotUser, Slot: 2, SubjectID: 3002068},
+			{Kind: models.RoutingRuleSlotUser, Slot: 1, SubjectID: 3002069},
 		}))
 		require.NoError(t, models.ReplaceRoutingRules(database, rpt, tgs, []models.RoutingRule{{Kind: models.RoutingRuleBlockTalkgroup, SubjectID: 91}}))
 		require.NoError(t, models.ReplaceRoutingRules(database, other, tgs, []models.RoutingRule{{Kind: models.RoutingRuleAllowTalkgroup, SubjectID: 3100}}))
@@ -94,15 +94,15 @@ func TestRoutingRulesReplaceOnlyTheirKinds(t *testing.T) {
 			return out
 		}
 		assert.ElementsMatch(t, []row{
-			{models.RoutingRuleSlotUser, 2, 3191868},
-			{models.RoutingRuleSlotUser, 1, 3191869},
+			{models.RoutingRuleSlotUser, 2, 3002068},
+			{models.RoutingRuleSlotUser, 1, 3002069},
 			{models.RoutingRuleBlockTalkgroup, 0, 91},
 		}, rows(rpt), "a repeated rule is kept once")
 
 		require.NoError(t, models.ReplaceRoutingRules(database, rpt, tgs, []models.RoutingRule{{Kind: models.RoutingRuleAllowTalkgroup, SubjectID: 3100}}))
 		assert.ElementsMatch(t, []row{
-			{models.RoutingRuleSlotUser, 2, 3191868},
-			{models.RoutingRuleSlotUser, 1, 3191869},
+			{models.RoutingRuleSlotUser, 2, 3002068},
+			{models.RoutingRuleSlotUser, 1, 3002069},
 			{models.RoutingRuleAllowTalkgroup, 0, 3100},
 		}, rows(rpt), "a talkgroup edit keeps the slot locks")
 
@@ -122,11 +122,11 @@ func TestRoutingRulesReplaceOnlyTheirKinds(t *testing.T) {
 func TestDeletingAUserDeletesTheirRoutingRules(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
-		const owner, listed, kept = 3191868, 3191869, 3191870
+		const owner, listed, kept = 3002068, 3002069, 3002070
 		for _, id := range []uint{owner, listed, kept} {
-			require.NoError(t, database.Create(&models.User{ID: id, Callsign: "N0CAL" + string(rune('A'+id-owner)), Username: "u" + string(rune('a'+id-owner)), Approved: true}).Error)
+			require.NoError(t, database.Create(&models.User{ID: id, Callsign: "N2TEST" + string(rune('A'+id-owner)), Username: "u" + string(rune('a'+id-owner)), Approved: true}).Error)
 		}
-		const owned, other = 311860, 311861
+		const owned, other = 990360, 990361
 		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: owned}, OwnerID: owner, Type: models.RepeaterTypeMMDVM}).Error)
 		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: other}, OwnerID: kept, Type: models.RepeaterTypeMMDVM}).Error)
 		slots := []models.RoutingRuleKind{models.RoutingRuleSlotUser}
@@ -152,7 +152,7 @@ func TestDeletingAUserDeletesTheirRoutingRules(t *testing.T) {
 func TestARestrictedTalkgroupLinksOnlyToApprovedRepeaters(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
-		const approved, other, tg, open = 311860, 311861, 3100, 91
+		const approved, other, tg, open = 990360, 990361, 3100, 91
 		for _, id := range []uint{approved, other} {
 			require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeMMDVM}).Error)
 		}

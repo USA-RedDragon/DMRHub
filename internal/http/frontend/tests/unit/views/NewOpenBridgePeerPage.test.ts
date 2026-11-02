@@ -81,7 +81,7 @@ describe('NewOpenBridgePeerPage', () => {
       mockAPI.post.mockResolvedValue({ data: { password: 'secret' } });
       const wrapper = await mountPage();
       await wrapper.find('select#owner').setValue('1000001');
-      await wrapper.find('#id').setValue('311999');
+      await wrapper.find('#id').setValue('990499');
       await wrapper.find('#ip').setValue('203.0.113.20');
       await wrapper.find('#port').setValue('62044');
       if (codec2) {
@@ -89,7 +89,7 @@ describe('NewOpenBridgePeerPage', () => {
       }
       await wrapper.find('form').trigger('submit');
       await flushPromises();
-      expect(mockAPI.post).toHaveBeenCalledWith('/peers', expect.objectContaining({ id: 311999, enhanced: false, codec2 }));
+      expect(mockAPI.post).toHaveBeenCalledWith('/peers', expect.objectContaining({ id: 990499, enhanced: false, codec2 }));
     });
   }
 

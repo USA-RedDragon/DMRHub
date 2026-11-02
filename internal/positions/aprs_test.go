@@ -40,8 +40,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// passcode is the APRS-IS passcode of N0HUB, the login of the gateway.
-const passcode = "14215"
+// passcode is the APRS-IS passcode of K0CALL, the login of the gateway.
+const passcode = "14303"
 
 // testClock reads a time that the test moves, and runs the real timers.
 type testClock struct {
@@ -80,13 +80,13 @@ func newGateway(t *testing.T) *gateway {
 	require.True(t, strings.HasPrefix(srv.Addr(), "127.0.0.1:"), "tests send only to loopback")
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
-	cfg.DMR.Positions.APRSIS = config.APRSIS{Callsign: "N0HUB-10", Server: srv.Addr()}
+	cfg.DMR.Positions.APRSIS = config.APRSIS{Callsign: "K0CALL-10", Server: srv.Addr()}
 	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = kvStore.Close() })
-	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: repeater, Callsign: "W5ABC"}, OwnerID: owner}).Error)
+	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: repeater, Callsign: "K6CALL"}, OwnerID: owner}).Error)
 	require.NoError(t, models.SetPositionOptions(database, owner, owner, models.PositionOptions{
-		Interval: 10 * time.Minute, Retention: 24 * time.Hour, APRS: true, APRSSSID: "9", APRSComment: "DMR 3191868",
+		Interval: 10 * time.Minute, Retention: 24 * time.Hour, APRS: true, APRSSSID: "9", APRSComment: "DMR 3002068",
 	}))
 	return &gateway{t: t, db: database, ps: ps, kv: kvStore, cfg: &cfg, srv: srv, pusher: pusher, clock: &testClock{Clock: clock.Real(), now: time.Now()}}
 }
@@ -168,7 +168,7 @@ func TestTheGatewaySendsATrackedRadioUnderItsOwnersCallsign(t *testing.T) {
 	p.SpeedMPS, p.HeadingDeg = &speed, &heading
 	g.pusher.Push(p)
 	require.True(t, w.sent(t))
-	assert.Equal(t, []string{"KI5VMF-9>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59W[045/008DMR 3191868"}, g.lines(1))
+	assert.Equal(t, []string{"N6CALL-9>APZDMH,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59W[045/008DMR 3002068"}, g.lines(1))
 }
 
 func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
@@ -180,7 +180,7 @@ func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
 	_, w := g.start()
 	g.pusher.Push(g.at(30.2672, -97.7431))
 	require.True(t, w.sent(t))
-	assert.Equal(t, []string{"KI5VMF>APZDMH,W5ABC*,qAR,N0HUB-10:!3016.03N/09744.59Wb"}, g.lines(1))
+	assert.Equal(t, []string{"N6CALL>APZDMH,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59Wb"}, g.lines(1))
 }
 
 func TestAtMostOnePacketPerRadioEachMinuteAndOnlyWhenItMoved(t *testing.T) {

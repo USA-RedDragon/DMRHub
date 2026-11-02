@@ -38,9 +38,9 @@ const held = [
     id: 1,
     message_id: 10,
     text: 'Net starts at 8, see you there',
-    source_id: 3191869,
-    source_callsign: 'KD5SMP',
-    radio_id: 3191868,
+    source_id: 3002069,
+    source_callsign: 'N8CALL',
+    radio_id: 3002068,
     held_at: '2026-10-31T21:14:00Z',
     format_known: true,
   },
@@ -48,9 +48,9 @@ const held = [
     id: 2,
     message_id: 11,
     text: 'Lunch Saturday?',
-    source_id: 3148812,
+    source_id: 3004312,
     source_callsign: '',
-    radio_id: 3191877,
+    radio_id: 3002077,
     held_at: '2026-11-01T09:02:00Z',
     format_known: false,
   },
@@ -91,11 +91,11 @@ describe('StoreForwardCard', () => {
     );
     const first = wrapper.find('[data-test="held-1"]');
     expect(first.text()).toContain('"Net starts at 8, see you there"');
-    expect(first.text()).toContain('KD5SMP');
-    expect(first.text()).toContain('3191868');
+    expect(first.text()).toContain('N8CALL');
+    expect(first.text()).toContain('3002068');
     expect(first.find('[data-test="held-format-unknown"]').exists()).toBe(false);
     const second = wrapper.find('[data-test="held-2"]');
-    expect(second.text()).toContain('3148812');
+    expect(second.text()).toContain('3004312');
     expect(second.find('[data-test="held-format-unknown"]').text()).toBe(
       "Waits until your radio sends a text, so DMRHub can send it in your radio's format.",
     );

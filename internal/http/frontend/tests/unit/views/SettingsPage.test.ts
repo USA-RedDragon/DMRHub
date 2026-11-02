@@ -39,8 +39,8 @@ import SettingsPage from '@/views/users/SettingsPage.vue';
 
 const mockAPI = API as unknown as { get: Mock; put: Mock; post: Mock; delete: Mock };
 
-const accountID = { id: 3191868, callsign: 'KI5VMF', account: true, verified_at: null };
-const addedID = { id: 3191877, callsign: 'KI5VMF', account: false, verified_at: '2026-10-10T20:41:37Z' };
+const accountID = { id: 3002068, callsign: 'N6CALL', account: true, verified_at: null };
+const addedID = { id: 3002077, callsign: 'N6CALL', account: false, verified_at: '2026-10-10T20:41:37Z' };
 
 const privacy =
   'When SMS Storage is on, the text messages sent to and from the radio IDs that you own appear on your ' +
@@ -49,7 +49,7 @@ const privacy =
 function serve(smsStorage: boolean, ids = [accountID, addedID], switches: unknown[] = []) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url === '/users/me') {
-      return Promise.resolve({ data: { id: 3191868, callsign: 'KI5VMF', must_change_password: false } });
+      return Promise.resolve({ data: { id: 3002068, callsign: 'N6CALL', must_change_password: false } });
     }
     if (url === '/users/me/settings') {
       return Promise.resolve({ data: { sms_storage: smsStorage } });
@@ -216,11 +216,11 @@ describe('SettingsPage', () => {
   it('lists the radio IDs and keeps the account ID', async () => {
     serve(true);
     const wrapper = await mountPage();
-    const account = wrapper.find('[data-test="radio-id-3191868"]');
+    const account = wrapper.find('[data-test="radio-id-3002068"]');
     expect(account.text()).toContain('Account ID');
     expect(account.text()).toContain('Cannot remove');
     expect(account.find('button').exists()).toBe(false);
-    const added = wrapper.find('[data-test="radio-id-3191877"]');
+    const added = wrapper.find('[data-test="radio-id-3002077"]');
     expect(added.text()).toContain('Verified');
     expect(added.find('button').text()).toBe('Remove');
   });
@@ -228,18 +228,18 @@ describe('SettingsPage', () => {
   it('shows a made-up example ID in the radio ID field', async () => {
     serve(true);
     const wrapper = await mountPage();
-    expect(wrapper.find('#add-radio-id').attributes('placeholder')).toBe('7-digit DMR ID, for example 3100001');
+    expect(wrapper.find('#add-radio-id').attributes('placeholder')).toBe('7-digit DMR ID, for example 3002401');
   });
 
   it('checks a new radio ID before it sends it', async () => {
     serve(true);
     const wrapper = await mountPage();
-    await wrapper.find('#add-radio-id').setValue('314059801');
+    await wrapper.find('#add-radio-id').setValue('300219801');
     await wrapper.find('[data-test="add-radio-id"]').trigger('submit');
     expect(wrapper.find('[data-test="radio-id-error"]').text()).toContain('Enter a 7-digit DMR ID');
-    await wrapper.find('#add-radio-id').setValue('3191877');
+    await wrapper.find('#add-radio-id').setValue('3002077');
     await wrapper.find('[data-test="add-radio-id"]').trigger('submit');
-    expect(wrapper.find('[data-test="radio-id-error"]').text()).toBe('3191877 is already on your list.');
+    expect(wrapper.find('[data-test="radio-id-error"]').text()).toBe('3002077 is already on your list.');
     expect(mockAPI.post).not.toHaveBeenCalled();
   });
 
@@ -247,21 +247,21 @@ describe('SettingsPage', () => {
     serve(true, [accountID]);
     mockAPI.post.mockResolvedValueOnce({ data: addedID });
     const wrapper = await mountPage();
-    await wrapper.find('#add-radio-id').setValue('3191877');
+    await wrapper.find('#add-radio-id').setValue('3002077');
     await wrapper.find('[data-test="add-radio-id"]').trigger('submit');
     await flushPromises();
-    expect(mockAPI.post).toHaveBeenCalledWith('/users/me/radio-ids', { id: 3191877 });
-    expect(wrapper.find('[data-test="radio-id-3191877"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="radio-id-ok"]').text()).toBe('Added 3191877.');
+    expect(mockAPI.post).toHaveBeenCalledWith('/users/me/radio-ids', { id: 3002077 });
+    expect(wrapper.find('[data-test="radio-id-3002077"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="radio-id-ok"]').text()).toBe('Added 3002077.');
 
     mockAPI.post.mockRejectedValueOnce({
-      response: { status: 400, data: { error: 'RadioID.net does not list 3140598 under your callsign' } },
+      response: { status: 400, data: { error: 'RadioID.net does not list 3002198 under your callsign' } },
     });
-    await wrapper.find('#add-radio-id').setValue('3140598');
+    await wrapper.find('#add-radio-id').setValue('3002198');
     await wrapper.find('[data-test="add-radio-id"]').trigger('submit');
     await flushPromises();
     expect(wrapper.find('[data-test="radio-id-error"]').text()).toBe(
-      'RadioID.net does not list 3140598 under your callsign',
+      'RadioID.net does not list 3002198 under your callsign',
     );
   });
 
@@ -269,10 +269,10 @@ describe('SettingsPage', () => {
     serve(true);
     mockAPI.delete.mockResolvedValue({ data: { message: 'Radio ID removed' } });
     const wrapper = await mountPage();
-    await wrapper.find('[data-test="radio-id-3191877"] button').trigger('click');
+    await wrapper.find('[data-test="radio-id-3002077"] button').trigger('click');
     await flushPromises();
-    expect(mockAPI.delete).toHaveBeenCalledWith('/users/me/radio-ids/3191877');
-    expect(wrapper.find('[data-test="radio-id-3191877"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="radio-id-ok"]').text()).toBe('Removed 3191877.');
+    expect(mockAPI.delete).toHaveBeenCalledWith('/users/me/radio-ids/3002077');
+    expect(wrapper.find('[data-test="radio-id-3002077"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="radio-id-ok"]').text()).toBe('Removed 3002077.');
   });
 });

@@ -72,7 +72,7 @@ func (p *optionsProbe) WriteTo(b []byte, _ net.Addr) (int, error) {
 // server must subscribe it to them before that RPTACK.
 func TestARepeaterGetsTheCallsOfItsNewStaticsFromTheAckOfItsOptions(t *testing.T) {
 	t.Parallel()
-	const id, tg, stream = uint32(311892), uint(91), uint(76102)
+	const id, tg, stream = uint32(990392), uint(91), uint(76102)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)
@@ -172,7 +172,7 @@ func TestARepeaterGetsTheCallsOfItsNewStaticsFromTheAckOfItsOptions(t *testing.T
 // as the answer to its RPTK.
 func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311893)
+	const id = uint32(990393)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)
@@ -264,7 +264,7 @@ func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
 // must be applied and acknowledged.
 func TestFullRecordsQueueWithholdsTheOptionsAck(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311894)
+	const id = uint32(990394)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
 	memdb.Use(t, &cfg)

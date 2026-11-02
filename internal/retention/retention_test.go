@@ -162,18 +162,18 @@ func TestRetentionPrunesPositionsAtTheirRadiosRetentionAndTheHubsMost(t *testing
 	cfg, database, kvStore := setup(t, testutils.SQLiteMemoryBackend())
 	now := time.Now()
 	cfg.DMR.Positions.MaxRetention = 3
-	for _, radio := range []uint{3191868, 3140598} {
-		require.NoError(t, database.Create(&models.User{ID: radio, Callsign: fmt.Sprintf("N%dX", radio%100), Username: fmt.Sprint(radio), Approved: true}).Error)
+	for _, radio := range []uint{3002068, 3002198} {
+		require.NoError(t, database.Create(&models.User{ID: radio, Callsign: fmt.Sprintf("N%dTEST", radio%100), Username: fmt.Sprint(radio), Approved: true}).Error)
 		require.NoError(t, models.SetPositionTracking(database, radio, radio, true, now.Add(-30*daySpan)))
 		for _, age := range []time.Duration{time.Hour, 2 * daySpan, 5 * daySpan} {
 			require.NoError(t, database.Create(&models.Position{RadioID: radio, Latitude: 30, Longitude: -97, Format: models.PositionFormatLRRP, ReceivedAt: now.Add(-age)}).Error)
 		}
 	}
-	require.NoError(t, models.SetPositionRetention(database, 3140598, 7*daySpan))
+	require.NoError(t, models.SetPositionRetention(database, 3002198, 7*daySpan))
 	_, err := retention.NewPurger(cfg, database, kvStore).Run(context.Background(), now)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), count(t, database, &models.Position{}, "radio_id = 3191868"), "24 hours")
-	assert.Equal(t, int64(2), count(t, database, &models.Position{}, "radio_id = 3140598"), "7 days, cut to the hub's 3")
+	assert.Equal(t, int64(1), count(t, database, &models.Position{}, "radio_id = 3002068"), "24 hours")
+	assert.Equal(t, int64(2), count(t, database, &models.Position{}, "radio_id = 3002198"), "7 days, cut to the hub's 3")
 }
 
 func TestRetentionPurgesTheMessageAccessLogWithTheMessages(t *testing.T) {
@@ -185,7 +185,7 @@ func TestRetentionPurgesTheMessageAccessLogWithTheMessages(t *testing.T) {
 				t.Run(fmt.Sprintf("%d days", days), func(t *testing.T) {
 					cfg, database, kvStore := setup(t, be)
 					now := time.Now()
-					msgs := []models.Message{{SourceID: 3100001, DestinationID: 3100002}}
+					msgs := []models.Message{{SourceID: 3002401, DestinationID: 3002402}}
 					for _, age := range []int{1, 20, 40, 100} {
 						require.NoError(t, models.LogMessageAccess(database, 1, models.MessageAccessSearch, nil, "", msgs, now.Add(-time.Duration(age)*daySpan)))
 					}
@@ -303,12 +303,12 @@ func TestRetentionPurgesTheHeldTextsWithTheirMessages(t *testing.T) {
 			t.Parallel()
 			cfg, database, kvStore := setup(t, be)
 			now := time.Now()
-			require.NoError(t, database.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "held"}).Error)
+			require.NoError(t, database.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "held"}).Error)
 			for _, age := range []int{40, 1} {
 				at := now.Add(-time.Duration(age) * daySpan)
-				m := models.Message{ReceivedAt: at, SourceID: 3140598, DestinationID: 3191868, Format: models.MessageFormatAnyTone}
+				m := models.Message{ReceivedAt: at, SourceID: 3002198, DestinationID: 3002068, Format: models.MessageFormatAnyTone}
 				require.NoError(t, database.Create(&m).Error)
-				require.NoError(t, database.Create(&models.HeldMessage{MessageID: m.ID, RadioID: 3191868, UserID: 3191868, State: models.HeldStateExpired, HeldAt: at}).Error)
+				require.NoError(t, database.Create(&models.HeldMessage{MessageID: m.ID, RadioID: 3002068, UserID: 3002068, State: models.HeldStateExpired, HeldAt: at}).Error)
 			}
 			cfg.DMR.Retention = config.Retention{Messages: 30}
 

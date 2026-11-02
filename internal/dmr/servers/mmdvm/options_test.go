@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	optionsRepeater = 311870
-	otherRepeater   = 311871
+	optionsRepeater = 990370
+	otherRepeater   = 990371
 )
 
 type optionsRig struct {

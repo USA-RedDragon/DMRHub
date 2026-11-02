@@ -34,7 +34,7 @@ import (
 func TestServerCreatesAMissingRepeaterWithNoOwner(t *testing.T) {
 	t.Parallel()
 	cfg := modemConfig(t, false)
-	cfg.DMR.Modem.CWID.Callsign = "ki5vmf"
+	cfg.DMR.Modem.CWID.Callsign = "n6call"
 	memdb.Use(t, cfg)
 	database, err := db.MakeDB(cfg)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestServerCreatesAMissingRepeaterWithNoOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, models.RepeaterTypeModem, r.Type)
 	require.Zero(t, r.OwnerID)
-	require.Equal(t, "KI5VMF", r.Callsign)
+	require.Equal(t, "N6CALL", r.Callsign)
 	require.EqualValues(t, 438800000, r.RXFrequency)
 	require.EqualValues(t, 438800000, r.TXFrequency)
 	require.EqualValues(t, 1, r.ColorCode)

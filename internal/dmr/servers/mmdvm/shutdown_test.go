@@ -33,7 +33,7 @@ import (
 // that keeps what the server writes, and the endpoint of a repeater on it.
 func stoppedRig(t *testing.T) (*dialectRig, *recordProbe, endpoint) {
 	t.Helper()
-	r := newDialectRig(t, 311860)
+	r := newDialectRig(t, 990360)
 	probe := &recordProbe{out: make(chan []byte, 16)}
 	r.s.transports.Store(probeTransport, probe)
 	require.NoError(t, r.s.Stop(context.Background()))
@@ -64,7 +64,7 @@ func TestHandleFromRejectsWhenStopped(t *testing.T) {
 	t.Parallel()
 	r, probe, from := stoppedRig(t)
 
-	repeaterID := uint32(311860)
+	repeaterID := uint32(990360)
 	rptlPacket := make([]byte, 8)
 	copy(rptlPacket[:4], []byte(dmrconst.CommandRPTL))
 	binary.BigEndian.PutUint32(rptlPacket[4:], repeaterID)
@@ -79,7 +79,7 @@ func TestHandleFromRejectsWhenStopped(t *testing.T) {
 func TestHandleFromRejectsAllCommandsWhenStopped(t *testing.T) {
 	t.Parallel()
 	r, probe, from := stoppedRig(t)
-	repeaterID := uint32(311860)
+	repeaterID := uint32(990360)
 
 	commands := []struct {
 		name string

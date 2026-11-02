@@ -48,11 +48,11 @@ func TestRepeaterQuotaStopsAUserAtTheLimit(t *testing.T) { //nolint:paralleltest
 
 			hash, err := utils.HashPassword(testutils.TestPassword, l.Config.PasswordSalt)
 			require.NoError(t, err)
-			require.NoError(t, l.DB.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "ki5vmf", Password: hash, Approved: true}).Error)
-			user := testutils.Login(t, b.Router, "ki5vmf")
-			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 319186801))
-			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 319186802))
-			assert.Equal(t, http.StatusForbidden, addHotspot(t, b, user, 319186803), "a user stops at the quota")
+			require.NoError(t, l.DB.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "n6call", Password: hash, Approved: true}).Error)
+			user := testutils.Login(t, b.Router, "n6call")
+			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 300206801))
+			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 300206802))
+			assert.Equal(t, http.StatusForbidden, addHotspot(t, b, user, 300206803), "a user stops at the quota")
 
 			assert.Equal(t, http.StatusOK, addHotspot(t, b, b.Admin, 999990101))
 			assert.Equal(t, http.StatusOK, addHotspot(t, b, b.Admin, 999990102))
@@ -60,7 +60,7 @@ func TestRepeaterQuotaStopsAUserAtTheLimit(t *testing.T) { //nolint:paralleltest
 
 			code, _, raw = putSetting(t, l.First(), map[string]any{"dmr.repeater-quota": 0})
 			require.Equal(t, http.StatusOK, code, raw)
-			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 319186803), "a quota of 0 is no limit")
+			assert.Equal(t, http.StatusOK, addHotspot(t, b, user, 300206803), "a quota of 0 is no limit")
 		})
 	}
 }

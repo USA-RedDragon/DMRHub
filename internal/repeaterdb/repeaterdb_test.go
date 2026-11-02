@@ -47,20 +47,33 @@ func TestRepeaterdb(t *testing.T) {
 	}
 }
 
+func firstEmbeddedRepeater(t testing.TB) DMRRepeater {
+	t.Helper()
+	repeater, err := decodeRepeater(dbtest.FirstEntry(t, comressedDMRRepeatersDB, "rptrs"))
+	if err != nil || repeater.ID == 0 || repeater.Callsign == "" || len(repeater.Trustees) == 0 {
+		t.Fatalf("cannot decode the first embedded repeater: %+v %v", repeater, err)
+	}
+	return repeater
+}
+
 func TestRepeaterdbValidRepeater(t *testing.T) {
 	t.Parallel()
-	if !ValidRepeaterCallsign(313060, "KP4DJT") {
-		t.Error("KP4DJT is not in the database")
+	first := firstEmbeddedRepeater(t)
+	if !ValidRepeaterCallsign(first.ID, first.Trustees[0]) {
+		t.Errorf("%s is not a trustee of %d in the database", first.Trustees[0], first.ID)
 	}
-	repeater, ok := Get(313060)
+	if ValidRepeaterCallsign(first.ID, "N0CALL") {
+		t.Errorf("N0CALL is a trustee of %d in the database", first.ID)
+	}
+	repeater, ok := Get(first.ID)
 	if !ok {
-		t.Error("KP4DJT is not in the database")
+		t.Fatalf("%d is not in the database", first.ID)
 	}
-	if repeater.ID != 313060 {
-		t.Errorf("KP4DJT has the wrong ID. Expected %d, got %d", 313060, repeater.ID)
+	if repeater.ID != first.ID {
+		t.Errorf("%s has the wrong ID. Expected %d, got %d", first.Callsign, first.ID, repeater.ID)
 	}
-	if !strings.EqualFold(repeater.Callsign, "KP4DJT") {
-		t.Errorf("KP4DJT has the wrong callsign. Expected \"%s\", got \"%s\"", "KP4DJT", repeater.Callsign)
+	if !strings.EqualFold(repeater.Callsign, first.Callsign) {
+		t.Errorf("%d has the wrong callsign. Expected %q, got %q", first.ID, first.Callsign, repeater.Callsign)
 	}
 }
 
@@ -95,7 +108,7 @@ func TestRepeaterdbInvalidRepeater(t *testing.T) {
 	if IsValidRepeaterID(0) {
 		t.Error("0 is not a valid repeater ID")
 	}
-	if !IsValidRepeaterID(313060) {
+	if !IsValidRepeaterID(991360) {
 		t.Error("Valid repeater ID marked invalid")
 	}
 }
@@ -129,9 +142,10 @@ func TestUpdateFromEmbeddedDB(t *testing.T) {
 	if db.Len() != Len() {
 		t.Errorf("Update loaded %d repeaters, UnpackDB loaded %d", db.Len(), Len())
 	}
-	repeater, ok := db.Get(313060)
-	if !ok || !strings.EqualFold(repeater.Callsign, "KP4DJT") || !slices.Contains(repeater.Trustees, "KP4DJT") {
-		t.Errorf("unexpected repeater 313060: %+v", repeater)
+	first := firstEmbeddedRepeater(t)
+	repeater, ok := db.Get(first.ID)
+	if !ok || !strings.EqualFold(repeater.Callsign, first.Callsign) || !slices.Equal(repeater.Trustees, first.Trustees) {
+		t.Errorf("unexpected repeater %d: %+v", first.ID, repeater)
 	}
 }
 
@@ -143,9 +157,9 @@ func TestUpdateFixtures(t *testing.T) {
 		id       uint
 		trustees []string
 	}{
-		{fixture: "rptrs-current.json", count: 4, id: 112601, trustees: []string{"W8AOR", "K8COP"}},
-		{fixture: "rptrs-current.json", count: 4, id: 250006, trustees: []string{"R0BB"}},
-		{fixture: "rptrs-old.json", count: 2, id: 110601, trustees: []string{"KA6SQG"}},
+		{fixture: "rptrs-current.json", count: 4, id: 990101, trustees: []string{"W0CALL", "K6CALL"}},
+		{fixture: "rptrs-current.json", count: 4, id: 990206, trustees: []string{"N9TEST"}},
+		{fixture: "rptrs-old.json", count: 2, id: 990001, trustees: []string{"K2CALL"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.fixture, func(t *testing.T) {
@@ -186,7 +200,7 @@ func TestUpdateFailures(t *testing.T) {
 		{"server error", func(t *testing.T) string { return dbtest.NewServer(t, 1, []byte(current)).URL }},
 		{"truncated body", func(t *testing.T) string { return dbtest.NewTruncatedServer(t, []byte(current)) }},
 		{"id becomes a string", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 112601`, `"id": "112601"`, 1))).URL
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"id": 990101`, `"id": "990101"`, 1))).URL
 		}},
 		{"id renamed", func(t *testing.T) string {
 			return dbtest.NewServer(t, 0, []byte(strings.ReplaceAll(current, `"id": `, `"repeater_id": `))).URL
@@ -195,13 +209,13 @@ func TestUpdateFailures(t *testing.T) {
 			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"color_code": 1`, `"color_code": "1"`, 1))).URL
 		}},
 		{"trustee becomes an object", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["KA6SQG"]`, `"trustee": {"callsign": "KA6SQG"}`, 1))).URL
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["K2CALL"]`, `"trustee": {"callsign": "K2CALL"}`, 1))).URL
 		}},
 		{"trustees become objects", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["KA6SQG"]`, `"trustee": [{"callsign": "KA6SQG"}]`, 1))).URL
+			return dbtest.NewServer(t, 0, []byte(strings.Replace(current, `"trustee": ["K2CALL"]`, `"trustee": [{"callsign": "K2CALL"}]`, 1))).URL
 		}},
 		{"rptrs becomes an object", func(t *testing.T) string {
-			return dbtest.NewServer(t, 0, []byte(`{"rptrs": {"110601": {"id": 110601}}}`)).URL
+			return dbtest.NewServer(t, 0, []byte(`{"rptrs": {"990001": {"id": 990001}}}`)).URL
 		}},
 		{"no repeaters", func(t *testing.T) string { return dbtest.NewServer(t, 0, []byte(`{"rptrs": []}`)).URL }},
 	}
@@ -216,8 +230,8 @@ func TestUpdateFailures(t *testing.T) {
 			if db.Len() != 2 {
 				t.Errorf("failed update replaced the database, it now has %d repeaters", db.Len())
 			}
-			if _, ok := db.Get(313060); !ok {
-				t.Error("failed update dropped repeater 313060")
+			if _, ok := db.Get(991360); !ok {
+				t.Error("failed update dropped repeater 991360")
 			}
 		})
 	}
@@ -256,9 +270,9 @@ func TestUpdateRetriesWithBackoff(t *testing.T) {
 func TestStreamDecodeRepeaters(t *testing.T) {
 	t.Parallel()
 	const data = `{"rptrs":[` +
-		`{"id":112601,"callsign":"W8AOR","trustee":["W8AOR","K8COP"],"map_info":null,` +
+		`{"id":990101,"callsign":"W0CALL","trustee":["W0CALL","K6CALL"],"map_info":null,` +
 		`"talkgroups":[{"talkgroup":5152,"description":"Local","timeslot":1,"discovery":0}],"color_code":3},` +
-		`{"id":110601,"callsign":"WB6ECE","trustee":"KA6SQG","lat":"47.2","status":"ACTIVE","color_code":2}` +
+		`{"id":990001,"callsign":"N3TEST","trustee":"K2CALL","lat":"47.2","status":"ACTIVE","color_code":2}` +
 		`]}`
 
 	m := xsync.NewMap[uint, DMRRepeater]()
@@ -270,22 +284,22 @@ func TestStreamDecodeRepeaters(t *testing.T) {
 		t.Fatalf("expected 2 repeaters, got %d", count)
 	}
 
-	multi, ok := m.Load(112601)
+	multi, ok := m.Load(990101)
 	if !ok {
-		t.Fatal("112601 missing")
+		t.Fatal("990101 missing")
 	}
-	if !slices.Equal(multi.Trustees, []string{"W8AOR", "K8COP"}) {
+	if !slices.Equal(multi.Trustees, []string{"W0CALL", "K6CALL"}) {
 		t.Errorf("unexpected trustees %v", multi.Trustees)
 	}
 	if multi.ColorCode != 3 {
 		t.Errorf("expected color code 3, got %d", multi.ColorCode)
 	}
 
-	single, ok := m.Load(110601)
+	single, ok := m.Load(990001)
 	if !ok {
-		t.Fatal("110601 missing")
+		t.Fatal("990001 missing")
 	}
-	if !slices.Equal(single.Trustees, []string{"KA6SQG"}) {
+	if !slices.Equal(single.Trustees, []string{"K2CALL"}) {
 		t.Errorf("unexpected trustees %v", single.Trustees)
 	}
 }
@@ -309,8 +323,9 @@ func BenchmarkRepeaterSearch(b *testing.B) {
 		b.Errorf("UnpackDB failed: %v", err)
 		b.Fail()
 	}
+	first := firstEmbeddedRepeater(b)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		ValidRepeaterCallsign(313060, "KP4DJT")
+		ValidRepeaterCallsign(first.ID, first.Trustees[0])
 	}
 }

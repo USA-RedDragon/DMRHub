@@ -31,22 +31,22 @@ import (
 
 func TestLine(t *testing.T) {
 	t.Parallel()
-	c := aprs.Config{Login: "N0HUB-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"}
-	line, err := c.Line("KI5VMF-9", "KI5VMF", "!3016.03N/09744.62W>")
+	c := aprs.Config{Login: "K0CALL-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"}
+	line, err := c.Line("N6CALL-9", "N6CALL", "!3016.03N/09744.62W>")
 	require.NoError(t, err)
-	assert.Equal(t, "KI5VMF-9>APZDMH,KI5VMF*,qAR,N0HUB-10:!3016.03N/09744.62W>", line)
+	assert.Equal(t, "N6CALL-9>APZDMH,N6CALL*,qAR,K0CALL-10:!3016.03N/09744.62W>", line)
 }
 
 func TestEveryLineGoesToTheToCall(t *testing.T) {
 	t.Parallel()
 	configs := []aprs.Config{
 		{},
-		{Login: "N0HUB-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"},
+		{Login: "K0CALL-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"},
 		{Login: "APRS", Passcode: "-1", Server: "APDHXX"},
 		{Login: "APBM1S", Passcode: "APBM1S", Server: "APBM1S:14580"},
 	}
 	packets := []struct{ source, via, info string }{
-		{"KI5VMF-9", "KI5VMF", "!3016.03N/09744.62W>"},
+		{"N6CALL-9", "N6CALL", "!3016.03N/09744.62W>"},
 		{"DL1ABC-7", "DL0HB", "=5230.00N/01324.00E[ comment"},
 		{"N0CALL", "APZXYZ", "!0000.00N\\00000.00Wk"},
 	}
@@ -77,21 +77,21 @@ func TestNoConfigFieldNamesTheToCall(t *testing.T) {
 
 func TestLineRefusesInvalidCallsigns(t *testing.T) {
 	t.Parallel()
-	c := aprs.Config{Login: "N0HUB-10"}
-	for _, call := range []string{"", "ki5vmf", "KI5VMF-", "KI5VMF-100", "KI5VMF>APZXXX", "KI5,VMF", "KI5VMF:X", "TOOLONGCALL"} {
-		_, err := c.Line(call, "KI5VMF", "!")
+	c := aprs.Config{Login: "K0CALL-10"}
+	for _, call := range []string{"", "n6call", "N6CALL-", "N6CALL-100", "N6CALL>APZXXX", "KI5,VMF", "N6CALL:X", "TOOLONGCALL"} {
+		_, err := c.Line(call, "N6CALL", "!")
 		assert.ErrorIs(t, err, aprs.ErrCallsign, call)
 	}
-	_, err := c.Line("KI5VMF", "KI5VMF", "!\r\nN0CALL>APRS:x")
+	_, err := c.Line("N6CALL", "N6CALL", "!\r\nN0CALL>APRS:x")
 	assert.Error(t, err)
 }
 
 func TestLicensedCallsigns(t *testing.T) {
 	t.Parallel()
-	for _, call := range []string{"KI5VMF", "N0CALL", "VK2ABC", "2E0ABC"} {
+	for _, call := range []string{"N6CALL", "N0CALL", "VK2ABC", "2E0ABC"} {
 		assert.True(t, aprs.Licensed(call), call)
 	}
-	for _, call := range []string{"", "GUEST", "123456", "KI5VMF-9", "ki5vmf", "KI5 VMF", "ABCDEFGHI1"} {
+	for _, call := range []string{"", "GUEST", "123456", "N6CALL-9", "n6call", "KI5 VMF", "ABCDEFGHI1"} {
 		assert.False(t, aprs.Licensed(call), call)
 	}
 }
@@ -100,9 +100,9 @@ func TestThePasscodeComesFromTheCallsign(t *testing.T) {
 	t.Parallel()
 	for login, want := range map[string]string{
 		"N0CALL":    "13023",
-		"KI5VMF-10": "16571",
-		"ki5vmf":    "16571",
-		"N0HUB-10":  "14215",
+		"N6CALL-10": "13017",
+		"n6call":    "13017",
+		"K0CALL-10": "14303",
 	} {
 		assert.Equal(t, want, aprs.Passcode(login), login)
 	}

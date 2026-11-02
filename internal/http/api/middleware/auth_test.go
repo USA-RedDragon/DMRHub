@@ -85,8 +85,8 @@ func TestRequireAdminBlocksNonAdmin(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "testuser",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	_, _, jar := testutils.CreateAndLoginUser(t, router, user)
 
@@ -136,8 +136,8 @@ func TestRequireSelfOrAdminBlocksOtherUser(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "selftest",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	_, _, jar := testutils.CreateAndLoginUser(t, router, user)
 
@@ -165,8 +165,8 @@ func TestRequireSelfOrAdminAllowsSelf(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "selftest2",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	_, _, jar := testutils.CreateAndLoginUser(t, router, user)
 
@@ -175,7 +175,7 @@ func TestRequireSelfOrAdminAllowsSelf(t *testing.T) {
 	defer cancel()
 
 	// Access own profile using DMR ID
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users/3191868", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/users/3002068", nil)
 	assert.NoError(t, err)
 	for _, cookie := range jar.Cookies() {
 		req.Header.Add("Cookie", cookie.String())
@@ -194,8 +194,8 @@ func TestSuspendedUserBlocked(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "suspendme",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 
@@ -230,8 +230,8 @@ func TestRequireSuperAdminBlocksRegularAdmin(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "regularadmin",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	testutils.CreateAndLoginUser(t, router, user)
 
@@ -341,8 +341,8 @@ func TestSuspendedUserLockoutDeletedUserBlocked(t *testing.T) {
 	user := apimodels.UserRegistration{
 		Username: "deleteuser",
 		Password: "testpassword123!",
-		Callsign: "KI5VMF",
-		DMRId:    3191868,
+		Callsign: "N6CALL",
+		DMRId:    3002068,
 	}
 	_, _, userJar := testutils.CreateAndLoginUser(t, router, user)
 

@@ -46,7 +46,7 @@ describe('PasswordCard', () => {
   });
 
   it('shows the three fields and the button of the mockup', () => {
-    const wrapper = mount(PasswordCard, { props: { userId: 3191868 } });
+    const wrapper = mount(PasswordCard, { props: { userId: 3002068 } });
     expect(wrapper.find('[data-test="password-card"]').text()).toContain('Password');
     expect(wrapper.find('label[for="pw-current"]').text()).toBe('Current password');
     expect(wrapper.find('label[for="pw-new"]').text()).toBe('New password');
@@ -61,7 +61,7 @@ describe('PasswordCard', () => {
     ['old', '', '', 'Enter a new password.'],
     ['old', 'new', 'other', 'The new passwords do not match.'],
   ])('checks the fields before it sends them (%s, %s, %s)', async (current, next, confirm, want) => {
-    const wrapper = mount(PasswordCard, { props: { userId: 3191868 } });
+    const wrapper = mount(PasswordCard, { props: { userId: 3002068 } });
     await fill(wrapper, current, next, confirm);
     expect(wrapper.find('[data-test="password-error"]').text()).toBe(want);
     expect(mockAPI.patch).not.toHaveBeenCalled();
@@ -69,9 +69,9 @@ describe('PasswordCard', () => {
 
   it('sends the current and the new password and says the other sessions ended', async () => {
     mockAPI.patch.mockResolvedValue({ data: { message: 'User updated' } });
-    const wrapper = mount(PasswordCard, { props: { userId: 3191868 } });
+    const wrapper = mount(PasswordCard, { props: { userId: 3002068 } });
     await fill(wrapper, 'old-password', 'new-password', 'new-password');
-    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3191868', {
+    expect(mockAPI.patch).toHaveBeenCalledWith('/users/3002068', {
       password: 'new-password',
       current_password: 'old-password',
     });
@@ -88,7 +88,7 @@ describe('PasswordCard', () => {
     'Password has been reported in a data breach. Please use another one',
   ])('shows the error of the server: %s', async (message) => {
     mockAPI.patch.mockRejectedValue({ response: { status: 400, data: { error: message } } });
-    const wrapper = mount(PasswordCard, { props: { userId: 3191868 } });
+    const wrapper = mount(PasswordCard, { props: { userId: 3002068 } });
     await fill(wrapper, 'old-password', 'new-password', 'new-password');
     expect(wrapper.find('[data-test="password-error"]').text()).toBe(message);
     expect(wrapper.find('[data-test="password-ok"]').exists()).toBe(false);

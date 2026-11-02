@@ -170,8 +170,8 @@ func FuzzValidateOpenBridgeHMAC(f *testing.F) {
 		s := startFuzzServer(t)
 		_, err := s.peerTable()
 		require.NoError(t, err)
-		require.NoError(t, s.DB.Create(&models.User{ID: 3191868, Callsign: "KI5VMF", Username: "owner", Approved: true}).Error)
-		require.NoError(t, s.DB.Create(&models.Peer{ID: peerID, OwnerID: 3191868, Password: password, Ingress: true}).Error)
+		require.NoError(t, s.DB.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "owner", Approved: true}).Error)
+		require.NoError(t, s.DB.Create(&models.Peer{ID: peerID, OwnerID: 3002068, Password: password, Ingress: true}).Error)
 		s.hub.PeerChanged(peerID)
 
 		s.deliver(t, sign(other))

@@ -37,7 +37,7 @@ func TestApplyTurnsTheModemOnRestartsItAndTurnsItOff(t *testing.T) {
 	t.Parallel()
 	stack := testutils.SetupIntegrationStack(t)
 	stack.SeedUser(t, 1000001, "N0CALL")
-	stack.SeedMMDVMRepeater(t, 311860, 1000001, password)
+	stack.SeedMMDVMRepeater(t, 990360, 1000001, password)
 	opened := make(chan *modemtest.Fake, 8)
 	t.Cleanup(func() {
 		for {
@@ -62,7 +62,7 @@ func TestApplyTurnsTheModemOnRestartsItAndTurnsItOff(t *testing.T) {
 	require.Nil(t, m.Server(manager.Modem), "the modem is off by default")
 
 	next := *cfg
-	next.DMR.Modem.Enabled, next.DMR.Modem.Port, next.DMR.Modem.RepeaterID = true, "/dev/fake", 311860
+	next.DMR.Modem.Enabled, next.DMR.Modem.Port, next.DMR.Modem.RepeaterID = true, "/dev/fake", 990360
 	next.DMR.Modem.RXFrequency, next.DMR.Modem.TXFrequency = 438800000, 438800000
 	require.Empty(t, m.Apply(&next))
 	linked := func() *modemtest.Fake {

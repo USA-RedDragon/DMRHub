@@ -85,12 +85,12 @@ func TestOversizePacketsAreDropped(t *testing.T) {
 
 	send := map[string]func([]byte){"udp": udpSend, "webtransport": wtSend}
 	for name, reply := range map[string]func([]byte) []byte{"udp": udpReply, "webtransport": wtReply} {
-		send[name](rpto(t, 311861, dmrdsession.MaxPacket+1))
-		got := reply(rpto(t, 311860, dmrdsession.MaxPacket))
+		send[name](rpto(t, 990361, dmrdsession.MaxPacket+1))
+		got := reply(rpto(t, 990360, dmrdsession.MaxPacket))
 		require.NotNil(t, got, "%s: a packet of MaxPacket octets is handled", name)
 		k, err := dmrd.DecodeControl(got, dmrd.DialectMMDVM)
 		require.NoError(t, err, name)
 		assert.Equal(t, dmrd.CommandMSTNAK, k.Command, name)
-		assert.Equal(t, uint32(311860), k.ID, "%s: a longer packet is dropped, so the first answer is to the packet after it", name)
+		assert.Equal(t, uint32(990360), k.ID, "%s: a longer packet is dropped, so the first answer is to the packet after it", name)
 	}
 }

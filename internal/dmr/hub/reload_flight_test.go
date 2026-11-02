@@ -59,7 +59,7 @@ func TestAReadAfterAFailedReloadDoesNotTakeALoadBeforeIt(t *testing.T) {
 
 		go func() { _, _ = h.RoutingRepeater(100002) }()
 		synctest.Wait()
-		require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100002).UpdateColumn("callsign", "N0NEW").Error)
+		require.NoError(t, database.Model(&models.Repeater{}).Where("id = ?", 100002).UpdateColumn("callsign", "K2CALL").Error)
 		h.ReloadCachedRepeater(100002)
 
 		got := make(chan string, 1)
@@ -73,6 +73,6 @@ func TestAReadAfterAFailedReloadDoesNotTakeALoadBeforeIt(t *testing.T) {
 		}()
 		synctest.Wait()
 		close(release)
-		assert.Equal(t, "N0NEW", <-got, "a read after a reload got the answer of a load that began before it")
+		assert.Equal(t, "K2CALL", <-got, "a read after a reload got the answer of a load that began before it")
 	})
 }

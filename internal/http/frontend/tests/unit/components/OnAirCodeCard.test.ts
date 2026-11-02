@@ -35,7 +35,7 @@ const mockAPI = API as unknown as { get: Mock; post: Mock; delete: Mock };
 const unlock = { radio: 1000101, repeater: 100101, callsign: 'N0CODE', slot: 2, until: '2026-11-02T09:41:00Z' };
 const off = { on: false, unlock_seconds: 86400, unlocks: [] };
 const on = { on: true, unlock_seconds: 86400, unlocks: [unlock] };
-const setup = { key: 'JBSWY3DPEHPK3PXPKQ4DJTRA', uri: 'otpauth://totp/DMRHub:N0CODE?secret=JBSWY3DPEHPK3PXPKQ4DJTRA', qr: 'data:image/png;base64,AAAA' };
+const setup = { key: 'JBSWY3DPEHPK3PXPMFRGGZDF', uri: 'otpauth://totp/DMRHub:N0CODE?secret=JBSWY3DPEHPK3PXPMFRGGZDF', qr: 'data:image/png;base64,AAAA' };
 
 describe('OnAirCodeCard', () => {
   beforeEach(() => {
@@ -54,7 +54,7 @@ describe('OnAirCodeCard', () => {
     await flushPromises();
     expect(mockAPI.post).toHaveBeenCalledWith('/users/me/totp/setup');
     expect(wrapper.find('[data-test="on-air-qr"]').attributes('src')).toBe(setup.qr);
-    expect(wrapper.find('[data-test="on-air-key"]').text()).toBe('JBSW Y3DP EHPK 3PXP KQ4D JTRA');
+    expect(wrapper.find('[data-test="on-air-key"]').text()).toBe('JBSW Y3DP EHPK 3PXP MFRG GZDF');
 
     await wrapper.find('#on-air-code').setValue('12345');
     await wrapper.find('form').trigger('submit');

@@ -73,13 +73,13 @@ const pos = (radio: number, minutesAgo: number, over: Partial<Position> = {}): P
   altitude_m: null,
   fix_time: null,
   received_at: new Date(Date.now() - minutesAgo * 60000).toISOString(),
-  repeater_id: 319186801,
+  repeater_id: 300206801,
   slot: 2,
   service_id: 5057,
   ...over,
 });
 
-const shared = pos(3140598, 60, { shared: true, callsign: 'KD5SMP' });
+const shared = pos(3002198, 60, { shared: true, callsign: 'N8CALL' });
 
 function serve(share = true) {
   mockAPI.get.mockImplementation((url: string, opts?: { params?: { hours?: number } }) => {
@@ -87,13 +87,13 @@ function serve(share = true) {
       return Promise.resolve({
         data: {
           radios: [
-            { radio_id: 3191868, tracking: true, interval_minutes: 10, retention_hours: 24, aprs: true, aprs_ssid: '9', aprs_symbol: '', aprs_comment: '' },
-            { radio_id: 3191899, tracking: false, interval_minutes: 10, retention_hours: 24, aprs: false, aprs_ssid: '', aprs_symbol: '', aprs_comment: '' },
+            { radio_id: 3002068, tracking: true, interval_minutes: 10, retention_hours: 24, aprs: true, aprs_ssid: '9', aprs_symbol: '', aprs_comment: '' },
+            { radio_id: 3002099, tracking: false, interval_minutes: 10, retention_hours: 24, aprs: false, aprs_ssid: '', aprs_symbol: '', aprs_comment: '' },
           ],
           intervals: [5, 10, 15, 30, 60],
           retention_hours: [24, 168, 720],
           aprs: true,
-          callsign: 'KI5VMF',
+          callsign: 'N6CALL',
         },
       });
     }
@@ -101,14 +101,14 @@ function serve(share = true) {
       return Promise.resolve({ data: { sms_storage: false, share_positions: share } });
     }
     if (url === '/positions') {
-      return Promise.resolve({ data: { positions: share ? [pos(3191868, 4), shared] : [pos(3191868, 4)] } });
+      return Promise.resolve({ data: { positions: share ? [pos(3002068, 4), shared] : [pos(3002068, 4)] } });
     }
-    if (url === '/positions/3191868') {
+    if (url === '/positions/3002068') {
       const hours = opts?.params?.hours ?? 24;
-      const track = hours === 24 ? [pos(3191868, 20), pos(3191868, 4)] : [pos(3191868, 3000), pos(3191868, 20), pos(3191868, 4)];
+      const track = hours === 24 ? [pos(3002068, 20), pos(3002068, 4)] : [pos(3002068, 3000), pos(3002068, 20), pos(3002068, 4)];
       return Promise.resolve({ data: { latest: track[track.length - 1], track } });
     }
-    if (url === '/positions/3140598') {
+    if (url === '/positions/3002198') {
       return Promise.resolve({ data: { latest: shared, track: [shared] } });
     }
     return Promise.reject({ response: { status: 404 } });
@@ -139,19 +139,19 @@ describe('PositionsPage', () => {
   it('lists the users radios, tracked or not, then the shared ones', async () => {
     serve();
     const wrapper = await mountPage();
-    const mine = wrapper.find('[data-test="radio-3191868"]').text();
+    const mine = wrapper.find('[data-test="radio-3002068"]').text();
     expect(mine).toContain('4 min ago');
     expect(mine).toContain('30.2672, −97.7431 · LRRP');
-    expect(mine).toContain('Tracking every 10 min · APRS-IS as KI5VMF-9');
-    expect(wrapper.find('[data-test="radio-3191868"] a').attributes('href')).toBe('/positions/3191868');
-    expect(wrapper.find('[data-test="radio-3191899"]').text()).toContain('Tracking is off');
-    const theirs = wrapper.find('[data-test="radio-3140598"]');
-    expect(theirs.text()).toContain('3140598 · KD5SMP');
-    expect(theirs.text()).toContain('Shared by KD5SMP');
+    expect(mine).toContain('Tracking every 10 min · APRS-IS as N6CALL-9');
+    expect(wrapper.find('[data-test="radio-3002068"] a').attributes('href')).toBe('/positions/3002068');
+    expect(wrapper.find('[data-test="radio-3002099"]').text()).toContain('Tracking is off');
+    const theirs = wrapper.find('[data-test="radio-3002198"]');
+    expect(theirs.text()).toContain('3002198 · N8CALL');
+    expect(theirs.text()).toContain('Shared by N8CALL');
     expect(theirs.find('a').exists()).toBe(false);
     const map = wrapper.findComponent({ name: 'PositionsMap' });
     const tracks = map.props('tracks') as { radio: number; points: Position[] }[];
-    expect(tracks.map((t) => [t.radio, t.points.length])).toEqual([[3191868, 2], [3140598, 1]]);
+    expect(tracks.map((t) => [t.radio, t.points.length])).toEqual([[3002068, 2], [3002198, 1]]);
     expect(socket.url).toMatch(/\/messages$/);
   });
 
@@ -159,8 +159,8 @@ describe('PositionsPage', () => {
     serve();
     const wrapper = await mountPage();
     await wrapper.find('[data-test="show-shared"]').setValue(false);
-    expect(wrapper.find('[data-test="radio-3140598"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="radio-3191868"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="radio-3002198"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="radio-3002068"]').exists()).toBe(true);
   });
 
   it('loads the tracks of the window it shows', async () => {
@@ -169,7 +169,7 @@ describe('PositionsPage', () => {
     await wrapper.find('[data-test="window-168"]').trigger('click');
     await flushPromises();
     expect(mockAPI.get).toHaveBeenCalledWith('/positions', { params: { hours: 168 } });
-    expect(mockAPI.get).toHaveBeenCalledWith('/positions/3191868', { params: { hours: 168 } });
+    expect(mockAPI.get).toHaveBeenCalledWith('/positions/3002068', { params: { hours: 168 } });
     const tracks = wrapper.findComponent({ name: 'PositionsMap' }).props('tracks') as { radio: number; points: Position[] }[];
     expect(tracks[0]!.points).toHaveLength(3);
     expect(wrapper.find('[data-test="window-168"]').attributes('aria-pressed')).toBe('true');
@@ -178,27 +178,27 @@ describe('PositionsPage', () => {
   it('adds the positions the socket pushes and ignores messages', async () => {
     serve();
     const wrapper = await mountPage();
-    const fresh = pos(3191868, 0, { latitude: 30.3 });
+    const fresh = pos(3002068, 0, { latitude: 30.3 });
     socket.handler!({ data: JSON.stringify({ boxes: ['inbox'], message: { id: 1 } }) });
     socket.handler!({ data: JSON.stringify({ kind: 'position', position: fresh }) });
     socket.handler!({ data: JSON.stringify({ kind: 'position', position: fresh }) });
     await flushPromises();
     const tracks = wrapper.findComponent({ name: 'PositionsMap' }).props('tracks') as { radio: number; points: Position[] }[];
     expect(tracks[0]!.points).toHaveLength(3);
-    expect(wrapper.find('[data-test="radio-3191868"]').text()).toContain('30.3000');
-    expect(wrapper.find('[data-test="radio-3191868"]').text()).toContain('just now');
+    expect(wrapper.find('[data-test="radio-3002068"]').text()).toContain('30.3000');
+    expect(wrapper.find('[data-test="radio-3002068"]').text()).toContain('just now');
   });
 
   it('turns sharing on and off', async () => {
     serve(false);
     mockAPI.put.mockResolvedValue({ data: { sms_storage: false, share_positions: true } });
     const wrapper = await mountPage();
-    expect(wrapper.find('[data-test="radio-3140598"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="radio-3002198"]').exists()).toBe(false);
     serve(true);
     wrapper.findComponent({ name: 'Switch' }).vm.$emit('update:modelValue', true);
     await flushPromises();
     expect(mockAPI.put).toHaveBeenCalledWith('/users/me/settings/share-positions', { enabled: true });
-    expect(wrapper.find('[data-test="radio-3140598"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="radio-3002198"]').exists()).toBe(true);
   });
 
   it('asks a visitor to log in', async () => {

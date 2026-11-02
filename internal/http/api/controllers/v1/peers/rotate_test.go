@@ -66,9 +66,9 @@ func peerPassword(t *testing.T, tdb *testutils.TestDB) string {
 func seedRotatePeer(t *testing.T, tdb *testutils.TestDB) {
 	t.Helper()
 	database := tdb.DB()
-	testutils.SeedAccount(t, database, 3191868, "KI5VMF", "owner")
-	testutils.SeedAccount(t, database, 3191869, "N0CALL", "other")
-	require.NoError(t, database.Create(&models.Peer{ID: 3000, OwnerID: 3191868, Password: "oldPassword1!", IP: "192.0.2.10", Port: 62035}).Error)
+	testutils.SeedAccount(t, database, 3002068, "N6CALL", "owner")
+	testutils.SeedAccount(t, database, 3002069, "N0CALL", "other")
+	require.NoError(t, database.Create(&models.Peer{ID: 3000, OwnerID: 3002068, Password: "oldPassword1!", IP: "192.0.2.10", Port: 62035}).Error)
 }
 
 // TestAnOwnerRotatesThePasswordOfTheirPeer rotates the password of a peer

@@ -49,8 +49,9 @@ func TestLiveUpdate(t *testing.T) {
 	if db.Len() < 9200 {
 		t.Errorf("live repeater database looks truncated, found %d repeaters", db.Len())
 	}
-	repeater, ok := db.Get(313060)
-	if !ok || !strings.EqualFold(repeater.Callsign, "KP4DJT") || len(repeater.Trustees) == 0 {
-		t.Errorf("unexpected live repeater 313060: %+v", repeater)
+	first := firstEmbeddedRepeater(t)
+	repeater, ok := db.Get(first.ID)
+	if !ok || !strings.EqualFold(repeater.Callsign, first.Callsign) || len(repeater.Trustees) == 0 {
+		t.Errorf("unexpected live repeater %d: %+v", first.ID, repeater)
 	}
 }

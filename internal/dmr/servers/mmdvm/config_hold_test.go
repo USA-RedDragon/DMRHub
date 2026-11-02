@@ -105,7 +105,7 @@ func expectBursts(t *testing.T, r *dialectRig, want []models.Packet) {
 // them after the RPTACK, in order, rather than lose them.
 func TestACallInTheConfigOfALoginComesAfterItsRPTACK(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311970)
+	const id = uint32(990470)
 	r := newDialectRig(t, uint(id))
 	free := configHeld(t, r, id)
 	want := []models.Packet{heldBurst(id, 7001, 0), heldBurst(id, 7001, 1), heldBurst(id, 7001, 2)}
@@ -121,7 +121,7 @@ func TestACallInTheConfigOfALoginComesAfterItsRPTACK(t *testing.T) {
 // the start of the call that a repeater needs, and drop the rest.
 func TestAHeldCallKeepsItsStart(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311971)
+	const id = uint32(990471)
 	r := newDialectRig(t, uint(id))
 	free := configHeld(t, r, id)
 	var want []models.Packet
@@ -142,7 +142,7 @@ func TestAHeldCallKeepsItsStart(t *testing.T) {
 // repeater must get only the newer one.
 func TestAnEndedHeldCallIsNotSent(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311972)
+	const id = uint32(990472)
 	clk := clock.NewFake(time.Now())
 	r := newRig(t, []uint{uint(id)}, withClock(clk))
 	free := configHeld(t, r, id)
@@ -159,7 +159,7 @@ func TestAnEndedHeldCallIsNotSent(t *testing.T) {
 // RPTACK. The next login of the repeater must not get that burst.
 func TestAHeldCallOfAnEndedLoginIsDropped(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311973)
+	const id = uint32(990473)
 	r := newDialectRig(t, uint(id))
 	free := configHeld(t, r, id)
 	deliverHeld(r, id, heldBurst(id, 7005, 0))
@@ -175,7 +175,7 @@ func TestAHeldCallOfAnEndedLoginIsDropped(t *testing.T) {
 // its login. The next login of the repeater must not get that burst.
 func TestAHeldCallOfARefusedLoginIsDropped(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311974)
+	const id = uint32(990474)
 	r := newDialectRig(t, uint(id))
 	d := dmrd.DialectMMDVM
 	r.control(d, dmrd.Control{Command: dmrd.CommandRPTL, ID: id})
@@ -206,7 +206,7 @@ func TestAHeldCallOfARefusedLoginIsDropped(t *testing.T) {
 // that logs in over WebTransport.
 func TestACallInTheConfigOfABrowserLoginComesAfterItsRPTACK(t *testing.T) {
 	t.Parallel()
-	const id = uint32(311860)
+	const id = uint32(990360)
 	s, cfg := webTransportServer(t)
 	s.mu.Lock()
 	s.newSalt = func() (uint32, error) { return testSalt, nil }

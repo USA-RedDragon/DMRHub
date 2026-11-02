@@ -40,7 +40,7 @@ func (undeliverableCall) TableName() string { return "calls" }
 
 // TestUndeliverableReasonsBecomeSentences migrates calls whose
 // undeliverable lists hold entries of the old form, such as
-// "ipsc:314926:slot_busy". Each such entry becomes its sentence, entries
+// "ipsc:990626:slot_busy". Each such entry becomes its sentence, entries
 // that are sentences already stay, and calls without a list stay as they
 // are.
 func TestUndeliverableReasonsBecomeSentences(t *testing.T) {
@@ -56,16 +56,16 @@ func TestUndeliverableReasonsBecomeSentences(t *testing.T) {
 			require.NoError(t, database.AutoMigrate(&undeliverableCall{}))
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610261200").Error)
 
-			busy := "IPSC repeater 314926 was busy on that slot."
+			busy := "IPSC repeater 990626 was busy on that slot."
 			rows := map[uint][]string{
-				1: {"ipsc:314926:slot_busy", "ipsc:311304200:no_ipsc_form"},
-				2: {busy, "ipsc:311304201:fec_uncorrectable"},
+				1: {"ipsc:990626:slot_busy", "ipsc:300344200:no_ipsc_form"},
+				2: {busy, "ipsc:300344201:fec_uncorrectable"},
 				3: {busy},
 				4: nil,
 			}
 			want := map[uint][]string{
-				1: {busy, "IPSC repeater 311304200 cannot carry this kind of burst."},
-				2: {busy, "The burst for IPSC repeater 311304201 was too damaged to repair."},
+				1: {busy, "IPSC repeater 300344200 cannot carry this kind of burst."},
+				2: {busy, "The burst for IPSC repeater 300344201 was too damaged to repair."},
 				3: {busy},
 				4: nil,
 			}

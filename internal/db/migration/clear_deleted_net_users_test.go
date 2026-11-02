@@ -51,9 +51,9 @@ func TestClearDeletedNetUsers(t *testing.T) {
 				}
 			})
 
-			const kept, deleted = uint(3191868), uint(3140001)
+			const kept, deleted = uint(3002068), uint(3004201)
 			require.NoError(t, database.Exec("DELETE FROM migrations WHERE id = ?", "202610251000").Error)
-			require.NoError(t, database.Exec("INSERT INTO users (id, callsign, username, password, approved) VALUES (?, ?, ?, ?, ?)", kept, "KI5VMF", "kept", "hash", true).Error)
+			require.NoError(t, database.Exec("INSERT INTO users (id, callsign, username, password, approved) VALUES (?, ?, ?, ?, ?)", kept, "N6CALL", "kept", "hash", true).Error)
 			for id, user := range map[uint]uint{1: kept, 2: deleted} {
 				require.NoError(t, database.Exec("INSERT INTO nets (id, talkgroup_id, started_by_user_id, start_time, active) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)", id, 91, user, false).Error)
 				require.NoError(t, database.Exec("INSERT INTO scheduled_nets (id, talkgroup_id, created_by_user_id, name) VALUES (?, ?, ?, ?)", id, 91, user, "weekly").Error)

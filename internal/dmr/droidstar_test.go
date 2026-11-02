@@ -54,11 +54,11 @@ func TestExternalDroidStar(t *testing.T) {
 
 	stack := testutils.SetupIntegrationStack(t, testutils.SQLiteMemoryBackend())
 	cfg := &testutils.DroidStarConfig{
-		Binary: bin, Home: t.TempDir(), Callsign: "KI5VMF", DMRID: anyTone, ESSID: 1,
+		Binary: bin, Home: t.TempDir(), Callsign: "N6CALL", DMRID: anyTone, ESSID: 1,
 		Password: "passw0rd", Options: "TS1=91;TS2=9;", TalkGroup: 91,
 	}
 	hotspot := uint(cfg.HotspotID())
-	stack.SeedUser(t, anyTone, "KI5VMF")
+	stack.SeedUser(t, anyTone, "N6CALL")
 	stack.SeedUser(t, mxRadio, "N0CALL")
 	stack.SeedTalkgroup(t, 91, "TG91")
 	stack.SeedTalkgroup(t, 9, "TG9")

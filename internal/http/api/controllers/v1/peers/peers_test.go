@@ -844,11 +844,11 @@ func TestPATCHPeerEnhancedIsForAdmins(t *testing.T) {
 	defer tdb.CloseDB()
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
-	testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
+	testutils.SeedAccount(t, tdb.DB(), 3002068, "N6CALL", "owner")
 	ownerJar := testutils.Login(t, router, "owner")
 
 	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{
-		ID: 200002, OwnerID: 3191868, IP: "10.0.0.2", Port: 62035, Ingress: true, Egress: true, Enhanced: true,
+		ID: 200002, OwnerID: 3002068, IP: "10.0.0.2", Port: 62035, Ingress: true, Egress: true, Enhanced: true,
 	})
 	require.Equal(t, http.StatusOK, w.Code)
 	var stored models.Peer
@@ -874,9 +874,9 @@ func TestPeerOwnerCanReadTheirPeer(t *testing.T) {
 	defer tdb.CloseDB()
 
 	_, _, adminJar := testutils.LoginAdmin(t, router)
-	testutils.SeedAccount(t, tdb.DB(), 3191868, "KI5VMF", "owner")
-	testutils.SeedAccount(t, tdb.DB(), 3140598, "KD5SMP", "other")
-	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{ID: 200003, OwnerID: 3191868, IP: "10.0.0.3", Port: 62035})
+	testutils.SeedAccount(t, tdb.DB(), 3002068, "N6CALL", "owner")
+	testutils.SeedAccount(t, tdb.DB(), 3002198, "N8CALL", "other")
+	_, w := testutils.CreatePeer(t, router, adminJar, apimodels.PeerPost{ID: 200003, OwnerID: 3002068, IP: "10.0.0.3", Port: 62035})
 	require.Equal(t, http.StatusOK, w.Code)
 
 	get := func(jar testutils.CookieJar) int {

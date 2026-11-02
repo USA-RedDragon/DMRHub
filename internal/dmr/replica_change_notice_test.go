@@ -193,7 +193,7 @@ func TestEditsOnOneReplicaTakeEffectAtOnceOnAnother(t *testing.T) {
 		func() {
 			sendPrivateBursts(t, c1, 1000001, 1000004, 9201)
 			c2.Drain(300 * time.Millisecond)
-			resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 1000004, Callsign: "N0CAL4", Username: "notice-user", Password: "password1234"})
+			resp, w := testutils.RegisterUser(t, router, apimodels.UserRegistration{DMRId: 1000004, Callsign: "N2TEST4", Username: "notice-user", Password: "password1234"})
 			require.Equal(t, http.StatusOK, w.Code, resp.Error)
 			notices.await(t, "hub:users:changed")
 			require.NoError(t, c2.SendDMRD(makeGroupVoicePacket(1000004, 1, 9202, false)))

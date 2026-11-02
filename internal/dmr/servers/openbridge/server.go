@@ -137,6 +137,12 @@ type Server struct {
 	released       chan struct{}
 	handedOver     chan struct{}
 	handedOverOnce sync.Once
+	releasedBy     string
+	held           []egressJob
+
+	ownMu     sync.Mutex
+	ownHanded uint64
+	ownBack   atomic.Uint64
 }
 
 type peerTable struct {
@@ -551,7 +557,7 @@ func (s *Server) sendPacketToPeer(peerID uint, packet models.Packet, org origin)
 		slog.Error("Invalid packet type", "packetType", packet.Signature)
 		return
 	}
-	if !s.IsEgressLeader() {
+	if !s.IsEgressLeader() || s.handedBehind() {
 		s.handOff(peerID, packet, org)
 		return
 	}

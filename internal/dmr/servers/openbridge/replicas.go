@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -45,7 +46,13 @@ import (
 // it at once and says so with a taken message on the same topic. Since the
 // topic has one order, the old holder sends each packet that comes before
 // the taken message and the new holder each one that comes after it, so a
-// packet is sent once and none is lost. When the holder dies, another
+// packet is sent once and none is lost. A holder that stops says so in its
+// release message and says on the topic once it read the taken message,
+// and so sent its part; the new holder holds what comes after its taken
+// message until then, for at most handoverWait, so that no peer gets a
+// packet after a later one. A replica that held a packet in its outbox when
+// it took the lease sends its own packets through the topic until it read
+// back each one that it handed off before. When the holder dies, another
 // replica takes the lease within EgressLeaseTTL plus one renewal; egress in
 // that gap is dropped, never held.
 const (
@@ -83,6 +90,7 @@ const (
 	// roleReleasing is a holder that gave the lease up and sends until the
 	// taken message of another replica.
 	roleReleasing
+	roleSettling
 )
 
 // The kinds of the messages on the egress topic besides packets.
@@ -91,6 +99,7 @@ const (
 	kindTaken   = "taken"
 	kindMarker  = "marker"
 	kindAck     = "ack"
+	kindHanded  = "handed"
 )
 
 const leaseAcks = "acks"
@@ -117,6 +126,9 @@ type egressJob struct {
 	Kind     string `json:"kind,omitempty"`
 	Replica  string `json:"replica,omitempty"`
 	Marker   string `json:"marker,omitempty"`
+	Seq      uint64 `json:"seq,omitempty"`
+	Hands    bool   `json:"hands,omitempty"`
+	To       string `json:"to,omitempty"`
 }
 
 func newReplicaID() string {
@@ -251,7 +263,7 @@ func (s *Server) beginTaking() {
 	}
 	s.takingAt = s.clock.Now()
 	s.setRole(roleTaking)
-	if err := s.publishControl(kindTaken); err != nil {
+	if err := s.publishControl(egressJob{Kind: kindTaken}); err != nil {
 		slog.Error("Error announcing the OpenBridge egress lease", "error", err)
 		s.setRole(roleLeader)
 	}
@@ -263,8 +275,9 @@ func (s *Server) setRole(role int32) {
 	}
 }
 
-func (s *Server) publishControl(kind string) error {
-	b, err := json.Marshal(egressJob{Kind: kind, Replica: s.id})
+func (s *Server) publishControl(j egressJob) error {
+	j.Replica = s.id
+	b, err := json.Marshal(j)
 	if err != nil {
 		return fmt.Errorf("encoding an OpenBridge lease message: %w", err)
 	}
@@ -319,7 +332,7 @@ func (s *Server) handOver(ctx context.Context) {
 	s.setRole(roleReleasing)
 	s.roleMu.Unlock()
 	s.deleteLease(ctx)
-	if err := s.publishControl(kindRelease); err != nil {
+	if err := s.publishControl(egressJob{Kind: kindRelease, Hands: true}); err != nil {
 		slog.Error("Error handing the OpenBridge egress lease over", "error", err)
 		return
 	}
@@ -355,23 +368,36 @@ func (s *Server) handOver(ctx context.Context) {
 
 // handOff publishes a packet for the replica that holds the lease.
 func (s *Server) handOff(peerID uint, packet models.Packet, org origin) {
-	b, err := json.Marshal(egressJob{Peer: peerID, Packet: packet.Encode(), Server: org.server, Repeater: org.repeater, Hops: org.hops})
+	s.ownMu.Lock()
+	defer s.ownMu.Unlock()
+	seq := s.ownHanded + 1
+	b, err := json.Marshal(egressJob{Peer: peerID, Packet: packet.Encode(), Server: org.server, Repeater: org.repeater, Hops: org.hops, Replica: s.id, Seq: seq})
 	if err != nil {
 		slog.Error("Error encoding OpenBridge egress", "error", err)
 		return
 	}
-	s.publishLater(s.egressOut, egressTopic, b)
+	if s.publishLater(s.egressOut, egressTopic, b) {
+		s.ownHanded = seq
+	}
+}
+
+func (s *Server) handedBehind() bool {
+	s.ownMu.Lock()
+	defer s.ownMu.Unlock()
+	return s.ownHanded > s.ownBack.Load()
 }
 
 // publishLater queues msg for the outbox out, so that no packet waits on
-// pubsub. A full outbox drops msg.
-func (s *Server) publishLater(out chan outMessage, topic string, msg []byte) {
+// pubsub, and reports whether it did. A full outbox drops msg.
+func (s *Server) publishLater(out chan outMessage, topic string, msg []byte) bool {
 	select {
 	case out <- outMessage{topic: topic, msg: msg}:
+		return true
 	default:
 		if n := s.outDropped.Add(1); n&(n-1) == 0 {
 			slog.Warn("OpenBridge outbox full, messages dropped", "topic", topic, "dropped", n)
 		}
+		return false
 	}
 }
 
@@ -408,38 +434,90 @@ func (s *Server) consumeEgress(sub pubsub.Subscription) {
 	defer s.wg.Done()
 	defer func() { _ = sub.Close() }()
 	ch := sub.Channel()
+	var settle clock.Timer
+	defer func() {
+		if settle != nil {
+			settle.Stop()
+		}
+	}()
 	for {
+		var settled <-chan time.Time
+		if settle != nil {
+			settled = settle.C()
+		}
 		select {
 		case <-s.done:
 			return
+		case <-settled:
+			settle = nil
+			s.endSettling()
 		case msg, ok := <-ch:
 			if !ok {
 				return
 			}
 			s.egressMessage(msg)
 		}
+		switch settling := s.role.Load() == roleSettling; {
+		case settling && settle == nil:
+			settle = s.clock.NewTimer(handoverWait)
+		case !settling && settle != nil:
+			settle.Stop()
+			settle = nil
+		}
 	}
 }
 
-// egressMessage takes one message of the egress topic.
 func (s *Server) egressMessage(msg []byte) {
 	var j egressJob
 	if err := json.Unmarshal(msg, &j); err != nil {
 		slog.Error("Error decoding OpenBridge egress", "error", err)
 		return
 	}
+	if s.role.Load() == roleSettling && (j.Kind == "" || j.Kind == kindMarker) {
+		s.held = append(s.held, j)
+		return
+	}
+	s.egressJob(j, false)
+	if len(s.held) > 0 && s.role.Load() != roleSettling {
+		s.sendHeld()
+	}
+}
+
+func (s *Server) egressJob(j egressJob, held bool) {
+	if j.Kind == kindMarker && held {
+		s.ack(j)
+		return
+	}
 	if j.Kind != "" {
 		s.controlMessage(j)
 		return
 	}
-	if !s.sends() {
-		return
+	if s.sends() || held {
+		if packet, ok := models.UnpackPacket(j.Packet); ok {
+			s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
+		}
 	}
-	packet, ok := models.UnpackPacket(j.Packet)
-	if !ok {
-		return
+	if j.Replica == s.id && j.Seq > s.ownBack.Load() {
+		s.ownBack.Store(j.Seq)
 	}
-	s.sendNow(j.Peer, packet, origin{server: j.Server, repeater: j.Repeater, hops: j.Hops})
+}
+
+func (s *Server) sendHeld() {
+	held := s.held
+	s.held = nil
+	for _, j := range held {
+		s.egressJob(j, true)
+	}
+}
+
+func (s *Server) endSettling() {
+	s.roleMu.Lock()
+	if s.role.Load() == roleSettling {
+		s.setRole(roleLeader)
+	}
+	s.releasedBy = ""
+	s.roleMu.Unlock()
+	s.sendHeld()
 }
 
 func (s *Server) controlMessage(j egressJob) {
@@ -447,6 +525,10 @@ func (s *Server) controlMessage(j egressJob) {
 	case kindMarker:
 		if s.sends() {
 			s.ack(j)
+		}
+	case kindHanded:
+		if j.To == s.id && j.Replica == s.releasedByNow() {
+			s.endSettling()
 		}
 	case kindAck:
 		if j.Replica != s.id {
@@ -506,24 +588,44 @@ func (s *Server) holderAcks(ctx context.Context) bool {
 	return len(f) == 2 && f[1] == leaseAcks
 }
 
+func (s *Server) releasedByNow() string {
+	s.roleMu.Lock()
+	defer s.roleMu.Unlock()
+	return s.releasedBy
+}
+
 // leaseMessage takes a release or taken message from the egress topic.
 func (s *Server) leaseMessage(j egressJob) {
 	s.roleMu.Lock()
 	defer s.roleMu.Unlock()
 	role := s.role.Load()
 	switch {
+	case j.Kind == kindTaken && j.Replica == s.id && role == roleTaking && s.releasedBy != "":
+		s.setRole(roleSettling)
 	case j.Kind == kindTaken && j.Replica == s.id && role == roleTaking:
 		s.setRole(roleLeader)
 	case j.Kind == kindTaken && j.Replica != s.id && role == roleReleasing:
 		s.setRole(roleFollower)
 		s.handedOverOnce.Do(func() { close(s.handedOver) })
-	case j.Kind == kindTaken && j.Replica != s.id && role == roleLeader:
+		if s.pubsub == nil {
+			break
+		}
+		if err := s.publishControl(egressJob{Kind: kindHanded, To: j.Replica}); err != nil {
+			slog.Error("Error saying that the OpenBridge egress lease was handed over", "error", err)
+		}
+	case j.Kind == kindTaken && j.Replica != s.id && (role == roleLeader || role == roleSettling):
 		s.setRole(roleFollower)
 	case j.Kind == kindRelease && j.Replica != s.id && role == roleFollower:
 		select {
 		case s.released <- struct{}{}:
 		default:
 		}
+	}
+	switch {
+	case j.Kind == kindRelease && j.Replica != s.id && j.Hands:
+		s.releasedBy = j.Replica
+	case j.Kind == kindRelease, j.Kind == kindTaken && j.Replica != s.id:
+		s.releasedBy = ""
 	}
 }
 

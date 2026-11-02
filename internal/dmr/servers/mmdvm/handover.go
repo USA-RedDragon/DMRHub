@@ -478,13 +478,15 @@ func (s *Server) askAnchorsOf(addr wtAddr) ([]wtAnchor, bool) {
 }
 
 // leftSince returns the packets to the repeater id that left at or after
-// since, in order.
+// since, or that still wait or are being written, in order. A packet that
+// the writer writes while the path of the connection moves may go out on
+// the old path.
 func (s *Server) leftSince(id uint, since time.Time) []models.Packet {
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
 	var out []models.Packet
 	for _, p := range s.sent[id] {
-		if !p.at.IsZero() && !p.at.Before(since) {
+		if p.at.IsZero() || !p.at.Before(since) {
 			out = append(out, p.pkt)
 		}
 	}

@@ -360,3 +360,38 @@ func TestAHandoverThatMovesOnHandsOverWhatItDidNotSend(t *testing.T) {
 		assert.LessOrEqual(t, len(s.outgoingChan), 1, "this replica sent the packets after the hotspot moved on")
 	})
 }
+
+// TestAPathMoveResendsAPacketBeingWritten moves the path of the QUIC
+// connection of a browser hotspot while the writer still writes a packet
+// to it, as a writer that gets no CPU for a while does. The packet may go
+// out on the old path, which the load balancer no longer takes to the
+// hotspot, so the resend of the path move must hold it.
+func TestAPathMoveResendsAPacketBeingWritten(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := queueServer()
+		slow := &slowTransport{writing: make(chan struct{}), release: make(chan struct{})}
+		s.transports.Store(webTransportName, slow)
+		addr := wtAddr("session")
+		s.connected.Store(1, endpoint{transport: webTransportName, addr: addr})
+		s.deliver(context.Background(), 1, models.Packet{StreamID: 7, Seq: 0})
+		o := <-s.outgoingChan
+		wrote := make(chan struct{})
+		go func() {
+			defer close(wrote)
+			s.writeOut(o)
+		}()
+		<-slow.writing
+
+		s.resendMoved(addr, time.Now())
+		synctest.Wait()
+		close(slow.release)
+		<-wrote
+
+		require.Len(t, s.outgoingChan, 1, "the path move did not send again the packet that was being written")
+		again := <-s.outgoingChan
+		p, ok := models.UnpackPacket(again.raw.Data)
+		require.True(t, ok)
+		assert.Equal(t, uint(0), p.Seq)
+	})
+}

@@ -32,7 +32,8 @@ import (
 func main() {
 	plugin.MainWith(&pluginv1.Hello{
 		Name: "Echo", Version: "1.0.0", Author: "N0CALL", Description: "Answers each burst.",
-		Ids: []*pluginv1.IDRange{{First: 9100, Last: 9100}},
+		Ids:      []*pluginv1.IDRange{{First: 9100, Last: 9100}},
+		Switches: []*pluginv1.Switch{{Key: "echo", Title: "Echo", Description: "Answers your bursts."}},
 	}, func(_ context.Context, conn *plugin.Conn) error {
 		for {
 			m, err := conn.Recv()

@@ -36,8 +36,9 @@ var errNotAMessage = errors.New("not a message of the plugin protocol")
 // stream is the stream of a plugin inside DMRHub, as the plugin service
 // serves it.
 type stream struct {
-	i   *Instance
-	ctx context.Context //nolint:containedctx // the context of the stream
+	i       *Instance
+	ctx     context.Context //nolint:containedctx // the context of the stream
+	helloed bool
 }
 
 // Stream returns the stream of the plugin for the plugin service. Give it
@@ -52,7 +53,14 @@ func (s *stream) Send(m *pluginv1.ConnectResponse) error {
 }
 
 // Recv returns the next message of the plugin, and io.EOF when it ended.
+// The first is the hello of the plugin.
 func (s *stream) Recv() (*pluginv1.ConnectRequest, error) {
+	if !s.helloed {
+		s.helloed = true
+		if h := s.i.Hello(); h != nil {
+			return &pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Hello{Hello: h}}, nil
+		}
+	}
 	select {
 	case m, ok := <-s.i.frames:
 		if !ok {

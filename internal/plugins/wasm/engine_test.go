@@ -211,6 +211,24 @@ func TestAPluginInsideAnswersThroughTheService(t *testing.T) {
 	})
 }
 
+// TestTheHubKeepsTheSwitchesOfAPluginInside checks that the hello of a
+// plugin inside DMRHub reaches the service, which keeps its switches. The
+// service reads the hello before the burst that answers the call, so the
+// switches are kept once the answer came.
+func TestTheHubKeepsTheSwitchesOfAPluginInside(t *testing.T) {
+	t.Parallel()
+	eachCompiler(t, func(t *testing.T, compiler string) {
+		r := newRig(t)
+		_, p := r.run(t, engine, "Echo", guestOf(t, compiler, "echo"), nil, models.PluginRange{First: 9100, Last: 9100})
+		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3191868, Dst: 9100, StreamID: 7, Seq: 1, Slot: true}))
+		r.next(t)
+		specs, err := models.PluginSwitchesOf(r.db, p.ID)
+		require.NoError(t, err)
+		require.Len(t, specs, 1)
+		assert.Equal(t, models.PluginSwitchSpec{Key: "echo", Title: "Echo", Description: "Answers your bursts."}, specs[0])
+	})
+}
+
 func TestStopEndsAPluginThatWaitsForTheHub(t *testing.T) {
 	t.Parallel()
 	eachCompiler(t, func(t *testing.T, compiler string) {

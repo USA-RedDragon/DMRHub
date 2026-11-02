@@ -21,6 +21,7 @@ package hub
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/outbox"
+	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
@@ -210,5 +212,83 @@ func TestStopEndsAFeedThatNoSubscriptionHolds(t *testing.T) {
 		h.subscriptionMgr.feedOf(context.Background(), 100001)
 		h.subscriptionMgr.mu.Unlock()
 		h.Stop(context.Background())
+	})
+}
+
+// TestStopEndsTheDatabaseReadsOfTheHub stops a hub while it reads a
+// repeater again, on a goroutine that Stop waits for, from a database that
+// answers only when the context of the read ends, as a stalled database
+// does for a driver that aborts a query on its context. Stop must end the
+// read and return, and the read must fail.
+func TestStopEndsTheDatabaseReadsOfTheHub(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		cfg, err := configulator.New(config.ConfigSchema()).Default()
+		require.NoError(t, err)
+		memdb.Use(t, &cfg)
+		database, err := db.MakeDB(&cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			sqlDB, _ := database.DB()
+			_ = sqlDB.Close()
+		})
+		require.NoError(t, database.Create(&models.User{ID: 1000001, Callsign: "N0CALL", Username: "n0call", Approved: true}).Error)
+		require.NoError(t, database.Create(&models.Repeater{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: 100001, Callsign: "T0001ST"},
+			OwnerID:               1000001,
+			Type:                  models.RepeaterTypeMMDVM,
+		}).Error)
+
+		var stall atomic.Bool
+		stalled := make(chan error, 1)
+		require.NoError(t, database.Callback().Query().After("gorm:query").Register("stall_repeater", func(tx *gorm.DB) {
+			if stall.Load() && tx.Statement.Table == "repeaters" {
+				<-tx.Statement.Context.Done()
+				_ = tx.AddError(tx.Statement.Context.Err())
+				stalled <- tx.Statement.Context.Err()
+			}
+		}))
+
+		h := NewHub(database, nil, nil, nil)
+		_, err = h.waitRepeater(100001)
+		require.NoError(t, err)
+		time.Sleep(repeaterCacheTTL)
+		stall.Store(true)
+		_, err = h.waitRepeater(100001)
+		require.NoError(t, err)
+		synctest.Wait()
+
+		h.Stop(context.Background())
+		require.ErrorIs(t, <-stalled, context.Canceled, "Stop must end the read of the hub")
+	})
+}
+
+type stalledKV struct {
+	kv.KV
+	called chan struct{}
+}
+
+func (s stalledKV) Get(ctx context.Context, _ string) ([]byte, error) {
+	close(s.called)
+	<-ctx.Done()
+	return nil, fmt.Errorf("stalled: %w", ctx.Err())
+}
+
+// TestStopEndsTheKVCallsOfTheHub reads the KV store of a hub with a
+// context that never ends, from a store that answers only when the context
+// of the call ends. Stop must end the call.
+func TestStopEndsTheKVCallsOfTheHub(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		store := stalledKV{called: make(chan struct{})}
+		h := NewHub(nil, store, nil, nil)
+		got := make(chan error, 1)
+		go func() {
+			_, err := h.kv.Get(context.Background(), "key")
+			got <- err
+		}()
+		<-store.called
+		h.Stop(context.Background())
+		require.ErrorIs(t, <-got, context.Canceled, "Stop must end the KV call of the hub")
 	})
 }

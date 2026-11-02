@@ -145,6 +145,7 @@ type Hub struct {
 	clock       clock.Clock
 	db          *gorm.DB
 	kv          kv.KV
+	cancelStop  context.CancelFunc
 	pubsub      pubsub.PubSub
 	callTracker *calltracker.CallTracker
 	events      *connlog.Log
@@ -273,10 +274,12 @@ type Hub struct {
 
 // NewHub creates a new Hub.
 func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTracker, opts ...Option) *Hub {
+	stop, cancelStop := context.WithCancel(context.Background())
 	h := &Hub{
 		clock:         clock.Real(),
-		db:            db,
-		kv:            kvStore,
+		db:            stoppingDB(db, stop),
+		kv:            stoppingStore(kvStore, stop),
+		cancelStop:    cancelStop,
 		pubsub:        ps,
 		callTracker:   ct,
 		servers:       make(map[string]*serverEntry),
@@ -346,7 +349,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 		return models.TalkgroupRepeaterIDs(h.db, tg)
 	})
 	h.heard = make(chan heardNote, heardQueue)
-	if db != nil {
+	if h.db != nil {
 		h.loadRules()
 		h.loadTalkgroups()
 		h.loadPeers()
@@ -537,14 +540,15 @@ func (h *Hub) IsStopping() bool {
 }
 
 // Stop cancels all subscriptions and signals blocked deliveries to abort (used at shutdown).
-// It returns once the goroutines of the hub and the jobs of its outboxes
-// have ended, so that the caller may close the database and the pubsub
-// next.
+// It ends the database and KV calls of the hub and returns once the
+// goroutines of the hub and the jobs of its outboxes have ended, so that
+// the caller may close the database and the pubsub next.
 func (h *Hub) Stop(ctx context.Context) {
 	h.stopOnce.Do(func() {
 		slog.Info("Stopping all repeater subscriptions")
 		h.stopAllRepeaters(ctx)
 		close(h.done)
+		h.cancelStop()
 		h.tracked.Wait()
 		h.later.Wait()
 		h.outbox.Wait()

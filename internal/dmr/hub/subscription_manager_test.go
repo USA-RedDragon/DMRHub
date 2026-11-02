@@ -826,9 +826,11 @@ type lookupGate struct {
 }
 
 // gateRepeaterLookups holds every query for a repeater with an ID in
-// [lo, hi], once armed, until release is called, and reports each held ID on
-// held and, once it ends, on passed. It must be set up before the database is used concurrently, because
-// gorm callbacks cannot be registered while queries run.
+// [lo, hi], once armed, until release is called or the context of the
+// query ends, which then fails as a driver aborts it, and reports each
+// held ID on held and, once it ends, on passed. It must be set up before
+// the database is used concurrently, because gorm callbacks cannot be
+// registered while queries run.
 func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGate {
 	t.Helper()
 	g := &lookupGate{held: make(chan uint, 1000), passed: make(chan uint, 1000), open: make(chan struct{})}
@@ -842,7 +844,11 @@ func gateRepeaterLookups(t *testing.T, database *gorm.DB, lo, hi uint) *lookupGa
 		for _, v := range tx.Statement.Vars {
 			if id, ok := v.(uint); ok && id >= lo && id <= hi {
 				g.held <- id
-				<-g.open
+				select {
+				case <-g.open:
+				case <-tx.Statement.Context.Done():
+					_ = tx.AddError(tx.Statement.Context.Err())
+				}
 				g.passed <- id
 				return
 			}

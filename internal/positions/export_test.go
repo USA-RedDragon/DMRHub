@@ -23,6 +23,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/aprs"
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
@@ -37,6 +38,12 @@ func SetClock(g *Gateway, every time.Duration, c clock.Clock) {
 // sent it; and with each login reply to its clients. Call it before Start.
 func Observe(g *Gateway, refreshed func(connected bool), handled func(p models.Position, sent bool), login func(verified bool)) {
 	g.obs = observer{refreshed: refreshed, handled: handled, login: login}
+}
+
+// ObserveMessages sets the func that g calls after each APRS message, with
+// whether g sent it. Call it before Start.
+func ObserveMessages(g *Gateway, message func(m aprs.Message, sent bool)) {
+	g.obs.message = message
 }
 
 // LeaseKey is the KV key of the APRS-IS lease.

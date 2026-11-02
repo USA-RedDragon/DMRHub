@@ -95,6 +95,7 @@ type watch struct {
 	refreshed chan bool
 	handled   chan handled
 	logins    chan bool
+	messages  chan bool
 }
 
 type handled struct {
@@ -104,7 +105,7 @@ type handled struct {
 
 func (g *gateway) open() (*positions.Gateway, *watch) {
 	g.t.Helper()
-	w := &watch{refreshed: make(chan bool, 1), handled: make(chan handled, 32), logins: make(chan bool, 16)}
+	w := &watch{refreshed: make(chan bool, 1), handled: make(chan handled, 32), logins: make(chan bool, 16), messages: make(chan bool, 32)}
 	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
 	positions.SetClock(gw, 50*time.Millisecond, g.clock)
 	positions.Observe(gw, func(connected bool) {
@@ -113,6 +114,7 @@ func (g *gateway) open() (*positions.Gateway, *watch) {
 		default:
 		}
 	}, func(p models.Position, sent bool) { w.handled <- handled{p, sent} }, func(verified bool) { w.logins <- verified })
+	positions.ObserveMessages(gw, func(_ aprs.Message, sent bool) { w.messages <- sent })
 	gw.Start(context.Background())
 	g.t.Cleanup(gw.Stop)
 	return gw, w
@@ -289,6 +291,19 @@ func TestOnlyOneReplicaLogsIn(t *testing.T) {
 	assert.True(t, w.sent(t), "the replica with the lease sends")
 	assert.False(t, w2.sent(t), "the other replica sends nothing")
 	assert.Len(t, g.lines(1), 1)
+}
+
+func TestOnlyTheReplicaWithTheLoginSendsAPluginsAPRSMessage(t *testing.T) {
+	t.Parallel()
+	g := newGateway(t)
+	_, w := g.start()
+	_, w2 := g.open()
+	require.False(t, next(t, w2.refreshed, "lease check"), "the second replica took the lease")
+	require.ErrorIs(t, positions.PublishMessage(g.ps, aprs.Message{Source: "KI5VMF-7", Addressee: "W1AW-9", Text: "a{b"}), aprs.ErrMessage)
+	require.NoError(t, positions.PublishMessage(g.ps, aprs.Message{Source: "KI5VMF-7", Addressee: "W1AW-9", Text: "Hello there", Number: "1"}))
+	assert.True(t, next(t, w.messages, "message"), "the replica with the lease sends")
+	assert.False(t, next(t, w2.messages, "message"), "the other replica sends nothing")
+	assert.Equal(t, []string{"KI5VMF-7>APZDMH,TCPIP*::W1AW-9   :Hello there{1"}, g.lines(1))
 }
 
 func TestTheReplicaThatIsLeftTakesOverTheLogin(t *testing.T) {

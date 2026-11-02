@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
@@ -60,6 +61,29 @@ type observer struct {
 	refreshed func(connected bool)
 	handled   func(p models.Position, sent bool)
 	login     func(verified bool)
+	message   func(m aprs.Message, sent bool)
+}
+
+// MessageTopic is the pubsub topic of the APRS messages that plugins send,
+// as JSON of aprs.Message. The replica that holds the APRS-IS login sends
+// them.
+const MessageTopic = "aprs:messages"
+
+// PublishMessage hands m to the replica that holds the APRS-IS login,
+// which sends it. Nothing tells whether it did: a sender that wants to
+// know asks for an ack in m.
+func PublishMessage(ps pubsub.PubSub, m aprs.Message) error {
+	if err := m.Check(); err != nil {
+		return err //nolint:wrapcheck // ErrMessage of the aprs package
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("could not encode an APRS message: %w", err)
+	}
+	if err := ps.Publish(MessageTopic, data); err != nil {
+		return fmt.Errorf("could not publish an APRS message: %w", err)
+	}
+	return nil
 }
 
 type sentPosition struct {
@@ -107,9 +131,11 @@ func (g *Gateway) Start(ctx context.Context) {
 	ctx, g.cancel = context.WithCancel(ctx)
 	g.done = make(chan struct{})
 	sub := g.pubsub.Subscribe(AllTopic)
+	messages := g.pubsub.Subscribe(MessageTopic)
 	go func() {
 		defer close(g.done)
 		defer func() { _ = sub.Close() }()
+		defer func() { _ = messages.Close() }()
 		ticker := g.clock.NewTicker(g.every)
 		defer ticker.Stop()
 		g.refresh(ctx)
@@ -130,6 +156,16 @@ func (g *Gateway) Start(ctx context.Context) {
 					continue
 				}
 				g.handle(p)
+			case b, ok := <-messages.Channel():
+				if !ok {
+					return
+				}
+				var m aprs.Message
+				if err := json.Unmarshal(b, &m); err != nil {
+					slog.Error("APRS-IS: cannot decode a message", "error", err)
+					continue
+				}
+				g.message(m)
 			}
 		}
 	}()
@@ -215,6 +251,32 @@ func (g *Gateway) handle(p models.Position) {
 	if g.obs.handled != nil {
 		g.obs.handled(p, sent)
 	}
+}
+
+func (g *Gateway) message(m aprs.Message) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	sent := g.sendMessage(&m)
+	if g.obs.message != nil {
+		g.obs.message(m, sent)
+	}
+}
+
+func (g *Gateway) sendMessage(m *aprs.Message) bool {
+	if !g.leader || g.client == nil {
+		return false
+	}
+	login, _ := g.login()
+	line, err := login.MessageLine(m)
+	if err != nil {
+		slog.Warn("APRS-IS: not sending a message", "source", m.Source, "error", err)
+		return false
+	}
+	if err := g.client.Send(line); err != nil {
+		slog.Warn("APRS-IS: cannot send a message", "source", m.Source, "error", err)
+		return false
+	}
+	return true
 }
 
 func (g *Gateway) send(p *models.Position) bool {

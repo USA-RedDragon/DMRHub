@@ -29,6 +29,18 @@ type UserSettings struct {
 	StoreForward   bool `json:"store_forward"`
 	// HoldDays is how many days store and forward keeps a text.
 	HoldDays int `json:"hold_days"`
+	// SpokenPrompts reports that the hub speaks prompts to radios.
+	SpokenPrompts bool `json:"spoken_prompts"`
+	// PromptVoice is the voice that the user picked for the prompts, or
+	// empty for the default voice of the hub, PromptDefault.
+	PromptVoice   string `json:"prompt_voice"`
+	PromptDefault string `json:"prompt_default"`
+}
+
+// PromptVoicePut sets the voice of the prompts of a user, or the default
+// voice of the hub with an empty Voice.
+type PromptVoicePut struct {
+	Voice *string `json:"voice" binding:"required"`
 }
 
 // StoreForwardPut turns store and forward on or off.

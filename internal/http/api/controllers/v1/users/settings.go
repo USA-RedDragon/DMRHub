@@ -30,7 +30,9 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
+	v1Prompts "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/prompts"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	"github.com/gin-gonic/gin"
@@ -80,14 +82,18 @@ func PUTUserSMSStorage(c *gin.Context) {
 
 func settingsOf(c *gin.Context, user *models.User) apimodels.UserSettings {
 	var limits config.Messages
+	var cfg *config.Config
 	if v, ok := c.Get("Config"); ok {
-		if cfg, ok := v.(*config.Config); ok && cfg != nil {
-			limits = cfg.DMR.Messages
-		}
+		cfg, _ = v.(*config.Config)
+	}
+	if cfg != nil {
+		limits = cfg.DMR.Messages
 	}
 	return apimodels.UserSettings{
 		SMSStorage: user.SMSStorageEnabled, SharePositions: user.SharePositions, StoreForward: user.StoreForward,
-		HoldDays: int(limits.HoldFor() / (24 * time.Hour)),
+		HoldDays:      int(limits.HoldFor() / (24 * time.Hour)),
+		SpokenPrompts: cfg != nil && cfg.DMR.Routing.SpokenRefusals,
+		PromptVoice:   user.PromptVoice, PromptDefault: v1Prompts.DefaultVoice(cfg),
 	}
 }
 
@@ -356,4 +362,29 @@ func deleteRadioID(c *gin.Context, db *gorm.DB, user *models.User) {
 	}
 	hubRadioChanged(c, uint(id))
 	c.JSON(http.StatusOK, gin.H{messageKey: "Radio ID removed"})
+}
+
+// PUTUserPromptVoice sets the voice of the spoken prompts to the radios of
+// the logged-in user, or the default voice of the hub with an empty voice.
+func PUTUserPromptVoice(c *gin.Context) {
+	db, ok := utils.GetDB(c)
+	if !ok {
+		return
+	}
+	user, ok := utils.GetSessionUser(c, db)
+	if !ok {
+		return
+	}
+	var req apimodels.PromptVoicePut
+	if err := c.ShouldBindJSON(&req); err != nil || req.Voice == nil || (*req.Voice != "" && !prompts.HasVoice(*req.Voice)) {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Send voice as the ID of a voice, or empty for the default voice"})
+		return
+	}
+	if err := models.SetPromptVoice(db, user.ID, *req.Voice); err != nil {
+		slog.Error("Error saving the prompt voice", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryLater})
+		return
+	}
+	user.PromptVoice = *req.Voice
+	c.JSON(http.StatusOK, settingsOf(c, &user))
 }

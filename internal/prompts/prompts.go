@@ -63,6 +63,52 @@ const (
 	WordNone             = "word-none"
 )
 
+// Text returns the words of the clip, or "" for a clip that the package
+// does not have.
+func Text(clip string) string {
+	switch clip {
+	case TalkgroupNotFound:
+		return "Talkgroup not found."
+	case TalkgroupRestricted:
+		return "Talkgroup restricted."
+	case TalkgroupBlocked:
+		return "Talkgroup blocked here."
+	case TimeslotReserved:
+		return "Timeslot reserved."
+	case RadioIDNotRegistered:
+		return "Radio ID not registered."
+	case ChannelBusy:
+		return "Channel busy."
+	case TimeOut:
+		return "Time out."
+	case CodeNeeded:
+		return "Code needed."
+	case Unlocked:
+		return "Unlocked."
+	case WrongCode:
+		return "Wrong code."
+	case WordTalkgroup:
+		return "Talkgroup"
+	case WordTimeslot:
+		return "Timeslot"
+	case WordLinked:
+		return "Linked"
+	case WordStatic:
+		return "Static"
+	case WordDynamic:
+		return "Dynamic"
+	case WordNone:
+		return "None"
+	}
+	digits := [...]string{"Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"}
+	for d, word := range digits {
+		if clip == Digit(d) {
+			return word
+		}
+	}
+	return ""
+}
+
 // Digit returns the name of the clip of the digit d, 0 to 9.
 func Digit(d int) string {
 	return fmt.Sprintf("digit-%d", d)
@@ -137,6 +183,8 @@ func Frames(voiceID, clip string, c transcode.Codec) ([][slotBytes]byte, error) 
 		ext = ".ambe"
 	case transcode.CodecCodec2:
 		ext = ".codec2"
+	case transcode.CodecUnknown:
+		return nil, fmt.Errorf("%w: codec %d", ErrUnknown, c)
 	default:
 		return nil, fmt.Errorf("%w: codec %d", ErrUnknown, c)
 	}
@@ -264,7 +312,7 @@ func Preview(voiceID, clip string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot make a Codec2 decoder: %w", err)
 	}
-	defer dec.Close()
+	defer func() { _ = dec.Close() }()
 	pcm := make([]int16, 0, len(slots)*dec.FrameSamples())
 	for _, s := range slots {
 		if pcm, _, err = dec.Decode(pcm, s); err != nil {

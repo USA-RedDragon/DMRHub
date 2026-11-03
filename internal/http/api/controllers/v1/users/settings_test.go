@@ -22,6 +22,7 @@ package users_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -78,7 +79,7 @@ func TestSMSStorageIsOffByDefault(t *testing.T) {
 
 	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/settings", nil)
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": false, "hold_days": 7}`, w.Body.String())
+	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": false, "hold_days": 7, "spoken_prompts": false, "prompt_voice": "", "prompt_default": "kitten-mini-luna"}`, w.Body.String())
 }
 
 func TestSMSStorageOnSetsTheTimeAndOffAndOnResetsIt(t *testing.T) {
@@ -296,7 +297,7 @@ func TestStoreForwardTurnsOnAndOff(t *testing.T) {
 	require.NoError(t, db.First(&u, ownerAccountID).Error)
 	assert.True(t, u.StoreForward)
 	w := testutils.Do(t, router, jar, http.MethodGet, "/api/v1/users/me/settings", nil)
-	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": true, "hold_days": 7}`, w.Body.String())
+	assert.JSONEq(t, `{"sms_storage": false, "share_positions": false, "store_forward": true, "hold_days": 7, "spoken_prompts": false, "prompt_voice": "", "prompt_default": "kitten-mini-luna"}`, w.Body.String())
 	assert.False(t, storeForward(t, router, jar, false).StoreForward)
 }
 
@@ -345,4 +346,36 @@ func TestHeldTextsListOnlyTheTextsWaitingForMyRadios(t *testing.T) {
 	assert.True(t, now.Equal(got[0].HeldAt))
 	assert.Equal(t, "second radio", got[1].Text)
 	assert.False(t, got[1].FormatKnown, "the second radio never sent a text")
+}
+
+func TestAUserPicksTheVoiceOfTheirPrompts(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouterWithOptions(func(c *config.Config) {
+		c.DMR.Routing.SpokenRefusals = true
+		c.DMR.Routing.PromptVoice = "kokoro-bm-lewis"
+	})
+	require.NoError(t, err)
+	t.Cleanup(tdb.CloseDB)
+	db := tdb.DB()
+	testutils.SeedAccount(t, db, 3000001, "N0CALL", "owner")
+	jar := testutils.Login(t, router, "owner")
+
+	put := func(voice string) *httptest.ResponseRecorder {
+		return testutils.Do(t, router, jar, http.MethodPut, "/api/v1/users/me/settings/prompt-voice", map[string]string{"voice": voice})
+	}
+	w := put("kitten-mini-hugo")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var s apimodels.UserSettings
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &s))
+	assert.Equal(t, apimodels.UserSettings{HoldDays: s.HoldDays, SpokenPrompts: true, PromptVoice: "kitten-mini-hugo", PromptDefault: "kokoro-bm-lewis"}, s)
+	u, err := models.FindUserByID(db, 3000001)
+	require.NoError(t, err)
+	assert.Equal(t, "kitten-mini-hugo", u.PromptVoice)
+
+	assert.Equal(t, http.StatusBadRequest, put("no-such-voice").Code)
+	assert.Equal(t, http.StatusBadRequest, testutils.Do(t, router, jar, http.MethodPut, "/api/v1/users/me/settings/prompt-voice", map[string]bool{"enabled": true}).Code)
+	require.Equal(t, http.StatusOK, put("").Code, "empty is the default voice")
+	u, err = models.FindUserByID(db, 3000001)
+	require.NoError(t, err)
+	assert.Empty(t, u.PromptVoice)
 }

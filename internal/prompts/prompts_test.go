@@ -163,3 +163,12 @@ func TestTheServiceIDIsNoIDTheHubAlreadyUses(t *testing.T) {
 	}
 	assert.False(t, dmrconst.IsUnlockID(prompts.DefaultServiceID))
 }
+
+func TestEveryClipHasItsWords(t *testing.T) {
+	t.Parallel()
+	for _, clip := range prompts.Clips() {
+		assert.NotEmpty(t, prompts.Text(clip), clip)
+	}
+	assert.Empty(t, prompts.Text("no-such-clip"))
+	assert.Equal(t, "Wrong code.", prompts.Text(prompts.WrongCode))
+}

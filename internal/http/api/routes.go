@@ -36,6 +36,7 @@ import (
 	v1PeersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/peers"
 	v1PluginsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/plugins"
 	v1PositionsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/positions"
+	v1PromptsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/prompts"
 	v1RepeatersControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/repeaters"
 	v1TalkgroupsControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/talkgroups"
 	v1UserDBControllers "github.com/USA-RedDragon/DMRHub/internal/http/api/controllers/v1/userdb"
@@ -195,6 +196,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.DELETE("/me/tokens/:id", middleware.RequireLogin(), userSuspension, v1OAuthControllers.DELETEPersonalToken)
 	v1Users.POST("/me/tokens/:id/rotate", middleware.RequireLogin(), userSuspension, v1OAuthControllers.POSTRotatePersonalToken)
 	v1Users.PUT("/me/settings/store-forward", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserStoreForward)
+	v1Users.PUT("/me/settings/prompt-voice", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTUserPromptVoice)
 	v1Users.GET("/me/held-texts", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyHeldTexts)
 	v1Users.GET("/me/plugin-switches", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETMyPluginSwitches)
 	v1Users.PUT("/me/plugin-switches/:plugin/:key", middleware.RequireLogin(), userSuspension, v1UsersControllers.PUTMyPluginSwitch)
@@ -296,6 +298,12 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Config.GET("/transcoding", v1ConfigControllers.GETTranscoding)
 	v1Config.GET("/modem", v1ConfigControllers.GETModem)
 	v1Config.GET("/modem/ports", v1ConfigControllers.GETModemPorts)
+	v1Config.GET("/prompts/:file", v1PromptsControllers.GETConfigPreview)
+
+	v1Prompts := group.Group("/prompts")
+	v1Prompts.Use(middleware.RequireLogin(), userSuspension)
+	v1Prompts.GET("", v1PromptsControllers.GETVoices)
+	v1Prompts.GET("/:voice/:file", v1PromptsControllers.GETPreview)
 	v1Config.POST("/modem/test", v1ConfigControllers.POSTModemTest)
 
 	v1Nets := group.Group("/nets")

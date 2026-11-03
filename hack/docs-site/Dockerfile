@@ -2,6 +2,9 @@
 
 ARG DMRGO_REF=main
 ARG SOURCES_RUN
+ARG PREVIOUS_IMAGE=ghcr.io/usa-reddragon/dmrhub-docs:main
+
+FROM --platform=$BUILDPLATFORM ${PREVIOUS_IMAGE} AS previous
 
 FROM --platform=$BUILDPLATFORM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS dmrgo-clone
 ARG DMRGO_REF
@@ -29,6 +32,12 @@ COPY . /src/hub
 RUN git config --global --add safe.directory '*' \
  && python3 /src/hub/hack/docs-site/build.py --hub /src/hub --hub-repo /src/hub.git --dmrgo /src/dmrgo --out /site \
  && find /site -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.svg' -o -name '*.xml' -o -name '*.json' \) -exec zstd -q -19 -k {} +
+ARG CARRY_FIRST_BUILD
+RUN --mount=type=bind,from=previous,target=/previous \
+    sh /src/hub/hack/carry/carry-assets.sh \
+      /previous/site/.carry-builds /site/.carry-builds \
+      /previous/site/docs/_shell /site/docs/_shell \
+      /previous/site/docs/_assets /site/docs/_assets
 
 FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS server
 ARG TARGETOS

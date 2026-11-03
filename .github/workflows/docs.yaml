@@ -8,6 +8,7 @@ on:
     paths:
       - doc/**
       - hack/docs-site/**
+      - hack/carry/**
       - go.mod
       - go.sum
       - .github/workflows/docs.yaml
@@ -35,7 +36,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Test the docs server
-        run: go test ./hack/docs-site/server/
+        run: go test ./hack/docs-site/server/ ./hack/carry/
 
   docker:
     name: Docs image

@@ -47,6 +47,7 @@ func TestStopWithFullIngressQueue(t *testing.T) {
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)

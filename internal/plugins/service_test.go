@@ -97,7 +97,7 @@ func newRig(t *testing.T, opts ...plugins.ServiceOption) *rig {
 	done := make(chan struct{})
 	registry.Follow(done)
 	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20), stored: make(chan models.Position, 64)}
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(grpc.WaitForHandlers(true))
 	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify, opts...)
 	pluginv1.RegisterPluginServiceServer(srv, r.svc)
 	go func() { _ = srv.Serve(r.lis) }()

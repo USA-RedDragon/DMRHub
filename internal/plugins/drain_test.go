@@ -52,7 +52,7 @@ type replica struct {
 func (r *rig) replica(ps pubsub.PubSub) *replica {
 	r.t.Helper()
 	x := &replica{t: r.t, svc: plugins.NewService(r.db, ps, r.registry, r.router, nil), lis: bufconn.Listen(1 << 20)}
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(grpc.WaitForHandlers(true))
 	pluginv1.RegisterPluginServiceServer(srv, x.svc)
 	go func() { _ = srv.Serve(x.lis) }()
 	r.t.Cleanup(srv.Stop)

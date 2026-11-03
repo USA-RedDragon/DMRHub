@@ -200,6 +200,7 @@ func TestPluginsInsideDMRHubNeedNoListener(t *testing.T) {
 	require.False(t, cfg.DMR.Plugins.Enabled)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })

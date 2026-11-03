@@ -43,6 +43,7 @@ func makeTestStack(t *testing.T) (*netscheduler.NetScheduler, func()) {
 	memdb.Use(t, &defConfig)
 	database, err := db.MakeDB(&defConfig)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 
 	ctx := context.Background()
 	ps, err := psPkg.MakePubSub(ctx, &defConfig)

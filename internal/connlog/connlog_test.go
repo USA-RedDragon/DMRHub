@@ -45,6 +45,7 @@ func newDB(t *testing.T) *gorm.DB {
 	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 100000101}, Password: "pw"}).Error)
 	return database
 }

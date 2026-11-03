@@ -80,6 +80,7 @@ func TestARepeaterGetsTheCallsOfItsNewStaticsFromTheAckOfItsOptions(t *testing.T
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeMMDVM,
@@ -180,6 +181,7 @@ func TestAnOptionsAckDoesNotReachALaterLogin(t *testing.T) {
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeMMDVM,
@@ -272,6 +274,7 @@ func TestFullRecordsQueueWithholdsTheOptionsAck(t *testing.T) {
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeMMDVM,

@@ -47,6 +47,7 @@ func TestAPluginConnectsOverTLSByTheFingerprint(t *testing.T) {
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })
@@ -105,6 +106,7 @@ func TestStoppingTheListenerTwiceIsSafe(t *testing.T) {
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ps.Close() })

@@ -51,6 +51,7 @@ func TestMakeDBInMemoryDatabase(t *testing.T) {
 	if db == nil {
 		t.Fatal("Expected non-nil database instance, got nil")
 	}
+	memdb.CloseAtCleanup(t, db)
 }
 
 func TestMakeDBTwiceOnTheSameData(t *testing.T) {
@@ -88,6 +89,7 @@ func TestMakeDBTwiceOnTheSameData(t *testing.T) {
 	if db2 == nil {
 		t.Fatal("Expected non-nil database instance from second MakeDB")
 	}
+	memdb.CloseAtCleanup(t, db2)
 	if db2.Migrator().HasTable("app_settings") {
 		t.Error("MakeDB made the app_settings table")
 	}

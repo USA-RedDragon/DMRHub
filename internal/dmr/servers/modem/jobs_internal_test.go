@@ -71,6 +71,7 @@ func TestAModemThatStopsWhileItsQueueIsFullIsDeactivated(t *testing.T) {
 	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeModem,

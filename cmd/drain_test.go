@@ -61,6 +61,7 @@ func drainRig(t *testing.T, otherReplica bool) (*serverManager, <-chan *pluginv1
 	cfg.DMR.DrainTimeout = drainTimeout
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())

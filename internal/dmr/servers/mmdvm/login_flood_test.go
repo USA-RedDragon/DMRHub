@@ -65,6 +65,7 @@ func TestALoginFloodDoesNotDelayARealLogin(t *testing.T) {
 	cfg.DMR.MMDVM.Port = 0
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	var flooding atomic.Bool
 	var stuck atomic.Int32
 	entered := make(chan struct{}, 256)

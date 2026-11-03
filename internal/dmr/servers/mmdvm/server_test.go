@@ -50,6 +50,7 @@ func TestMakeServerInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
+	memdb.CloseAtCleanup(t, db)
 
 	kv, err := kv.MakeKV(context.TODO(), &defConfig, kv.WithoutCallBound())
 	if err != nil {

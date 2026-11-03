@@ -71,7 +71,10 @@ func newRulesHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub, kvStore kv.K
 	h := hub.NewHub(database, kvStore, ps, ct, opts...)
 	h.LiftSlotRate(true)
 	h.SetConfig(floodConfig())
-	t.Cleanup(func() { h.Stop(context.Background()) })
+	t.Cleanup(func() {
+		h.Stop(context.Background())
+		ct.Stop()
+	})
 	t.Cleanup(h.HoldLookupWaits())
 	t.Cleanup(h.HoldStreamClaimWaits())
 	t.Cleanup(h.HoldLastSeenWaits())

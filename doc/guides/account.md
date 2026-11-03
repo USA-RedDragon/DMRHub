@@ -61,6 +61,12 @@ The cards show only the plugins that an admin turned on, and the name of the plu
 
 The **On-air code** card locks your radio IDs on the air until you unlock them with a code from an authenticator app, as a private call to 9 and the code. See [Lock your radio ID with an on-air code](on-air-code.md).
 
+## Spoken prompts
+
+When the admin turned spoken prompts on, DMRHub tells your radio with a short spoken prompt why it refused a call, such as "Talkgroup not found.". Under **Spoken prompts**, pick the voice of the prompts to your radios, or **Network default** for the voice that the admin set. **Play** plays a prompt in that voice. See [Spoken refusals](../admin/routing.md#spoken-refusals).
+
+![The Spoken prompts card with the voice list](../Screenshots/settings-prompt-voice.png)
+
 ## Theme
 
 Use **Theme** at the bottom of each page to pick **Light**, **Dark** or **System**. Your browser remembers the choice.

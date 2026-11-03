@@ -31,6 +31,8 @@ Each code works once. A code that someone hears on the air does not work again, 
 
 DMRHub limits the tries: 5 in 5 minutes from one radio ID, and 20 in 5 minutes through one hotspot or repeater. After that, DMRHub refuses every try, also a right code, until the 5 minutes end.
 
+When the admin turned spoken prompts on, your radio hears "Unlocked." or "Wrong code." about 1 second after the private call to the code, and "Code needed." after a call that the lock refused. Pick the voice in Settings, under **Spoken prompts**.
+
 ## See and end the unlocks
 
 With the code on, the **On-air code** card lists each unlocked radio ID, the hotspot or repeater and timeslot, and when the unlock ends. Click **Lock** to end an unlock at once.

@@ -14,6 +14,9 @@ This page tells how DMRHub links talkgroups to the timeslots of repeaters and ho
 | On-air unlock | How long a right [on-air code](../guides/on-air-code.md) unlocks a radio ID on the timeslot of the hotspot or repeater that it came through, such as `24h`. On the Setup page, in hours. | `24h` | `dmr.routing.on-air-unlock` |
 | Two calls at once | What a repeater gets when two group calls reach the same timeslot of it at once: `mix` or `first`. See [Two calls at once](#two-calls-at-once). | `mix` | `dmr.routing.contention` |
 | Local talkgroups | The talkgroups that users make local groups on. See [Local talkgroups](#local-talkgroups). | `8`, `9` | `dmr.routing.local-talkgroups` |
+| Spoken refusals | When `true`, a radio whose voice call DMRHub refuses hears a short spoken prompt that tells why. See [Spoken refusals](#spoken-refusals). | `false` | `dmr.routing.spoken-refusals` |
+| Prompt voice | The voice of the spoken prompts for users who did not pick their own. | `kitten-mini-luna` | `dmr.routing.prompt-voice` |
+| Prompt service ID | The DMR ID that the spoken prompts come from. | `9999` | `dmr.routing.prompt-service-id` |
 
 ## Dynamic talkgroups
 
@@ -70,3 +73,27 @@ A local talkgroup cannot also be a network talkgroup: while a number is local, a
 
 Each replica routes the calls of a group from the repeaters that it serves, and delivers them to the repeaters of the group that it serves, so a group works across replicas, and a repeater that moves to another replica stays in its groups.
 
+
+## Spoken refusals
+
+With **Tell the radio why its call was refused** on, under **Spoken refusals** on the Routing tab, DMRHub answers a voice call that it refuses from a hotspot, a repeater or DMRHub Radio with a short spoken prompt. It does not answer calls from OpenBridge peers or plugins. The prompt plays once for each transmission, about 1 second after the radio stops transmitting, so the radio is back in receive. It plays as a private call from the service ID to the radio ID that transmitted, on that timeslot of that hotspot or repeater only, so every radio unmutes for it and no other radio hears it. Some radios show it as a private call. A hotspot or repeater that carries Codec2 gets the prompt in Codec2.
+
+| When | The radio hears |
+| ---- | --------------- |
+| The talkgroup does not exist | "Talkgroup not found." |
+| The talkgroup is not open to the repeater | "Talkgroup restricted." |
+| The repeater blocks the talkgroup | "Talkgroup blocked here." |
+| The timeslot is locked to other users | "Timeslot reserved." |
+| The radio may not transmit on this network (see [Who may transmit](#who-may-transmit)) | "Radio ID not registered." |
+| The transmission ran past the longest one allowed | "Time out." |
+| The radio needs its [on-air code](../guides/on-air-code.md) | "Code needed." |
+| The on-air code was right | "Unlocked." |
+| The on-air code was wrong | "Wrong code." |
+
+DMRHub plays no prompt when a call reaches some repeaters but a timeslot of another one is busy, as the call still reaches the others.
+
+**Voice** sets the voice for users who did not pick their own in Settings; each user can pick a voice for the prompts to their radios. **Play** plays a prompt in the voice on the page. **Service ID** is the ID that the prompts come from. It must be a number from 1 to 16777215, other than 4000 and the on-air code IDs 9000000 to 9999999. Pick an ID that no talkgroup, repeater or plugin uses on the network.
+
+![The prompts of the Spoken refusals card on the Routing tab, with their play buttons](../Screenshots/admin-setup-prompts.png)
+
+The voices are speech that text-to-speech models made, encoded once as AMBE+2 and Codec2 frames. DMRHub has them built in, so it needs no AMBE server for them. Luna, Bruno and Hugo come from KittenTTS 0.8 (Apache License 2.0); Lewis comes from Kokoro-82M (Apache License 2.0). The NOTICE file of DMRHub lists their sources. `hack/prompts` makes the frames again on an AMBE server.

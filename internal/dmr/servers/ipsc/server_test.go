@@ -108,26 +108,34 @@ func signWith(t *testing.T, key [20]byte, data []byte) []byte {
 // all have the test key. See newHubServer.
 func newTestServerWithUDP(t *testing.T) (*IPSCServer, *net.UDPAddr) {
 	t.Helper()
-	database, err := db.MakeDB(testDBConfig(t))
-	if err != nil {
-		t.Fatalf("db: %v", err)
-	}
-	s, addr := newHubServer(t, database)
+	s, addr := newHubServer(t, testDB(t))
 	key := testKey(t)
 	s.keyFor = func(uint32) ([20]byte, bool, error) { return key, true, nil }
 	return s, addr
 }
 
-// testDBConfig returns the default config with the network ID of
-// testConfig, on an in-memory database.
-func testDBConfig(t *testing.T) *config.Config {
+// testDB returns the migrated database of a new SQLite file, which closes
+// when the test ends.
+func testDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	cfg := hubConfig(t)
+	memdb.Use(t, cfg)
+	database, err := db.MakeDB(cfg)
+	if err != nil {
+		t.Fatalf("db: %v", err)
+	}
+	memdb.CloseAtCleanup(t, database)
+	return database
+}
+
+// hubConfig returns the default config with the network ID of testConfig.
+func hubConfig(t *testing.T) *config.Config {
 	t.Helper()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}
 	cfg.DMR.IPSC.NetworkID = testConfig().DMR.IPSC.NetworkID
-	memdb.Use(t, &cfg)
 	return &cfg
 }
 
@@ -138,7 +146,7 @@ func testDBConfig(t *testing.T) *config.Config {
 // does, or runs the reader itself, and may set the burst handler first.
 func newHubServer(t *testing.T, database *gorm.DB) (*IPSCServer, *net.UDPAddr) {
 	t.Helper()
-	cfg := testDBConfig(t)
+	cfg := hubConfig(t)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
 	kvStore, err := kv.MakeKV(context.Background(), cfg, kv.WithoutCallBound())
@@ -249,10 +257,7 @@ func register(t *testing.T, s *IPSCServer, client *net.UDPConn, addr *net.UDPAdd
 
 func TestUnknownPeerDropped(t *testing.T) {
 	t.Parallel()
-	dbConn, err := db.MakeDB(testDBConfig(t))
-	if err != nil {
-		t.Fatalf("db: %v", err)
-	}
+	dbConn := testDB(t)
 	s, _ := newHubServer(t, dbConn)
 	addr := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1)}
 	if err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 42), addr); err == nil {
@@ -644,10 +649,7 @@ func TestPeersWithOwnKeys(t *testing.T) {
 
 func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	t.Parallel()
-	dbConn, err := db.MakeDB(testDBConfig(t))
-	if err != nil {
-		t.Fatalf("db: %v", err)
-	}
+	dbConn := testDB(t)
 	if err := dbConn.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 9}, Type: models.RepeaterTypeIPSC}).Error; err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -672,7 +674,7 @@ func TestASlowRepeaterTimeWriteDoesNotHoldUpThePackets(t *testing.T) {
 	client, addr := dialServer(t, srv)
 
 	before := time.Now()
-	err = s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 9), addr)
+	err := s.handlePacket(context.Background(), control(t, ipscwire.OpRegisterRequest, 9), addr)
 	close(handled)
 	if err != nil {
 		t.Fatalf("register: %v", err)

@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/connlog"
-	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/ipsc/ipscsession"
@@ -35,8 +34,7 @@ import (
 
 func newLogServer(t *testing.T, ids ...uint) (*IPSCServer, *logPeer) {
 	t.Helper()
-	database, err := db.MakeDB(testDBConfig(t))
-	require.NoError(t, err)
+	database := testDB(t)
 	for _, id := range ids {
 		require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: id}, Type: models.RepeaterTypeIPSC}).Error)
 	}

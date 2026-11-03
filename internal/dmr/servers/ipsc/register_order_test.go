@@ -80,6 +80,7 @@ func TestAPeerGetsItsCallsFromTheReplyToItsRegistration(t *testing.T) {
 	cfg.DMR.IPSC.NetworkID = 311860
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeIPSC,
@@ -169,6 +170,7 @@ func newRegisterRig(t *testing.T, id uint32) *registerRig {
 	cfg.DMR.IPSC.NetworkID = 311860
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	memdb.CloseAtCleanup(t, database)
 	require.NoError(t, database.Create(&models.Repeater{
 		RepeaterConfiguration: models.RepeaterConfiguration{ID: uint(id)},
 		Type:                  models.RepeaterTypeIPSC,

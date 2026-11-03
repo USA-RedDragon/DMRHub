@@ -306,7 +306,7 @@ dmr:
     # DMR ID that the spoken prompts come from, as the source of their private calls
     prompt-service-id: 9999
     # Voice of the spoken prompts for users who did not pick their own voice in Settings
-    prompt-voice: placeholder
+    prompt-voice: "kitten-mini-luna"
   # Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit
   repeater-quota: 100
   # Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once

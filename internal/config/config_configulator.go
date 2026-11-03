@@ -487,7 +487,7 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("dmr.routing.spoken-refusals", configulator.LayerDefault, "default tag")
 	cfg.DMR.Routing.PromptServiceID = uint(9999)
 	set("dmr.routing.prompt-service-id", configulator.LayerDefault, "default tag")
-	cfg.DMR.Routing.PromptVoice = "placeholder"
+	cfg.DMR.Routing.PromptVoice = "kitten-mini-luna"
 	set("dmr.routing.prompt-voice", configulator.LayerDefault, "default tag")
 	cfg.DMR.RepeaterQuota = 100
 	set("dmr.repeater-quota", configulator.LayerDefault, "default tag")
@@ -2909,7 +2909,7 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.Lookup(names[119]).DefValue = "[8,9]"
 	fs.Bool(names[120], false, "Answer a voice transmission that DMRHub refuses from a repeater, hotspot or the browser radio with a short spoken prompt, such as Talkgroup not found, as a private call to the radio about 1 second after it stops transmitting")
 	fs.Var(impl.NewUint(9999), names[121], "DMR ID that the spoken prompts come from, as the source of their private calls")
-	fs.String(names[122], "placeholder", "Voice of the spoken prompts for users who did not pick their own voice in Settings")
+	fs.String(names[122], "kitten-mini-luna", "Voice of the spoken prompts for users who did not pick their own voice in Settings")
 	fs.Var(impl.NewInt(100), names[123], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
 	fs.Var(impl.NewInt(25), names[124], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
 	fs.Bool(names[125], false, "Enable SMTP support for sending emails")

@@ -700,7 +700,7 @@ var ErrInvalidPromptServiceID = errors.New("the prompt service ID must be a numb
 
 // ErrInvalidPromptVoice indicates a prompt voice name that is not made of
 // lowercase letters, digits and dashes.
-var ErrInvalidPromptVoice = errors.New("the prompt voice must be the name of a voice set, such as placeholder")
+var ErrInvalidPromptVoice = errors.New("the prompt voice must be the name of a voice set, such as kitten-mini-luna")
 
 const (
 	fieldPromptServiceID = "dmr.routing.prompt-service-id"

@@ -180,7 +180,7 @@ type Routing struct {
 	LocalTalkgroups     []uint        `json:"local-talkgroups" yaml:"local-talkgroups" name:"local-talkgroups" description:"Talkgroup numbers that users can make local groups on. A group call to one of them goes only to the other repeaters of the local group of the repeater on that number and timeslot, and never to a network talkgroup or an OpenBridge peer. On a repeater in no such group, the call goes nowhere" default:"8,9"`
 	SpokenRefusals      bool          `json:"spoken-refusals" yaml:"spoken-refusals" name:"spoken-refusals" description:"Answer a voice transmission that DMRHub refuses from a repeater, hotspot or the browser radio with a short spoken prompt, such as Talkgroup not found, as a private call to the radio about 1 second after it stops transmitting" default:"false"`
 	PromptServiceID     uint          `json:"prompt-service-id" yaml:"prompt-service-id" name:"prompt-service-id" description:"DMR ID that the spoken prompts come from, as the source of their private calls" default:"9999"`
-	PromptVoice         string        `json:"prompt-voice" yaml:"prompt-voice" name:"prompt-voice" description:"Voice of the spoken prompts for users who did not pick their own voice in Settings" default:"placeholder"`
+	PromptVoice         string        `json:"prompt-voice" yaml:"prompt-voice" name:"prompt-voice" description:"Voice of the spoken prompts for users who did not pick their own voice in Settings" default:"kitten-mini-luna"`
 }
 
 // IsLocalTalkgroup reports whether tg is one of the local talkgroup

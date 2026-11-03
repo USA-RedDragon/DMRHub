@@ -69,7 +69,7 @@ func Digit(d int) string {
 }
 
 // DefaultVoice is the voice set that the hub uses when no other is set.
-const DefaultVoice = "placeholder"
+const DefaultVoice = "kitten-mini-luna"
 
 // DefaultServiceID is the source ID of the prompts when Setup sets none.
 const DefaultServiceID = 9999

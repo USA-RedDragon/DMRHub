@@ -35,7 +35,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}, OnAirUnlock: 24 * time.Hour, PromptServiceID: 9999, PromptVoice: "placeholder"}
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}, OnAirUnlock: 24 * time.Hour, PromptServiceID: 9999, PromptVoice: "kitten-mini-luna"}
 	if !reflect.DeepEqual(cfg.DMR.Routing, want) {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}

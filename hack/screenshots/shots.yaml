@@ -496,3 +496,17 @@ shots:
     as: n0call
     route: /admin/users
     wait: Turn off on-air code
+  - name: admin-setup-prompts.png
+    phase: main
+    as: n0call
+    needs: [seed, spoken-prompts]
+    route: /admin/setup#routing
+    wait: Tell the radio why its call was refused
+    clip: css [data-test=prompt-list]
+  - name: settings-prompt-voice.png
+    phase: main
+    as: n1call
+    needs: [seed, spoken-prompts]
+    route: /settings
+    wait: Network default
+    clip: card Spoken prompts

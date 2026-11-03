@@ -82,6 +82,7 @@ func hooks() map[string]hook {
 		"plugin-switch":  pluginSwitch,
 		"on-air-code":    turnOnAirCodeOn,
 		"on-air-example": exampleOnAirSetup,
+		"spoken-prompts": turnSpokenPromptsOn,
 	}
 }
 
@@ -115,6 +116,24 @@ func configure(ctx context.Context, r *runner) error {
 	set("dmr.repeater-id-url", "http://127.0.0.1:9/rptrs.json")
 	set("dmr.routing.local-talkgroups", []uint{9})
 	return wizard.do(ctx, http.MethodPut, "/api/v1/config", cfg, nil)
+}
+
+func turnSpokenPromptsOn(ctx context.Context, r *runner) error {
+	admin := r.api("n0call")
+	var cfg map[string]any
+	if err := admin.do(ctx, http.MethodGet, "/api/v1/config", nil, &cfg); err != nil {
+		return err
+	}
+	delete(cfg, "secrets")
+	delete(cfg, "secret")
+	delete(cfg, "password-salt")
+	dmr, _ := cfg["dmr"].(map[string]any)
+	routing, _ := dmr["routing"].(map[string]any)
+	if routing == nil {
+		return errors.New("the config has no dmr.routing")
+	}
+	routing["spoken-refusals"] = true
+	return admin.do(ctx, http.MethodPut, "/api/v1/config", cfg, nil)
 }
 
 type demoUser struct {

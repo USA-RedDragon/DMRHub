@@ -71,6 +71,10 @@ func startFuzzServer(t *testing.T) fuzzServer {
 
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	dmrHub := hub.NewHub(database, kvStore, ps, ct)
+	t.Cleanup(func() {
+		dmrHub.Stop(context.Background())
+		ct.Stop()
+	})
 	server, err := MakeServer(&defConfig, dmrHub, database, ps, nil)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())

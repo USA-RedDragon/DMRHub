@@ -145,9 +145,11 @@ func RepeaterHub(t testing.TB, owner, repeater uint) (*hub.Hub, *gorm.DB, pubsub
 	require.NoError(t, err)
 	kvStore, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
 	require.NoError(t, err)
-	h := hub.NewHub(database, kvStore, ps, calltracker.NewCallTracker(database, ps, kvStore))
+	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	h := hub.NewHub(database, kvStore, ps, ct)
 	t.Cleanup(func() {
 		h.Stop(context.Background())
+		ct.Stop()
 		_ = ps.Close()
 		_ = kvStore.Close()
 		if sqlDB, err := database.DB(); err == nil {

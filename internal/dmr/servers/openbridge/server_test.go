@@ -161,7 +161,9 @@ func TestStopClosesSocketAndUnregistersHub(t *testing.T) {
 	defer func() { _ = kvStore.Close() }()
 
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
+	defer ct.Stop()
 	dmrHub := hub.NewHub(database, kvStore, ps, ct)
+	defer dmrHub.Stop(context.Background())
 
 	server, err := openbridge.MakeServer(&defConfig, dmrHub, database, ps, nil)
 	require.NoError(t, err)

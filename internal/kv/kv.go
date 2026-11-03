@@ -97,7 +97,8 @@ func WithClock(c clock.Clock) Option {
 
 // WithoutCallBound makes a Redis store bound each call only by the context
 // of its caller: it sets no deadline of its own on a call, nor on its reads
-// and writes. Tests use it, since a starved test machine can take longer
+// and writes, and a call returns when its context ends, even when Redis
+// does not answer. Tests use it, since a starved test machine can take longer
 // than consts.RedisCallTimeout to run a goroutine whose answer has come;
 // DMRHub keeps the bound.
 func WithoutCallBound() Option {

@@ -74,9 +74,36 @@ func TestRedisCallsAreBoundedWhenRedisHangs(t *testing.T) {
 	assert.Less(t, withoutDeadline, 2*consts.RedisCallTimeout, "the call without a deadline was not bounded by the call timeout, so each retry got its own read timeout")
 }
 
+// socketContext is a context that reports each call of its Deadline
+// method. go-redis calls it when it sets the deadline of a socket read or
+// write, after the call has taken a pooled connection.
+type socketContext struct {
+	context.Context //nolint:containedctx // a context that wraps one
+	reached         chan struct{}
+}
+
+func (c socketContext) Deadline() (time.Time, bool) {
+	select {
+	case c.reached <- struct{}{}:
+	default:
+	}
+	return c.Context.Deadline()
+}
+
+// pastDeadline is a context whose deadline has passed and that has not
+// ended, as a context is in the instant after its deadline.
+type pastDeadline struct {
+	context.Context //nolint:containedctx // a context that wraps one
+}
+
+func (pastDeadline) Deadline() (time.Time, bool) { return time.Unix(1, 0), true }
+
 // TestAStoreWithoutACallBoundEndsOnItsCallersContext calls a hung Redis
 // through a store made with WithoutCallBound, which sets no deadline of its
-// own. The call must still end when the context of its caller ends.
+// own. The context of the call has no deadline and ends only after the call
+// has reached the socket, where go-redis watches only deadlines. The call
+// must still end with its context. A call whose deadline has passed must
+// end too.
 func TestAStoreWithoutACallBoundEndsOnItsCallersContext(t *testing.T) {
 	t.Parallel()
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
@@ -94,13 +121,18 @@ func TestAStoreWithoutACallBoundEndsOnItsCallersContext(t *testing.T) {
 	t.Cleanup(func() { _ = exec.Command("docker", "unpause", c.Redis).Run() }) //nolint:gosec,noctx
 
 	ctx, cancel := context.WithCancel(t.Context())
+	sctx := socketContext{Context: ctx, reached: make(chan struct{}, 1)}
 	got := make(chan error, 1)
 	go func() {
-		_, err := store.Get(ctx, "hang")
+		_, err := store.Get(sctx, "hang")
 		got <- err
 	}()
+	<-sctx.reached
 	cancel()
 	require.ErrorIs(t, <-got, context.Canceled, "a call to a hung Redis without a call bound ignored the end of its context")
+
+	_, err = store.Get(pastDeadline{t.Context()}, "hang")
+	require.Error(t, err, "a call to a hung Redis without a call bound ignored the deadline of its context")
 }
 
 func TestRedisGetMissingIsNotFound(t *testing.T) {

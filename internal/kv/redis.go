@@ -69,6 +69,9 @@ func makeRedisKV(ctx context.Context, config *config.Config, unbounded bool) (KV
 		}
 	}
 
+	if unbounded {
+		return callerBoundKV{&redisKV{client: client}}, nil
+	}
 	return &redisKV{client: client}, nil
 }
 
@@ -99,6 +102,105 @@ func (h callTimeoutHook) ProcessPipelineHook(next redis.ProcessPipelineHook) red
 
 type redisKV struct {
 	client *redis.Client
+}
+
+// callerBoundKV is a Redis store without a bound of its own. go-redis
+// turns the deadline of a context into the deadline of a socket read or
+// write, but does not watch for a context that ends without one, so
+// callerBoundKV returns when such a context ends and leaves the call to
+// end when Redis answers or the store closes.
+type callerBoundKV struct {
+	*redisKV
+}
+
+type result[T any] struct {
+	v   T
+	err error
+}
+
+func untilDone[T any](ctx context.Context, call func() (T, error)) (T, error) {
+	if _, ok := ctx.Deadline(); ok || ctx.Done() == nil {
+		return call()
+	}
+	got := make(chan result[T], 1)
+	go func() {
+		v, err := call()
+		got <- result[T]{v, err}
+	}()
+	select {
+	case r := <-got:
+		return r.v, r.err
+	case <-ctx.Done():
+		select {
+		case r := <-got:
+			return r.v, r.err
+		default:
+		}
+		var zero T
+		return zero, fmt.Errorf("redis call: %w", context.Cause(ctx))
+	}
+}
+
+func untilDoneErr(ctx context.Context, call func() error) error {
+	_, err := untilDone(ctx, func() (struct{}, error) { return struct{}{}, call() })
+	return err
+}
+
+func (kv callerBoundKV) Has(ctx context.Context, key string) (bool, error) {
+	return untilDone(ctx, func() (bool, error) { return kv.redisKV.Has(ctx, key) })
+}
+
+func (kv callerBoundKV) Get(ctx context.Context, key string) ([]byte, error) {
+	return untilDone(ctx, func() ([]byte, error) { return kv.redisKV.Get(ctx, key) })
+}
+
+func (kv callerBoundKV) Set(ctx context.Context, key string, value []byte) error {
+	return untilDoneErr(ctx, func() error { return kv.redisKV.Set(ctx, key, value) })
+}
+
+func (kv callerBoundKV) Delete(ctx context.Context, key string) error {
+	return untilDoneErr(ctx, func() error { return kv.redisKV.Delete(ctx, key) })
+}
+
+func (kv callerBoundKV) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return untilDoneErr(ctx, func() error { return kv.redisKV.Expire(ctx, key, ttl) })
+}
+
+type scanPage struct {
+	keys []string
+	next uint64
+}
+
+func (kv callerBoundKV) Scan(ctx context.Context, cursor uint64, match string, count int64) ([]string, uint64, error) {
+	page, err := untilDone(ctx, func() (scanPage, error) {
+		keys, next, err := kv.redisKV.Scan(ctx, cursor, match, count)
+		return scanPage{keys, next}, err
+	})
+	return page.keys, page.next, err
+}
+
+func (kv callerBoundKV) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	return untilDone(ctx, func() (bool, error) { return kv.redisKV.SetNX(ctx, key, value, ttl) })
+}
+
+func (kv callerBoundKV) RPush(ctx context.Context, key string, value []byte) (int64, error) {
+	return untilDone(ctx, func() (int64, error) { return kv.redisKV.RPush(ctx, key, value) })
+}
+
+func (kv callerBoundKV) LDrain(ctx context.Context, key string) ([][]byte, error) {
+	return untilDone(ctx, func() ([][]byte, error) { return kv.redisKV.LDrain(ctx, key) })
+}
+
+func (kv callerBoundKV) RPushTrim(ctx context.Context, key string, value []byte, keep int64, ttl time.Duration) error {
+	return untilDoneErr(ctx, func() error { return kv.redisKV.RPushTrim(ctx, key, value, keep, ttl) })
+}
+
+func (kv callerBoundKV) LRange(ctx context.Context, key string) ([][]byte, error) {
+	return untilDone(ctx, func() ([][]byte, error) { return kv.redisKV.LRange(ctx, key) })
+}
+
+func (kv callerBoundKV) DeleteIfEqual(ctx context.Context, key string, value []byte) (bool, error) {
+	return untilDone(ctx, func() (bool, error) { return kv.redisKV.DeleteIfEqual(ctx, key, value) })
 }
 
 func (kv *redisKV) Has(ctx context.Context, key string) (bool, error) {

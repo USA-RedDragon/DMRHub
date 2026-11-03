@@ -31,7 +31,7 @@ import (
 // FillRedisPool opens and sets up every connection that the pool of a Redis
 // store can hold, then gives them all back to the pool as idle connections.
 func FillRedisPool(ctx context.Context, store KV) error {
-	r, ok := store.(*redisKV)
+	r, ok := asRedis(store)
 	if !ok {
 		return errors.New("not a Redis store")
 	}
@@ -53,6 +53,9 @@ func FillRedisPool(ctx context.Context, store KV) error {
 
 // ExpiryOf returns when the key of store expires.
 func ExpiryOf(ctx context.Context, store KV, key string) (time.Time, error) {
+	if r, ok := asRedis(store); ok {
+		store = r
+	}
 	switch s := store.(type) {
 	case *redisKV:
 		d, err := s.client.PTTL(ctx, key).Result()
@@ -68,4 +71,14 @@ func ExpiryOf(ctx context.Context, store KV, key string) (time.Time, error) {
 		return v.ttl, nil
 	}
 	return time.Time{}, errors.New("unknown store")
+}
+
+func asRedis(store KV) (*redisKV, bool) {
+	switch s := store.(type) {
+	case *redisKV:
+		return s, true
+	case callerBoundKV:
+		return s.redisKV, true
+	}
+	return nil, false
 }

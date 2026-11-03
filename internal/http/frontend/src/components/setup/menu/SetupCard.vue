@@ -28,6 +28,7 @@
     <CardContent :class="nested ? 'px-4.5' : ''">
       <ModemTest v-if="!wizard && card.custom === 'modem-test'" :read="read" />
       <SetupRows :rows="card.rows" v-bind="shared" @set="forward" />
+      <PromptList v-if="!wizard && card.custom === 'prompts'" :read="read" />
       <slot />
       <template v-if="showCards">
         <SetupCard
@@ -48,6 +49,7 @@
 import { computed } from 'vue';
 import ModemPill from '@/components/setup/menu/ModemPill.vue';
 import ModemTest from '@/components/setup/menu/ModemTest.vue';
+import PromptList from '@/components/setup/menu/PromptList.vue';
 import SetupRows from '@/components/setup/menu/SetupRows.vue';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { CardDef, FieldDef, Read, Row } from '@/lib/setupMenu';

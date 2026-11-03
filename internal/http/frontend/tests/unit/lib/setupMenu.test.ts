@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   TABS, allPayload, defaultNote, fromInput, inputValue, keepEdits, sourceChips, tabCheckErrors, tabDirty, tabFields, tabOfHash, tabOfPath, tabPaths,
-  normalize, tabPayload, tabReadOnly, tabStartOnly, visibleTabs, wizardTabs, type FieldDef, type TabDef,
+  isField, normalize, tabPayload, tabReadOnly, tabStartOnly, visibleTabs, wizardTabs, type FieldDef, type TabDef,
 } from '@/lib/setupMenu';
 import { emptySetupState, type Setting, type SetupState } from '@/lib/setupState';
 
@@ -253,11 +253,28 @@ describe('setup menu routing', () => {
   it('has the routing settings and no explainer text', () => {
     expect(tabPaths(tab('routing'))).toEqual([
       'dmr.routing.disable-dynamic-links', 'dmr.routing.dynamic-timeout', 'dmr.routing.transmit', 'dmr.routing.max-transmission',
-      'dmr.routing.contention', 'dmr.routing.on-air-unlock', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
+      'dmr.routing.contention', 'dmr.routing.on-air-unlock', 'dmr.routing.spoken-refusals', 'dmr.routing.prompt-voice',
+      'dmr.routing.prompt-service-id', 'dmr.routing.auto-create-talkgroups', 'dmr.routing.ephemeral-talkgroups', 'dmr.routing.ephemeral-ttl',
       'dmr.routing.local-talkgroups', 'dmr.repeater-quota',
     ]);
     expect(tab('routing').intro).toEqual([]);
     expect(tab('routing').group).toBe('DMR');
+  });
+
+  it('shows the voice and the service ID of the spoken refusals only when they are on', () => {
+    const card = tab('routing').cards.find((c) => c.title === 'Spoken refusals');
+    expect(card?.custom).toBe('prompts');
+    const fields = (card?.rows ?? []).filter(isField);
+    const off = (p: string) => (p === 'dmr.routing.spoken-refusals' ? false : undefined);
+    const onRead = (p: string) => (p === 'dmr.routing.spoken-refusals' ? true : undefined);
+    for (const f of fields.filter((x) => x.path !== 'dmr.routing.spoken-refusals')) {
+      expect(f.show?.(off)).toBe(false);
+      expect(f.show?.(onRead)).toBe(true);
+    }
+    const voice = fields.find((f) => f.path === 'dmr.routing.prompt-voice');
+    expect(voice?.options?.map((o) => o.value)).toEqual([
+      'kitten-mini-luna', 'kitten-mini-bruno', 'kitten-mini-hugo', 'kokoro-bm-lewis',
+    ]);
   });
 
   it('takes local talkgroups as numbers and refuses bad ones', () => {

@@ -24,6 +24,9 @@ export type UserSettings = {
   share_positions?: boolean;
   store_forward?: boolean;
   hold_days?: number;
+  spoken_prompts?: boolean;
+  prompt_voice?: string;
+  prompt_default?: string;
 };
 
 /** A text that store and forward keeps for one of the user's radios. */

@@ -19,6 +19,7 @@
 
 import { ambeServersPayload, type AmbeServerRow } from '@/lib/codec';
 import { ipListCount, ipListError } from '@/lib/ipList';
+import { PROMPT_VOICES } from '@/lib/prompts';
 import { formatValue, type Setting, type SetupState } from '@/lib/setupState';
 
 export type Values = Record<string, unknown>;
@@ -92,7 +93,7 @@ export type CardDef = {
   cards?: CardDef[];
   showCards?: (read: Read) => boolean;
   pill?: 'modem';
-  custom?: 'modem-test';
+  custom?: 'modem-test' | 'prompts';
 };
 
 export type IntroPart = string | { text: string; to: string };
@@ -760,6 +761,21 @@ export const TABS: TabDef[] = [
           {
             path: 'dmr.routing.on-air-unlock', label: 'On-air unlock (hours)', kind: 'hours', step: 'any',
             help: 'How long a right code unlocks a radio ID on its timeslot.',
+          },
+        ],
+      },
+      {
+        title: 'Spoken refusals',
+        custom: 'prompts',
+        rows: [
+          { path: 'dmr.routing.spoken-refusals', label: 'Tell the radio why its call was refused', kind: 'bool' },
+          {
+            path: 'dmr.routing.prompt-voice', label: 'Voice', kind: 'select', options: PROMPT_VOICES,
+            help: 'Users can pick their own voice in Settings.', show: on('dmr.routing.spoken-refusals'),
+          },
+          {
+            path: 'dmr.routing.prompt-service-id', label: 'Service ID', kind: 'number',
+            help: 'The ID that the prompts come from, as a private call.', show: on('dmr.routing.spoken-refusals'),
           },
         ],
       },

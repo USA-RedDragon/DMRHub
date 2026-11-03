@@ -85,6 +85,7 @@
       </Card>
 
       <StoreForwardCard v-if="!mustChange" :enabled="storeForward" :hold-days="holdDays" />
+      <PromptVoiceCard v-if="!mustChange && spokenPrompts" :voice="promptVoice" :default-voice="promptDefault" />
 
       <Card v-if="!mustChange" data-test="radio-ids-card">
         <CardHeader>
@@ -189,6 +190,7 @@ import OnAirCodeCard from '@/components/users/OnAirCodeCard.vue';
 import PasswordCard from '@/components/users/PasswordCard.vue';
 import PluginSwitchesCard from '@/components/users/PluginSwitchesCard.vue';
 import StoreForwardCard from '@/components/users/StoreForwardCard.vue';
+import PromptVoiceCard from '@/components/users/PromptVoiceCard.vue';
 import TokensCard from '@/components/users/TokensCard.vue';
 import { badgeClass } from '@/lib/badge';
 import {
@@ -221,6 +223,9 @@ const userStore = useUserStore();
 const smsStorage = ref(false);
 const storeForward = ref(false);
 const holdDays = ref(7);
+const spokenPrompts = ref(false);
+const promptVoice = ref('');
+const promptDefault = ref('');
 const confirmOff = ref(false);
 const justEnabled = ref(false);
 const smsError = ref('');
@@ -250,6 +255,9 @@ const load = async () => {
     smsStorage.value = settings.sms_storage;
     storeForward.value = settings.store_forward === true;
     holdDays.value = settings.hold_days ?? 7;
+    spokenPrompts.value = settings.spoken_prompts === true;
+    promptVoice.value = settings.prompt_voice ?? '';
+    promptDefault.value = settings.prompt_default ?? '';
     radioIDs.value = ids;
     state.value = 'ready';
   } catch (err) {

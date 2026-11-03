@@ -20,6 +20,8 @@
 package memdb_test
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -65,4 +67,71 @@ func TestAReadDoesNotWaitForAWriteOfItsTable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "password", r.Password)
 	require.NoError(t, tx.Commit().Error)
+}
+
+type cleanupTB struct {
+	testing.TB
+	cleanups []func()
+	errors   []string
+}
+
+func (c *cleanupTB) Helper()          {}
+func (c *cleanupTB) Cleanup(f func()) { c.cleanups = append(c.cleanups, f) }
+func (c *cleanupTB) Errorf(f string, args ...any) {
+	c.errors = append(c.errors, fmt.Sprintf(f, args...))
+}
+
+func (c *cleanupTB) runCleanups() {
+	for i := len(c.cleanups) - 1; i >= 0; i-- {
+		c.cleanups[i]()
+	}
+}
+
+// TestUseFailsATestThatLeavesItsDatabaseOpen opens the database of Use and
+// runs the cleanups of the test with its pool open, with its pool closed,
+// and with its pool closed and a second handle on the file still open.
+// Only the closed pool without a second handle must pass.
+func TestUseFailsATestThatLeavesItsDatabaseOpen(t *testing.T) {
+	t.Parallel()
+	if _, err := os.ReadDir("/proc/self/fd"); err != nil {
+		t.Skip("the check needs the open files of the process in /proc/self/fd")
+	}
+	for _, c := range []struct {
+		name         string
+		closePool    bool
+		secondHandle bool
+		fails        bool
+	}{
+		{"open pool", false, false, true},
+		{"closed pool", true, false, false},
+		{"closed pool and a second handle", true, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			tb := &cleanupTB{TB: t}
+			cfg, err := configulator.New(config.ConfigSchema()).Default()
+			require.NoError(t, err)
+			memdb.Use(tb, &cfg)
+			gdb, err := db.MakeDB(&cfg)
+			require.NoError(t, err)
+			sqlDB, err := gdb.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			if c.secondHandle {
+				f, err := os.Open(cfg.Database.Database)
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = f.Close() })
+			}
+			if c.closePool {
+				require.NoError(t, sqlDB.Close())
+			}
+			tb.runCleanups()
+			if c.fails {
+				require.Len(t, tb.errors, 1)
+				require.Contains(t, tb.errors[0], "left its database open")
+			} else {
+				require.Empty(t, tb.errors)
+			}
+		})
+	}
 }

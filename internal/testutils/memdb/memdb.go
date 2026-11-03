@@ -40,12 +40,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
 	"github.com/USA-RedDragon/configulator/v2"
+	"gorm.io/gorm"
 )
 
 // Name returns a new SQLite name for a shared-cache memory database.
@@ -62,12 +64,17 @@ func DSN() string {
 // Use points cfg at a new SQLite file in the temporary directory of t,
 // with the default database parameters of DMRHub and params added to them.
 // The file holds a copy of a database that the process migrated once, so
-// db.MakeDB finds every migration done.
+// db.MakeDB finds every migration done. Where the open files of the
+// process can be listed, the test fails if the database is still open
+// when its cleanups have run, since the space of an open file stays in
+// use after the temporary directory is removed, which filled the disk of
+// a fuzz run that opened one database for each input.
 func Use(t testing.TB, cfg *config.Config, params ...string) {
 	t.Helper()
 	if err := UseIn(t.TempDir(), cfg, params...); err != nil {
 		t.Fatal(err)
 	}
+	failIfLeftOpen(t, cfg.Database.Database)
 }
 
 // UseEmpty is Use with an empty file, for the tests of the migrations.
@@ -76,6 +83,37 @@ func UseEmpty(t testing.TB, cfg *config.Config, params ...string) {
 	if err := pointAt(t.TempDir(), cfg, params...); err != nil {
 		t.Fatal(err)
 	}
+	failIfLeftOpen(t, cfg.Database.Database)
+}
+
+// CloseAtCleanup closes the pool of gdb when the test ends, after the
+// cleanups that the test registers later, which stop the work that uses it.
+func CloseAtCleanup(t testing.TB, gdb *gorm.DB) {
+	t.Cleanup(func() {
+		if sqlDB, err := gdb.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+}
+
+func failIfLeftOpen(t testing.TB, path string) {
+	t.Cleanup(func() {
+		fds, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			return
+		}
+		for _, fd := range fds {
+			target, err := os.Readlink(filepath.Join("/proc/self/fd", fd.Name()))
+			if err != nil {
+				continue
+			}
+			target = strings.TrimSuffix(target, " (deleted)")
+			if target == path || target == path+"-wal" || target == path+"-shm" {
+				t.Errorf("the test left its database open: the process still has %s open after the cleanups of the test; close the *sql.DB of the *gorm.DB from db.MakeDB in t.Cleanup", target)
+				return
+			}
+		}
+	})
 }
 
 // UseIn is Use for a caller without a test, with the file in dir, which

@@ -1,0 +1,26 @@
+talkgroup-not-found	Talk group not found.
+talkgroup-restricted	Talk group restricted.
+talkgroup-blocked	Talk group blocked here.
+timeslot-reserved	Time slot reserved.
+radio-id-not-registered	Radio I D not registered.
+channel-busy	Channel busy.
+time-out	Time out.
+code-needed	Code needed.
+unlocked	Unlocked.
+wrong-code	Wrong code.
+digit-0	Zero.
+digit-1	One.
+digit-2	Two.
+digit-3	Three.
+digit-4	Four.
+digit-5	Five.
+digit-6	Six.
+digit-7	Seven.
+digit-8	Eight.
+digit-9	Nine.
+word-talkgroup	Talk group.
+word-timeslot	Time slot.
+word-linked	Linked.
+word-static	Static.
+word-dynamic	Dynamic.
+word-none	None.

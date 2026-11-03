@@ -694,6 +694,33 @@ const (
 	fieldLocalTGs = "dmr.routing.local-talkgroups"
 )
 
+// ErrInvalidPromptServiceID indicates a prompt service ID that is not a
+// DMR ID, is the unlink ID 4000, or is an on-air code ID.
+var ErrInvalidPromptServiceID = errors.New("the prompt service ID must be a number from 1 to 16777215, other than 4000 and 9000000 to 9999999")
+
+// ErrInvalidPromptVoice indicates a prompt voice name that is not made of
+// lowercase letters, digits and dashes.
+var ErrInvalidPromptVoice = errors.New("the prompt voice must be the name of a voice set, such as placeholder")
+
+const (
+	fieldPromptServiceID = "dmr.routing.prompt-service-id"
+	fieldPromptVoice     = "dmr.routing.prompt-voice"
+	firstOnAirCodeID     = 9000000
+	lastOnAirCodeID      = 9999999
+)
+
+func validPromptVoice(v string) bool {
+	if v == "" || len(v) > 64 {
+		return v == ""
+	}
+	for _, c := range v {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 // Validate validates the routing configuration.
 func (r Routing) Validate() error {
 	return firstValidationError(r.ValidateWithFields())
@@ -725,6 +752,12 @@ func (r Routing) ValidateWithFields() (errs []ValidationError) {
 			break
 		}
 		seen[tg] = true
+	}
+	if id := r.PromptServiceID; id > maxGroupID || id == unlinkGroupID || (id >= firstOnAirCodeID && id <= lastOnAirCodeID) {
+		errs = append(errs, ValidationError{Field: fieldPromptServiceID, Err: ErrInvalidPromptServiceID})
+	}
+	if !validPromptVoice(r.PromptVoice) {
+		errs = append(errs, ValidationError{Field: fieldPromptVoice, Err: ErrInvalidPromptVoice})
 	}
 	return
 }

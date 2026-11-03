@@ -215,6 +215,9 @@ type routingShadow struct {
 	OnAirUnlock         *impl.Duration `json:"on-air-unlock"          toml:"on-air-unlock"          yaml:"on-air-unlock"`
 	Contention          *string        `json:"contention"             toml:"contention"             yaml:"contention"`
 	LocalTalkgroups     *[]uint        `json:"local-talkgroups"       toml:"local-talkgroups"       yaml:"local-talkgroups"`
+	SpokenRefusals      *bool          `json:"spoken-refusals"        toml:"spoken-refusals"        yaml:"spoken-refusals"`
+	PromptServiceID     *uint          `json:"prompt-service-id"      toml:"prompt-service-id"      yaml:"prompt-service-id"`
+	PromptVoice         *string        `json:"prompt-voice"           toml:"prompt-voice"           yaml:"prompt-voice"`
 }
 
 type dMRShadow struct {
@@ -480,6 +483,12 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 		cfg.DMR.Routing.LocalTalkgroups = lst
 		set("dmr.routing.local-talkgroups", configulator.LayerDefault, "default tag")
 	}
+	cfg.DMR.Routing.SpokenRefusals = false
+	set("dmr.routing.spoken-refusals", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.PromptServiceID = uint(9999)
+	set("dmr.routing.prompt-service-id", configulator.LayerDefault, "default tag")
+	cfg.DMR.Routing.PromptVoice = "placeholder"
+	set("dmr.routing.prompt-voice", configulator.LayerDefault, "default tag")
 	cfg.DMR.RepeaterQuota = 100
 	set("dmr.repeater-quota", configulator.LayerDefault, "default tag")
 	cfg.DMR.DrainTimeout = 25
@@ -1143,6 +1152,18 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 			if s.DMR.Routing.LocalTalkgroups != nil {
 				cfg.DMR.Routing.LocalTalkgroups = *s.DMR.Routing.LocalTalkgroups
 				set("dmr.routing.local-talkgroups", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.SpokenRefusals != nil {
+				cfg.DMR.Routing.SpokenRefusals = *s.DMR.Routing.SpokenRefusals
+				set("dmr.routing.spoken-refusals", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.PromptServiceID != nil {
+				cfg.DMR.Routing.PromptServiceID = *s.DMR.Routing.PromptServiceID
+				set("dmr.routing.prompt-service-id", configulator.LayerFile, file)
+			}
+			if s.DMR.Routing.PromptVoice != nil {
+				cfg.DMR.Routing.PromptVoice = *s.DMR.Routing.PromptVoice
+				set("dmr.routing.prompt-voice", configulator.LayerFile, file)
 			}
 		}
 		if s.DMR.RepeaterQuota != nil {
@@ -2366,6 +2387,36 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.DMR.Routing.LocalTalkgroups = lst
 		set("dmr.routing.local-talkgroups", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "spoken-refusals"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.spoken-refusals",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Routing.SpokenRefusals = p
+		set("dmr.routing.spoken-refusals", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "prompt-service-id"); ok {
+		p, err := strconv.ParseUint(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.prompt-service-id",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.DMR.Routing.PromptServiceID = uint(p)
+		set("dmr.routing.prompt-service-id", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "routing", "prompt-voice"); ok {
+		cfg.DMR.Routing.PromptVoice = v
+		set("dmr.routing.prompt-voice", configulator.LayerEnv, n)
+	}
 	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "dmr", "repeater-quota"); ok {
 		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil {
@@ -2691,6 +2742,9 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"dmr" + o.Separator + "routing" + o.Separator + "on-air-unlock",
 		"dmr" + o.Separator + "routing" + o.Separator + "contention",
 		"dmr" + o.Separator + "routing" + o.Separator + "local-talkgroups",
+		"dmr" + o.Separator + "routing" + o.Separator + "spoken-refusals",
+		"dmr" + o.Separator + "routing" + o.Separator + "prompt-service-id",
+		"dmr" + o.Separator + "routing" + o.Separator + "prompt-voice",
 		"dmr" + o.Separator + "repeater-quota",
 		"dmr" + o.Separator + "drain-timeout",
 		"smtp" + o.Separator + "enabled",
@@ -2853,31 +2907,34 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[118], "mix", "What a repeater gets when two group calls reach the same timeslot of it at once, such as two radios on one talkgroup. One of mix (both calls, their bursts interleaved) or first (the first call holds the timeslot until it ends, and DMRHub drops the other call there)")
 	fs.UintSlice(names[119], nil, "Talkgroup numbers that users can make local groups on. A group call to one of them goes only to the other repeaters of the local group of the repeater on that number and timeslot, and never to a network talkgroup or an OpenBridge peer. On a repeater in no such group, the call goes nowhere")
 	fs.Lookup(names[119]).DefValue = "[8,9]"
-	fs.Var(impl.NewInt(100), names[120], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
-	fs.Var(impl.NewInt(25), names[121], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
-	fs.Bool(names[122], false, "Enable SMTP support for sending emails")
-	fs.String(names[123], "", "SMTP server host address")
-	fs.Var(impl.NewInt(25), names[124], "SMTP server port")
-	fs.String(names[125], "none", "SMTP TLS mode. One of none, starttls, or implicit")
-	fs.String(names[126], "", "SMTP server username")
-	fs.String(names[127], "", "SMTP server password")
-	fs.String(names[128], "", "Email address to use as the sender")
-	fs.String(names[129], "none", "SMTP authentication method. One of none, plain, or login")
-	fs.String(names[130], "DMRHub", "Name of the DMR network, shown in the web interface")
-	fs.Bool(names[131], false, "Enable metrics collection and export")
-	fs.String(names[132], "[::]", "Metrics server listen address")
-	fs.Var(impl.NewInt(9000), names[133], "Metrics server port")
-	fs.StringSlice(names[134], nil, "List of trusted proxy IPs for the metrics server")
-	fs.String(names[135], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
-	fs.Bool(names[136], false, "Enable PProf profiling and debugging support")
-	fs.String(names[137], "[::]", "PProf server listen address")
-	fs.StringSlice(names[138], nil, "List of trusted proxy IPs for the PProf server")
-	fs.Var(impl.NewInt(6060), names[139], "PProf server port")
-	fs.String(names[140], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
-	fs.Bool(names[141], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
-	fs.String(names[142], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
-	fs.String(names[143], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
-	fs.Bool(names[144], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
+	fs.Bool(names[120], false, "Answer a voice transmission that DMRHub refuses from a repeater, hotspot or the browser radio with a short spoken prompt, such as Talkgroup not found, as a private call to the radio about 1 second after it stops transmitting")
+	fs.Var(impl.NewUint(9999), names[121], "DMR ID that the spoken prompts come from, as the source of their private calls")
+	fs.String(names[122], "placeholder", "Voice of the spoken prompts for users who did not pick their own voice in Settings")
+	fs.Var(impl.NewInt(100), names[123], "Most repeaters and hotspots that a user can add. Admins have no limit. 0 is no limit")
+	fs.Var(impl.NewInt(25), names[124], "Longest time, in seconds, that a replica that stops keeps serving its repeaters, peers, browser radios and plugins while other replicas take them over. It must be shorter than the time the orchestrator gives the replica to stop. 0 stops at once")
+	fs.Bool(names[125], false, "Enable SMTP support for sending emails")
+	fs.String(names[126], "", "SMTP server host address")
+	fs.Var(impl.NewInt(25), names[127], "SMTP server port")
+	fs.String(names[128], "none", "SMTP TLS mode. One of none, starttls, or implicit")
+	fs.String(names[129], "", "SMTP server username")
+	fs.String(names[130], "", "SMTP server password")
+	fs.String(names[131], "", "Email address to use as the sender")
+	fs.String(names[132], "none", "SMTP authentication method. One of none, plain, or login")
+	fs.String(names[133], "DMRHub", "Name of the DMR network, shown in the web interface")
+	fs.Bool(names[134], false, "Enable metrics collection and export")
+	fs.String(names[135], "[::]", "Metrics server listen address")
+	fs.Var(impl.NewInt(9000), names[136], "Metrics server port")
+	fs.StringSlice(names[137], nil, "List of trusted proxy IPs for the metrics server")
+	fs.String(names[138], "", "OTLP endpoint for exporting OpenTelemetry tracing data")
+	fs.Bool(names[139], false, "Enable PProf profiling and debugging support")
+	fs.String(names[140], "[::]", "PProf server listen address")
+	fs.StringSlice(names[141], nil, "List of trusted proxy IPs for the PProf server")
+	fs.Var(impl.NewInt(6060), names[142], "PProf server port")
+	fs.String(names[143], "", "API key for the Have I Been Pwned service, used for checking if passwords have been compromised")
+	fs.Bool(names[144], false, "Approve new users when they register, so they can log in at once without waiting for an admin")
+	fs.String(names[145], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
+	fs.String(names[146], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
+	fs.Bool(names[147], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
 	return nil
 }
 
@@ -4321,6 +4378,42 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		}
 		cfg.DMR.Routing.LocalTalkgroups = v
 		set("dmr.routing.local-talkgroups", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "spoken-refusals"; fs.Changed(n) {
+		v, err := fs.GetBool(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.spoken-refusals",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.SpokenRefusals = v
+		set("dmr.routing.spoken-refusals", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "prompt-service-id"; fs.Changed(n) {
+		v, err := fs.GetUint(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.prompt-service-id",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.PromptServiceID = v
+		set("dmr.routing.prompt-service-id", configulator.LayerCLI, "--"+n)
+	}
+	if n := "dmr" + o.Separator + "routing" + o.Separator + "prompt-voice"; fs.Changed(n) {
+		v, err := fs.GetString(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "dmr.routing.prompt-voice",
+				Source: "--" + n,
+			}
+		}
+		cfg.DMR.Routing.PromptVoice = v
+		set("dmr.routing.prompt-voice", configulator.LayerCLI, "--"+n)
 	}
 	if n := "dmr" + o.Separator + "repeater-quota"; fs.Changed(n) {
 		v, err := fs.GetInt(n)
@@ -7880,6 +7973,52 @@ func (s *routingShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 				}
 				s.LocalTalkgroups = &out
 			}
+		case "spoken-refusals":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.SpokenRefusals = &b
+			default:
+				return configJSONError(path+".spoken-refusals", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "prompt-service-id":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Uint()
+				if err != nil {
+					return configJSONError(path+".prompt-service-id", v, err)
+				}
+				if raw > math.MaxUint {
+					return configJSONError(path+".prompt-service-id", v, fmt.Errorf("%d overflows uint", raw))
+				}
+				num := uint(raw)
+				s.PromptServiceID = &num
+			default:
+				return configJSONError(path+".prompt-service-id", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "prompt-voice":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.PromptVoice = &str
+			default:
+				return configJSONError(path+".prompt-voice", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
@@ -8371,6 +8510,9 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "dmr.routing.on-air-unlock = %v\n", c.DMR.Routing.OnAirUnlock)
 	fmt.Fprintf(&b, "dmr.routing.contention = %v\n", c.DMR.Routing.Contention)
 	fmt.Fprintf(&b, "dmr.routing.local-talkgroups = %v\n", c.DMR.Routing.LocalTalkgroups)
+	fmt.Fprintf(&b, "dmr.routing.spoken-refusals = %v\n", c.DMR.Routing.SpokenRefusals)
+	fmt.Fprintf(&b, "dmr.routing.prompt-service-id = %v\n", c.DMR.Routing.PromptServiceID)
+	fmt.Fprintf(&b, "dmr.routing.prompt-voice = %v\n", c.DMR.Routing.PromptVoice)
 	fmt.Fprintf(&b, "dmr.repeater-quota = %v\n", c.DMR.RepeaterQuota)
 	fmt.Fprintf(&b, "dmr.drain-timeout = %v\n", c.DMR.DrainTimeout)
 	fmt.Fprintf(&b, "smtp.enabled = %v\n", c.SMTP.Enabled)

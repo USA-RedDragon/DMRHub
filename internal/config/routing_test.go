@@ -35,7 +35,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}, OnAirUnlock: 24 * time.Hour}
+	want := config.Routing{DynamicTimeout: 15 * time.Minute, EphemeralTTL: 24 * time.Hour, Transmit: config.TransmitAny, Contention: config.ContentionMix, LocalTalkgroups: []uint{8, 9}, OnAirUnlock: 24 * time.Hour, PromptServiceID: 9999, PromptVoice: "placeholder"}
 	if !reflect.DeepEqual(cfg.DMR.Routing, want) {
 		t.Errorf("routing defaults %+v, want %+v", cfg.DMR.Routing, want)
 	}
@@ -61,6 +61,12 @@ func TestRoutingValidate(t *testing.T) {
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{4000}}, config.ErrInvalidLocalTalkgroup},
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{1 << 24}}, config.ErrInvalidLocalTalkgroup},
 		{"dmr.routing.local-talkgroups", config.Routing{LocalTalkgroups: []uint{8, 9, 8}}, config.ErrInvalidLocalTalkgroup},
+		{"dmr.routing.prompt-service-id", config.Routing{PromptServiceID: 4000}, config.ErrInvalidPromptServiceID},
+		{"dmr.routing.prompt-service-id", config.Routing{PromptServiceID: 9000000}, config.ErrInvalidPromptServiceID},
+		{"dmr.routing.prompt-service-id", config.Routing{PromptServiceID: 9999999}, config.ErrInvalidPromptServiceID},
+		{"dmr.routing.prompt-service-id", config.Routing{PromptServiceID: 1 << 24}, config.ErrInvalidPromptServiceID},
+		{"dmr.routing.prompt-voice", config.Routing{PromptVoice: "../etc"}, config.ErrInvalidPromptVoice},
+		{"dmr.routing.prompt-voice", config.Routing{PromptVoice: "Upper"}, config.ErrInvalidPromptVoice},
 		{"dmr.routing.on-air-unlock", config.Routing{OnAirUnlock: -time.Hour}, config.ErrInvalidOnAirUnlock},
 	} {
 		cfg := makeValidConfig()
@@ -81,7 +87,7 @@ func TestRoutingValidate(t *testing.T) {
 		t.Errorf("a negative repeater quota: error %v, want %v", err, config.ErrInvalidRepeaterQuota)
 	}
 	cfg := makeValidConfig()
-	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst, LocalTalkgroups: []uint{8, 9, 1<<24 - 1}}
+	cfg.DMR.Routing = config.Routing{DynamicTimeout: time.Hour, AutoCreate: true, Ephemeral: true, EphemeralTTL: time.Hour, Transmit: config.TransmitMembers, MaxTransmission: 3 * time.Minute, Contention: config.ContentionFirst, LocalTalkgroups: []uint{8, 9, 1<<24 - 1}, SpokenRefusals: true, PromptServiceID: 9998, PromptVoice: "kokoro-bm-lewis"}
 	if err := cfg.DMR.Routing.Validate(); err != nil {
 		t.Errorf("valid routing settings: %v", err)
 	}

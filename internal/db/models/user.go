@@ -62,7 +62,11 @@ type User struct {
 	// MustChangePassword reports that an admin set the password of the
 	// user, who must choose their own before they use the rest of
 	// DMRHub. Only SetPassword writes it.
-	MustChangePassword bool `json:"must_change_password" gorm:"<-:create;not null;default:false"`
+	// PromptVoice is the voice set of the spoken prompts that the hub
+	// plays to the radios of the user, or empty for the default voice of
+	// the hub. Only SetPromptVoice writes it.
+	PromptVoice        string `json:"-" gorm:"<-:create;size:64;not null;default:''"`
+	MustChangePassword bool   `json:"must_change_password" gorm:"<-:create;not null;default:false"`
 	// CallsignOverride reports that an admin set a callsign that RadioID
 	// did not give the DMR ID of the user, so the RadioID drift check
 	// skips the user. Only SetCallsignOverride writes it.
@@ -378,6 +382,19 @@ func DeleteUser(db *gorm.DB, id uint) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete user %d: %w", id, err)
+	}
+	return nil
+}
+
+// SetPromptVoice sets the voice of the spoken prompts of the user id, or
+// the default voice of the hub when voice is empty.
+func SetPromptVoice(db *gorm.DB, id uint, voice string) error {
+	res := db.Exec("UPDATE users SET prompt_voice = ? WHERE id = ?", voice, id)
+	if res.Error != nil {
+		return fmt.Errorf("could not set the prompt voice of user %d: %w", id, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
 	}
 	return nil
 }

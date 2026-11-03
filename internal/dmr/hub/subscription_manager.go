@@ -257,8 +257,11 @@ func (h *Hub) activateRepeaterLocked(ctx context.Context, repeaterID uint) {
 	}
 	feed := h.subscriptionMgr.feedOf(ctx, repeaterID)
 
-	p, err := models.FindRepeaterByID(h.db, repeaterID)
+	p, err := h.loadRepeater(repeaterID, h.repeaters.bump())
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			h.repeaters.drop(repeaterID)
+		}
 		slog.Error("Failed to find repeater", "repeaterID", repeaterID, "error", err)
 		return
 	}

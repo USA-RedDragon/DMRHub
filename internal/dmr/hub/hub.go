@@ -744,7 +744,6 @@ func (h *Hub) ActivateRepeater(ctx context.Context, repeaterID uint) {
 func (h *Hub) ActivateRepeaterSince(ctx context.Context, repeaterID uint, since time.Time) {
 	h.claimedAt.Store(repeaterID, since)
 	h.bumpSessionEpoch(repeaterID)
-	h.reloadRepeater(repeaterID)
 	h.activateRepeater(ctx, repeaterID)
 	h.claimPeerOwnership(ctx, repeaterID, since)
 }

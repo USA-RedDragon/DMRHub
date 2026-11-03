@@ -1,0 +1,27 @@
+DMRHub
+Copyright (C) 2023-2026 Jacob McSwain
+Licensed under the GNU Affero General Public License, version 3 or later.
+
+Spoken prompts
+==============
+
+internal/prompts/voices holds speech made with the text-to-speech models
+below, encoded as AMBE+2 and Codec2 vocoder frames. hack/prompts makes them
+again.
+
+kitten-mini-bruno, kitten-mini-hugo, kitten-mini-luna
+  Model: KittenTTS mini 0.8 (KittenML/kitten-tts-mini-0.8), voices Bruno,
+  Hugo and Luna.
+  License of the model: Apache License 2.0.
+  Source: https://huggingface.co/KittenML/kitten-tts-mini-0.8 and
+  https://github.com/KittenML/KittenTTS
+  The authors do not state the training data of the model.
+
+kokoro-bm-lewis
+  Model: Kokoro-82M v1.0 (hexgrad/Kokoro-82M, revision
+  f3ff3571791e39611d31c381e3a41a3af07b4987), voice bm_lewis.
+  License of the model: Apache License 2.0.
+  Source: https://huggingface.co/hexgrad/Kokoro-82M
+  The model card states that the training data holds public domain audio,
+  audio under permissive licenses, CC BY audio (Koniwa, CC BY 3.0; SIWIS,
+  CC BY 4.0) and synthetic audio from closed text-to-speech services.

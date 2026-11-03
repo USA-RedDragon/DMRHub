@@ -30,6 +30,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	dmrhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,7 +115,7 @@ func TestSignupWithoutEmailSendsNothing(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		email, _ := storedEmail(t, db, 3100001)
 		assert.Empty(t, email)
-		synctest.Wait()
+		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent)
 	})
 }
@@ -122,7 +123,7 @@ func TestSignupWithoutEmailSendsNothing(t *testing.T) {
 func TestEmailFormatIsChecked(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		router, _, mailer := emailRouter(t, true)
+		router, db, mailer := emailRouter(t, true)
 		jar := testutils.Login(t, router, "jdoe")
 		for _, bad := range []string{"not an email", "a@", "N0CALL <n0call@example.com>", "a@b.com\r\nBcc: x@y.com", "@example.com"} {
 			w := testutils.Do(t, router, jar, http.MethodPut, myEmailPath, map[string]string{"email": bad})
@@ -133,7 +134,7 @@ func TestEmailFormatIsChecked(t *testing.T) {
 			"id": 3100001, "callsign": "N0NEW", "username": "newbie", "password": "a long unique password", "email": "nope",
 		})
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		synctest.Wait()
+		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent)
 	})
 }
@@ -169,7 +170,7 @@ func TestChangedEmailIsUnverifiedUntilItsLink(t *testing.T) {
 		email, verified = storedEmail(t, db, 1000001)
 		assert.Empty(t, email)
 		assert.False(t, verified)
-		synctest.Wait()
+		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent, "clearing the email sends nothing")
 	})
 }
@@ -223,7 +224,7 @@ func TestPasswordResetGoesOnlyToAVerifiedEmail(t *testing.T) {
 
 		forgot(t, router, "jdoe")
 		assert.Zero(t, resets(t, db, 1000001), "an unverified email gets no reset link")
-		synctest.Wait()
+		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent)
 
 		require.Equal(t, http.StatusOK, verify(t, router, token))

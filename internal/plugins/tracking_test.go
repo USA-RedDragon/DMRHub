@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -216,7 +217,7 @@ func TestTheHubKeepsOnlyPositionsOfTrackedRadiosToThePluginsIDs(t *testing.T) {
 		require.NoError(t, s.Send(position(untrackedRadio, locatorID)))
 		require.NoError(t, s.Send(position(trackedRadio, 9990)))
 		require.NoError(t, s.Send(position(trackedRadio, locatorID)))
-		synctest.Wait()
+		bubble.SettleDB(t, r.db, time.Minute)
 		got := r.positions()
 		require.Len(t, got, 1)
 		p := got[0]

@@ -64,6 +64,7 @@ func replicasOn(t *testing.T, n int, wrap func(kv.KV) kv.KV) ([]replica, *gorm.D
 	memdb.Use(t, &cfg)
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
+	registerStatements(t, database)
 	ps, err := pubsub.MakePubSub(context.Background(), &cfg)
 	require.NoError(t, err)
 	store, err := kv.MakeKV(context.Background(), &cfg, kv.WithoutCallBound())
@@ -376,12 +377,12 @@ func TestAClaimAtTheSameTimeAsOurOwnEndsOneSession(t *testing.T) {
 		at := time.Now()
 		one.ActivateRepeaterSince(ctx, 100001, at)
 		two.ActivateRepeaterSince(ctx, 100002, at)
-		synctest.Wait()
+		settleDB(t, database)
 		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100001", []byte("replica-2")))
 		require.NoError(t, store.Set(ctx, "dmrhub:peer_owner:100002", []byte("replica-1")))
 		require.NoError(t, r[0].ps.Publish("hub:claimed", fmt.Appendf(nil, "100001 replica-2 %d", at.UnixNano())))
 		require.NoError(t, r[0].ps.Publish("hub:claimed", fmt.Appendf(nil, "100002 replica-1 %d", at.UnixNano())))
-		synctest.Wait()
+		settleDB(t, database)
 		select {
 		case id := <-toldOne:
 			assert.Equal(t, uint(100001), id)

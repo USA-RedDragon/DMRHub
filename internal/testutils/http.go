@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
@@ -82,6 +83,7 @@ func (t *TestDB) CloseDB() {
 		t.stop()
 	}
 	if t.database != nil {
+		bubble.Forget(t.database)
 		sqlDB, _ := t.database.DB()
 		_ = sqlDB.Close()
 	}
@@ -131,6 +133,9 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+	if _, err := bubble.CountStatements(t.database); err != nil {
+		return nil, nil, fmt.Errorf("failed to count the statements of the database: %w", err)
 	}
 
 	adminCount := int64(0)
@@ -200,6 +205,9 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+	if _, err := bubble.CountStatements(t.database); err != nil {
+		return nil, nil, fmt.Errorf("failed to count the statements of the database: %w", err)
 	}
 
 	adminCount := int64(0)
@@ -276,6 +284,9 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	t.database, err = db.MakeDB(&defConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create database: %w", err)
+	}
+	if _, err := bubble.CountStatements(t.database); err != nil {
+		return nil, nil, fmt.Errorf("failed to count the statements of the database: %w", err)
 	}
 
 	adminCount := int64(0)

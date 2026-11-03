@@ -29,6 +29,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -116,7 +117,7 @@ func TestASysopResetsTheConnection(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, w.Code)
 		w = testutils.Do(t, router, testutils.Login(t, router, "kevin"), http.MethodPost, "/api/v1/repeaters/319186801/reset", nil)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-		synctest.Wait()
+		bubble.SettleDB(t, database, time.Minute)
 		require.Equal(t, []uint{cosysopRepeater}, resets.list())
 		events, err := models.ListRepeaterEvents(database, cosysopRepeater, time.Time{})
 		require.NoError(t, err)

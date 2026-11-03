@@ -21,6 +21,7 @@ package bubble
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -37,8 +38,13 @@ type Statements struct {
 	running atomic.Int64
 }
 
-// CountStatements returns a Statements for db. Call it before a goroutine
-// uses db, since gorm registers callbacks only then.
+// counted holds the Statements of each database that CountStatements
+// counts, by the config that a database shares with its sessions.
+var counted sync.Map //nolint:gochecknoglobals // the counters of the databases of all the tests of a process
+
+// CountStatements returns a Statements for db, which SettleDB finds for db
+// and its sessions until Forget. Call it before a goroutine uses db, since
+// gorm registers callbacks only then.
 func CountStatements(db *gorm.DB) (*Statements, error) {
 	s := &Statements{}
 	start := func(*gorm.DB) { s.running.Add(1) }
@@ -62,7 +68,25 @@ func CountStatements(db *gorm.DB) (*Statements, error) {
 			return nil, fmt.Errorf("count the %s statements: %w", r.name, err)
 		}
 	}
+	counted.Store(db.Config, s)
 	return s, nil
+}
+
+// Forget drops the Statements of db, such as when db closes.
+func Forget(db *gorm.DB) {
+	counted.Delete(db.Config)
+}
+
+// SettleDB is Statements.Settle for the Statements of db, and fails the
+// test when no Statements counts the statements of db.
+func SettleDB(t testing.TB, db *gorm.DB, within time.Duration) {
+	t.Helper()
+	v, _ := counted.Load(db.Config)
+	s, ok := v.(*Statements)
+	if !ok {
+		t.Fatalf("no Statements counts the statements of the database")
+	}
+	s.Settle(t, within)
 }
 
 // Settle waits until every other goroutine of the bubble is durably

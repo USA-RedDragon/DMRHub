@@ -29,6 +29,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -40,6 +41,7 @@ import (
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
@@ -201,8 +203,10 @@ func TestSetupWizardFixesTheDatabase(t *testing.T) {
 		w = wizardRequest(t, r, http.MethodPut, raw)
 		require.Equal(t, http.StatusAccepted, w.Code, w.Body.String())
 		assert.Contains(t, w.Body.String(), `"status":"pending"`)
-		synctest.Wait()
-		w = wizardCall(t, r, http.MethodGet, "/api/v1/setupwizard/database-fix", nil, "")
+		bubble.Eventually(t, func() bool {
+			w = wizardCall(t, r, http.MethodGet, "/api/v1/setupwizard/database-fix", nil, "")
+			return w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"pending"`)
+		}, time.Minute, time.Millisecond, "the database fix stayed pending")
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		assert.Contains(t, w.Body.String(), `"status":"done"`)
 		assert.Contains(t, w.Body.String(), `"phase":"setup"`)

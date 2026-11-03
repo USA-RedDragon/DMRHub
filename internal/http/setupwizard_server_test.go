@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -236,8 +237,10 @@ func TestSetupWizardAnswersASecondFixWithTheFirst(t *testing.T) {
 		assert.Equal(t, int32(1), opens.Load(), "the second fix tried its database")
 
 		close(release)
-		synctest.Wait()
-		got = w.status(t)
+		bubble.Eventually(t, func() bool {
+			got = w.status(t)
+			return got["status"] != "pending"
+		}, time.Minute, time.Millisecond, "the second fix stayed pending")
 		assert.Equal(t, "done", got["status"], got)
 		assert.Equal(t, liveconfig.PhaseDone, got["phase"])
 		f := <-took
@@ -281,8 +284,10 @@ func TestSetupWizardClosesADatabaseThatNothingTakes(t *testing.T) {
 		assert.Equal(t, "pending", w.status(t)["status"])
 
 		time.Sleep(liveconfig.HandOffTimeout)
-		synctest.Wait()
-		got = w.status(t)
+		bubble.Eventually(t, func() bool {
+			got = w.status(t)
+			return got["status"] != "pending"
+		}, time.Minute, time.Millisecond, "the fix stayed pending after the hand-off timeout")
 		assert.Equal(t, "failed", got["status"])
 		assert.Contains(t, got["error"], "did not take the database")
 		sqlDB, err := database.DB()

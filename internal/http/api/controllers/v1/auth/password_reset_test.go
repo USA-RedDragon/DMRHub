@@ -122,7 +122,7 @@ func TestForgotPasswordAnswersTheSameForEveryAccount(t *testing.T) {
 			assert.JSONEq(t, resetSent, forgot(t, router, name), name)
 		}
 		assert.Zero(t, resets(t, db, 1000002), "an account without an email gets no link")
-		synctest.Wait()
+		bubble.SettleDB(t, db, time.Minute)
 		assert.Empty(t, mailer.sent)
 
 		assert.JSONEq(t, resetSent, forgot(t, router, "n0call"), "a callsign in any case finds the account")

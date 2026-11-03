@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/stretchr/testify/assert"
@@ -157,7 +158,7 @@ func switchOn(t *testing.T, r *rig, p models.Plugin, user uint, on bool, choice 
 
 func bubbleWaitSwitches(t *testing.T, r *rig, p models.Plugin) {
 	t.Helper()
-	synctest.Wait()
+	bubble.SettleDB(t, r.db, time.Minute)
 	specs, err := models.PluginSwitchesOf(r.db, p.ID)
 	require.NoError(t, err)
 	require.Len(t, specs, 1, "the hub did not keep the switch of the hello")

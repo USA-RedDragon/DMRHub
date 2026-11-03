@@ -140,7 +140,7 @@ func makeStalledRedisHub(t *testing.T, stalls func(topic string) bool) (*hub.Hub
 	})
 	h.ActivateRepeater(context.Background(), testRepeaterID)
 	h.ActivateRepeater(context.Background(), 100002)
-	synctest.Wait()
+	settleDB(t, database)
 	worstDelay(t, arrivals, 70200, sendStream(h, 1, 70200, true, 4), "mmdvm:100002", "peers:3100100")
 	worstDelay(t, arrivals, 70210, sendSlotStream(h, 2, 70210, true, 4), "mmdvm:100002", "peers:3100100")
 	return h, stalled, arrivals

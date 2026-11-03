@@ -27,6 +27,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,9 +47,9 @@ func TestTheServiceNotesTheTimesOfAPluginOnItsClock(t *testing.T) {
 		assert.True(t, start.Equal(*got.LastConnectedAt), "connected at %v", got.LastConnectedAt)
 		assert.True(t, got.Online(fake.Now()))
 
-		synctest.Wait()
+		bubble.SettleDB(t, r.db, time.Minute)
 		fake.Advance(plugins.HeartbeatEvery)
-		synctest.Wait()
+		bubble.SettleDB(t, r.db, time.Minute)
 		got, err = models.FindPlugin(r.db, p.ID)
 		require.NoError(t, err)
 		require.NotNil(t, got.LastSeenAt)

@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
+	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,7 +95,7 @@ func TestAnOwnerRotatesThePasswordOfTheirPeer(t *testing.T) {
 		require.NotEqual(t, "oldPassword1!", res.Password)
 		require.Equal(t, res.Password, peerPassword(t, tdb))
 		require.False(t, res.RotatedAt.Before(before.Truncate(time.Second)))
-		synctest.Wait()
+		bubble.SettleDB(t, tdb.DB(), time.Minute)
 		require.Len(t, announced.list(), 1)
 		require.Equal(t, []uint{3000}, announced.list())
 	})
@@ -117,7 +118,7 @@ func TestOnlyTheOwnerOrAnAdminRotatesAPeerPassword(t *testing.T) {
 		w = testutils.Do(t, router, testutils.Login(t, router, "other"), http.MethodPost, rotatePath, nil)
 		require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
 		require.Equal(t, "oldPassword1!", peerPassword(t, tdb))
-		synctest.Wait()
+		bubble.SettleDB(t, tdb.DB(), time.Minute)
 		require.Empty(t, announced.list())
 
 		_, _, adminJar := testutils.LoginAdmin(t, router)
@@ -135,7 +136,7 @@ func TestOnlyTheOwnerOrAnAdminRotatesAPeerPassword(t *testing.T) {
 			w := testutils.Do(t, router, adminJar, http.MethodPost, c.path, nil)
 			require.Equal(t, c.code, w.Code, "%s: %s", c.path, w.Body.String())
 		}
-		synctest.Wait()
+		bubble.SettleDB(t, tdb.DB(), time.Minute)
 		require.Len(t, announced.list(), 1)
 	})
 }

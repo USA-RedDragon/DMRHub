@@ -23,28 +23,20 @@ import (
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-// runningStatements holds the statement counters of each test database,
-// which makeTestHubWrapping registers before the hub runs.
-var runningStatements = xsync.NewMap[*gorm.DB, *bubble.Statements]() //nolint:gochecknoglobals // the counters of the databases of all the tests of the package
-
 func registerStatements(t testing.TB, database *gorm.DB) {
 	t.Helper()
-	s, err := bubble.CountStatements(database)
+	_, err := bubble.CountStatements(database)
 	require.NoError(t, err)
-	runningStatements.Store(database, s)
-	t.Cleanup(func() { runningStatements.Delete(database) })
+	t.Cleanup(func() { bubble.Forget(database) })
 }
 
 // settleDB waits until the hub of a test in a bubble is durably blocked
 // with no statement of database running.
 func settleDB(t testing.TB, database *gorm.DB) {
 	t.Helper()
-	s, ok := runningStatements.Load(database)
-	require.True(t, ok, "the database counts no statements")
-	s.Settle(t, failAfter)
+	bubble.SettleDB(t, database, failAfter)
 }

@@ -3,9 +3,14 @@ version: 2
 
 project_name: DMRHub
 
+before:
+  hooks:
+    - sh hack/carry/frontend.sh
+
 release:
   extra_files:
     - glob: ./LICENSE
+    - glob: ./artifacts/frontend-assets.tar.zst
   github:
     owner: USA-RedDragon
     name: DMRHub

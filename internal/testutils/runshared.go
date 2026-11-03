@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -84,19 +85,83 @@ func runSharedDir(run int) string {
 }
 
 func withRunLock(run int, fn func(dir string) error) error {
-	dir := runSharedDir(run)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("make the registry of run %d: %w", run, err)
+	if err := lockRegistry(runSharedDir(run), nil, fn); err != nil {
+		return fmt.Errorf("run %d: %w", run, err)
 	}
-	lock, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	return nil
+}
+
+const (
+	stepMade   = "made"
+	stepOpened = "opened"
+)
+
+// lockRegistry holds the lock of the registry dir of a run while fn runs,
+// and makes the registry when it is not there. The stale scan of another
+// process can remove the registry at any step, since it removes the
+// registry of a run whose go command ended; lockRegistry then makes it
+// again, so that the lock it holds is the lock of the registry that is
+// there. between, when not nil, runs after each step.
+func lockRegistry(dir string, between func(step string), fn func(dir string) error) error {
+	at := func(step string) {
+		if between != nil {
+			between(step)
+		}
+	}
+	path := filepath.Join(dir, "lock")
+	for {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("make the registry: %w", err)
+		}
+		at(stepMade)
+		lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("open the lock: %w", err)
+		}
+		at(stepOpened)
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+			_ = lock.Close()
+			return fmt.Errorf("lock the registry: %w", err)
+		}
+		if !sameFile(lock, path) {
+			_ = lock.Close()
+			continue
+		}
+		err = fn(dir)
+		_ = lock.Close()
+		return err
+	}
+}
+
+func sameFile(f *os.File, path string) bool {
+	held, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("open the lock of run %d: %w", run, err)
+		return false
+	}
+	there, err := os.Stat(path)
+	return err == nil && os.SameFile(held, there)
+}
+
+// reapRegistry removes the registry dir of a run whose go command ended,
+// unless a process holds its lock. A registry that another process
+// removed already, or that has no lock, counts as gone.
+func reapRegistry(dir string) {
+	lock, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		_ = os.RemoveAll(dir)
+		return
+	}
+	if err != nil {
+		return
 	}
 	defer func() { _ = lock.Close() }()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("lock the registry of run %d: %w", run, err)
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return
 	}
-	return fn(dir)
+	_ = os.RemoveAll(dir)
 }
 
 func reapStaleRuns(ctx context.Context, cli *mobyclient.Client) error {
@@ -118,7 +183,7 @@ func reapStaleRuns(ctx context.Context, cli *mobyclient.Client) error {
 		if err := removeStale(ctx, cli, c.ID); err != nil {
 			errs = append(errs, err)
 		}
-		_ = os.RemoveAll(runSharedDir(run))
+		reapRegistry(runSharedDir(run))
 	}
 	reapStaleDirs()
 	return errors.Join(errs...)
@@ -135,7 +200,7 @@ func reapStaleDirs() {
 			continue
 		}
 		if run, err := strconv.Atoi(rest); err == nil && run > 0 && !processAlive(run) {
-			_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
+			reapRegistry(filepath.Join(os.TempDir(), e.Name()))
 		}
 	}
 }

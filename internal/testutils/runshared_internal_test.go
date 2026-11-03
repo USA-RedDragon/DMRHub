@@ -22,12 +22,15 @@ package testutils
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeRemover struct {
@@ -76,4 +79,58 @@ func TestAStaleServerThatAnotherRunRemovesCountsAsRemoved(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestARegistryThatAStaleScanRemovesIsMadeAgain locks the registry of a
+// run while the stale scan of another process removes that registry, as
+// it does for the registry of a run whose go command ended: after the
+// registry is made and before its lock is opened, and after the lock is
+// opened and before it is held. The lock must hold a registry that is
+// there, and the work in it must succeed.
+func TestARegistryThatAStaleScanRemovesIsMadeAgain(t *testing.T) {
+	t.Parallel()
+	for _, step := range []string{stepMade, stepOpened} {
+		t.Run(step, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), "run")
+			removed := false
+			err := lockRegistry(dir, func(at string) {
+				if at == step && !removed {
+					removed = true
+					reapRegistry(dir)
+				}
+			}, func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, "probe.1.1"), nil, 0o644)
+			})
+			require.NoError(t, err)
+			assert.True(t, removed, "the scan did not run")
+			assert.FileExists(t, filepath.Join(dir, "probe.1.1"))
+			assert.FileExists(t, filepath.Join(dir, "lock"))
+		})
+	}
+}
+
+// TestAStaleScanLeavesARegistryThatIsHeld scans the registry of an ended
+// run while a process holds its lock, as the test of a run that sets up a
+// registry for an ended run does. The registry must stay.
+func TestAStaleScanLeavesARegistryThatIsHeld(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "run")
+	require.NoError(t, lockRegistry(dir, nil, func(string) error {
+		reapRegistry(dir)
+		return nil
+	}))
+	assert.DirExists(t, dir)
+}
+
+// TestAStaleScanOfAVanishedRegistryIsNoError scans the registry of an
+// ended run that another process removed already.
+func TestAStaleScanOfAVanishedRegistryIsNoError(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "gone")
+	reapRegistry(dir)
+	assert.NoDirExists(t, dir)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	reapRegistry(dir)
+	assert.NoDirExists(t, dir, "a registry without a lock stayed")
 }

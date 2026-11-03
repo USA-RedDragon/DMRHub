@@ -62,6 +62,7 @@ type SessionPeer struct {
 	conn    *net.UDPConn
 	target  *net.UDPAddr
 	start   time.Time
+	clock   func() time.Time
 	downs   int
 	ups     int
 	noTicks bool
@@ -118,7 +119,9 @@ func NewSessionPeerTimed(id uint32, password, options string, retry, timeout tim
 }
 
 // NewHBRPSessionPeer returns a SessionPeer for the repeater id that speaks
-// HBRP, with the 306-octet RPTC and no RPTO.
+// HBRP, with the 306-octet RPTC and no RPTO. It pings every 200 ms and
+// logs in again after dmrdsession.TimeoutDefault without an answer, as
+// NewSessionPeer does.
 func NewHBRPSessionPeer(id uint32, password string) (*SessionPeer, error) {
 	return NewHBRPSessionPeerCalled(id, password, fmt.Sprintf("H%04dHB", id%10000))
 }
@@ -147,7 +150,7 @@ func NewHBRPSessionPeerCalled(id uint32, password, callsign string) (*SessionPee
 	if err != nil {
 		return nil, fmt.Errorf("building RPTC: %w", err)
 	}
-	return newSessionPeer(dmrd.DialectHBRP, id, password, cfg[:], "", 200*time.Millisecond, 5*time.Second)
+	return newSessionPeer(dmrd.DialectHBRP, id, password, cfg[:], "", 200*time.Millisecond, dmrdsession.TimeoutDefault)
 }
 
 func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, options string, retry, timeout time.Duration) (*SessionPeer, error) {
@@ -167,6 +170,7 @@ func newSessionPeer(d dmrd.Dialect, id uint32, password string, cfg []byte, opti
 		ID:      id,
 		Dialect: d,
 		peer:    peer,
+		clock:   time.Now,
 		ready:   make(chan struct{}),
 		done:    make(chan struct{}),
 		packets: make(chan models.Packet, clientBuffer),
@@ -183,7 +187,7 @@ func (p *SessionPeer) Connect(addr string) error {
 	if err != nil {
 		return fmt.Errorf("listen udp: %w", err)
 	}
-	p.conn, p.target, p.start = conn, target, time.Now()
+	p.conn, p.target, p.start = conn, target, p.clock()
 	p.wg.Add(2)
 	go p.rx()
 	go p.ticks()
@@ -442,13 +446,17 @@ func (p *SessionPeer) ticks() {
 		case <-p.done:
 			return
 		case <-ticker.C:
-			p.mu.Lock()
-			if !p.noTicks {
-				var out [dmrdsession.MaxOutputs]dmrdsession.Output
-				p.run(p.peer.Tick(p.sessionTime(), out[:0]))
-			}
-			p.mu.Unlock()
+			p.tick()
 		}
+	}
+}
+
+func (p *SessionPeer) tick() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.noTicks {
+		var out [dmrdsession.MaxOutputs]dmrdsession.Output
+		p.run(p.peer.Tick(p.sessionTime(), out[:0]))
 	}
 }
 
@@ -476,5 +484,5 @@ func (p *SessionPeer) sessionTime() time.Duration {
 }
 
 func (p *SessionPeer) sinceConnect() time.Duration {
-	return time.Since(p.start)
+	return p.clock().Sub(p.start)
 }

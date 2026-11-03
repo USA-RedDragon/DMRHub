@@ -154,7 +154,7 @@ pickport	internal/testutils/live.go	4	a live config must name its server ports (
 sleep	internal/testutils/mmdvm_client.go	1	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/mmdvm_client.go	4	baseline of 2026-10-28, not reviewed: replace with an event, a test clock or a :0 port
 timer	internal/testutils/plugins.go	1	negative window: ServeIgnoresUnknownMessages checks that serve does not end within 500 ms of an unknown message; serve gives no sign that it handled it, and a slow machine can only hide a fault, never fail the test
-elapsed	internal/testutils/session_peer.go	1	session clock, not a wait: the dmrdsession Peer takes the time since Connect, less the time its pings were paused, and has no clock option (a dmrgo finding)
+elapsed	internal/testutils/session_peer.go	1	session clock, not a wait: the dmrdsession Peer takes the time of the clock of the SessionPeer since Connect, less the time its pings were paused; a test can set that clock
 timer	internal/testutils/session_peer.go	2	the 20 ms tick that drives the dmrdsession Peer, and the WaitReady bound that the caller sets
 timer	internal/testutils/wsclient.go	1	event wait: ReadText returns on the next frame; the timeout is the caller's read deadline, as a socket read deadline
 timer	internal/testutils/wsclient_test.go	1	event wait for the ping of a real httptest server; the timer only ends a wait that fails

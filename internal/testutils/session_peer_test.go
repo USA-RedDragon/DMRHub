@@ -20,9 +20,12 @@
 package testutils
 
 import (
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
+	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,4 +50,27 @@ func TestSessionPeerTakesOnlyTheDatagramsOfItsMaster(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, p.Settle())
 	require.Equal(t, 1, p.Downs())
+}
+
+// TestHBRPSessionPeerWaitsForASlowMasterAsMMDVMHostDoes starts the login
+// of an HBRP peer at a master that does not answer yet, as a master that
+// waits on its database, and moves the clock of the peer to just before
+// the session timeout of the protocol. The peer must keep its login and
+// not log in again, which would end the login that the master works on.
+func TestHBRPSessionPeerWaitsForASlowMasterAsMMDVMHostDoes(t *testing.T) {
+	t.Parallel()
+	master := listenLoopback(t)
+	p, err := NewHBRPSessionPeer(100001, "s3cret")
+	require.NoError(t, err)
+	start := time.Now()
+	var elapsed atomic.Int64
+	p.clock = func() time.Time { return start.Add(time.Duration(elapsed.Load())) }
+	require.NoError(t, p.Connect(master.LocalAddr().String()))
+	t.Cleanup(p.Close)
+	login, _ := readUDP(t, master)
+	require.Equal(t, dmrd.CommandRPTL, dmrd.Classify([]byte(login), dmrd.DialectHBRP))
+
+	elapsed.Store(int64(dmrdsession.TimeoutDefault - time.Second))
+	p.tick()
+	require.Zero(t, p.Downs(), "the peer gave up a login that the master had not answered within the session timeout")
 }

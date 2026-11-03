@@ -38,8 +38,9 @@ func TestHandleMimeServesMapAssets(t *testing.T) {
 	for _, tc := range []struct {
 		path, contentType, cacheControl string
 	}{
-		{"/assets/maplibre-gl-worker-abc.mjs", "text/javascript", ""},
-		{"/assets/index-abc.js", "text/javascript", ""},
+		{"/assets/maplibre-gl-worker-abc.mjs", "text/javascript", "public, max-age=31536000, immutable"},
+		{"/assets/index-abc.js", "text/javascript", "public, max-age=31536000, immutable"},
+		{"/favicon.ico", "image/x-icon", ""},
 		{"/glyphs/Open Sans Regular/0-255.pbf", "application/x-protobuf", "public, max-age=31536000, immutable"},
 	} {
 		w := httptest.NewRecorder()
@@ -68,4 +69,37 @@ func TestEveryBuiltFrontendFileIsEmbedded(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
+}
+
+func TestFrontendAnswersAMissingAssetWithNotFound(t *testing.T) {
+	t.Parallel()
+	entries, err := fs.ReadDir(FS, "frontend/dist/assets")
+	if err != nil || len(entries) == 0 {
+		t.Skip("the frontend is not built")
+	}
+	r := gin.New()
+	addFrontendRoutes(r)
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://hub"+path, nil))
+		return w
+	}
+
+	w := get("/assets/" + entries[0].Name())
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "public, max-age=31536000, immutable", w.Header().Get("Cache-Control"))
+
+	for _, path := range []string{"/assets/index-00000000.js", "/assets/index-00000000.css", "/assets/a/b/c/d.js"} {
+		w := get(path)
+		assert.Equal(t, http.StatusNotFound, w.Code, path)
+		assert.NotContains(t, w.Body.String(), "<html", path)
+	}
+	assert.Equal(t, "no-store", get("/assets/index-00000000.js").Header().Get("Cache-Control"))
+
+	w = get("/calls/talkgroup")
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+	w = get("/")
+	assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
 }

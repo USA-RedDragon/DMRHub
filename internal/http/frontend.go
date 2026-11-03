@@ -31,6 +31,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	assetsDir       = "frontend/dist/assets/"
+	cacheImmutable  = "public, max-age=31536000, immutable"
+	cacheRevalidate = "no-cache"
+)
+
 func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 	staticGroup.GET("/", func(c *gin.Context) {
 		file, err := FS.Open("frontend/dist/index.html")
@@ -48,6 +54,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 		if getErr != nil {
 			slog.Error("Failed to read file", "error", getErr)
 		}
+		c.Header("Cache-Control", cacheRevalidate)
 		c.Data(http.StatusOK, "text/html", fileContent)
 	})
 	wildcard := "/:wild"
@@ -85,6 +92,11 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 				}
 			}
 			file, fileErr := FS.Open(wildPath)
+			if fileErr != nil && strings.HasPrefix(wildPath, assetsDir) {
+				c.Header("Cache-Control", "no-store")
+				c.String(http.StatusNotFound, http.StatusText(http.StatusNotFound))
+				return
+			}
 			if fileErr != nil {
 				file, fileErr = FS.Open("frontend/dist/index.html")
 				if fileErr != nil {
@@ -103,6 +115,7 @@ func addFrontendWildcards(staticGroup *gin.RouterGroup, depth int) {
 				slog.Error("Failed to read file", "error", readErr)
 				return
 			}
+			c.Header("Cache-Control", cacheRevalidate)
 			c.Data(http.StatusOK, "text/html", fileContent)
 		})
 	}
@@ -144,6 +157,9 @@ func addFrontendRoutes(r *gin.Engine) {
 }
 
 func handleMime(c *gin.Context, fileContent []byte, entry string) {
+	if strings.HasPrefix(c.Request.URL.Path, "/assets/") {
+		c.Header("Cache-Control", cacheImmutable)
+	}
 	switch {
 	case strings.HasSuffix(c.Request.URL.Path, ".js") || strings.HasSuffix(c.Request.URL.Path, ".mjs"):
 		c.Data(http.StatusOK, "text/javascript", fileContent)
@@ -182,7 +198,7 @@ func handleMime(c *gin.Context, fileContent []byte, entry string) {
 		c.Data(http.StatusOK, "text/plain", fileContent)
 		return
 	case strings.HasSuffix(c.Request.URL.Path, ".pbf"):
-		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.Header("Cache-Control", cacheImmutable)
 		c.Data(http.StatusOK, "application/x-protobuf", fileContent)
 		return
 	case strings.HasSuffix(c.Request.URL.Path, ".webmanifest"):

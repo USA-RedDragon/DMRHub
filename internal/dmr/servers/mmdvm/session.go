@@ -44,6 +44,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	dmrdsession "github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdsession"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -564,14 +565,11 @@ var (
 )
 
 func (s *Server) password(repeaterID uint) (string, error) {
-	exists, err := models.RepeaterIDExists(s.DB, repeaterID)
-	if err != nil {
-		return "", fmt.Errorf("failed to find repeater: %w", err)
-	}
-	if !exists {
+	var repeater models.Repeater
+	err := s.DB.Select("type", "password").Where("id = ?", repeaterID).Take(&repeater).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", fmt.Errorf("repeater %d does not exist", repeaterID)
 	}
-	repeater, err := models.FindRepeaterByID(s.DB, repeaterID)
 	if err != nil {
 		return "", fmt.Errorf("failed to find repeater: %w", err)
 	}
@@ -805,6 +803,7 @@ func (s *Server) takeConfig(id uint32, ep endpoint, d dmrd.Dialect, data []byte)
 		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
 		return models.Repeater{}, false
 	}
+	dbRepeater := repeater
 	parse := repeater.ParseConfig
 	if d == dmrd.DialectHBRP {
 		parse = repeater.ParseHBRPConfig
@@ -827,11 +826,6 @@ func (s *Server) takeConfig(id uint32, ep endpoint, d dmrd.Dialect, data []byte)
 	}
 	repeater.SecretCheck = check
 
-	dbRepeater, err := models.FindRepeaterByID(s.DB, repeaterID)
-	if err != nil {
-		slog.Error("Error finding repeater", "repeaterID", repeaterID, "error", err)
-		return models.Repeater{}, false
-	}
 	dbRepeater.UpdateFrom(repeater)
 	if err := s.DB.Omit(clause.Associations).Save(&dbRepeater).Error; err != nil {
 		slog.Error("Error saving repeater to database", "repeaterID", repeaterID, "error", err)

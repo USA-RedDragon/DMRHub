@@ -28,8 +28,11 @@ import ToastBridge from './plugins/toastBridge.js';
 import App from './App.vue';
 import router from './router';
 import API from './services/API';
+import { staleBuildReloader } from './lib/staleBuild';
 
 import './assets/main.css';
+
+window.addEventListener('vite:preloadError', staleBuildReloader(sessionStorage, Date.now, () => window.location.reload()));
 
 const pinia = createPinia();
 const app = createApp(App);

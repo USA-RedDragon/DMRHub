@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 )
 
@@ -75,11 +76,13 @@ func (h *Hub) admitRouting(packet models.Packet, sourceName string) bool {
 		return false
 	}
 	if p.refused {
+		h.promptRefused(packet, sourceName, prompts.RadioIDNotRegistered)
 		h.refuseStream(key, &p, packet, sourceName, "transmit")
 		h.streamPolicies.Store(key, p)
 		return false
 	}
 	if isVoice, _ := utils.CheckPacketType(packet); isVoice && r.MaxTransmission > 0 && now.Sub(p.start) > r.MaxTransmission {
+		h.promptRefused(packet, sourceName, prompts.TimeOut)
 		h.refuseStream(key, &p, packet, sourceName, "max-transmission")
 		h.streamPolicies.Store(key, p)
 		return false

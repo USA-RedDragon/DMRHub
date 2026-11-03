@@ -26,6 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/undeliverable"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 )
 
 const unlinkTalkgroup = 4000
@@ -188,6 +189,19 @@ func (h *Hub) refusal(repeaterID uint, slot bool, packet models.Packet, out bool
 	return ""
 }
 
+// refusalClip returns the prompt of a reason that refuseIngress gives.
+func refusalClip(reason string) string {
+	switch reason {
+	case undeliverable.ReasonTalkgroupRestricted:
+		return prompts.TalkgroupRestricted
+	case undeliverable.ReasonSlotLocked:
+		return prompts.TimeslotReserved
+	case undeliverable.ReasonTalkgroupRefused:
+		return prompts.TalkgroupBlocked
+	}
+	return ""
+}
+
 func (h *Hub) refuseIngress(packet models.Packet, sourceName string) bool {
 	if _, isPlugin := plugins.PluginOfSource(sourceName); isPlugin || h.getServerRole(sourceName) == RolePeer {
 		return false
@@ -199,6 +213,7 @@ func (h *Hub) refuseIngress(packet models.Packet, sourceName string) bool {
 	if reason == "" {
 		return false
 	}
+	h.promptRefused(packet, sourceName, refusalClip(reason))
 	h.ReportUndeliverable(packet, sourceName, reason)
 	return true
 }

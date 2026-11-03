@@ -78,7 +78,7 @@ func newRulesHub(t *testing.T, database *gorm.DB, ps pubsub.PubSub, kvStore kv.K
 	return h
 }
 
-func rulesSetup(t *testing.T, be testutils.Backend) *rulesEnv {
+func rulesSetup(t *testing.T, be testutils.Backend, opts ...hub.Option) *rulesEnv {
 	t.Helper()
 	c, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func rulesSetup(t *testing.T, be testutils.Backend) *rulesEnv {
 	}
 
 	e := &rulesEnv{db: database, ps: ps, kv: kvStore, next: 1}
-	e.hub = newRulesHub(t, database, ps, kvStore)
+	e.hub = newRulesHub(t, database, ps, kvStore, opts...)
 	e.srv = e.hub.RegisterServer(hub.ServerConfig{Name: models.RepeaterTypeMMDVM, Role: hub.RoleRepeater})
 	for _, rpt := range []uint{ruleSender, ruleReceiver} {
 		e.hub.ActivateRepeater(context.Background(), rpt)

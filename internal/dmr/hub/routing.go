@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -275,6 +276,7 @@ func (h *Hub) handleGroupCall(key sourceSlot, packet models.Packet) {
 		}
 		if !exists {
 			slog.Error("Talkgroup does not exist", "talkgroupID", packet.Dst)
+			h.promptRefused(packet, key.server, prompts.TalkgroupNotFound)
 			return
 		}
 		h.streamTalkgroups.Store(target, h.clock.Now())

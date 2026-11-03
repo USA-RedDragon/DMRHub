@@ -53,7 +53,8 @@ type Unlock struct {
 // UnlockReplies answers a radio about its on-air code, such as with a
 // spoken prompt. The hub calls Locked once for each transmission of a
 // radio ID that needs an unlock on its repeater slot, and Tried after each
-// try of a code. With no UnlockReplies set, the radio hears nothing.
+// try of a code. Until SetUnlockReplies sets others, the hub uses
+// PromptReplies.
 type UnlockReplies interface {
 	Locked(u Unlock)
 	Tried(u Unlock, r airauth.Result)
@@ -67,6 +68,8 @@ type unlockStream struct {
 }
 
 func (h *Hub) initUnlocks() {
+	var replies UnlockReplies = promptReplies{h: h}
+	h.unlockReplies.Store(&replies)
 	h.airAuth = airauth.New(h.db, h.kv, h.clock, h.unlockKey, func() time.Duration { return h.routingConfig().OnAirUnlock })
 	h.unlockGrants = lookup.New(h.clock, "unlocks", lookup.TTL, func(radio uint) ([]airauth.Grant, error) {
 		if h.kv == nil {
@@ -168,6 +171,7 @@ func (h *Hub) takeUnlockCall(ctx context.Context, packet models.Packet, sourceNa
 		return true
 	}
 	key := unlockStream{server: sourceName, repeater: packet.Repeater, slot: packet.Slot, stream: packet.StreamID}
+	h.heldBack(packet, sourceName)
 	if _, seen := h.unlockStreams.LoadOrStore(key, h.clock.Now()); seen {
 		return true
 	}
@@ -218,6 +222,7 @@ func (h *Hub) refuseLocked(packet models.Packet, sourceName string) bool {
 	if !h.needsUnlock(packet) {
 		return false
 	}
+	h.heldBack(packet, sourceName)
 	h.ReportUndeliverable(packet, sourceName, undeliverable.ReasonUnlockNeeded)
 	key := unlockStream{server: sourceName, repeater: packet.Repeater, slot: packet.Slot, stream: packet.StreamID}
 	if _, told := h.lockedStreams.LoadOrStore(key, h.clock.Now()); !told {

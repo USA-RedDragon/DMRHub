@@ -95,7 +95,7 @@ func newRig(t *testing.T, opts ...plugins.ServiceOption) *rig {
 	registry, err := plugins.NewRegistry(database, ps)
 	require.NoError(t, err)
 	done := make(chan struct{})
-	registry.Follow(done)
+	followed := registry.Follow(done)
 	r := &rig{t: t, db: database, ps: ps, registry: registry, router: &routed{}, lis: bufconn.Listen(1 << 20), stored: make(chan models.Position, 64)}
 	srv := grpc.NewServer(grpc.WaitForHandlers(true))
 	r.svc = plugins.NewService(database, ps, registry, r.router, r.notify, opts...)
@@ -104,6 +104,7 @@ func newRig(t *testing.T, opts ...plugins.ServiceOption) *rig {
 	t.Cleanup(func() {
 		srv.Stop()
 		close(done)
+		<-followed
 		_ = ps.Close()
 		if sqlDB, err := database.DB(); err == nil {
 			_ = sqlDB.Close()

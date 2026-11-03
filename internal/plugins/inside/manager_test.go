@@ -212,7 +212,7 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 	registry, err := plugins.NewRegistry(c.db, c.ps)
 	require.NoError(t, err)
 	done := make(chan struct{})
-	registry.Follow(done)
+	followed := registry.Follow(done)
 	r := &replica{registry: registry, router: &routed{}}
 	r.svc = plugins.NewService(c.db, c.ps, registry, r.router, nil, plugins.WithClock(c.clock))
 	r.m = inside.NewManager(inside.Deps{
@@ -223,6 +223,7 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 	t.Cleanup(func() {
 		r.m.Stop(context.Background())
 		close(done)
+		<-followed
 	})
 	return r
 }

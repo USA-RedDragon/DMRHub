@@ -59,6 +59,7 @@ type Server struct {
 	registry *Registry
 	service  *Service
 	done     chan struct{}
+	followed <-chan struct{}
 	stopOnce sync.Once
 }
 
@@ -83,7 +84,7 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 	service := NewService(db, ps, registry, router, notify, opts...)
 	if !c.Enabled {
 		s := &Server{registry: registry, service: service, done: make(chan struct{})}
-		registry.Follow(s.done)
+		s.followed = registry.Follow(s.done)
 		setPlugins(registry)
 		return s, nil
 	}
@@ -109,7 +110,7 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 		done:     make(chan struct{}),
 	}
 	pluginv1.RegisterPluginServiceServer(s.grpc, service)
-	registry.Follow(s.done)
+	s.followed = registry.Follow(s.done)
 	setPlugins(registry)
 	go func() {
 		if err := s.grpc.Serve(lis); err != nil {
@@ -152,13 +153,15 @@ func (s *Server) Drain(ctx context.Context) int {
 	return left
 }
 
-// Stop ends the streams of the plugins and closes the listener.
+// Stop ends the streams of the plugins, closes the listener, and returns
+// once the registry no longer reads the database.
 func (s *Server) Stop() {
 	if s == nil {
 		return
 	}
 	s.stopOnce.Do(func() {
 		close(s.done)
+		<-s.followed
 		if s.grpc == nil {
 			return
 		}

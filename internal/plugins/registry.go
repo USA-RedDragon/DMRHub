@@ -134,10 +134,13 @@ func (r *Registry) SetInProcess(on bool) error {
 }
 
 // Follow reloads the Registry each time PublishChanged says the plugins
-// changed, until done is closed.
-func (r *Registry) Follow(done <-chan struct{}) {
+// changed, until done is closed. The channel that it returns closes when
+// the last reload has ended, after done is closed.
+func (r *Registry) Follow(done <-chan struct{}) <-chan struct{} {
 	sub := r.pubsub.Subscribe(ChangedTopic)
+	ended := make(chan struct{})
 	go func() {
+		defer close(ended)
 		defer func() { _ = sub.Close() }()
 		for {
 			select {
@@ -153,6 +156,7 @@ func (r *Registry) Follow(done <-chan struct{}) {
 			}
 		}
 	}()
+	return ended
 }
 
 // Owner returns the plugin that owns the DMR ID id, and false when no plugin

@@ -35,6 +35,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
+	"github.com/USA-RedDragon/DMRHub/internal/plugintexts"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/memdb"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
@@ -61,14 +62,15 @@ type Plugins struct {
 }
 
 // StartPlugins starts the plugin listener of router on loopback until the
-// test ends. notify gets the positions the hub stores; it may be nil.
+// test ends, with opts. notify gets the positions the hub stores; it may be
+// nil.
 func StartPlugins(t testing.TB, db *gorm.DB, ps pubsub.PubSub, router plugins.Router, setPlugins func(*plugins.Registry),
-	notify func(models.Position)) *Plugins {
+	notify func(models.Position), opts ...plugins.ServiceOption) *Plugins {
 	t.Helper()
 	var cfg config.Config
 	cfg.Secret = pluginSecret
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
-	srv, err := plugins.Start(context.Background(), &cfg, db, ps, router, setPlugins, notify)
+	srv, err := plugins.Start(context.Background(), &cfg, db, ps, router, setPlugins, notify, opts...)
 	require.NoError(t, err)
 	t.Cleanup(srv.Stop)
 	return &Plugins{cfg: &cfg, db: db, ps: ps, Server: srv}
@@ -183,11 +185,13 @@ func (r *Replica) StartPlugins(t testing.TB, s *IntegrationStack) *Plugins {
 }
 
 // Plugins returns the plugin listener of the stack's hub, and starts it
-// when it has not yet.
+// when it has not yet. It sends the texts and plays the prompts of plugins
+// as DMRHub does.
 func (s *IntegrationStack) Plugins(t testing.TB) *Plugins {
 	t.Helper()
 	if s.plugins == nil {
-		s.plugins = StartPlugins(t, s.DB, s.PubSub, s.Hub, func(r *plugins.Registry) { s.Hub.SetPlugins(r) }, nil)
+		s.plugins = StartPlugins(t, s.DB, s.PubSub, s.Hub, func(r *plugins.Registry) { s.Hub.SetPlugins(r) }, nil,
+			plugins.WithTexts(plugintexts.New(s.DB, s.Hub)), plugins.WithPrompts(s.Hub))
 	}
 	return s.plugins
 }

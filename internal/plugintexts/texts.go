@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
@@ -58,6 +59,21 @@ func New(db *gorm.DB, sender Sender) *Texts {
 // radio.
 func (t *Texts) SendText(ctx context.Context, source, radio uint, body string) (string, error) {
 	tpl, f, err := storeforward.RadioText(t.db, radio)
+	return t.send(ctx, tpl, f, err, source, radio, body)
+}
+
+// ReplyText sends body from source to radio in the format of the text id
+// that radio sent to source, through the repeater and timeslot of that
+// text, and returns the name of the format. It returns plugins.ErrNoFormat,
+// and sends nothing, when that text came through a repeater of neither the
+// radio's owner nor a trusted one, or in a format that the hub cannot build
+// again exactly, and the errors of SendText.
+func (t *Texts) ReplyText(ctx context.Context, source uint, id uint64, radio uint, body string) (string, error) {
+	tpl, f, err := storeforward.MessageText(t.db, id, radio, source)
+	return t.send(ctx, tpl, f, err, source, radio, body)
+}
+
+func (t *Texts) send(ctx context.Context, tpl *models.Message, f *storeforward.Format, err error, source, radio uint, body string) (string, error) {
 	switch {
 	case errors.Is(err, storeforward.ErrNoFormat), errors.Is(err, storeforward.ErrNotReproducible):
 		return "", fmt.Errorf("%w: %w", plugins.ErrNoFormat, err)

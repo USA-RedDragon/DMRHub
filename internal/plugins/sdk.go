@@ -43,6 +43,8 @@ const (
 	maxRequests = 64
 	// maxTextBody is the longest text that a plugin sends, in characters.
 	maxTextBody = 500
+	// maxPromptClips is the most clips of one PlayPrompt.
+	maxPromptClips = 64
 	// aprsPerMinute is how many APRS messages a plugin sends in a minute.
 	aprsPerMinute = 30
 	// aprsLimitWait is how long the count of the APRS messages of a
@@ -72,6 +74,36 @@ type Texts interface {
 	// ErrNoFormat, and sends nothing, when the hub knows no such text, and
 	// ErrTextDoesNotFit, ErrRadioRefused or ErrNoAnswer.
 	SendText(ctx context.Context, source, radio uint, body string) (string, error)
+	// ReplyText sends body from source to radio in the exact format of the
+	// text id that radio sent to source, through its repeater and timeslot,
+	// and returns the name of the format. It returns ErrNoFormat, and sends
+	// nothing, when the hub cannot or may not mirror that text, and the
+	// errors of SendText.
+	ReplyText(ctx context.Context, source uint, id uint64, radio uint, body string) (string, error)
+}
+
+// The errors of Prompts.PlayPrompt.
+var (
+	// ErrRadioNotFound is returned when the hub does not know where to
+	// reach the radio.
+	ErrRadioNotFound = errors.New("the hub does not know where the radio is")
+	// ErrUnknownClip is returned for a clip that the hub does not have.
+	ErrUnknownClip = errors.New("the hub has no such clip")
+)
+
+// Prompts plays the spoken prompts of plugins.
+type Prompts interface {
+	// PlayPrompt plays clips, one after another, from source to radio on
+	// the timeslot (true for timeslot 2), as the hub plays its own
+	// prompts, at most once for the stream of the radio when stream is not
+	// 0. It returns ErrRadioNotFound or ErrUnknownClip.
+	PlayPrompt(ctx context.Context, source, radio uint, slot bool, clips []string, stream uint) error
+}
+
+// WithPrompts makes the service play the prompts of plugins with p.
+// With it and WithTexts, the hub offers FEATURE_PROMPT.
+func WithPrompts(p Prompts) ServiceOption {
+	return func(s *Service) { s.prompts = p }
 }
 
 // WithTexts makes the service send the text messages of plugins with t.
@@ -115,6 +147,9 @@ func (s *Service) features() []pluginv1.Feature {
 	}
 	if s.aprs != nil {
 		f = append(f, pluginv1.Feature_FEATURE_APRS)
+	}
+	if s.texts != nil && s.prompts != nil {
+		f = append(f, pluginv1.Feature_FEATURE_PROMPT)
 	}
 	if s.aprsInbox {
 		f = append(f, pluginv1.Feature_FEATURE_APRS_INBOX)
@@ -232,6 +267,8 @@ func (q *requester) serve(ctx context.Context, r request) *pluginv1.Answer {
 		return q.sendText(ctx, op.SendText, r.ranges)
 	case *pluginv1.Request_AprsSend:
 		return q.sendAPRS(ctx, op.AprsSend, now)
+	case *pluginv1.Request_PlayPrompt:
+		return q.playPrompt(ctx, op.PlayPrompt, r.ranges)
 	}
 	return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the hub does not know this request")
 }
@@ -411,7 +448,16 @@ func (q *requester) sendText(ctx context.Context, t *pluginv1.SendText, ranges [
 	if _, owned := q.s.registry.Owner(radio); owned {
 		return fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the radio is an ID of a plugin")
 	}
-	format, err := q.s.texts.SendText(ctx, source, radio, t.GetBody())
+	var format string
+	var err error
+	if t.ReplyTo != nil {
+		if q.s.prompts == nil {
+			return fail(pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, "this hub does not answer a text in its own format")
+		}
+		format, err = q.s.texts.ReplyText(ctx, source, t.GetReplyTo(), radio, t.GetBody())
+	} else {
+		format, err = q.s.texts.SendText(ctx, source, radio, t.GetBody())
+	}
 	switch {
 	case errors.Is(err, ErrNoFormat):
 		return fail(pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, err.Error())
@@ -425,6 +471,36 @@ func (q *requester) sendText(ctx context.Context, t *pluginv1.SendText, ranges [
 		return q.unavailable("send a text", err)
 	}
 	return &pluginv1.Answer{Result: &pluginv1.Answer_TextSent{TextSent: &pluginv1.TextSent{Format: format}}}
+}
+
+func (q *requester) playPrompt(ctx context.Context, p *pluginv1.PlayPrompt, ranges []models.PluginRange) *pluginv1.Answer {
+	if q.s.prompts == nil || q.s.texts == nil {
+		return fail(pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, "this hub does not play prompts for plugins")
+	}
+	source, radio := uint(p.GetSource()), uint(p.GetRadio())
+	switch {
+	case !inRanges(ranges, source):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the source is not one of the plugin's IDs")
+	case radio == 0 || radio > models.MaxDMRID:
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the radio is not a DMR ID")
+	case p.GetSlot() != 1 && p.GetSlot() != 2:
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the timeslot is not 1 or 2")
+	case len(p.GetClips()) == 0 || len(p.GetClips()) > maxPromptClips:
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "not 1 to 64 clips")
+	}
+	if _, owned := q.s.registry.Owner(radio); owned {
+		return fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the radio is an ID of a plugin")
+	}
+	err := q.s.prompts.PlayPrompt(ctx, source, radio, p.GetSlot() == 2, p.GetClips(), uint(p.GetStreamId()))
+	switch {
+	case errors.Is(err, ErrUnknownClip):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, err.Error())
+	case errors.Is(err, ErrRadioNotFound):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, err.Error())
+	case err != nil:
+		return q.unavailable("play a prompt", err)
+	}
+	return &pluginv1.Answer{}
 }
 
 // optedIn returns the callsigns, in upper case, of the users who turned a

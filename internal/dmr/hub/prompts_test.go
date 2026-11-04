@@ -22,6 +22,7 @@ package hub_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/airauth"
@@ -31,6 +32,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/transcode"
+	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
@@ -261,4 +263,60 @@ func (e *promptEnv) collect(t *testing.T, n int, keep func(hub.RoutedPacket) boo
 	})
 	require.Len(t, got, n, "the prompt %s did not arrive", clip)
 	return got
+}
+
+func TestAPluginPromptPlaysItsClipsToTheRadioASecondAfterItAsks(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := pluginHub(t)
+		ctx := context.Background()
+		hear(t, h, answerRadio, answerRepeater, 50)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		for len(srv.Packets) > 0 {
+			<-srv.Packets
+		}
+
+		clips := []string{prompts.WordTimeslot, prompts.Digit(1), prompts.WordDynamic, prompts.WordNone}
+		require.NoError(t, h.PlayPrompt(ctx, answerService, answerRadio, false, clips, 51), "whether or not spoken refusals are on")
+		time.Sleep(time.Second - time.Millisecond)
+		synctest.Wait()
+		assert.Empty(t, srv.Packets, "no prompt while the radio may still transmit")
+		want, err := prompts.Build(prompts.Call{Voice: prompts.DefaultVoice, Clips: clips, Codec: transcode.CodecAMBE, Src: answerService, Dst: answerRadio})
+		require.NoError(t, err)
+		time.Sleep(time.Millisecond + prompts.Duration(len(want)))
+		synctest.Wait()
+		var slots, wantSlots [][9]byte
+		got := 0
+		for len(srv.Packets) > 0 {
+			rp := <-srv.Packets
+			p := rp.Packet
+			got++
+			assert.Equal(t, answerRepeater, rp.RepeaterID)
+			assert.Equal(t, answerService, p.Src)
+			assert.Equal(t, answerRadio, p.Dst)
+			assert.False(t, p.GroupCall)
+			assert.False(t, p.Slot)
+			if p.FrameType == dmrconst.FrameVoice || p.FrameType == dmrconst.FrameVoiceSync {
+				s := layer2.RawBurst(p.DMRData).VoiceSlots()
+				slots = append(slots, s[:]...)
+			}
+		}
+		assert.Equal(t, len(want), got)
+		for _, c := range clips {
+			f, err := prompts.Frames(prompts.DefaultVoice, c, transcode.CodecAMBE)
+			require.NoError(t, err)
+			wantSlots = append(wantSlots, f...)
+		}
+		require.GreaterOrEqual(t, len(slots), len(wantSlots))
+		assert.Equal(t, wantSlots, slots[:len(wantSlots)], "the clips, in order")
+
+		require.NoError(t, h.PlayPrompt(ctx, answerService, answerRadio, false, clips, 51))
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		assert.Empty(t, srv.Packets, "one prompt for each stream of the radio")
+
+		require.ErrorIs(t, h.PlayPrompt(ctx, answerService, answerRadio, false, []string{"nope"}, 52), plugins.ErrUnknownClip)
+		require.ErrorIs(t, h.PlayPrompt(ctx, answerService, 1000999, false, clips, 53), plugins.ErrRadioNotFound)
+	})
 }

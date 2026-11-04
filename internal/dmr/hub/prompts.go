@@ -20,7 +20,10 @@
 package hub
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -54,6 +57,11 @@ type Prompt struct {
 	Slot2    bool
 	Radio    uint
 	Clip     string
+	// Clips, when set, are played one after another in place of Clip.
+	Clips []string
+	// Src is the source ID of the call, or 0 for the service ID of
+	// prompts.
+	Src uint
 }
 
 type promptSlot struct {
@@ -191,12 +199,15 @@ func (h *Hub) playPrompt(p Prompt, cc enums.ColorCode) {
 		slog.Warn("Cannot play a prompt to a repeater that the hub cannot find", "repeaterID", p.Repeater, "error", err)
 		return
 	}
-	src := r.PromptServiceID
+	src := p.Src
+	if src == 0 {
+		src = r.PromptServiceID
+	}
 	if src == 0 {
 		src = prompts.DefaultServiceID
 	}
 	packets, err := prompts.Build(prompts.Call{
-		Voice: h.promptVoice(p.Radio), Clip: p.Clip, Codec: transcode.ParseCodec(rpt.SlotCodec(p.Slot2)),
+		Voice: h.promptVoice(p.Radio), Clip: p.Clip, Clips: p.Clips, Codec: transcode.ParseCodec(rpt.SlotCodec(p.Slot2)),
 		Src: src, Dst: p.Radio, Repeater: p.Repeater, Slot2: p.Slot2, ColorCode: cc, Stream: newStreamID(),
 	})
 	if err != nil {
@@ -212,6 +223,29 @@ func (h *Hub) playPrompt(p Prompt, cc enums.ColorCode) {
 		}
 	}
 	send(0)
+}
+
+// PlayPrompt plays clips from source, an ID of a plugin, to radio, as a
+// private call through the repeater or hotspot of this hub where the hub
+// sends the private calls to radio, on the timeslot slot (true for
+// timeslot 2). It plays them as the spoken refusals play: promptQuiet
+// after the slot last carried a burst that the hub holds a prompt for, at
+// most once for the stream of the radio when stream is not 0, and whether
+// or not spoken refusals are on. It returns plugins.ErrUnknownClip and
+// plugins.ErrRadioNotFound.
+func (h *Hub) PlayPrompt(ctx context.Context, source, radio uint, slot bool, clips []string, stream uint) error {
+	for _, c := range clips {
+		if !slices.Contains(prompts.Clips(), c) {
+			return fmt.Errorf("%w: %q", plugins.ErrUnknownClip, c)
+		}
+	}
+	probe := models.Packet{Src: source, Dst: radio, Slot: slot, StreamID: newStreamID()}
+	rpt, ok := h.privateTargetRepeater(ctx, probe)
+	if !ok {
+		return plugins.ErrRadioNotFound
+	}
+	h.queuePrompt(Prompt{Server: rpt.Type, Repeater: rpt.ID, Slot2: slot, Radio: radio, Clips: clips, Src: source}, stream, enums.ColorCode(rpt.ColorCode&0xF)) //nolint:gosec // masked to 4 bits
+	return nil
 }
 
 // promptVoice returns the voice that the owner of radio picked, or the

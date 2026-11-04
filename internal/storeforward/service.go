@@ -420,6 +420,35 @@ func RadioText(db *gorm.DB, radio uint) (*models.Message, *Format, error) {
 	return &m, f, nil
 }
 
+// MessageText returns the text id from radio to dst, with its format,
+// when it came through a repeater of the radio's owner or one that an
+// admin trusts, as RadioText does for the last text of a radio. It returns
+// ErrNoFormat for any other message, and the errors of FormatOf.
+func MessageText(db *gorm.DB, id uint64, radio, dst uint) (*models.Message, *Format, error) {
+	owner, ok, err := models.RadioIDOwner(db, radio)
+	if err != nil {
+		return nil, nil, fmt.Errorf("storeforward: finding the owner of radio %d: %w", radio, err)
+	}
+	if !ok {
+		return nil, nil, ErrNoFormat
+	}
+	var found []models.Message
+	err = db.Where("id = ? AND source_id = ? AND destination_id = ? AND is_group = ?", id, radio, dst, false).
+		Where("repeater_id IN (SELECT id FROM repeaters WHERE owner_id = ? OR trusted = ?)", owner, true).
+		Limit(1).Find(&found).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("storeforward: finding text %d of radio %d: %w", id, radio, err)
+	}
+	if len(found) == 0 {
+		return nil, nil, ErrNoFormat
+	}
+	f, err := FormatOf(&found[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return &found[0], f, nil
+}
+
 // Heard sends the texts held for radio, which the hub heard on the
 // repeater and slot, once the radio is quiet. One delivery per radio runs
 // on a replica at a time.

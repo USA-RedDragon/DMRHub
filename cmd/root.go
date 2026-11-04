@@ -602,7 +602,7 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 			Send:   func(m aprs.Message) error { return positions.PublishMessage(pubsubClient, m) },
 			On:     func() bool { return current.Get().DMR.Positions.APRSIS.Callsign != "" },
 			Limits: kvStore,
-		}), plugins.WithTexts(plugintexts.New(database, hub)))
+		}), plugins.WithTexts(plugintexts.New(database, hub)), plugins.WithPrompts(hub))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

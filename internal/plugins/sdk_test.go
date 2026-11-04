@@ -48,11 +48,12 @@ type sentText struct {
 }
 
 type fakeTexts struct {
-	mu     sync.Mutex
-	sent   []sentText
-	format string
-	err    error
-	hold   chan struct{}
+	mu      sync.Mutex
+	sent    []sentText
+	format  string
+	err     error
+	hold    chan struct{}
+	replies []uint64
 }
 
 func (f *fakeTexts) SendText(_ context.Context, source, radio uint, body string) (string, error) {
@@ -66,6 +67,46 @@ func (f *fakeTexts) SendText(_ context.Context, source, radio uint, body string)
 	}
 	f.sent = append(f.sent, sentText{source, radio, body})
 	return f.format, nil
+}
+
+func (f *fakeTexts) ReplyText(_ context.Context, source uint, id uint64, radio uint, body string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return "", f.err
+	}
+	f.sent = append(f.sent, sentText{source, radio, body})
+	f.replies = append(f.replies, id)
+	return f.format, nil
+}
+
+type fakePrompts struct {
+	mu     sync.Mutex
+	played []playedPrompt
+	err    error
+}
+
+type playedPrompt struct {
+	source, radio uint
+	slot2         bool
+	clips         []string
+	stream        uint
+}
+
+func (f *fakePrompts) PlayPrompt(_ context.Context, source, radio uint, slot bool, clips []string, stream uint) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.played = append(f.played, playedPrompt{source, radio, slot, clips, stream})
+	return nil
+}
+
+func (f *fakePrompts) all() []playedPrompt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]playedPrompt(nil), f.played...)
 }
 
 func (f *fakeTexts) all() []sentText {
@@ -514,5 +555,72 @@ func TestAPluginGetsAUDTTextAsUDT(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "UDT", m.GetText().GetFormat(), "got %v", m)
 		assert.Equal(t, "STATUS", m.GetText().GetBody())
+	})
+}
+
+func TestAPluginPlaysPromptsOnlyFromItsIDsOnAHubThatOffersThem(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		out := &fakePrompts{}
+		r, _, s, w := sdkRig(t, plugins.WithTexts(&fakeTexts{format: "TMS"}), plugins.WithPrompts(out))
+		assert.Contains(t, w.GetFeatures(), pluginv1.Feature_FEATURE_PROMPT)
+		r.add("Parrot", rng(9990, 9990))
+		play := func(p *pluginv1.PlayPrompt) *pluginv1.Answer {
+			return ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_PlayPrompt{PlayPrompt: p}})
+		}
+		a := play(&pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 2, Clips: []string{"word-timeslot", "digit-2"}, StreamId: 77})
+		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
+		assert.Equal(t, []playedPrompt{{4700, 1000001, true, []string{"word-timeslot", "digit-2"}, 77}}, out.all())
+
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, play(&pluginv1.PlayPrompt{Source: 4710, Radio: 1000001, Slot: 1, Clips: []string{"digit-1"}}).GetCode(), "not the plugin's ID")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, play(&pluginv1.PlayPrompt{Source: 4700, Radio: 9990, Slot: 1, Clips: []string{"digit-1"}}).GetCode(), "an ID of a plugin")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, play(&pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 3, Clips: []string{"digit-1"}}).GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, play(&pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 1}).GetCode(), "no clips")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, play(&pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 1, Clips: make([]string, 65)}).GetCode())
+		assert.Len(t, out.all(), 1)
+		for err, code := range map[error]pluginv1.ErrorCode{
+			plugins.ErrUnknownClip:   pluginv1.ErrorCode_ERROR_CODE_INVALID,
+			plugins.ErrRadioNotFound: pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND,
+		} {
+			out.mu.Lock()
+			out.err = fmt.Errorf("playing: %w", err)
+			out.mu.Unlock()
+			assert.Equal(t, code, play(&pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 1, Clips: []string{"digit-1"}}).GetCode(), err)
+		}
+	})
+}
+
+func TestAReplyToATextGoesInItsFormatOrNotAtAll(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		texts := &fakeTexts{format: "Hytera"}
+		_, _, s, _ := sdkRig(t, plugins.WithTexts(texts), plugins.WithPrompts(&fakePrompts{}))
+		id := uint64(41)
+		reply := func() *pluginv1.Answer {
+			return ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{Source: 4700, Radio: 1000001, Body: "TS2", ReplyTo: &id}}})
+		}
+		a := reply()
+		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
+		assert.Equal(t, "Hytera", a.GetTextSent().GetFormat())
+		texts.mu.Lock()
+		assert.Equal(t, []uint64{41}, texts.replies, "the reply names the text it answers")
+		texts.err = fmt.Errorf("a UDT: %w", plugins.ErrNoFormat)
+		texts.mu.Unlock()
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NO_FORMAT, reply().GetCode())
+	})
+}
+
+func TestAHubWithoutPromptsAnswersNoReplyInAnotherFormat(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		texts := &fakeTexts{format: "TMS"}
+		_, _, s, w := sdkRig(t, plugins.WithTexts(texts))
+		assert.NotContains(t, w.GetFeatures(), pluginv1.Feature_FEATURE_PROMPT)
+		id := uint64(41)
+		a := ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{Source: 4700, Radio: 1000001, Body: "TS2", ReplyTo: &id}}})
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, a.GetCode())
+		assert.Empty(t, texts.all(), "no text in the format of another text")
+		a = ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_PlayPrompt{PlayPrompt: &pluginv1.PlayPrompt{Source: 4700, Radio: 1000001, Slot: 1, Clips: []string{"digit-1"}}}})
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, a.GetCode())
 	})
 }

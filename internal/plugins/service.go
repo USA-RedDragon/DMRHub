@@ -102,6 +102,7 @@ type Service struct {
 	heartbeat time.Duration
 	grace     time.Duration
 	texts     Texts
+	prompts   Prompts
 	aprs      *APRS
 	aprsInbox bool
 

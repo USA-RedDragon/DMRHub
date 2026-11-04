@@ -268,6 +268,11 @@ type pProfShadow struct {
 	Port           *int      `json:"port"            toml:"port"            yaml:"port"`
 }
 
+type listenShadow struct {
+	Listeners  *int `json:"listeners"   toml:"listeners"   yaml:"listeners"`
+	PerAddress *int `json:"per-address" toml:"per-address" yaml:"per-address"`
+}
+
 type configShadow struct {
 	LogLevel     *string         `json:"log-level"          toml:"log-level"          yaml:"log-level"`
 	Redis        *redisShadow    `json:"redis"              toml:"redis"              yaml:"redis"`
@@ -285,6 +290,7 @@ type configShadow struct {
 	Registration *string         `json:"registration"       toml:"registration"       yaml:"registration"`
 	Visibility   *string         `json:"visibility"         toml:"visibility"         yaml:"visibility"`
 	LoginBackoff *bool           `json:"login-backoff"      toml:"login-backoff"      yaml:"login-backoff"`
+	Listen       *listenShadow   `json:"listen"             toml:"listen"             yaml:"listen"`
 }
 
 // ConfigSchema returns the generated schema for Config.
@@ -521,6 +527,10 @@ func configApplyDefaults(cfg *Config, sep string, set configulator.SetOrigin) er
 	set("visibility", configulator.LayerDefault, "default tag")
 	cfg.LoginBackoff = true
 	set("login-backoff", configulator.LayerDefault, "default tag")
+	cfg.Listen.Listeners = 200
+	set("listen.listeners", configulator.LayerDefault, "default tag")
+	cfg.Listen.PerAddress = 4
+	set("listen.per-address", configulator.LayerDefault, "default tag")
 	return nil
 }
 
@@ -1272,6 +1282,16 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 	if s.LoginBackoff != nil {
 		cfg.LoginBackoff = *s.LoginBackoff
 		set("login-backoff", configulator.LayerFile, file)
+	}
+	if s.Listen != nil {
+		if s.Listen.Listeners != nil {
+			cfg.Listen.Listeners = *s.Listen.Listeners
+			set("listen.listeners", configulator.LayerFile, file)
+		}
+		if s.Listen.PerAddress != nil {
+			cfg.Listen.PerAddress = *s.Listen.PerAddress
+			set("listen.per-address", configulator.LayerFile, file)
+		}
 	}
 	return nil
 }
@@ -2609,6 +2629,32 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.LoginBackoff = p
 		set("login-backoff", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "listen", "listeners"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "listen.listeners",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.Listen.Listeners = int(p)
+		set("listen.listeners", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "listen", "per-address"); ok {
+		p, err := strconv.ParseInt(v, 10, strconv.IntSize)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "listen.per-address",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.Listen.PerAddress = int(p)
+		set("listen.per-address", configulator.LayerEnv, n)
+	}
 	return nil
 }
 
@@ -2770,6 +2816,8 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 		"registration",
 		"visibility",
 		"login-backoff",
+		"listen" + o.Separator + "listeners",
+		"listen" + o.Separator + "per-address",
 	}
 	for i, name := range names {
 		if f := fs.Lookup(name); f != nil {
@@ -2935,6 +2983,8 @@ func configRegisterPFlags(fs *pflag.FlagSet, o *cpflag.Options) error {
 	fs.String(names[145], "open", "Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode")
 	fs.String(names[146], "public", "What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)")
 	fs.Bool(names[147], true, "Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes")
+	fs.Var(impl.NewInt(200), names[148], "Most listeners at once on each server. 0 turns the monitor off")
+	fs.Var(impl.NewInt(4), names[149], "Most listeners at once from one IP address on each server. 0 is no limit")
 	return nil
 }
 
@@ -4715,6 +4765,30 @@ func configApplyPFlags(cfg *Config, fs *pflag.FlagSet, o *cpflag.Options, _ stri
 		cfg.LoginBackoff = v
 		set("login-backoff", configulator.LayerCLI, "--"+n)
 	}
+	if n := "listen" + o.Separator + "listeners"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "listen.listeners",
+				Source: "--" + n,
+			}
+		}
+		cfg.Listen.Listeners = v
+		set("listen.listeners", configulator.LayerCLI, "--"+n)
+	}
+	if n := "listen" + o.Separator + "per-address"; fs.Changed(n) {
+		v, err := fs.GetInt(n)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "listen.per-address",
+				Source: "--" + n,
+			}
+		}
+		cfg.Listen.PerAddress = v
+		set("listen.per-address", configulator.LayerCLI, "--"+n)
+	}
 	return nil
 }
 
@@ -4984,6 +5058,25 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				s.LoginBackoff = &b
 			default:
 				return configJSONError("login-backoff", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "listen":
+			if dec.PeekKind() == jsontext.KindNull {
+				if _, err := dec.ReadToken(); err != nil {
+					return err
+				}
+			} else {
+				open, err := dec.ReadToken()
+				if err != nil {
+					return err
+				}
+				if open.Kind() != jsontext.KindBeginObject {
+					return configJSONError("listen", open, fmt.Errorf("expected an object, got %v", open.Kind()))
+				}
+				var sub listenShadow
+				if err := sub.decodeJSON(dec, "listen"); err != nil {
+					return err
+				}
+				s.Listen = &sub
 			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
@@ -8375,6 +8468,69 @@ func (s *pProfShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
 	}
 }
 
+// decodeJSON decodes the members of an object whose opening brace has
+// been read. path is the object's dotted path.
+func (s *listenShadow) decodeJSON(dec *jsontext.Decoder, path string) error {
+	for {
+		tok, err := dec.ReadToken()
+		if err != nil {
+			return err
+		}
+		if tok.Kind() == jsontext.KindEndObject {
+			return nil
+		}
+		switch key := tok.String(); key {
+		case "listeners":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".listeners", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".listeners", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.Listeners = &num
+			default:
+				return configJSONError(path+".listeners", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		case "per-address":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindNumber:
+				raw, err := v.Int()
+				if err != nil {
+					return configJSONError(path+".per-address", v, err)
+				}
+				if raw < math.MinInt || raw > math.MaxInt {
+					return configJSONError(path+".per-address", v, fmt.Errorf("%d overflows int", raw))
+				}
+				num := int(raw)
+				s.PerAddress = &num
+			default:
+				return configJSONError(path+".per-address", v, fmt.Errorf("expected a number, got %v", v.Kind()))
+			}
+		default:
+			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
+				return &configulator.UnknownKeyError{Path: path + "." + configQuoteKey(key)}
+			}
+			if err := dec.SkipValue(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // configJSONError returns a ParseError for the JSON token v at path.
 func configJSONError(path string, v jsontext.Token, err error) error {
 	return &configulator.ParseError{
@@ -8538,6 +8694,8 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "registration = %v\n", c.Registration)
 	fmt.Fprintf(&b, "visibility = %v\n", c.Visibility)
 	fmt.Fprintf(&b, "login-backoff = %v\n", c.LoginBackoff)
+	fmt.Fprintf(&b, "listen.listeners = %v\n", c.Listen.Listeners)
+	fmt.Fprintf(&b, "listen.per-address = %v\n", c.Listen.PerAddress)
 	return b.String()
 }
 

@@ -49,6 +49,13 @@ type Config struct {
 	Registration Registration `json:"registration" yaml:"registration" name:"registration" description:"Who can register. One of open (anyone), invite (only a person with an invite from an admin) or closed (nobody). The first admin can register in any mode" default:"open"`
 	Visibility   Visibility   `json:"visibility" yaml:"visibility" name:"visibility" description:"What visitors who are not logged in see. One of public (the last heard calls, talkgroups, nets and RadioID details), login (nothing until they log in) or hide-names (the same as public, without the names and positions of the radios)" default:"public"`
 	LoginBackoff bool         `json:"login-backoff" yaml:"login-backoff" name:"login-backoff" description:"Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes" default:"true"`
+	Listen       Listen       `json:"listen" yaml:"listen" name:"listen" description:"The listen-only talkgroup monitor of DMRHub Radio, where visitors hear talkgroups without an account"`
+}
+
+// Listen holds the limits of the listen-only talkgroup monitor.
+type Listen struct {
+	Listeners  int `json:"listeners" yaml:"listeners" name:"listeners" description:"Most listeners at once on each server. 0 turns the monitor off" default:"200"`
+	PerAddress int `json:"per-address" yaml:"per-address" name:"per-address" description:"Most listeners at once from one IP address on each server. 0 is no limit" default:"4"`
 }
 
 // GetDerivedSecret generates a derived secret key using PBKDF2 with the configured secret and password salt.

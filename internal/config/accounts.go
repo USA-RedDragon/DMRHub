@@ -28,7 +28,12 @@ const (
 	fieldSessionLength = "http.session-length"
 	fieldRegistration  = "registration"
 	fieldVisibility    = "visibility"
+	fieldListeners     = "listen.listeners"
+	fieldPerAddress    = "listen.per-address"
 )
+
+// ErrInvalidListenLimit indicates a listener limit under 0.
+var ErrInvalidListenLimit = errors.New("enter a whole number of 0 or more")
 
 // ErrInvalidVisibility indicates a visibility that is not public, login or
 // hide-names.
@@ -85,6 +90,12 @@ func (c Config) accountErrors() (errs []ValidationError) {
 	case VisibilityPublic, VisibilityLogin, VisibilityHideNames:
 	default:
 		errs = append(errs, ValidationError{Field: fieldVisibility, Err: ErrInvalidVisibility})
+	}
+	if c.Listen.Listeners < 0 {
+		errs = append(errs, ValidationError{Field: fieldListeners, Err: ErrInvalidListenLimit})
+	}
+	if c.Listen.PerAddress < 0 {
+		errs = append(errs, ValidationError{Field: fieldPerAddress, Err: ErrInvalidListenLimit})
 	}
 	return errs
 }

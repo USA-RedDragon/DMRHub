@@ -363,3 +363,9 @@ registration: "open"
 visibility: "public"
 # Refuse the logins of an account for up to 15 minutes after 10 failed logins of it in 15 minutes
 login-backoff: true
+# The listen-only talkgroup monitor of DMRHub Radio, where visitors hear talkgroups without an account
+listen:
+  # Most listeners at once on each server. 0 turns the monitor off
+  listeners: 200
+  # Most listeners at once from one IP address on each server. 0 is no limit
+  per-address: 4

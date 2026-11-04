@@ -21,6 +21,7 @@ package config_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -663,6 +664,34 @@ func TestIPSCHangHoldRange(t *testing.T) {
 			if !tc.ok && !errors.Is(err, want) {
 				t.Errorf("hold %v data %v: error %v, want %v", tc.hold, data, err, want)
 			}
+		}
+	}
+}
+
+func TestListenLimitsValidate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		l     config.Listen
+		field string
+	}{
+		{"defaults", config.Listen{Listeners: 200, PerAddress: 4}, ""},
+		{"off and no address limit", config.Listen{}, ""},
+		{"negative listeners", config.Listen{Listeners: -1, PerAddress: 4}, "listen.listeners"},
+		{"negative per address", config.Listen{Listeners: 200, PerAddress: -1}, "listen.per-address"},
+	} {
+		c := config.Config{Listen: tc.l}
+		var got string
+		for _, e := range c.ValidateWithFields() {
+			if strings.HasPrefix(e.Field, "listen.") {
+				got = e.Field
+				if !errors.Is(e.Err, config.ErrInvalidListenLimit) {
+					t.Errorf("%s: error %v", tc.name, e.Err)
+				}
+			}
+		}
+		if got != tc.field {
+			t.Errorf("%s: error on %q, want %q", tc.name, got, tc.field)
 		}
 	}
 }

@@ -16,6 +16,7 @@ This page lists the pages of the docs site in reading order, by section. The sit
   - [Ask 5000 for your status](guides/status.md)
   - [Make a private call](guides/private-calls.md)
   - [Send text messages](guides/text-messages.md)
+  - [Leave messages in the mailbox](guides/mailbox.md)
   - [Send and get APRS messages](guides/aprs-messages.md)
   - [Share your position](guides/positions.md)
   - [Run or join a net](guides/nets.md)

@@ -1,8 +1,8 @@
 # Plugins
 
-A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990), the location server (5050 to 5059) and the status service (5000) are plugins. A plugin runs in one of two ways:
+A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990), the location server (5050 to 5059), the status service (5000) and the mailbox are plugins. A plugin runs in one of two ways:
 
-- **Inside DMRHub.** DMRHub runs the plugin as a WebAssembly module, in a sandbox. You install nothing else. The parrot and the location server are built in, and an admin can upload other plugins as `.wasm` files. This is on by default.
+- **Inside DMRHub.** DMRHub runs the plugin as a WebAssembly module, in a sandbox. You install nothing else. The parrot, the location server, the status service and the mailbox are built in, and an admin can upload other plugins as `.wasm` files. This is on by default.
 - **As its own program.** The plugin runs next to DMRHub or on another computer, and connects to the hub over TLS.
 
 This page is for developers who write plugins. To install, upload and manage plugins on a DMRHub server, see [Plugins](admin/plugins.md) in the admin guide.
@@ -84,7 +84,7 @@ The main parts of the SDK:
 | `conn.SendEmail(ctx, user, switch, subject, body)`     | Asks the hub to email a user who turned a switch of the plugin on.                            |
 | `conn.Has(feature)`, `conn.Request(ctx, request)`      | Tell whether the hub serves a feature, and make any request of the hub.                       |
 
-dmrgo has voice and data receivers and transmitters that decode and build calls from DMRD packets. The parrot in `plugins/parrot` and the location server in `plugins/locator` are full examples.
+dmrgo has voice and data receivers and transmitters that decode and build calls from DMRD packets. The parrot in `plugins/parrot`, the location server in `plugins/locator` and the mailbox in `plugins/mailbox` are full examples.
 
 To reach a web API, use `conn.Dial` as the `DialContext` of an `http.Transport`. A plugin inside DMRHub has no certificate authorities of its own, so its TLS client needs a set, such as `golang.org/x/crypto/x509roots/fallback`.
 

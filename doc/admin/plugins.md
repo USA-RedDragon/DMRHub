@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin is a program that answers the calls to the DMR IDs that you give it. The parrot (9990) and the location server (5050 to 5059) are plugins. A plugin runs inside DMRHub, as a WebAssembly module in a sandbox, or as its own program that connects to the hub over TLS.
+A plugin is a program that answers the calls to the DMR IDs that you give it. The parrot (9990), the location server (5050 to 5059), the status service (5000), the mailbox and APRS messages are plugins. A plugin runs inside DMRHub, as a WebAssembly module in a sandbox, or as its own program that connects to the hub over TLS.
 
 This page tells how to run plugins on your DMRHub server. To write a plugin, see [Plugins](../plugins.md) in the developer docs. For how the hub routes the calls of a plugin, see [How the hub routes plugin calls](../plugins.md#how-the-hub-routes-plugin-calls).
 
@@ -61,6 +61,7 @@ When **Run plugins inside DMRHub** is on, DMRHub adds these built-in plugins:
 | Parrot          | 9990         | Records each voice call to its IDs, private or group, and plays it back to the caller as a private call 3 seconds after the call ends. It keeps at most 3 minutes of a call.                                                      |
 | Location server | 5050 to 5059 | Answers radio registrations (ARS) and location reports, asks the radios whose owners turned tracking on for their positions, and gives the positions to the hub. See [Positions](../positions.md).                                |
 | Status          | 5000         | Answers a private call to 5000 with the talkgroups of the caller's timeslot as spoken prompts, and a text to 5000 with the same as a text, in the exact format of that text. See [Ask 5000 for your status](../guides/status.md). |
+| Mailbox         | None, off    | Keeps text messages for callsigns, and tells the recipient by text and, when the recipient asks for it, by email. It starts off. See [Leave messages in the mailbox](../guides/mailbox.md).                                       |
 | APRS messages   | None, off    | Two-way APRS text messages for the users who turn it on in **Settings**, through the APRS-IS login of the hub. See [Send and get APRS messages](../guides/aprs-messages.md).                                                      |
 
 ![The page of the built-in Status plugin](../Screenshots/admin-plugin-status.png)
@@ -68,6 +69,18 @@ When **Run plugins inside DMRHub** is on, DMRHub adds these built-in plugins:
 The status service speaks with the clips of the spoken prompts (see [Spoken refusals](routing.md#spoken-refusals)), in the voice of the caller or of the network, whether or not spoken refusals are on. It answers a text only in the format of that text, and only when the text came through a hotspot or repeater of the radio's owner or a trusted one. It does not answer a UDT text yet. When another plugin already has 5000, the status service waits for the ID, as the Status column shows.
 
 You cannot remove a built-in plugin. Turn it off on its page instead. You can change its IDs.
+
+### Turn on the mailbox
+
+The mailbox has no ID to start with, so it is off, and the IDs of your network stay free. To turn it on:
+
+1. Open **Mailbox** from the plugins page.
+2. In **IDs**, type a private ID that no radio, talkgroup or other plugin uses, such as `4321`.
+3. Turn on **On**, then click **Save**.
+
+![The page of the mailbox with the ID 4321 and the switch on](../Screenshots/admin-plugin-mailbox.png)
+
+DMRHub does not turn on a built-in plugin that has no IDs. Tell your users the ID. Users who turn on **Mailbox email notice** on their Settings page get an email when a message waits, at the address that they confirmed. The email needs SMTP, see [Configuration](configuration.md). The mailbox keeps its messages in its store in the database, for 30 days.
 
 ### Turn on APRS messages
 

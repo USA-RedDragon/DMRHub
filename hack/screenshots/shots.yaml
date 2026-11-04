@@ -345,6 +345,12 @@ shots:
     wait: Name
     steps: ["fill #plugin-name = Net check-in", "fill #from-0 = 9995", "fill #to-0 = 9995", "click Save", "wait Copy the token", blur]
     clip: dialog
+  - name: admin-plugin-mailbox.png
+    phase: main
+    as: n0call
+    route: "/admin/plugins/{plugin:builtin:Mailbox}"
+    wait: Radio and talkgroup IDs, and ranges
+    steps: ["fill #pp-ids = 4321", "toggle #pp-on", "clicktest inside-save", "wait Saved.", blur]
   - name: external-repeater-dmrgateway.png
     phase: main
     as: n0call
@@ -490,6 +496,15 @@ shots:
     route: /settings
     wait: Net check-in list
     clip: card Net check-in list
+  - name: settings-plugin-mailbox.png
+    phase: main
+    as: n1call
+    needs: [seed]
+    pause: 16s
+    route: /settings
+    wait: Mailbox email notice
+    steps: ["clickcss [data-test$=\"-email\"] [data-slot=switch]", "wait To read your messages", blur]
+    clip: card Mailbox email notice
   - name: settings-on-air-code-setup.png
     phase: main
     as: n3call

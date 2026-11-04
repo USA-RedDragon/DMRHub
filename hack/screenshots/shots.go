@@ -69,10 +69,11 @@ type runner struct {
 	done    map[string]bool
 	stop    []func()
 	peersMu sync.Mutex
+	groups  map[repeaterSlot]time.Time
 }
 
 func newRunner(o options, l *shotList, c *clock, base string, start time.Time) *runner {
-	return &runner{o: o, l: l, c: c, base: base, mmdvm: fmt.Sprintf("127.0.0.1:%d", mmdvmPort), cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}}
+	return &runner{o: o, l: l, c: c, base: base, mmdvm: fmt.Sprintf("127.0.0.1:%d", mmdvmPort), cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}, groups: map[repeaterSlot]time.Time{}}
 }
 
 func (r *runner) api(user string) *api {
@@ -245,10 +246,8 @@ func (r *runner) take(ctx context.Context, s shot) error {
 	} else if err := r.tick(shotStep); err != nil {
 		return err
 	}
-	if s.Phase == "main" && !s.Frozen {
-		if err := r.waitPings(ctx); err != nil {
-			return fmt.Errorf("shot %s: %w", s.Name, err)
-		}
+	if err := r.settleHub(ctx, s); err != nil {
+		return fmt.Errorf("shot %s: %w", s.Name, err)
 	}
 	time.Sleep(s.Pause)
 	r.b.at = r.cursor.Add(pageAge)
@@ -314,6 +313,20 @@ func (r *runner) url(route string) string {
 	default:
 		return r.base + route
 	}
+}
+
+// settleHub waits, after the clock moved on for shot s, until DMRHub saved
+// the pings of the step and ended the dynamic talkgroups that expired.
+func (r *runner) settleHub(ctx context.Context, s shot) error {
+	if s.Phase != "main" {
+		return nil
+	}
+	if !s.Frozen {
+		if err := r.waitPings(ctx); err != nil {
+			return err
+		}
+	}
+	return r.waitDynamicOfHub(ctx)
 }
 
 func (r *runner) step(ctx context.Context, st string) error {

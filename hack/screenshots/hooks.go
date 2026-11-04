@@ -410,6 +410,9 @@ func (r *runner) play(c call) error {
 	}
 	start := r.cursor
 	r.stream++
+	if c.group {
+		defer r.heardGroup(c.repeater, c.slot2)
+	}
 	err = p.play(transmission{src: c.src, dst: c.dst, group: c.group, slot2: c.slot2, bursts: bursts}, r.stream, func(k int) error {
 		r.cursor = start.Add(time.Duration(k) * burstGap)
 		r.c.freeze(r.cursor)
@@ -663,6 +666,7 @@ func openCall(_ context.Context, r *runner) error {
 		return errors.New("repeater 300000201 is not connected")
 	}
 	r.stream++
+	r.heardGroup(300000201, true)
 	return p.play(transmission{src: 3000002, dst: 3100, group: true, slot2: true, bursts: bursts[:len(bursts)-1]}, r.stream, nil)
 }
 

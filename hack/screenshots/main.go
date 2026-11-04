@@ -24,6 +24,20 @@
 // inside a network namespace of its own, the main phase seeds the demo
 // network and takes the other shots, and the check phase compares the
 // docs with the shot list.
+//
+// The demo clock of DMRHub stands still within a shot and jumps between
+// shots. DMRHub runs its background sweeps on real-time timers, so after
+// a jump a page could load before a sweep ran. Before each shot the
+// harness waits on the outcome of each sweep that the shot list can reach:
+// the saved last pings (waitPings), the end of the dynamic talkgroups that
+// expired (waitDynamic), and the texts that store and forward holds after
+// its answer wait (waitHeld, which fails when a jump skips the answer
+// window of a text). Calls end by their terminator or by their hang time
+// (endCall). The demo network leaves auto-created and ephemeral talkgroups
+// off, and its timeline never reaches the deadlines of the on-air code
+// unlocks (24 h), held texts (7 days), retention, offline alerts or nets,
+// so their sweeps change no shot. A shot list that reaches one of those
+// deadlines needs a wait on its outcome here first.
 package main
 
 import (

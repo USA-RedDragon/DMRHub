@@ -45,6 +45,12 @@ type sentText struct {
 	body          string
 }
 
+type reply struct {
+	source uint32
+	text   uint64
+	body   string
+}
+
 // fakeHub is a hub that serves every feature, with the users of users.
 type fakeHub struct {
 	mu      sync.Mutex
@@ -52,6 +58,7 @@ type fakeHub struct {
 	formats map[uint32]error
 	subs    []*pluginv1.Subscribe
 	texts   []sentText
+	replies []reply
 	aprs    []*pluginv1.APRSSend
 	store   map[string][]byte
 }
@@ -101,6 +108,19 @@ func (h *fakeHub) SendText(_ context.Context, source, radio uint32, body string)
 	}
 	h.texts = append(h.texts, sentText{source, radio, body})
 	return "TMS", nil
+}
+
+func (h *fakeHub) ReplyText(_ context.Context, source uint32, text *pluginv1.Text, body string) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.replies = append(h.replies, reply{source, text.GetId(), body})
+	return text.GetFormat(), nil
+}
+
+func (h *fakeHub) sentReplies() []reply {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]reply(nil), h.replies...)
 }
 
 func (h *fakeHub) SendAPRS(_ context.Context, m *pluginv1.APRSSend) error {
@@ -271,6 +291,7 @@ func TestARadioOfAUserWithTheSwitchOffOrOfNoUserGetsNothing(t *testing.T) {
 		text(s, 3000001, "N2CALL-7 Hello there")
 		assert.Empty(t, h.sentAPRS())
 		assert.Empty(t, h.sentTexts())
+		assert.Empty(t, h.sentReplies())
 		assert.Empty(t, h.lastSub().GetAprs())
 		fromAPRS(s, &pluginv1.APRSMessage{Source: "N2CALL-7", Addressee: "N1CALL-9", Text: "Hi", Number: "1"})
 		assert.Empty(t, h.sentAPRS())
@@ -287,10 +308,11 @@ func TestATextThatIsNotAnAddressAndAMessageGetsTheInstructions(t *testing.T) {
 			text(s, userID, body)
 		}
 		assert.Empty(t, h.sentAPRS())
-		texts := h.sentTexts()
-		require.Len(t, texts, 5)
-		for _, got := range texts {
-			assert.Equal(t, sentText{service, userID, aprstext.Usage}, got)
+		assert.Empty(t, h.sentTexts(), "the instructions answer the text in its own format, not the radio's last one")
+		replies := h.sentReplies()
+		require.Len(t, replies, 5)
+		for _, got := range replies {
+			assert.Equal(t, reply{service, 1, aprstext.Usage}, got)
 		}
 	})
 }

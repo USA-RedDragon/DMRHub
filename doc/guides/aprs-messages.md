@@ -35,7 +35,7 @@ The plugin sends the APRS message from your APRS address, with a message number.
 
 An APRS message carries at most 67 characters. The plugin sends a longer text as several APRS messages, split between words. APRS cannot carry the characters `|`, `~` and `{`, so the plugin sends `/`, `-` and `(` in their place, and `?` for each character that is not plain ASCII, such as an accented letter.
 
-When your text does not start with an APRS address and a space, the plugin answers with a short text that tells you the right format.
+When your text does not start with an APRS address and a space, the plugin answers with a short text that tells you the right format. It answers in the exact format of your text, through the hotspot or repeater that your text came through.
 
 ## Get APRS messages
 

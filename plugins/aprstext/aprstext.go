@@ -80,6 +80,7 @@ type Hub interface {
 	LookupRadio(ctx context.Context, radio uint32) (*pluginv1.User, error)
 	LookupCallsign(ctx context.Context, callsign string) (*pluginv1.User, error)
 	SendText(ctx context.Context, source, radio uint32, body string) (string, error)
+	ReplyText(ctx context.Context, source uint32, text *pluginv1.Text, body string) (string, error)
 	SendAPRS(ctx context.Context, m *pluginv1.APRSSend) error
 	StoreGet(ctx context.Context, key string) ([]byte, error)
 	StorePut(ctx context.Context, key string, value []byte, ttl time.Duration) error
@@ -342,11 +343,12 @@ func (s *Service) Text(t *pluginv1.Text) {
 	}
 }
 
-// answer sends body to the radio of t, in the format of t.
+// answer sends body to the radio of t, in the exact format of t. It sends
+// nothing when the hub cannot build that format again.
 func (s *Service) answer(t *pluginv1.Text, body string) {
 	ctx, cancel := s.request()
 	defer cancel()
-	if _, err := s.hub.SendText(ctx, t.GetDestination(), t.GetSource(), body); err != nil {
+	if _, err := s.hub.ReplyText(ctx, t.GetDestination(), t, body); err != nil {
 		slog.Warn("APRS messages: cannot answer a radio", "radio", t.GetSource(), "error", err)
 	}
 }

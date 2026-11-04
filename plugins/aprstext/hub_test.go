@@ -159,7 +159,7 @@ func newRig(t *testing.T, be testutils.Backend) *rig {
 			Send:   func(m aprs.Message) error { return positions.PublishMessage(ps, m) },
 			On:     func() bool { return true },
 			Limits: kvStore,
-		}), plugins.WithAPRSInbox(), plugins.WithTexts(plugintexts.New(database, r.out)))
+		}), plugins.WithAPRSInbox(), plugins.WithTexts(plugintexts.New(database, r.out)), plugins.WithPrompts(h))
 	r.plugin = listener.Run(t, "APRS messages", []models.PluginRange{{First: service, Last: service}}, r.serve)
 	assert.Empty(t, r.nextSwitches(), "the users before any turned the switch on")
 	r.declare()
@@ -350,10 +350,18 @@ func TestAPRSMessagesGoBothWaysThroughTheHub(t *testing.T) {
 		assert.Equal(t, "N1CALL-9>"+aprs.ToCall+",TCPIP*::N2CALL-7 :Hello there{1", r.lines(3)[2])
 		r.srv.Push("N2CALL-7>APDR16,TCPIP*,qAC,T2TEST::N1CALL-9 :ack1")
 
+		wrong := r.radioSent(userID, n1Hotspot, &sms.Text{Format: sms.FormatTMS, Source: userID, Destination: service, Sequence: 5, Body: []byte("Hello")}, enums.DataTypeRate34, "Hello")
+		plugins.PublishText(r.ps, wrong)
+		sent = r.texts(3)
+		text, body = decoded(t, sent[2])
+		assert.Equal(t, sms.FormatTMS, text.Format, "the instructions answer the text in its own format")
+		assert.Equal(t, enums.DataTypeRate34, sent[2].Rate)
+		assert.Equal(t, aprstext.Usage, body)
+
 		local := r.radioSent(n4call, n4Hotspot, &sms.Text{Format: sms.FormatDefinedData, DD: enums.DD7Bit, Source: n4call, Destination: service, Body: []byte("N1CALL-9 Local")}, enums.DataTypeRate12, "N1CALL-9 Local")
 		plugins.PublishText(r.ps, local)
-		sent = r.texts(3)
-		_, body = decoded(t, sent[2])
+		sent = r.texts(4)
+		_, body = decoded(t, sent[3])
 		assert.Equal(t, "N4CALL-7: Local", body, "a message between two users of the hub comes back from the login")
 		assert.Equal(t, "N4CALL-7>"+aprs.ToCall+",TCPIP*::N1CALL-9 :Local{2", r.lines(4)[3])
 		assert.Equal(t, "N1CALL-9>"+aprs.ToCall+",TCPIP*::N4CALL-7 :ack2", r.lines(5)[4])

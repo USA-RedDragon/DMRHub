@@ -206,10 +206,12 @@ func Frames(voiceID, clip string, c transcode.Codec) ([][slotBytes]byte, error) 
 }
 
 // Call is one prompt played as a private voice call from Src to Dst on a
-// slot of the repeater Repeater.
+// slot of the repeater Repeater: the clip Clip, or the clips Clips one
+// after another when there are any.
 type Call struct {
 	Voice     string
 	Clip      string
+	Clips     []string
 	Codec     transcode.Codec
 	Src, Dst  uint
 	Repeater  uint
@@ -221,13 +223,21 @@ type Call struct {
 const burstTime = 60 * time.Millisecond
 
 // Build returns the bursts of the call c: the Voice LC Header, the voice
-// superframes of the clip and the Terminator with LC. The last superframe
+// superframes of its clips and the Terminator with LC. The last superframe
 // is padded with the last frame of the clip, which is silence, so that a
 // Codec2 call holds no AMBE+2 silence.
 func Build(c Call) ([]models.Packet, error) {
-	slots, err := Frames(c.Voice, c.Clip, c.Codec)
-	if err != nil {
-		return nil, err
+	clips := c.Clips
+	if len(clips) == 0 {
+		clips = []string{c.Clip}
+	}
+	var slots [][slotBytes]byte
+	for _, clip := range clips {
+		s, err := Frames(c.Voice, clip, c.Codec)
+		if err != nil {
+			return nil, err
+		}
+		slots = append(slots, s...)
 	}
 	slot := enums.Slot1
 	if c.Slot2 {

@@ -172,3 +172,23 @@ func TestEveryClipHasItsWords(t *testing.T) {
 	assert.Empty(t, prompts.Text("no-such-clip"))
 	assert.Equal(t, "Wrong code.", prompts.Text(prompts.WrongCode))
 }
+
+func TestACallCarriesItsClipsOneAfterAnother(t *testing.T) {
+	t.Parallel()
+	clips := []string{prompts.WordTimeslot, prompts.Digit(2), prompts.WordDynamic, prompts.WordNone}
+	for _, c := range []transcode.Codec{transcode.CodecAMBE, transcode.CodecCodec2} {
+		packets, err := prompts.Build(prompts.Call{Voice: prompts.DefaultVoice, Clips: clips, Codec: c, Src: 5000, Dst: 3000001, Repeater: 990001, Stream: 78})
+		require.NoError(t, err)
+		var want [][9]byte
+		for _, clip := range clips {
+			f, err := prompts.Frames(prompts.DefaultVoice, clip, c)
+			require.NoError(t, err)
+			want = append(want, f...)
+		}
+		slots, _ := receive(t, packets)
+		require.GreaterOrEqual(t, len(slots), len(want))
+		assert.Equal(t, want, slots[:len(want)], "the clips, in order")
+	}
+	_, err := prompts.Build(prompts.Call{Voice: prompts.DefaultVoice, Clips: []string{prompts.WordTimeslot, "nope"}, Codec: transcode.CodecAMBE, Src: 5000, Dst: 3000001})
+	require.ErrorIs(t, err, prompts.ErrUnknown)
+}

@@ -21,8 +21,13 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,11 +65,38 @@ func TestANewDocumentEndsTheRequestsOfTheOldOne(t *testing.T) {
 	t.Parallel()
 	b := &browser{pending: map[string]request{}}
 	ctx := t.Context()
-	b.event(ctx, sent(t, "1", "main", "old", "http://127.0.0.1:3955/favicon.ico"))
-	b.event(ctx, sent(t, "2", "child", "doc", "http://127.0.0.1:3955/tile.png"))
-	b.event(ctx, sent(t, "3", "main", "new", "http://127.0.0.1:4180/callback"))
-	b.event(ctx, cdpEvent(t, "Page.frameNavigated", map[string]any{"frame": map[string]string{"id": "main", "loaderId": "new", "url": "http://127.0.0.1:4180/callback"}}))
+	b.event(ctx, sent(t, "1", "main", "old", "http://hub/favicon.ico"))
+	b.event(ctx, sent(t, "2", "child", "doc", "http://hub/tile.png"))
+	b.event(ctx, sent(t, "3", "main", "new", "http://radio/callback"))
+	b.event(ctx, cdpEvent(t, "Page.frameNavigated", map[string]any{"frame": map[string]string{"id": "main", "loaderId": "new", "url": "http://radio/callback"}}))
 	assert.ElementsMatch(t, []string{"2", "3"}, pendingIDs(b))
 	b.event(ctx, cdpEvent(t, "Page.frameDetached", map[string]string{"frameId": "child"}))
 	assert.ElementsMatch(t, []string{"3"}, pendingIDs(b))
+}
+
+// TestACallThatChromiumNeverAnswersFails sends a command to a page that
+// never answers. The call must fail with an error that names the command,
+// so that the run stops instead of hanging.
+func TestACallThatChromiumNeverAnswersFails(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.CloseNow() }()
+		for {
+			if _, _, err := c.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.CloseNow() })
+	b := &browser{conn: conn, waiting: map[int]chan cdpReply{}, pending: map[string]request{}, replyLimit: time.Millisecond}
+	_, err = b.call(t.Context(), "Runtime.evaluate", map[string]any{"expression": "1"})
+	require.ErrorIs(t, err, errTimeout)
+	assert.Contains(t, err.Error(), "Runtime.evaluate: Chromium did not answer")
 }

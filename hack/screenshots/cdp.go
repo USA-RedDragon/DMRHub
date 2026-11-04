@@ -68,6 +68,8 @@ type browser struct {
 	nextID  int
 	waiting map[int]chan cdpReply
 	dialogs []string
+
+	replyLimit time.Duration
 }
 
 type cdpReply struct {
@@ -395,7 +397,11 @@ func (b *browser) call(ctx context.Context, method string, params any) (json.Raw
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
 	}
-	cctx, cancel := context.WithTimeout(ctx, cdpTimeout)
+	limit := b.replyLimit
+	if limit == 0 {
+		limit = cdpTimeout
+	}
+	cctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	if err := conn.Write(cctx, websocket.MessageText, data); err != nil {
 		return nil, fmt.Errorf("%s: %w", method, err)
@@ -407,7 +413,10 @@ func (b *browser) call(ctx context.Context, method string, params any) (json.Raw
 		}
 		return r.Result, nil
 	case <-cctx.Done():
-		return nil, fmt.Errorf("%s: %w", method, errTimeout)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("%s: %w", method, ctx.Err())
+		}
+		return nil, fmt.Errorf("%s: Chromium did not answer in %s: %w", method, limit, errTimeout)
 	}
 }
 

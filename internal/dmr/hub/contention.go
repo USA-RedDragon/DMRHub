@@ -26,6 +26,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"github.com/puzpuzpuz/xsync/v4"
 )
 
@@ -84,7 +85,48 @@ func (h *Hub) holdsSlot(repeaterID uint, slot bool, packet models.Packet) bool {
 	return held
 }
 
+// keyUp is whether the first burst of a stream came in while another
+// call held the timeslot that the stream came in on.
+type keyUp struct {
+	busy bool
+	last time.Time
+}
+
+// keyedOnBusySlot queues "Channel busy." for the radio of the group burst
+// packet from sourceName when the first burst of its stream came in while
+// another call held the timeslot of its repeater under the first
+// contention setting. The burst is routed either way.
+func (h *Hub) keyedOnBusySlot(packet models.Packet, sourceName string) {
+	if !packet.GroupCall || packet.StreamID == 0 || !h.promptsOn() ||
+		h.routingConfig().Contention != config.ContentionFirst || !h.promptable(packet, sourceName) {
+		return
+	}
+	now := h.clock.Now()
+	key := claimKey{stream: packet.StreamID, src: packet.Src}
+	k, _ := h.keyUps.LoadOrCompute(key, func() (keyUp, bool) {
+		return keyUp{busy: h.heldByOther(repeaterSlot{repeater: packet.Repeater, slot: packet.Slot}, packet, now)}, false
+	})
+	k.last = now
+	h.keyUps.Store(key, k)
+	if k.busy {
+		h.promptRefused(packet, sourceName, prompts.ChannelBusy)
+	}
+}
+
+// heldByOther reports whether a call other than the stream of packet holds
+// the timeslot key at now.
+func (h *Hub) heldByOther(key repeaterSlot, packet models.Packet, now time.Time) bool {
+	cur, ok := h.slotHolders.Load(key)
+	return ok && (cur.stream != packet.StreamID || cur.src != packet.Src) && now.Sub(cur.last) < StreamIdle
+}
+
 func (h *Hub) pruneSlotHolders(now time.Time) {
+	h.keyUps.Range(func(k claimKey, v keyUp) bool {
+		if now.Sub(v.last) > sightedStreamTTL {
+			h.keyUps.Delete(k)
+		}
+		return true
+	})
 	h.slotRefused.Range(func(k slotStream, at time.Time) bool {
 		if now.Sub(at) > sightedStreamTTL {
 			h.slotRefused.Delete(k)

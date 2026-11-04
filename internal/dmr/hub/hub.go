@@ -227,6 +227,7 @@ type Hub struct {
 	slotHolders       *xsync.Map[repeaterSlot, slotHolder]
 	drops             *xsync.Map[repeaterSlot, dropRecord]
 	slotRefused       *xsync.Map[slotStream, time.Time]
+	keyUps            *xsync.Map[claimKey, keyUp]
 	streamPolicies    *xsync.Map[claimKey, streamPolicy]
 	autoTalkgroups    *xsync.Map[uint, struct{}]
 	talkgroupCalls    *xsync.Map[uint, time.Time]
@@ -347,6 +348,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.slotHolders = xsync.NewMap[repeaterSlot, slotHolder]()
 	h.drops = xsync.NewMap[repeaterSlot, dropRecord]()
 	h.slotRefused = xsync.NewMap[slotStream, time.Time]()
+	h.keyUps = xsync.NewMap[claimKey, keyUp]()
 	h.streamPolicies = xsync.NewMap[claimKey, streamPolicy]()
 	h.transcoder = transcode.NewService(kvStore, h.clock)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()

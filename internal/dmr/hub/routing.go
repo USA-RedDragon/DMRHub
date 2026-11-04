@@ -130,6 +130,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	if h.refuseIngress(packet, sourceName) {
 		return
 	}
+	h.keyedOnBusySlot(packet, sourceName)
 
 	h.noteHeardOn(packet, sourceName)
 	defer h.noteSighting(packet, sourceName)

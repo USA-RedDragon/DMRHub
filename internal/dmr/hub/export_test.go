@@ -167,3 +167,17 @@ func (h *Hub) ForgetOwnerAnswers(radio uint) {
 	h.radioOwners.Drop(radio)
 	h.unlockGrants.Drop(radio)
 }
+
+// PromptQueued reports whether a prompt waits to play on the slot of the
+// repeater.
+func (h *Hub) PromptQueued(repeater uint, slot2 bool) bool {
+	s := &h.promptState
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k := range s.pending {
+		if k.repeater == repeater && k.slot == slot2 {
+			return true
+		}
+	}
+	return false
+}

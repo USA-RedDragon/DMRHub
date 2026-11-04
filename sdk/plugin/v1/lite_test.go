@@ -77,6 +77,7 @@ var lites = map[protoreflect.FullName]func() lite{
 	"dmrhub.plugin.v1.RepeaterInfo":    func() lite { return &pluginv1.RepeaterInfo{} },
 	"dmrhub.plugin.v1.SlotInfo":        func() lite { return &pluginv1.SlotInfo{} },
 	"dmrhub.plugin.v1.SendText":        func() lite { return &pluginv1.SendText{} },
+	"dmrhub.plugin.v1.PlayPrompt":      func() lite { return &pluginv1.PlayPrompt{} },
 	"dmrhub.plugin.v1.TextSent":        func() lite { return &pluginv1.TextSent{} },
 	"dmrhub.plugin.v1.Text":            func() lite { return &pluginv1.Text{} },
 	"dmrhub.plugin.v1.APRSSend":        func() lite { return &pluginv1.APRSSend{} },

@@ -285,6 +285,8 @@ enum Feature {
   FEATURE_APRS = 8;
   // Subscribe with aprs.
   FEATURE_APRS_INBOX = 9;
+  // PlayPrompt, and SendText with reply_to.
+  FEATURE_PROMPT = 11;
 }
 
 // Request is a request of a plugin that the hub answers with an Answer.
@@ -300,6 +302,7 @@ message Request {
     RepeaterQuery repeater = 7;
     SendText send_text = 8;
     APRSSend aprs_send = 9;
+    PlayPrompt play_prompt = 11;
   }
 }
 
@@ -482,6 +485,39 @@ message SendText {
   uint32 radio = 2;
   // The text, at most 500 characters.
   string body = 3;
+  // The id of a Text from radio to source that this text answers. A hub
+  // with FEATURE_PROMPT then builds the text in the exact format of that
+  // Text, not of the last text of the radio, and sends it through the
+  // repeater and timeslot of that Text. It answers ERROR_CODE_NO_FORMAT,
+  // and sends nothing, when that Text came through a repeater of neither
+  // the radio's owner nor one that an admin trusts, or in a format that
+  // the hub cannot build again exactly, such as a UDT.
+  optional uint64 reply_to = 4;
+}
+
+// PlayPrompt asks the hub to play spoken prompts, one after another, to a
+// radio as a private voice call from one of the plugin's IDs. The hub
+// plays them as it plays its own prompts: in the voice that the radio's
+// owner picked, or the hub's voice, in the codec of the timeslot,
+// through the repeater or hotspot of the hub where it sends the private
+// calls to the radio, once the timeslot carried nothing from the radio
+// for about a second. It plays one call per voice stream of the radio,
+// and only through a repeater, hotspot or browser radio of the hub, never
+// an OpenBridge peer. The hub answers once it queued the call:
+// ERROR_CODE_NOT_FOUND when it does not know where the radio is, and
+// ERROR_CODE_INVALID for an unknown clip.
+message PlayPrompt {
+  // One of the plugin's IDs.
+  uint32 source = 1;
+  uint32 radio = 2;
+  // The timeslot, 1 or 2, such as that of the call this answers.
+  uint32 slot = 3;
+  // The names of the clips, 1 to 64, such as "word-timeslot" and
+  // "digit-2". The hub's Setup page lists the clips.
+  repeated string clips = 4;
+  // The stream ID of the call of the radio that this answers, when there
+  // is one. The hub plays at most one prompt for each stream.
+  uint32 stream_id = 5;
 }
 
 // TextSent answers a SendText that the hub sent.

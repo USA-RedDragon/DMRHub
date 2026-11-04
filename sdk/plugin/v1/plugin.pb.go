@@ -166,21 +166,24 @@ const (
 	Feature_FEATURE_APRS Feature = 8
 	// Subscribe with aprs.
 	Feature_FEATURE_APRS_INBOX Feature = 9
+	// PlayPrompt, and SendText with reply_to.
+	Feature_FEATURE_PROMPT Feature = 11
 )
 
 // Enum value maps for Feature.
 var (
 	Feature_name = map[int32]string{
-		0: "FEATURE_UNSPECIFIED",
-		1: "FEATURE_STORE",
-		2: "FEATURE_LOOKUP",
-		3: "FEATURE_REPEATER",
-		4: "FEATURE_HEARD",
-		5: "FEATURE_TEXTS",
-		6: "FEATURE_SEND_TEXT",
-		7: "FEATURE_SWITCHES",
-		8: "FEATURE_APRS",
-		9: "FEATURE_APRS_INBOX",
+		0:  "FEATURE_UNSPECIFIED",
+		1:  "FEATURE_STORE",
+		2:  "FEATURE_LOOKUP",
+		3:  "FEATURE_REPEATER",
+		4:  "FEATURE_HEARD",
+		5:  "FEATURE_TEXTS",
+		6:  "FEATURE_SEND_TEXT",
+		7:  "FEATURE_SWITCHES",
+		8:  "FEATURE_APRS",
+		9:  "FEATURE_APRS_INBOX",
+		11: "FEATURE_PROMPT",
 	}
 	Feature_value = map[string]int32{
 		"FEATURE_UNSPECIFIED": 0,
@@ -193,6 +196,7 @@ var (
 		"FEATURE_SWITCHES":    7,
 		"FEATURE_APRS":        8,
 		"FEATURE_APRS_INBOX":  9,
+		"FEATURE_PROMPT":      11,
 	}
 )
 
@@ -1746,6 +1750,7 @@ type Request struct {
 	//	*Request_Repeater
 	//	*Request_SendText
 	//	*Request_AprsSend
+	//	*Request_PlayPrompt
 	Op            isRequest_Op `protobuf_oneof:"op"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1867,6 +1872,15 @@ func (x *Request) GetAprsSend() *APRSSend {
 	return nil
 }
 
+func (x *Request) GetPlayPrompt() *PlayPrompt {
+	if x != nil {
+		if x, ok := x.Op.(*Request_PlayPrompt); ok {
+			return x.PlayPrompt
+		}
+	}
+	return nil
+}
+
 type isRequest_Op interface {
 	isRequest_Op()
 }
@@ -1903,6 +1917,10 @@ type Request_AprsSend struct {
 	AprsSend *APRSSend `protobuf:"bytes,9,opt,name=aprs_send,json=aprsSend,proto3,oneof"`
 }
 
+type Request_PlayPrompt struct {
+	PlayPrompt *PlayPrompt `protobuf:"bytes,11,opt,name=play_prompt,json=playPrompt,proto3,oneof"`
+}
+
 func (*Request_StoreGet) isRequest_Op() {}
 
 func (*Request_StorePut) isRequest_Op() {}
@@ -1918,6 +1936,8 @@ func (*Request_Repeater) isRequest_Op() {}
 func (*Request_SendText) isRequest_Op() {}
 
 func (*Request_AprsSend) isRequest_Op() {}
+
+func (*Request_PlayPrompt) isRequest_Op() {}
 
 // Answer answers a Request.
 type Answer struct {
@@ -2943,7 +2963,15 @@ type SendText struct {
 	Source uint32 `protobuf:"varint,1,opt,name=source,proto3" json:"source,omitempty"`
 	Radio  uint32 `protobuf:"varint,2,opt,name=radio,proto3" json:"radio,omitempty"`
 	// The text, at most 500 characters.
-	Body          string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	Body string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	// The id of a Text from radio to source that this text answers. A hub
+	// with FEATURE_PROMPT then builds the text in the exact format of that
+	// Text, not of the last text of the radio, and sends it through the
+	// repeater and timeslot of that Text. It answers ERROR_CODE_NO_FORMAT,
+	// and sends nothing, when that Text came through a repeater of neither
+	// the radio's owner nor one that an admin trusts, or in a format that
+	// the hub cannot build again exactly, such as a UDT.
+	ReplyTo       *uint64 `protobuf:"varint,4,opt,name=reply_to,json=replyTo,proto3,oneof" json:"reply_to,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2999,6 +3027,106 @@ func (x *SendText) GetBody() string {
 	return ""
 }
 
+func (x *SendText) GetReplyTo() uint64 {
+	if x != nil && x.ReplyTo != nil {
+		return *x.ReplyTo
+	}
+	return 0
+}
+
+// PlayPrompt asks the hub to play spoken prompts, one after another, to a
+// radio as a private voice call from one of the plugin's IDs. The hub
+// plays them as it plays its own prompts: in the voice that the radio's
+// owner picked, or the hub's voice, in the codec of the timeslot,
+// through the repeater or hotspot of the hub where it sends the private
+// calls to the radio, once the timeslot carried nothing from the radio
+// for about a second. It plays one call per voice stream of the radio,
+// and only through a repeater, hotspot or browser radio of the hub, never
+// an OpenBridge peer. The hub answers once it queued the call:
+// ERROR_CODE_NOT_FOUND when it does not know where the radio is, and
+// ERROR_CODE_INVALID for an unknown clip.
+type PlayPrompt struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// One of the plugin's IDs.
+	Source uint32 `protobuf:"varint,1,opt,name=source,proto3" json:"source,omitempty"`
+	Radio  uint32 `protobuf:"varint,2,opt,name=radio,proto3" json:"radio,omitempty"`
+	// The timeslot, 1 or 2, such as that of the call this answers.
+	Slot uint32 `protobuf:"varint,3,opt,name=slot,proto3" json:"slot,omitempty"`
+	// The names of the clips, 1 to 64, such as "word-timeslot" and
+	// "digit-2". The hub's Setup page lists the clips.
+	Clips []string `protobuf:"bytes,4,rep,name=clips,proto3" json:"clips,omitempty"`
+	// The stream ID of the call of the radio that this answers, when there
+	// is one. The hub plays at most one prompt for each stream.
+	StreamId      uint32 `protobuf:"varint,5,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlayPrompt) Reset() {
+	*x = PlayPrompt{}
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayPrompt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayPrompt) ProtoMessage() {}
+
+func (x *PlayPrompt) ProtoReflect() protoreflect.Message {
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayPrompt.ProtoReflect.Descriptor instead.
+func (*PlayPrompt) Descriptor() ([]byte, []int) {
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *PlayPrompt) GetSource() uint32 {
+	if x != nil {
+		return x.Source
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetRadio() uint32 {
+	if x != nil {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetClips() []string {
+	if x != nil {
+		return x.Clips
+	}
+	return nil
+}
+
+func (x *PlayPrompt) GetStreamId() uint32 {
+	if x != nil {
+		return x.StreamId
+	}
+	return 0
+}
+
 // TextSent answers a SendText that the hub sent.
 type TextSent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3010,7 +3138,7 @@ type TextSent struct {
 
 func (x *TextSent) Reset() {
 	*x = TextSent{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[29]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3022,7 +3150,7 @@ func (x *TextSent) String() string {
 func (*TextSent) ProtoMessage() {}
 
 func (x *TextSent) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[29]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3035,7 +3163,7 @@ func (x *TextSent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextSent.ProtoReflect.Descriptor instead.
 func (*TextSent) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{29}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *TextSent) GetFormat() string {
@@ -3070,7 +3198,7 @@ type Text struct {
 
 func (x *Text) Reset() {
 	*x = Text{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[30]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3082,7 +3210,7 @@ func (x *Text) String() string {
 func (*Text) ProtoMessage() {}
 
 func (x *Text) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[30]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3095,7 +3223,7 @@ func (x *Text) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Text.ProtoReflect.Descriptor instead.
 func (*Text) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{30}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *Text) GetId() uint64 {
@@ -3184,7 +3312,7 @@ type APRSSend struct {
 
 func (x *APRSSend) Reset() {
 	*x = APRSSend{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[31]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3196,7 +3324,7 @@ func (x *APRSSend) String() string {
 func (*APRSSend) ProtoMessage() {}
 
 func (x *APRSSend) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[31]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3209,7 +3337,7 @@ func (x *APRSSend) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APRSSend.ProtoReflect.Descriptor instead.
 func (*APRSSend) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{31}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *APRSSend) GetSource() string {
@@ -3254,7 +3382,7 @@ type APRSMessage struct {
 
 func (x *APRSMessage) Reset() {
 	*x = APRSMessage{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[32]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3266,7 +3394,7 @@ func (x *APRSMessage) String() string {
 func (*APRSMessage) ProtoMessage() {}
 
 func (x *APRSMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[32]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3279,7 +3407,7 @@ func (x *APRSMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APRSMessage.ProtoReflect.Descriptor instead.
 func (*APRSMessage) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{32}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *APRSMessage) GetSource() string {
@@ -3322,7 +3450,7 @@ type Draining struct {
 
 func (x *Draining) Reset() {
 	*x = Draining{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[33]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3334,7 +3462,7 @@ func (x *Draining) String() string {
 func (*Draining) ProtoMessage() {}
 
 func (x *Draining) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[33]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3347,7 +3475,7 @@ func (x *Draining) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Draining.ProtoReflect.Descriptor instead.
 func (*Draining) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{33}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{34}
 }
 
 // Tracked is all the radios whose owners turned position tracking on.
@@ -3360,7 +3488,7 @@ type Tracked struct {
 
 func (x *Tracked) Reset() {
 	*x = Tracked{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[34]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3372,7 +3500,7 @@ func (x *Tracked) String() string {
 func (*Tracked) ProtoMessage() {}
 
 func (x *Tracked) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[34]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3385,7 +3513,7 @@ func (x *Tracked) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tracked.ProtoReflect.Descriptor instead.
 func (*Tracked) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{34}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Tracked) GetRadios() []*Tracking {
@@ -3409,7 +3537,7 @@ type Tracking struct {
 
 func (x *Tracking) Reset() {
 	*x = Tracking{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[35]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3421,7 +3549,7 @@ func (x *Tracking) String() string {
 func (*Tracking) ProtoMessage() {}
 
 func (x *Tracking) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[35]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3434,7 +3562,7 @@ func (x *Tracking) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tracking.ProtoReflect.Descriptor instead.
 func (*Tracking) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{35}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *Tracking) GetRadio() uint32 {
@@ -3478,7 +3606,7 @@ type Heard struct {
 
 func (x *Heard) Reset() {
 	*x = Heard{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[36]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3490,7 +3618,7 @@ func (x *Heard) String() string {
 func (*Heard) ProtoMessage() {}
 
 func (x *Heard) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[36]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3503,7 +3631,7 @@ func (x *Heard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heard.ProtoReflect.Descriptor instead.
 func (*Heard) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{36}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Heard) GetRadio() uint32 {
@@ -3549,7 +3677,7 @@ type Welcome struct {
 
 func (x *Welcome) Reset() {
 	*x = Welcome{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[37]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3561,7 +3689,7 @@ func (x *Welcome) String() string {
 func (*Welcome) ProtoMessage() {}
 
 func (x *Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[37]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3574,7 +3702,7 @@ func (x *Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
 func (*Welcome) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{37}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Welcome) GetName() string {
@@ -3608,7 +3736,7 @@ type Ranges struct {
 
 func (x *Ranges) Reset() {
 	*x = Ranges{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[38]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3620,7 +3748,7 @@ func (x *Ranges) String() string {
 func (*Ranges) ProtoMessage() {}
 
 func (x *Ranges) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[38]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3633,7 +3761,7 @@ func (x *Ranges) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ranges.ProtoReflect.Descriptor instead.
 func (*Ranges) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{38}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Ranges) GetRanges() []*IDRange {
@@ -3654,7 +3782,7 @@ type IDRange struct {
 
 func (x *IDRange) Reset() {
 	*x = IDRange{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[39]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3666,7 +3794,7 @@ func (x *IDRange) String() string {
 func (*IDRange) ProtoMessage() {}
 
 func (x *IDRange) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[39]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3679,7 +3807,7 @@ func (x *IDRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IDRange.ProtoReflect.Descriptor instead.
 func (*IDRange) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{39}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *IDRange) GetFirst() uint32 {
@@ -3725,7 +3853,7 @@ type Burst struct {
 
 func (x *Burst) Reset() {
 	*x = Burst{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[40]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3737,7 +3865,7 @@ func (x *Burst) String() string {
 func (*Burst) ProtoMessage() {}
 
 func (x *Burst) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[40]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3750,7 +3878,7 @@ func (x *Burst) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Burst.ProtoReflect.Descriptor instead.
 func (*Burst) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{40}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *Burst) GetSource() uint32 {
@@ -3834,7 +3962,7 @@ type Refusal struct {
 
 func (x *Refusal) Reset() {
 	*x = Refusal{}
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[41]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3846,7 +3974,7 @@ func (x *Refusal) String() string {
 func (*Refusal) ProtoMessage() {}
 
 func (x *Refusal) ProtoReflect() protoreflect.Message {
-	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[41]
+	mi := &file_dmrhub_plugin_v1_plugin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3859,7 +3987,7 @@ func (x *Refusal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Refusal.ProtoReflect.Descriptor instead.
 func (*Refusal) Descriptor() ([]byte, []int) {
-	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{41}
+	return file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *Refusal) GetStreamId() uint32 {
@@ -3972,7 +4100,7 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\vuser_switch\x18\r \x01(\v2\x1c.dmrhub.plugin.v1.UserSwitchH\x00R\n" +
 	"userSwitch\x123\n" +
 	"\x04aprs\x18\x0e \x01(\v2\x1d.dmrhub.plugin.v1.APRSMessageH\x00R\x04aprsB\t\n" +
-	"\amessage\"\x80\x04\n" +
+	"\amessage\"\xc1\x04\n" +
 	"\aRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x129\n" +
 	"\tstore_get\x18\x02 \x01(\v2\x1a.dmrhub.plugin.v1.StoreGetH\x00R\bstoreGet\x129\n" +
@@ -3983,7 +4111,9 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x06lookup\x18\x06 \x01(\v2\x18.dmrhub.plugin.v1.LookupH\x00R\x06lookup\x12=\n" +
 	"\brepeater\x18\a \x01(\v2\x1f.dmrhub.plugin.v1.RepeaterQueryH\x00R\brepeater\x129\n" +
 	"\tsend_text\x18\b \x01(\v2\x1a.dmrhub.plugin.v1.SendTextH\x00R\bsendText\x129\n" +
-	"\taprs_send\x18\t \x01(\v2\x1a.dmrhub.plugin.v1.APRSSendH\x00R\baprsSendB\x04\n" +
+	"\taprs_send\x18\t \x01(\v2\x1a.dmrhub.plugin.v1.APRSSendH\x00R\baprsSend\x12?\n" +
+	"\vplay_prompt\x18\v \x01(\v2\x1c.dmrhub.plugin.v1.PlayPromptH\x00R\n" +
+	"playPromptB\x04\n" +
 	"\x02op\"\x98\x03\n" +
 	"\x06Answer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12/\n" +
@@ -4054,11 +4184,20 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x04slot\x18\x01 \x01(\rR\x04slot\x12+\n" +
 	"\x11static_talkgroups\x18\x02 \x03(\rR\x10staticTalkgroups\x120\n" +
 	"\x11dynamic_talkgroup\x18\x03 \x01(\rH\x00R\x10dynamicTalkgroup\x88\x01\x01B\x14\n" +
-	"\x12_dynamic_talkgroup\"L\n" +
+	"\x12_dynamic_talkgroup\"y\n" +
 	"\bSendText\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\rR\x06source\x12\x14\n" +
 	"\x05radio\x18\x02 \x01(\rR\x05radio\x12\x12\n" +
-	"\x04body\x18\x03 \x01(\tR\x04body\"\"\n" +
+	"\x04body\x18\x03 \x01(\tR\x04body\x12\x1e\n" +
+	"\breply_to\x18\x04 \x01(\x04H\x00R\areplyTo\x88\x01\x01B\v\n" +
+	"\t_reply_to\"\x81\x01\n" +
+	"\n" +
+	"PlayPrompt\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\rR\x06source\x12\x14\n" +
+	"\x05radio\x18\x02 \x01(\rR\x05radio\x12\x12\n" +
+	"\x04slot\x18\x03 \x01(\rR\x04slot\x12\x14\n" +
+	"\x05clips\x18\x04 \x03(\tR\x05clips\x12\x1b\n" +
+	"\tstream_id\x18\x05 \x01(\rR\bstreamId\"\"\n" +
 	"\bTextSent\x12\x16\n" +
 	"\x06format\x18\x01 \x01(\tR\x06format\"\xd2\x01\n" +
 	"\x04Text\x12\x0e\n" +
@@ -4132,7 +4271,7 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x1bPOSITION_FORMAT_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14POSITION_FORMAT_LRRP\x10\x01\x12\x18\n" +
 	"\x14POSITION_FORMAT_NMEA\x10\x02\x12\x18\n" +
-	"\x14POSITION_FORMAT_HDAP\x10\x03*\xdc\x01\n" +
+	"\x14POSITION_FORMAT_HDAP\x10\x03*\xf0\x01\n" +
 	"\aFeature\x12\x17\n" +
 	"\x13FEATURE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rFEATURE_STORE\x10\x01\x12\x12\n" +
@@ -4143,7 +4282,8 @@ const file_dmrhub_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x11FEATURE_SEND_TEXT\x10\x06\x12\x14\n" +
 	"\x10FEATURE_SWITCHES\x10\a\x12\x10\n" +
 	"\fFEATURE_APRS\x10\b\x12\x16\n" +
-	"\x12FEATURE_APRS_INBOX\x10\t*\xd1\x01\n" +
+	"\x12FEATURE_APRS_INBOX\x10\t\x12\x12\n" +
+	"\x0eFEATURE_PROMPT\x10\v*\xd1\x01\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14ERROR_CODE_NOT_FOUND\x10\x01\x12\x16\n" +
@@ -4180,7 +4320,7 @@ func file_dmrhub_plugin_v1_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_dmrhub_plugin_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_dmrhub_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_dmrhub_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_dmrhub_plugin_v1_plugin_proto_goTypes = []any{
 	(NetOp)(0),              // 0: dmrhub.plugin.v1.NetOp
 	(PositionFormat)(0),     // 1: dmrhub.plugin.v1.PositionFormat
@@ -4217,28 +4357,29 @@ var file_dmrhub_plugin_v1_plugin_proto_goTypes = []any{
 	(*RepeaterInfo)(nil),    // 32: dmrhub.plugin.v1.RepeaterInfo
 	(*SlotInfo)(nil),        // 33: dmrhub.plugin.v1.SlotInfo
 	(*SendText)(nil),        // 34: dmrhub.plugin.v1.SendText
-	(*TextSent)(nil),        // 35: dmrhub.plugin.v1.TextSent
-	(*Text)(nil),            // 36: dmrhub.plugin.v1.Text
-	(*APRSSend)(nil),        // 37: dmrhub.plugin.v1.APRSSend
-	(*APRSMessage)(nil),     // 38: dmrhub.plugin.v1.APRSMessage
-	(*Draining)(nil),        // 39: dmrhub.plugin.v1.Draining
-	(*Tracked)(nil),         // 40: dmrhub.plugin.v1.Tracked
-	(*Tracking)(nil),        // 41: dmrhub.plugin.v1.Tracking
-	(*Heard)(nil),           // 42: dmrhub.plugin.v1.Heard
-	(*Welcome)(nil),         // 43: dmrhub.plugin.v1.Welcome
-	(*Ranges)(nil),          // 44: dmrhub.plugin.v1.Ranges
-	(*IDRange)(nil),         // 45: dmrhub.plugin.v1.IDRange
-	(*Burst)(nil),           // 46: dmrhub.plugin.v1.Burst
-	(*Refusal)(nil),         // 47: dmrhub.plugin.v1.Refusal
+	(*PlayPrompt)(nil),      // 35: dmrhub.plugin.v1.PlayPrompt
+	(*TextSent)(nil),        // 36: dmrhub.plugin.v1.TextSent
+	(*Text)(nil),            // 37: dmrhub.plugin.v1.Text
+	(*APRSSend)(nil),        // 38: dmrhub.plugin.v1.APRSSend
+	(*APRSMessage)(nil),     // 39: dmrhub.plugin.v1.APRSMessage
+	(*Draining)(nil),        // 40: dmrhub.plugin.v1.Draining
+	(*Tracked)(nil),         // 41: dmrhub.plugin.v1.Tracked
+	(*Tracking)(nil),        // 42: dmrhub.plugin.v1.Tracking
+	(*Heard)(nil),           // 43: dmrhub.plugin.v1.Heard
+	(*Welcome)(nil),         // 44: dmrhub.plugin.v1.Welcome
+	(*Ranges)(nil),          // 45: dmrhub.plugin.v1.Ranges
+	(*IDRange)(nil),         // 46: dmrhub.plugin.v1.IDRange
+	(*Burst)(nil),           // 47: dmrhub.plugin.v1.Burst
+	(*Refusal)(nil),         // 48: dmrhub.plugin.v1.Refusal
 }
 var file_dmrhub_plugin_v1_plugin_proto_depIdxs = []int32{
-	46, // 0: dmrhub.plugin.v1.ConnectRequest.burst:type_name -> dmrhub.plugin.v1.Burst
+	47, // 0: dmrhub.plugin.v1.ConnectRequest.burst:type_name -> dmrhub.plugin.v1.Burst
 	15, // 1: dmrhub.plugin.v1.ConnectRequest.subscribe:type_name -> dmrhub.plugin.v1.Subscribe
 	16, // 2: dmrhub.plugin.v1.ConnectRequest.position:type_name -> dmrhub.plugin.v1.Position
 	7,  // 3: dmrhub.plugin.v1.ConnectRequest.hello:type_name -> dmrhub.plugin.v1.Hello
 	12, // 4: dmrhub.plugin.v1.ConnectRequest.net:type_name -> dmrhub.plugin.v1.NetRequest
 	18, // 5: dmrhub.plugin.v1.ConnectRequest.request:type_name -> dmrhub.plugin.v1.Request
-	45, // 6: dmrhub.plugin.v1.Hello.ids:type_name -> dmrhub.plugin.v1.IDRange
+	46, // 6: dmrhub.plugin.v1.Hello.ids:type_name -> dmrhub.plugin.v1.IDRange
 	11, // 7: dmrhub.plugin.v1.Hello.hosts:type_name -> dmrhub.plugin.v1.Host
 	8,  // 8: dmrhub.plugin.v1.Hello.switches:type_name -> dmrhub.plugin.v1.Switch
 	9,  // 9: dmrhub.plugin.v1.Switch.details:type_name -> dmrhub.plugin.v1.SwitchDetail
@@ -4246,20 +4387,20 @@ var file_dmrhub_plugin_v1_plugin_proto_depIdxs = []int32{
 	13, // 11: dmrhub.plugin.v1.NetRequest.close:type_name -> dmrhub.plugin.v1.NetClose
 	0,  // 12: dmrhub.plugin.v1.NetResponse.op:type_name -> dmrhub.plugin.v1.NetOp
 	1,  // 13: dmrhub.plugin.v1.Position.format:type_name -> dmrhub.plugin.v1.PositionFormat
-	43, // 14: dmrhub.plugin.v1.ConnectResponse.welcome:type_name -> dmrhub.plugin.v1.Welcome
-	46, // 15: dmrhub.plugin.v1.ConnectResponse.burst:type_name -> dmrhub.plugin.v1.Burst
-	47, // 16: dmrhub.plugin.v1.ConnectResponse.refusal:type_name -> dmrhub.plugin.v1.Refusal
-	44, // 17: dmrhub.plugin.v1.ConnectResponse.ranges:type_name -> dmrhub.plugin.v1.Ranges
-	40, // 18: dmrhub.plugin.v1.ConnectResponse.tracked:type_name -> dmrhub.plugin.v1.Tracked
-	41, // 19: dmrhub.plugin.v1.ConnectResponse.tracking:type_name -> dmrhub.plugin.v1.Tracking
-	42, // 20: dmrhub.plugin.v1.ConnectResponse.heard:type_name -> dmrhub.plugin.v1.Heard
-	39, // 21: dmrhub.plugin.v1.ConnectResponse.draining:type_name -> dmrhub.plugin.v1.Draining
+	44, // 14: dmrhub.plugin.v1.ConnectResponse.welcome:type_name -> dmrhub.plugin.v1.Welcome
+	47, // 15: dmrhub.plugin.v1.ConnectResponse.burst:type_name -> dmrhub.plugin.v1.Burst
+	48, // 16: dmrhub.plugin.v1.ConnectResponse.refusal:type_name -> dmrhub.plugin.v1.Refusal
+	45, // 17: dmrhub.plugin.v1.ConnectResponse.ranges:type_name -> dmrhub.plugin.v1.Ranges
+	41, // 18: dmrhub.plugin.v1.ConnectResponse.tracked:type_name -> dmrhub.plugin.v1.Tracked
+	42, // 19: dmrhub.plugin.v1.ConnectResponse.tracking:type_name -> dmrhub.plugin.v1.Tracking
+	43, // 20: dmrhub.plugin.v1.ConnectResponse.heard:type_name -> dmrhub.plugin.v1.Heard
+	40, // 21: dmrhub.plugin.v1.ConnectResponse.draining:type_name -> dmrhub.plugin.v1.Draining
 	14, // 22: dmrhub.plugin.v1.ConnectResponse.net:type_name -> dmrhub.plugin.v1.NetResponse
 	19, // 23: dmrhub.plugin.v1.ConnectResponse.answer:type_name -> dmrhub.plugin.v1.Answer
-	36, // 24: dmrhub.plugin.v1.ConnectResponse.text:type_name -> dmrhub.plugin.v1.Text
+	37, // 24: dmrhub.plugin.v1.ConnectResponse.text:type_name -> dmrhub.plugin.v1.Text
 	30, // 25: dmrhub.plugin.v1.ConnectResponse.user_switches:type_name -> dmrhub.plugin.v1.UserSwitches
 	29, // 26: dmrhub.plugin.v1.ConnectResponse.user_switch:type_name -> dmrhub.plugin.v1.UserSwitch
-	38, // 27: dmrhub.plugin.v1.ConnectResponse.aprs:type_name -> dmrhub.plugin.v1.APRSMessage
+	39, // 27: dmrhub.plugin.v1.ConnectResponse.aprs:type_name -> dmrhub.plugin.v1.APRSMessage
 	20, // 28: dmrhub.plugin.v1.Request.store_get:type_name -> dmrhub.plugin.v1.StoreGet
 	21, // 29: dmrhub.plugin.v1.Request.store_put:type_name -> dmrhub.plugin.v1.StorePut
 	22, // 30: dmrhub.plugin.v1.Request.store_delete:type_name -> dmrhub.plugin.v1.StoreDelete
@@ -4267,30 +4408,31 @@ var file_dmrhub_plugin_v1_plugin_proto_depIdxs = []int32{
 	27, // 32: dmrhub.plugin.v1.Request.lookup:type_name -> dmrhub.plugin.v1.Lookup
 	31, // 33: dmrhub.plugin.v1.Request.repeater:type_name -> dmrhub.plugin.v1.RepeaterQuery
 	34, // 34: dmrhub.plugin.v1.Request.send_text:type_name -> dmrhub.plugin.v1.SendText
-	37, // 35: dmrhub.plugin.v1.Request.aprs_send:type_name -> dmrhub.plugin.v1.APRSSend
-	3,  // 36: dmrhub.plugin.v1.Answer.code:type_name -> dmrhub.plugin.v1.ErrorCode
-	24, // 37: dmrhub.plugin.v1.Answer.store_value:type_name -> dmrhub.plugin.v1.StoreValue
-	25, // 38: dmrhub.plugin.v1.Answer.store_entries:type_name -> dmrhub.plugin.v1.StoreEntries
-	28, // 39: dmrhub.plugin.v1.Answer.user:type_name -> dmrhub.plugin.v1.User
-	32, // 40: dmrhub.plugin.v1.Answer.repeater:type_name -> dmrhub.plugin.v1.RepeaterInfo
-	35, // 41: dmrhub.plugin.v1.Answer.text_sent:type_name -> dmrhub.plugin.v1.TextSent
-	26, // 42: dmrhub.plugin.v1.StoreEntries.entries:type_name -> dmrhub.plugin.v1.StoreEntry
-	29, // 43: dmrhub.plugin.v1.User.switches:type_name -> dmrhub.plugin.v1.UserSwitch
-	29, // 44: dmrhub.plugin.v1.UserSwitches.switches:type_name -> dmrhub.plugin.v1.UserSwitch
-	33, // 45: dmrhub.plugin.v1.RepeaterInfo.slots:type_name -> dmrhub.plugin.v1.SlotInfo
-	41, // 46: dmrhub.plugin.v1.Tracked.radios:type_name -> dmrhub.plugin.v1.Tracking
-	45, // 47: dmrhub.plugin.v1.Welcome.ranges:type_name -> dmrhub.plugin.v1.IDRange
-	2,  // 48: dmrhub.plugin.v1.Welcome.features:type_name -> dmrhub.plugin.v1.Feature
-	45, // 49: dmrhub.plugin.v1.Ranges.ranges:type_name -> dmrhub.plugin.v1.IDRange
-	4,  // 50: dmrhub.plugin.v1.Burst.frame_type:type_name -> dmrhub.plugin.v1.FrameType
-	5,  // 51: dmrhub.plugin.v1.Refusal.reason:type_name -> dmrhub.plugin.v1.RefusalReason
-	6,  // 52: dmrhub.plugin.v1.PluginService.Connect:input_type -> dmrhub.plugin.v1.ConnectRequest
-	17, // 53: dmrhub.plugin.v1.PluginService.Connect:output_type -> dmrhub.plugin.v1.ConnectResponse
-	53, // [53:54] is the sub-list for method output_type
-	52, // [52:53] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	38, // 35: dmrhub.plugin.v1.Request.aprs_send:type_name -> dmrhub.plugin.v1.APRSSend
+	35, // 36: dmrhub.plugin.v1.Request.play_prompt:type_name -> dmrhub.plugin.v1.PlayPrompt
+	3,  // 37: dmrhub.plugin.v1.Answer.code:type_name -> dmrhub.plugin.v1.ErrorCode
+	24, // 38: dmrhub.plugin.v1.Answer.store_value:type_name -> dmrhub.plugin.v1.StoreValue
+	25, // 39: dmrhub.plugin.v1.Answer.store_entries:type_name -> dmrhub.plugin.v1.StoreEntries
+	28, // 40: dmrhub.plugin.v1.Answer.user:type_name -> dmrhub.plugin.v1.User
+	32, // 41: dmrhub.plugin.v1.Answer.repeater:type_name -> dmrhub.plugin.v1.RepeaterInfo
+	36, // 42: dmrhub.plugin.v1.Answer.text_sent:type_name -> dmrhub.plugin.v1.TextSent
+	26, // 43: dmrhub.plugin.v1.StoreEntries.entries:type_name -> dmrhub.plugin.v1.StoreEntry
+	29, // 44: dmrhub.plugin.v1.User.switches:type_name -> dmrhub.plugin.v1.UserSwitch
+	29, // 45: dmrhub.plugin.v1.UserSwitches.switches:type_name -> dmrhub.plugin.v1.UserSwitch
+	33, // 46: dmrhub.plugin.v1.RepeaterInfo.slots:type_name -> dmrhub.plugin.v1.SlotInfo
+	42, // 47: dmrhub.plugin.v1.Tracked.radios:type_name -> dmrhub.plugin.v1.Tracking
+	46, // 48: dmrhub.plugin.v1.Welcome.ranges:type_name -> dmrhub.plugin.v1.IDRange
+	2,  // 49: dmrhub.plugin.v1.Welcome.features:type_name -> dmrhub.plugin.v1.Feature
+	46, // 50: dmrhub.plugin.v1.Ranges.ranges:type_name -> dmrhub.plugin.v1.IDRange
+	4,  // 51: dmrhub.plugin.v1.Burst.frame_type:type_name -> dmrhub.plugin.v1.FrameType
+	5,  // 52: dmrhub.plugin.v1.Refusal.reason:type_name -> dmrhub.plugin.v1.RefusalReason
+	6,  // 53: dmrhub.plugin.v1.PluginService.Connect:input_type -> dmrhub.plugin.v1.ConnectRequest
+	17, // 54: dmrhub.plugin.v1.PluginService.Connect:output_type -> dmrhub.plugin.v1.ConnectResponse
+	54, // [54:55] is the sub-list for method output_type
+	53, // [53:54] is the sub-list for method input_type
+	53, // [53:53] is the sub-list for extension type_name
+	53, // [53:53] is the sub-list for extension extendee
+	0,  // [0:53] is the sub-list for field type_name
 }
 
 func init() { file_dmrhub_plugin_v1_plugin_proto_init() }
@@ -4338,6 +4480,7 @@ func file_dmrhub_plugin_v1_plugin_proto_init() {
 		(*Request_Repeater)(nil),
 		(*Request_SendText)(nil),
 		(*Request_AprsSend)(nil),
+		(*Request_PlayPrompt)(nil),
 	}
 	file_dmrhub_plugin_v1_plugin_proto_msgTypes[13].OneofWrappers = []any{
 		(*Answer_StoreValue)(nil),
@@ -4354,14 +4497,15 @@ func file_dmrhub_plugin_v1_plugin_proto_init() {
 		(*Lookup_Callsign)(nil),
 	}
 	file_dmrhub_plugin_v1_plugin_proto_msgTypes[27].OneofWrappers = []any{}
-	file_dmrhub_plugin_v1_plugin_proto_msgTypes[36].OneofWrappers = []any{}
+	file_dmrhub_plugin_v1_plugin_proto_msgTypes[28].OneofWrappers = []any{}
+	file_dmrhub_plugin_v1_plugin_proto_msgTypes[37].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dmrhub_plugin_v1_plugin_proto_rawDesc), len(file_dmrhub_plugin_v1_plugin_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

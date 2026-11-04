@@ -132,21 +132,24 @@ const (
 	Feature_FEATURE_APRS Feature = 8
 	// Subscribe with aprs.
 	Feature_FEATURE_APRS_INBOX Feature = 9
+	// PlayPrompt, and SendText with reply_to.
+	Feature_FEATURE_PROMPT Feature = 11
 )
 
 // Enum value maps for Feature.
 var (
 	Feature_name = map[int32]string{
-		0: "FEATURE_UNSPECIFIED",
-		1: "FEATURE_STORE",
-		2: "FEATURE_LOOKUP",
-		3: "FEATURE_REPEATER",
-		4: "FEATURE_HEARD",
-		5: "FEATURE_TEXTS",
-		6: "FEATURE_SEND_TEXT",
-		7: "FEATURE_SWITCHES",
-		8: "FEATURE_APRS",
-		9: "FEATURE_APRS_INBOX",
+		0:  "FEATURE_UNSPECIFIED",
+		1:  "FEATURE_STORE",
+		2:  "FEATURE_LOOKUP",
+		3:  "FEATURE_REPEATER",
+		4:  "FEATURE_HEARD",
+		5:  "FEATURE_TEXTS",
+		6:  "FEATURE_SEND_TEXT",
+		7:  "FEATURE_SWITCHES",
+		8:  "FEATURE_APRS",
+		9:  "FEATURE_APRS_INBOX",
+		11: "FEATURE_PROMPT",
 	}
 	Feature_value = map[string]int32{
 		"FEATURE_UNSPECIFIED": 0,
@@ -159,6 +162,7 @@ var (
 		"FEATURE_SWITCHES":    7,
 		"FEATURE_APRS":        8,
 		"FEATURE_APRS_INBOX":  9,
+		"FEATURE_PROMPT":      11,
 	}
 )
 
@@ -1296,6 +1300,7 @@ type Request struct {
 	//	*Request_Repeater
 	//	*Request_SendText
 	//	*Request_AprsSend
+	//	*Request_PlayPrompt
 	Op isRequest_Op `protobuf_oneof:"op"`
 }
 
@@ -1375,6 +1380,13 @@ func (x *Request) GetAprsSend() *APRSSend {
 	return nil
 }
 
+func (x *Request) GetPlayPrompt() *PlayPrompt {
+	if x, ok := x.GetOp().(*Request_PlayPrompt); ok {
+		return x.PlayPrompt
+	}
+	return nil
+}
+
 type isRequest_Op interface {
 	isRequest_Op()
 }
@@ -1411,6 +1423,10 @@ type Request_AprsSend struct {
 	AprsSend *APRSSend `protobuf:"bytes,9,opt,name=aprs_send,json=aprsSend,proto3,oneof"`
 }
 
+type Request_PlayPrompt struct {
+	PlayPrompt *PlayPrompt `protobuf:"bytes,11,opt,name=play_prompt,json=playPrompt,proto3,oneof"`
+}
+
 func (*Request_StoreGet) isRequest_Op() {}
 
 func (*Request_StorePut) isRequest_Op() {}
@@ -1426,6 +1442,8 @@ func (*Request_Repeater) isRequest_Op() {}
 func (*Request_SendText) isRequest_Op() {}
 
 func (*Request_AprsSend) isRequest_Op() {}
+
+func (*Request_PlayPrompt) isRequest_Op() {}
 
 // Answer answers a Request.
 type Answer struct {
@@ -2046,6 +2064,14 @@ type SendText struct {
 	Radio  uint32 `protobuf:"varint,2,opt,name=radio,proto3" json:"radio,omitempty"`
 	// The text, at most 500 characters.
 	Body string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	// The id of a Text from radio to source that this text answers. A hub
+	// with FEATURE_PROMPT then builds the text in the exact format of that
+	// Text, not of the last text of the radio, and sends it through the
+	// repeater and timeslot of that Text. It answers ERROR_CODE_NO_FORMAT,
+	// and sends nothing, when that Text came through a repeater of neither
+	// the radio's owner nor one that an admin trusts, or in a format that
+	// the hub cannot build again exactly, such as a UDT.
+	ReplyTo *uint64 `protobuf:"varint,4,opt,name=reply_to,json=replyTo,proto3,oneof" json:"replyTo,omitempty"`
 }
 
 func (x *SendText) Reset() {
@@ -2073,6 +2099,80 @@ func (x *SendText) GetBody() string {
 		return x.Body
 	}
 	return ""
+}
+
+func (x *SendText) GetReplyTo() uint64 {
+	if x != nil && x.ReplyTo != nil {
+		return *x.ReplyTo
+	}
+	return 0
+}
+
+// PlayPrompt asks the hub to play spoken prompts, one after another, to a
+// radio as a private voice call from one of the plugin's IDs. The hub
+// plays them as it plays its own prompts: in the voice that the radio's
+// owner picked, or the hub's voice, in the codec of the timeslot,
+// through the repeater or hotspot of the hub where it sends the private
+// calls to the radio, once the timeslot carried nothing from the radio
+// for about a second. It plays one call per voice stream of the radio,
+// and only through a repeater, hotspot or browser radio of the hub, never
+// an OpenBridge peer. The hub answers once it queued the call:
+// ERROR_CODE_NOT_FOUND when it does not know where the radio is, and
+// ERROR_CODE_INVALID for an unknown clip.
+type PlayPrompt struct {
+	unknownFields []byte
+	// One of the plugin's IDs.
+	Source uint32 `protobuf:"varint,1,opt,name=source,proto3" json:"source,omitempty"`
+	Radio  uint32 `protobuf:"varint,2,opt,name=radio,proto3" json:"radio,omitempty"`
+	// The timeslot, 1 or 2, such as that of the call this answers.
+	Slot uint32 `protobuf:"varint,3,opt,name=slot,proto3" json:"slot,omitempty"`
+	// The names of the clips, 1 to 64, such as "word-timeslot" and
+	// "digit-2". The hub's Setup page lists the clips.
+	Clips []string `protobuf:"bytes,4,rep,name=clips,proto3" json:"clips,omitempty"`
+	// The stream ID of the call of the radio that this answers, when there
+	// is one. The hub plays at most one prompt for each stream.
+	StreamId uint32 `protobuf:"varint,5,opt,name=stream_id,json=streamId,proto3" json:"streamId,omitempty"`
+}
+
+func (x *PlayPrompt) Reset() {
+	*x = PlayPrompt{}
+}
+
+func (*PlayPrompt) ProtoMessage() {}
+
+func (x *PlayPrompt) GetSource() uint32 {
+	if x != nil {
+		return x.Source
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetRadio() uint32 {
+	if x != nil {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
+}
+
+func (x *PlayPrompt) GetClips() []string {
+	if x != nil {
+		return x.Clips
+	}
+	return nil
+}
+
+func (x *PlayPrompt) GetStreamId() uint32 {
+	if x != nil {
+		return x.StreamId
+	}
+	return 0
 }
 
 // TextSent answers a SendText that the hub sent.
@@ -3285,6 +3385,19 @@ func (m *Request_AprsSend) CloneOneofVT() isRequest_Op {
 	return m.CloneVT()
 }
 
+func (m *Request_PlayPrompt) CloneVT() *Request_PlayPrompt {
+	if m == nil {
+		return (*Request_PlayPrompt)(nil)
+	}
+	r := new(Request_PlayPrompt)
+	r.PlayPrompt = protobuf_go_lite.CloneVTValue(m.PlayPrompt)
+	return r
+}
+
+func (m *Request_PlayPrompt) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
 func (m *Answer) CloneVT() *Answer {
 	if m == nil {
 		return (*Answer)(nil)
@@ -3650,6 +3763,7 @@ func (m *SendText) CloneVT() *SendText {
 	r.Source = m.Source
 	r.Radio = m.Radio
 	r.Body = m.Body
+	r.ReplyTo = protobuf_go_lite.ClonePtr(m.ReplyTo)
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = slices.Clone(m.unknownFields)
 	}
@@ -3657,6 +3771,26 @@ func (m *SendText) CloneVT() *SendText {
 }
 
 func (m *SendText) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *PlayPrompt) CloneVT() *PlayPrompt {
+	if m == nil {
+		return (*PlayPrompt)(nil)
+	}
+	r := new(PlayPrompt)
+	r.Source = m.Source
+	r.Radio = m.Radio
+	r.Slot = m.Slot
+	r.StreamId = m.StreamId
+	r.Clips = protobuf_go_lite.CloneSlice(m.Clips)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *PlayPrompt) CloneMessageVT() protobuf_go_lite.CloneMessage {
 	return m.CloneVT()
 }
 
@@ -5311,6 +5445,29 @@ func (m *Request_AprsSend) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Request_PlayPrompt) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_PlayPrompt) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PlayPrompt != nil {
+		size, err := m.PlayPrompt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x5a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x5a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *Answer) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -6180,10 +6337,74 @@ func (m *SendText) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
 	}
+	if m.ReplyTo != nil {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(*m.ReplyTo))
+		i--
+		dAtA[i] = 0x20
+	}
 	if len(m.Body) > 0 {
 		i = protobuf_go_lite.EncodeString(dAtA, i, m.Body)
 		i--
 		dAtA[i] = 0x1a
+	}
+	if m.Radio != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Source != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Source))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PlayPrompt) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PlayPrompt) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *PlayPrompt) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.StreamId != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.StreamId))
+		i--
+		dAtA[i] = 0x28
+	}
+	if len(m.Clips) > 0 {
+		for iNdEx := len(m.Clips) - 1; iNdEx >= 0; iNdEx-- {
+			i = protobuf_go_lite.EncodeString(dAtA, i, m.Clips[iNdEx])
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if m.Slot != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Slot))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.Radio != 0 {
 		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
@@ -7489,6 +7710,20 @@ func (m *Request_AprsSend) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Request_PlayPrompt) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PlayPrompt != nil {
+		l = m.PlayPrompt.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *Answer) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7789,6 +8024,22 @@ func (m *SendText) SizeVT() (n int) {
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.Source)
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
 	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Body)
+	n += protobuf_go_lite.SizeVarintPtr(1, m.ReplyTo)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *PlayPrompt) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Source)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Slot)
+	n += protobuf_go_lite.SizeStringSlice(1, m.Clips)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.StreamId)
 	n += len(m.unknownFields)
 	return n
 }
@@ -9576,6 +9827,26 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Op = &Request_AprsSend{AprsSend: v}
 			}
 			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PlayPrompt", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_PlayPrompt); ok {
+				if err := oneof.PlayPrompt.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &PlayPrompt{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_PlayPrompt{PlayPrompt: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
@@ -10786,6 +11057,104 @@ func (m *SendText) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			m.Body = v
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReplyTo", wireType)
+			}
+			var v uint64
+			v, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.ReplyTo = &v
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PlayPrompt) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PlayPrompt: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PlayPrompt: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Source", wireType)
+			}
+			m.Source = 0
+			m.Source, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radio", wireType)
+			}
+			m.Radio = 0
+			m.Radio, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Slot", wireType)
+			}
+			m.Slot = 0
+			m.Slot, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Clips", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Clips = append(m.Clips, v)
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamId", wireType)
+			}
+			m.StreamId = 0
+			m.StreamId, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])

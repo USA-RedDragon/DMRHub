@@ -19,7 +19,7 @@
 
 // Package builtin holds the plugins that come with DMRHub, built for
 // wasip1, to run inside DMRHub: the parrot, the location server, the
-// status service and APRS messages.
+// status service, the mailbox and APRS messages.
 package builtin
 
 //go:generate go run ./gen
@@ -31,6 +31,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/plugins/aprstext"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
+	"github.com/USA-RedDragon/DMRHub/plugins/mailbox"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/DMRHub/plugins/status"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
@@ -70,6 +71,7 @@ func All() []Plugin {
 		of("parrot", parrot.Hello()),
 		of("locator", locator.Hello()),
 		of("status", status.Hello()),
+		of("mailbox", mailbox.Hello()),
 		of("aprs", aprstext.Hello()),
 	}
 }

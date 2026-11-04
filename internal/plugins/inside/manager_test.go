@@ -313,6 +313,30 @@ func TestTheBuiltinPluginsRunWithTheirIDs(t *testing.T) {
 	assert.Equal(t, parrot.ID, owner)
 }
 
+func TestTheMailboxStaysOffUntilAnAdminGivesItAnID(t *testing.T) {
+	t.Parallel()
+	c := newCluster(t)
+	r := c.replica(t, "a", engine, true)
+	passes := watchPasses(r)
+	mailbox := builtinOf(t, c, "mailbox")
+	assert.False(t, mailbox.Enabled, "the mailbox starts off")
+	assert.Empty(t, mailbox.Ranges)
+	passedSince(t, passes, c.now())
+	_, running := r.m.Running()[mailbox.ID]
+	assert.False(t, running, "an off plugin does not run")
+	assert.False(t, online(t, c, mailbox.ID))
+
+	_, err := models.UpdatePlugin(c.db, mailbox.ID, mailbox.Name, true, []models.PluginRange{{First: 4321, Last: 4321}})
+	require.NoError(t, err)
+	require.NoError(t, plugins.PublishChanged(c.ps))
+	await(func() bool { return online(t, c, mailbox.ID) }, c.updated)
+	require.NoError(t, r.registry.Reload())
+	owner, ok := r.registry.Owner(4321)
+	require.True(t, ok)
+	assert.Equal(t, mailbox.ID, owner)
+	assert.Equal(t, "builtin:mailbox@v1.3.4", r.m.Running()[mailbox.ID])
+}
+
 func watchPasses(r *replica) <-chan time.Time {
 	for len(r.passes) > 0 {
 		<-r.passes

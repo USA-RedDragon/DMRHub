@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/plugins/aprstext"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
+	"github.com/USA-RedDragon/DMRHub/plugins/mailbox"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/DMRHub/plugins/status"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
@@ -46,6 +47,8 @@ func main() {
 		plugin.MainWith(locator.Hello(), locator.Serve)
 	case "status":
 		plugin.MainWith(status.Hello(), status.Serve)
+	case "mailbox":
+		plugin.MainWith(mailbox.Hello(), mailbox.Serve)
 	case "aprs":
 		plugin.MainWith(aprstext.Hello(), aprstext.Serve)
 	default:

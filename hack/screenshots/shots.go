@@ -85,11 +85,12 @@ func (r *runner) api(user string) *api {
 	return a
 }
 
+// tick moves the demo clock on by d and holds it there, so that what the
+// shot makes in DMRHub gets the time of the shot on any load, and pings
+// every repeater.
 func (r *runner) tick(d time.Duration) error {
 	r.cursor = r.cursor.Add(d)
-	if err := r.c.set(r.cursor); err != nil {
-		return err
-	}
+	r.c.freeze(r.cursor)
 	if r.hub != nil {
 		r.hub.clearPingErrors()
 	}
@@ -119,7 +120,7 @@ func (r *runner) waitPings(ctx context.Context) error {
 			var rp struct {
 				LastPing time.Time `json:"last_ping_time"`
 			}
-			err := r.api("n0call").do(ctx, http.MethodGet, fmt.Sprintf("/api/v1/repeaters/%d", id), nil, &rp)
+			err := r.api("n0call").read(ctx, fmt.Sprintf("/api/v1/repeaters/%d", id), &rp)
 			if err == nil && !rp.LastPing.Before(r.cursor) {
 				break
 			}

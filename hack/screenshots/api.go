@@ -43,6 +43,16 @@ func newAPI(base string, sec *secrets) *api {
 	return &api{base: base, client: &http.Client{Jar: jar, Timeout: 30 * time.Second}, secrets: sec}
 }
 
+// read gets path into out. Unlike do, it does not call before: a read
+// changes nothing, so it does not move the demo clock on, however many a
+// wait takes.
+func (a *api) read(ctx context.Context, path string, out any) error {
+	before := a.before
+	a.before = nil
+	defer func() { a.before = before }()
+	return a.do(ctx, http.MethodGet, path, nil, out)
+}
+
 func (a *api) do(ctx context.Context, method, path string, body, out any) error {
 	var r io.Reader
 	if body != nil {

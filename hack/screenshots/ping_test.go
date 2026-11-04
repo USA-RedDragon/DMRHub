@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type hubAnswers func(*http.Request) (*http.Response, error)
@@ -92,4 +94,45 @@ func TestHubLogNamesTheRepeaterOfAFailedPingSave(t *testing.T) {
 	if assert.NotNil(t, m) {
 		assert.Equal(t, "300000401", m[1])
 	}
+}
+
+// TestATickHoldsTheClockStill moves the demo clock on by a shot step. The
+// clock must stay at the new time until the next step: a clock that runs
+// on in real time would stamp what a shot makes with the time the run
+// took, which a loaded machine stretches.
+func TestATickHoldsTheClockStill(t *testing.T) {
+	t.Parallel()
+	c, err := openClock(filepath.Join(t.TempDir(), "clock"))
+	require.NoError(t, err)
+	t.Cleanup(c.close)
+	start := time.Date(2026, 10, 13, 18, 30, 0, 0, time.UTC)
+	r := newRunner(options{}, nil, c, "http://hub", start)
+	require.NoError(t, r.tick(shotStep))
+	assert.True(t, c.frozen())
+	assert.True(t, c.now().Equal(start.Add(shotStep)))
+}
+
+// TestTheSavedPingWaitKeepsTheClockStill waits for the saved ping on a
+// frozen clock. Its reads must not move the clock on, since how many it
+// takes depends on the load of the machine.
+func TestTheSavedPingWaitKeepsTheClockStill(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		c, err := openClock(filepath.Join(t.TempDir(), "clock"))
+		require.NoError(t, err)
+		t.Cleanup(c.close)
+		cursor := time.Date(2026, 10, 13, 18, 30, 0, 0, time.UTC)
+		c.freeze(cursor)
+		start := time.Now()
+		r := pingRunner(cursor, func(int) time.Time {
+			if time.Since(start) < time.Second {
+				return cursor.Add(-time.Minute)
+			}
+			return cursor
+		})
+		r.c = c
+		r.apis["n0call"].before = r.beforeRequest
+		require.NoError(t, r.waitPings(t.Context()))
+		assert.True(t, c.now().Equal(cursor))
+	})
 }

@@ -70,6 +70,7 @@ type IPSCServer struct {
 
 	keyFor  func(peerID uint32) (key [20]byte, useAuth bool, err error)
 	keys    *lookup.Cache[uint32, peerAuthKey]
+	loads   servers.Tracked
 	rekeys  atomic.Uint64
 	unwatch func()
 	// unwatchKeys stops the calls of rekey.
@@ -205,6 +206,7 @@ func NewIPSCServer(cfg *config.Config, hub *hub.Hub, db *gorm.DB) *IPSCServer {
 		s.out = make([]ipscsession.Output, 0, m.MaxOutputs())
 	}
 	s.keys = lookup.New(s.clock, "ipsc keys", lookup.TTL, s.loadPeerAuthKey)
+	s.keys.GoWith(s.loads.Go)
 	s.keyFor = s.lookupPeerAuthKey
 	return s
 }
@@ -334,6 +336,7 @@ func (s *IPSCServer) Stop(ctx context.Context) error {
 		}
 	})
 	s.wg.Wait()
+	s.loads.Wait()
 	s.peerJobs.Wait()
 	s.closeTimes()
 	return nil

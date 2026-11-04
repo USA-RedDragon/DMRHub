@@ -2,7 +2,7 @@
 
 This guide tells you how to enroll a hotspot on DMRHub and connect it. DMRHub treats a hotspot and a repeater the same way. For a repeater with its own 6-digit ID, or a Motorola repeater, see [Link a repeater](link-repeater.md).
 
-Your hotspot connects with the MMDVM network protocol, the same protocol that MMDVMHost and DMRGateway use for BrandMeister and TGIF.
+Your hotspot connects with the MMDVM network protocol, the same protocol that MMDVMHost and DMRGateway use for other DMR networks.
 
 ## Pick the hotspot ID
 

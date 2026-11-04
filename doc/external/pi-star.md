@@ -53,7 +53,7 @@ The dashboard passes the line through `escapeshellcmd` when you apply it (admin/
 
 ### The values that worked
 
-The hotspot that we checked is a duplex hotspot with DMRHub as network 2 of DMRGateway, next to BrandMeister (network 1) and TGIF (network 3). These are the DMR parts of its running files. The IDs, the address and the password are examples.
+The hotspot that we checked is a duplex hotspot with DMRHub as network 2 of DMRGateway, next to two other DMR networks as network 1 and network 3. These are the DMR parts of its running files. The IDs, the address and the password are examples.
 
 `/etc/mmdvmhost`:
 

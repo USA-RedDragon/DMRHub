@@ -25,7 +25,7 @@ The example IDs, callsigns and passwords are not real. Replace them with your ow
 
 ## The protocol
 
-Hotspots, repeaters and servers connect to DMRHub with the MMDVM network protocol. This is the protocol that DMRGateway speaks to BrandMeister, TGIF and other masters. DMRHub also accepts logins in the form of the HomeBrew Repeater Protocol specification (HBRP), but none of the programs on these pages uses that form. HBlink3 and HBlink4 call themselves HomeBrew servers, but they log in to DMRHub with the MMDVM protocol.
+Hotspots, repeaters and servers connect to DMRHub with the MMDVM network protocol. This is the protocol that DMRGateway speaks to the masters of other DMR networks. DMRHub also accepts logins in the form of the HomeBrew Repeater Protocol specification (HBRP), but none of the programs on these pages uses that form. HBlink3 and HBlink4 call themselves HomeBrew servers, but they log in to DMRHub with the MMDVM protocol.
 
 DMRHub shows the protocol of a connected repeater as **Protocol** on its page, `<siteurl>/repeaters/<repeater ID>`, and as `dialect` in `GET <siteurl>/api/v1/repeaters/<repeater ID>`. In every run on these pages, it was `MMDVM`.
 

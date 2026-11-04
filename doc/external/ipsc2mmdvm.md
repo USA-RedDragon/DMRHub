@@ -13,7 +13,7 @@ DMRHub has an IPSC server of its own (`dmr.ipsc.enabled`, UDP port 50000). With 
 | Use | When |
 | --- | --- |
 | The IPSC server of DMRHub | The repeater uses only DMRHub, and it can reach the IPSC port of DMRHub. |
-| ipsc2mmdvm | The repeater must be on DMRHub and other networks at the same time, such as BrandMeister or TGIF. Or the repeater is on a local Ethernet port of a small Linux computer, and only that computer connects to DMRHub. |
+| ipsc2mmdvm | The repeater must be on DMRHub and other DMR networks at the same time. Or the repeater is on a local Ethernet port of a small Linux computer, and only that computer connects to DMRHub. |
 
 With ipsc2mmdvm, DMRHub sees an MMDVM hotspot, not an IPSC repeater.
 

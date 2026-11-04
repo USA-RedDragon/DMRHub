@@ -32,7 +32,7 @@ The [APRS messages](plugins.md#turn-on-aprs-messages) plugin uses the same login
 
 DMRHub calculates the APRS-IS passcode from the callsign, so there is nothing to register. Use a callsign that you hold a license for. When DMRHub runs as several replicas, only one of them logs in at a time.
 
-Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.
+Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, the qAR path of a gateway that hears the packet from a radio.
 
 ![The Positions tab of the Setup page with the APRS-IS callsign N0CALL-10](../Screenshots/admin-setup-positions.png)
 

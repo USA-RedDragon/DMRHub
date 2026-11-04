@@ -8,7 +8,7 @@ To run a DMRHub network of your own, see [Install DMRHub](admin/install.md). Fin
 
 ## What DMRHub is
 
-DMRHub is a DMR network server. It does the same job as the master servers of networks such as BrandMeister and TGIF, but it is one program that a club or a group can run for itself.
+DMRHub is a DMR network server. It does the same job as the master servers of large public DMR networks, but it is one program that a club or a group can run for itself.
 
 A DMRHub network has:
 

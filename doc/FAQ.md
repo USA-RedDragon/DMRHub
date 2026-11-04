@@ -4,9 +4,9 @@
 
 ### What is DMRHub?
 
-DMRHub is a DMR network server. It is an open source alternative to networks such as BrandMeister and TGIF, made for local networks. See [Get started](getting-started.md).
+DMRHub is an open source DMR network server, made for local networks. See [Get started](getting-started.md).
 
-### Is my DMRHub account good on BrandMeister, TGIF or another DMRHub network?
+### Is my DMRHub account good on another DMR network or another DMRHub network?
 
 No. Each DMRHub network has its own accounts, talkgroups and hotspot passwords.
 

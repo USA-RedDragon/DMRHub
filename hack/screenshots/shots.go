@@ -45,8 +45,8 @@ const (
 	frozenWait     = 12 * time.Second
 	afterStep      = 30 * time.Second
 	requestStep    = 100 * time.Millisecond
-	pingWait       = 15 * time.Second
 	keepaliveEvery = 5 * time.Second
+	stuckReport    = time.Minute
 )
 
 type hook func(ctx context.Context, r *runner) error
@@ -56,6 +56,7 @@ type runner struct {
 	l       *shotList
 	c       *clock
 	b       *browser
+	hub     *hubProcess
 	base    string
 	cursor  time.Time
 	as      string
@@ -88,6 +89,9 @@ func (r *runner) tick(d time.Duration) error {
 	if err := r.c.set(r.cursor); err != nil {
 		return err
 	}
+	if r.hub != nil {
+		r.hub.clearPingErrors()
+	}
 	return r.pingAll()
 }
 
@@ -104,8 +108,11 @@ func (r *runner) beforeRequest() {
 	}
 }
 
+// waitPings waits until DMRHub saved the pings of the last tick, which it
+// writes to the database after it answers them, or logged that a save
+// failed.
 func (r *runner) waitPings(ctx context.Context) error {
-	deadline := time.Now().Add(pingWait)
+	report := time.Now().Add(stuckReport)
 	for id := range r.peers {
 		for {
 			var rp struct {
@@ -115,10 +122,20 @@ func (r *runner) waitPings(ctx context.Context) error {
 			if err == nil && !rp.LastPing.Before(r.cursor) {
 				break
 			}
-			if time.Now().After(deadline) {
-				return fmt.Errorf("repeater %d: DMRHub did not save the last ping: %w", id, errTimeout)
+			if line := r.hub.pingError(id); line != "" {
+				return fmt.Errorf("repeater %d: DMRHub did not save the last ping: %s", id, line)
 			}
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-r.hub.exited:
+				return fmt.Errorf("repeater %d: DMRHub stopped before it saved the last ping", id)
+			case <-ctx.Done():
+				return fmt.Errorf("repeater %d: waiting for the last ping: %w", id, ctx.Err())
+			case <-time.After(requestStep):
+			}
+			if time.Now().After(report) {
+				slog.Warn("DMRHub has not saved the last ping yet", "repeater", id, "error", err)
+				report = time.Now().Add(stuckReport)
+			}
 		}
 	}
 	return nil
@@ -520,6 +537,7 @@ func runMain(ctx context.Context, o options, l *shotList, c *clock) error {
 	}
 	defer hub.stop()
 	r := newRunner(o, l, c, fmt.Sprintf("http://127.0.0.1:%d", httpPort), l.Start)
+	r.hub = hub
 	defer r.closePeers()
 	kctx, stopKeepalive := context.WithCancel(ctx)
 	defer stopKeepalive()

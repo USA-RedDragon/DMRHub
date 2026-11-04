@@ -40,7 +40,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -155,9 +157,15 @@ func (l *shotList) phase(name, only string) []shot {
 type hubProcess struct {
 	cmd    *exec.Cmd
 	exited chan struct{}
+
+	mu         sync.Mutex
+	pingErrors map[string]string
 }
 
-var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var (
+	ansi      = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	pingError = regexp.MustCompile(`Error saving the last ping of a repeater.* repeaterID=([0-9]+)`)
+)
 
 func startHub(ctx context.Context, o options, l *shotList, logName string) (*hubProcess, error) {
 	cmd := exec.CommandContext(ctx, o.hub)
@@ -201,11 +209,17 @@ func startHub(ctx context.Context, o options, l *shotList, logName string) (*hub
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("could not start DMRHub: %w", err)
 	}
-	h := &hubProcess{cmd: cmd, exited: make(chan struct{})}
+	h := &hubProcess{cmd: cmd, exited: make(chan struct{}), pingErrors: map[string]string{}}
 	go func() {
 		s := bufio.NewScanner(pr)
 		for s.Scan() {
-			_, _ = fmt.Fprintln(log, ansi.ReplaceAllString(s.Text(), ""))
+			line := ansi.ReplaceAllString(s.Text(), "")
+			_, _ = fmt.Fprintln(log, line)
+			if m := pingError.FindStringSubmatch(line); m != nil {
+				h.mu.Lock()
+				h.pingErrors[m[1]] = line
+				h.mu.Unlock()
+			}
 		}
 		_ = log.Close()
 	}()
@@ -215,6 +229,22 @@ func startHub(ctx context.Context, o options, l *shotList, logName string) (*hub
 		close(h.exited)
 	}()
 	return h, nil
+}
+
+// clearPingErrors forgets the failed saves of last pings that DMRHub
+// logged so far.
+func (h *hubProcess) clearPingErrors() {
+	h.mu.Lock()
+	clear(h.pingErrors)
+	h.mu.Unlock()
+}
+
+// pingError returns the log line of DMRHub that reports a failed save of
+// the last ping of repeater id since clearPingErrors, or "".
+func (h *hubProcess) pingError(id uint32) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.pingErrors[strconv.FormatUint(uint64(id), 10)]
 }
 
 func (h *hubProcess) stop() {

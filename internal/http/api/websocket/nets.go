@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -50,14 +51,15 @@ func (n *NetsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websocke
 func (n *NetsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websocket.Writer, _ sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
 
+	var wg sync.WaitGroup
 	eventSubscription := n.pubsub.Subscribe("net:events")
-	go forward(newCtx, eventSubscription, w)
+	wg.Go(func() { forward(newCtx, eventSubscription, w) })
 
 	var checkInSubscription pubsub.Subscription
 	if netIDStr := r.URL.Query().Get("net_id"); netIDStr != "" {
 		if netID, err := strconv.ParseUint(netIDStr, 10, 32); err == nil {
 			checkInSubscription = n.pubsub.Subscribe(fmt.Sprintf("net:checkins:%d", netID))
-			go forward(newCtx, checkInSubscription, w)
+			wg.Go(func() { forward(newCtx, checkInSubscription, w) })
 		}
 	}
 
@@ -67,5 +69,6 @@ func (n *NetsWebsocket) OnConnect(ctx context.Context, r *http.Request, w websoc
 			closeSubscription(checkInSubscription, "nets checkin")
 		}
 		cancel()
+		wg.Wait()
 	}
 }

@@ -183,10 +183,12 @@ func (l *ListenWebsocket) OnConnect(ctx context.Context, r *http.Request, w webs
 
 	callsCtx, cancel := context.WithCancel(ctx)
 	calls := l.pubsub.Subscribe("calls:public")
-	go l.forwardCalls(callsCtx, s, calls)
+	var wg sync.WaitGroup
+	wg.Go(func() { l.forwardCalls(callsCtx, s, calls) })
 	return func() {
 		cancel()
 		closeSubscription(calls, "listen")
+		wg.Wait()
 		s.tune(0, nil)
 		l.release(s)
 	}

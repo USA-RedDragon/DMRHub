@@ -48,6 +48,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/http/sessionstore"
 	"github.com/USA-RedDragon/DMRHub/internal/http/setupwizard"
 	v1SetupWizardControllers "github.com/USA-RedDragon/DMRHub/internal/http/setupwizard/controllers/v1/setupwizard"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/liveconfig"
 	"github.com/USA-RedDragon/DMRHub/internal/oauth"
@@ -69,6 +70,7 @@ type Server struct {
 	*http.Server
 	shutdownChannel chan bool
 	stopOnce        sync.Once
+	websockets      *websocket.Conns
 }
 
 const defTimeout = 10 * time.Second
@@ -85,6 +87,7 @@ type options struct {
 	pluginEngine *wasm.Engine
 	kv           kv.KV
 	modem        *modem.Replicas
+	websockets   *websocket.Conns
 }
 
 // WithLiveConfig makes the router run with the config of l and save the
@@ -117,6 +120,13 @@ func WithModem(r *modem.Replicas) Option {
 	return func(o *options) { o.modem = r }
 }
 
+// WithWebsockets makes the router keep its websocket connections in
+// conns, whose Close then ends them. Without it, the router closes its
+// websockets when the ctx of CreateRouter ends, and nothing waits for them.
+func WithWebsockets(conns *websocket.Conns) Option {
+	return func(o *options) { o.websockets = conns }
+}
+
 // WithMailer makes the password reset emails go out through m instead of
 // the SMTP server of the config.
 func WithMailer(m smtp.Mailer) Option {
@@ -124,7 +134,8 @@ func WithMailer(m smtp.Mailer) Option {
 }
 
 func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, db *gorm.DB, pubsub pubsub.PubSub, ready *atomic.Bool, ns *netscheduler.NetScheduler, version, commit string, opts ...Option) Server {
-	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit, opts...)
+	websockets := websocket.NewConns()
+	r := CreateRouter(ctx, config, dmrHub, db, pubsub, ready, ns, version, commit, append(opts, WithWebsockets(websockets))...)
 
 	slog.Info("HTTP Server listening", "bind", config.HTTP.Bind, "port", config.HTTP.Port)
 	s := &http.Server{
@@ -138,6 +149,7 @@ func MakeServer(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub, 
 	return Server{
 		Server:          s,
 		shutdownChannel: make(chan bool),
+		websockets:      websockets,
 	}
 }
 
@@ -314,8 +326,14 @@ func CreateRouter(ctx context.Context, config *configPkg.Config, dmrHub *hub.Hub
 	if o.live == nil {
 		o.live = liveconfig.New(liveconfig.Options{Base: config, DB: db})
 	}
+	if o.websockets == nil {
+		o.websockets = websocket.NewConns()
+		conns := o.websockets
+		context.AfterFunc(ctx, func() { _ = conns.Close(context.WithoutCancel(ctx)) })
+	}
 
 	r := gin.New()
+	r.Use(o.websockets.Track())
 	// Logging middleware replaced or removed; consider using slog for access logs if needed
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
@@ -360,6 +378,11 @@ func (s *Server) Stop(ctx context.Context) {
 		defer cancel()
 		if err := s.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Failed to shutdown HTTP server", "error", err)
+		}
+		if s.websockets != nil {
+			if err := s.websockets.Close(shutdownCtx); err != nil {
+				slog.Error("Failed to close the websockets of the HTTP server", "error", err)
+			}
 		}
 		<-s.shutdownChannel
 	})

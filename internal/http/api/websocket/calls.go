@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -53,6 +54,7 @@ func (c *CallsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websock
 
 func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, session sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
 
 	var subscription pubsub.Subscription
 	userIDIface := session.Get("user_id")
@@ -64,14 +66,15 @@ func (c *CallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w webso
 			slog.Error("Failed to convert user ID to uint", "userIDIface", userIDIface)
 			return cancel
 		}
-		go c.hub.ListenForWebsocket(newCtx, userID)
+		wg.Go(func() { c.hub.ListenForWebsocket(newCtx, userID) })
 		subscription = c.pubsub.Subscribe(fmt.Sprintf("calls:%d", userID))
 	}
 
-	go forward(newCtx, subscription, w)
+	wg.Go(func() { forward(newCtx, subscription, w) })
 	return func() {
 		closeSubscription(subscription, "calls")
 		cancel()
+		wg.Wait()
 	}
 }
 
@@ -95,13 +98,15 @@ func (c *PublicCallsWebsocket) OnMessage(_ context.Context, _ *http.Request, _ w
 func (c *PublicCallsWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, session sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
 	subscription := c.pubsub.Subscribe("calls:public")
+	var wg sync.WaitGroup
 	if session != nil && session.Get("user_id") != nil {
-		go forward(newCtx, subscription, w)
+		wg.Go(func() { forward(newCtx, subscription, w) })
 	} else {
-		go forwardPublic(newCtx, subscription, w, c.current)
+		wg.Go(func() { forwardPublic(newCtx, subscription, w, c.current) })
 	}
 	return func() {
 		closeSubscription(subscription, "calls")
 		cancel()
+		wg.Wait()
 	}
 }

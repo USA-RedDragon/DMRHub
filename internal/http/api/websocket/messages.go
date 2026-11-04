@@ -22,6 +22,7 @@ package websocket
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
@@ -64,15 +65,17 @@ func (c *MessagesWebsocket) OnConnect(ctx context.Context, r *http.Request, w we
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	subs := make([]pubsub.Subscription, 0, len(topics))
+	var wg sync.WaitGroup
 	for _, topic := range topics {
 		sub := c.pubsub.Subscribe(topic)
 		subs = append(subs, sub)
-		go forward(ctx, sub, w)
+		wg.Go(func() { forward(ctx, sub, w) })
 	}
 	return func() {
 		for _, sub := range subs {
 			closeSubscription(sub, "messages")
 		}
 		cancel()
+		wg.Wait()
 	}
 }

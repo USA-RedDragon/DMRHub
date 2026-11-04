@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -55,6 +56,7 @@ var (
 	errPingTimeout  = errors.New("client did not answer a ping")
 	errWriteFailed  = errors.New("write to the client failed")
 	errInvalidUTF8  = errors.New("client sent a text frame that is not UTF-8")
+	errGoingAway    = errors.New("server closes its websockets")
 )
 
 type policyCloseError struct {
@@ -72,7 +74,9 @@ type Websocket interface {
 	OnMessage(ctx context.Context, r *http.Request, w Writer, session sessions.Session, msg []byte, t int)
 	// OnConnect starts the work of one connection. It keeps the state of
 	// the connection in the returned function, which the handler calls
-	// once when the connection closes.
+	// once when the connection closes, after the last OnMessage. That
+	// function returns when each goroutine that OnConnect started has
+	// returned, so that no work of the connection runs after Conns.Close.
 	OnConnect(ctx context.Context, r *http.Request, w Writer, session sessions.Session) (onDisconnect func())
 }
 
@@ -118,7 +122,7 @@ func createHandler(config *config.Config, ws Websocket, public bool) func(*gin.C
 		if g, ok := utils.Grant(c); ok {
 			r = r.WithContext(utils.ContextWithGrant(r.Context(), g))
 		}
-		handler.serve(session, r, conn, watch)
+		handler.serve(connsOf(c), session, r, conn, watch)
 	}
 }
 
@@ -186,24 +190,39 @@ func originMatches(origin webOrigin, allowed string) bool {
 	return hostOf(origin.scheme, allowed) == origin.host
 }
 
-func (h *WSHandler) serve(s sessions.Session, r *http.Request, conn *websocket.Conn, watch *userWatch) {
+// serve returns when the connection has closed, every goroutine that it
+// started has returned and onDisconnect has run, so that no work of the
+// connection runs after the Close of conns. onDisconnect runs after the
+// last OnMessage.
+func (h *WSHandler) serve(conns *Conns, s sessions.Session, r *http.Request, conn *websocket.Conn, watch *userWatch) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
+	var wg sync.WaitGroup
+	if conns != nil {
+		wg.Go(func() {
+			select {
+			case <-conns.done:
+				cancel(errGoingAway)
+			case <-ctx.Done():
+			}
+		})
+	}
 	if watch != nil {
-		go watch.run(ctx, cancel)
+		wg.Go(func() { watch.run(ctx, cancel) })
 	}
 	writer := &wsWriter{out: make(chan Message, bufferSize), done: ctx.Done(), cancel: cancel}
 
 	onDisconnect := h.handler.OnConnect(ctx, r, writer, s)
-	if onDisconnect != nil {
-		defer onDisconnect()
-	}
 
-	go h.read(ctx, cancel, s, r, conn, writer)
-	go keepalive(ctx, cancel, conn, writer)
+	wg.Go(func() { h.read(ctx, cancel, s, r, conn, writer) })
+	wg.Go(func() { keepalive(ctx, cancel, conn, writer) })
 	writer.drain(ctx, conn)
 
 	closeConn(conn, context.Cause(ctx))
+	wg.Wait()
+	if onDisconnect != nil {
+		onDisconnect()
+	}
 }
 
 // read does not pass ctx to conn.Read, because the end of ctx would close
@@ -284,6 +303,8 @@ func closeConn(conn *websocket.Conn, cause error) {
 		err = conn.Close(websocket.StatusPolicyViolation, policy.reason)
 	case errors.Is(cause, errInvalidUTF8):
 		err = conn.Close(websocket.StatusInvalidFramePayloadData, "invalid UTF-8")
+	case errors.Is(cause, errGoingAway):
+		err = conn.Close(websocket.StatusGoingAway, "server shutting down")
 	case errors.Is(cause, errClientClosed):
 		err = conn.Close(websocket.StatusNormalClosure, "")
 	default:

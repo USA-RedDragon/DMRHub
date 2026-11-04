@@ -22,6 +22,7 @@ package websocket
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -48,9 +49,11 @@ func (c *PeersWebsocket) OnMessage(_ context.Context, _ *http.Request, _ websock
 func (c *PeersWebsocket) OnConnect(ctx context.Context, _ *http.Request, w websocket.Writer, _ sessions.Session) func() {
 	newCtx, cancel := context.WithCancel(ctx)
 	subscription := c.pubsub.Subscribe("hub:events:peers")
-	go forward(newCtx, subscription, w)
+	var wg sync.WaitGroup
+	wg.Go(func() { forward(newCtx, subscription, w) })
 	return func() {
 		closeSubscription(subscription, "peers")
 		cancel()
+		wg.Wait()
 	}
 }

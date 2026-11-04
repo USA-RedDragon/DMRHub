@@ -80,7 +80,12 @@ type Engine struct {
 	cache  wazero.CompilationCache
 	limits Limits
 	keep   time.Duration
+	*store
+}
 
+// store is the runtime of one or more Engines and the modules compiled in
+// it.
+type store struct {
 	compiling sync.Mutex
 	mu        sync.Mutex
 	rt        wazero.Runtime
@@ -97,7 +102,7 @@ type compiled struct {
 
 // NewEngine returns an Engine whose plugins run within limits.
 func NewEngine(limits Limits) *Engine {
-	return &Engine{limits: limits, keep: keepCompiled, modules: map[[sha256.Size]byte]*compiled{}}
+	return &Engine{limits: limits, keep: keepCompiled, store: &store{modules: map[[sha256.Size]byte]*compiled{}}}
 }
 
 // NewCachedEngine returns an Engine whose plugins run within limits, and
@@ -116,14 +121,27 @@ func (e *Engine) Limits() Limits {
 }
 
 // Limited returns an Engine with the cache of e, if any, whose plugins run
-// within limits.
+// within limits. When limits give the runtime the memory limit that the
+// limits of e give it, the Engine runs its plugins in the runtime of e and
+// shares the modules that e compiled, so that a module that e compiled
+// starts without a compile.
 func (e *Engine) Limited(limits Limits) *Engine {
 	l := NewEngine(limits)
 	l.cache, l.keep = e.cache, e.keep
+	if runtimePages(limits) == runtimePages(e.limits) {
+		l.store = e.store
+	}
 	return l
 }
 
-// Close stops the plugins of e and frees its compiled modules.
+// runtimePages is the memory limit of the runtime of an Engine with
+// limits, in pages.
+func runtimePages(limits Limits) uint32 {
+	return uint32(min(2*uint64(limits.MemoryPages), maxPages)) //nolint:gosec // at most maxPages
+}
+
+// Close stops the plugins of e and frees its compiled modules, also those
+// of the Engines that share them through Limited.
 func (e *Engine) Close(ctx context.Context) error {
 	e.mu.Lock()
 	for sum, c := range e.modules {
@@ -159,7 +177,7 @@ func (e *Engine) runtime(ctx context.Context) (wazero.Runtime, error) {
 	if interpret {
 		rc = wazero.NewRuntimeConfigInterpreter()
 	}
-	rc = rc.WithMemoryLimitPages(uint32(min(2*uint64(e.limits.MemoryPages), maxPages))).WithCloseOnContextDone(true) //nolint:gosec // at most maxPages
+	rc = rc.WithMemoryLimitPages(runtimePages(e.limits)).WithCloseOnContextDone(true)
 	if e.cache != nil {
 		rc = rc.WithCompilationCache(e.cache)
 	}

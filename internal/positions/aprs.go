@@ -27,7 +27,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/aprs"
@@ -104,11 +106,18 @@ type Gateway struct {
 	every   time.Duration
 	clock   clock.Clock
 
+	callsigns func(context.Context) ([]string, error)
+	deliver   func(aprs.Message)
+
 	mu     sync.Mutex
 	client *aprs.Client
 	leader bool
-	sent   map[uint]sentPosition
-	obs    observer
+	filter string
+	// inbox is the callsigns of the inbox, which the client reads
+	// without mu since Stop of the client under mu waits for it.
+	inbox atomic.Pointer[map[string]bool]
+	sent  map[uint]sentPosition
+	obs   observer
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -124,6 +133,16 @@ func NewGateway(db *gorm.DB, cfg config.Source, kvStore kv.KV, ps pubsub.PubSub,
 		db: db, cfg: cfg, kv: kvStore, pubsub: ps, version: version, id: hex.EncodeToString(id[:]),
 		every: leaseEvery, clock: clock.Real(), sent: map[uint]sentPosition{},
 	}
+}
+
+// Inbox makes the replica that holds the APRS-IS login ask APRS-IS for the
+// messages to the callsigns that callsigns returns, with any SSID, and
+// hand each to deliver, with the messages that plugins send to those
+// callsigns, which APRS-IS does not send back to the login. With no
+// callsign, the login asks for no messages. The gateway calls callsigns
+// at each lease check. Call it before Start.
+func (g *Gateway) Inbox(callsigns func(context.Context) ([]string, error), deliver func(aprs.Message)) {
+	g.callsigns, g.deliver = callsigns, deliver
 }
 
 // Start follows the stored positions until Stop.
@@ -186,6 +205,51 @@ func (g *Gateway) login() (aprs.Config, bool) {
 	return c, c.Login != ""
 }
 
+// inboxFilter returns the filter of the callsigns of the inbox and the set
+// of those callsigns, or the ones of before when callsigns fails.
+func (g *Gateway) inboxFilter(ctx context.Context) (string, map[string]bool) {
+	g.mu.Lock()
+	filter := g.filter
+	g.mu.Unlock()
+	var inbox map[string]bool
+	if p := g.inbox.Load(); p != nil {
+		inbox = *p
+	}
+	if g.callsigns == nil {
+		return "", nil
+	}
+	calls, err := g.callsigns(ctx)
+	if err != nil {
+		slog.Error("APRS-IS: cannot list the callsigns of the inbox", "error", err)
+		return filter, inbox
+	}
+	if len(calls) == 0 {
+		return "", nil
+	}
+	parts := make([]string, 0, 2*len(calls))
+	inbox = make(map[string]bool, len(calls))
+	for _, c := range calls {
+		c = strings.ToUpper(c)
+		parts = append(parts, c, c+"-*")
+		inbox[c] = true
+	}
+	return "g/" + strings.Join(parts, "/"), inbox
+}
+
+// inInbox reports whether the addressee of m has a callsign of the inbox.
+func (g *Gateway) inInbox(m *aprs.Message) bool {
+	base, _, _ := strings.Cut(strings.ToUpper(m.Addressee), "-")
+	p := g.inbox.Load()
+	return p != nil && (*p)[base]
+}
+
+// fromServer hands the message in line, from APRS-IS, to the inbox.
+func (g *Gateway) fromServer(line string) {
+	if m, ok := aprs.ParseMessage(line); ok && g.inInbox(&m) {
+		g.deliver(m)
+	}
+}
+
 func (g *Gateway) refresh(ctx context.Context) {
 	want, on := g.login()
 	if !on {
@@ -196,9 +260,15 @@ func (g *Gateway) refresh(ctx context.Context) {
 		return
 	}
 	leader := g.holdLease(ctx)
+	var inbox map[string]bool
+	if leader {
+		want.Filter, inbox = g.inboxFilter(ctx)
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.leader = leader
+	g.filter = want.Filter
+	g.inbox.Store(&inbox)
 	if g.client != nil && (!leader || g.client.Config() != want) {
 		g.client.Stop()
 		g.client = nil
@@ -207,6 +277,9 @@ func (g *Gateway) refresh(ctx context.Context) {
 		g.client = aprs.NewClient(want, g.version)
 		if g.obs.login != nil {
 			g.client.OnLogin(g.obs.login)
+		}
+		if g.deliver != nil {
+			g.client.OnLine(g.fromServer)
 		}
 		g.client.Start(ctx)
 	}
@@ -266,8 +339,7 @@ func (g *Gateway) sendMessage(m *aprs.Message) bool {
 	if !g.leader || g.client == nil {
 		return false
 	}
-	login, _ := g.login()
-	line, err := login.MessageLine(m)
+	line, err := g.client.Config().MessageLine(m)
 	if err != nil {
 		slog.Warn("APRS-IS: not sending a message", "source", m.Source, "error", err)
 		return false
@@ -275,6 +347,9 @@ func (g *Gateway) sendMessage(m *aprs.Message) bool {
 	if err := g.client.Send(line); err != nil {
 		slog.Warn("APRS-IS: cannot send a message", "source", m.Source, "error", err)
 		return false
+	}
+	if g.deliver != nil && g.inInbox(m) {
+		g.deliver(*m)
 	}
 	return true
 }

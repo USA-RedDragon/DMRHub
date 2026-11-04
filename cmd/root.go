@@ -61,6 +61,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/retention"
 	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
+	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/USA-RedDragon/configulator/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/go-co-op/gocron/v2"
@@ -594,6 +595,11 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 	sm.offline = offlinealert.NewChecker(current, database, kvStore)
 	sm.offline.Start(ctx)
 	sm.aprs = positions.NewGateway(database, current, kvStore, pubsubClient, version)
+	sm.aprs.Inbox(func(context.Context) ([]string, error) { return models.PluginSwitchCallsigns(database) }, func(m aprs.Message) {
+		if err := plugins.PublishAPRS(pubsubClient, &pluginv1.APRSMessage{Source: m.Source, Addressee: m.Addressee, Text: m.Text, Number: m.Number}); err != nil {
+			slog.Error("APRS-IS: cannot hand a message to the plugins", "error", err)
+		}
+	})
 	sm.aprs.Start(ctx)
 	positionPusher := positions.NewPusher(database, pubsubClient)
 	hub.SetPositionNotify(positionPusher.Push)
@@ -602,7 +608,7 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 			Send:   func(m aprs.Message) error { return positions.PublishMessage(pubsubClient, m) },
 			On:     func() bool { return current.Get().DMR.Positions.APRSIS.Callsign != "" },
 			Limits: kvStore,
-		}), plugins.WithTexts(plugintexts.New(database, hub)), plugins.WithPrompts(hub))
+		}), plugins.WithAPRSInbox(), plugins.WithTexts(plugintexts.New(database, hub)), plugins.WithPrompts(hub))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

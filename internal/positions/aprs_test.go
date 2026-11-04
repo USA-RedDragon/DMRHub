@@ -105,6 +105,12 @@ type handled struct {
 
 func (g *gateway) open() (*positions.Gateway, *watch) {
 	g.t.Helper()
+	return g.openWith(nil)
+}
+
+// openWith is open with setup, which gets the gateway before Start.
+func (g *gateway) openWith(setup func(*positions.Gateway)) (*positions.Gateway, *watch) {
+	g.t.Helper()
 	w := &watch{refreshed: make(chan bool, 1), handled: make(chan handled, 32), logins: make(chan bool, 16), messages: make(chan bool, 32)}
 	gw := positions.NewGateway(g.db, g.cfg, g.kv, g.ps, "1.2.3")
 	positions.SetClock(gw, 50*time.Millisecond, g.clock)
@@ -115,6 +121,9 @@ func (g *gateway) open() (*positions.Gateway, *watch) {
 		}
 	}, func(p models.Position, sent bool) { w.handled <- handled{p, sent} }, func(verified bool) { w.logins <- verified })
 	positions.ObserveMessages(gw, func(_ aprs.Message, sent bool) { w.messages <- sent })
+	if setup != nil {
+		setup(gw)
+	}
 	gw.Start(context.Background())
 	g.t.Cleanup(gw.Stop)
 	return gw, w

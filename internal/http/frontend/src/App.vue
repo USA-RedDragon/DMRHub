@@ -52,7 +52,7 @@ useHead({
   meta: [
     {
       name: 'description',
-      content: 'DMRHub is a DMR network server like TGIF or BrandMeister ran in a single binary.',
+      content: 'DMRHub is a DMR network server in a single binary.',
     },
   ],
 });

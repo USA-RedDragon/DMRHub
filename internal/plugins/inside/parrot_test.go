@@ -83,6 +83,7 @@ func TestTheBuiltinParrotAnswersThroughTheHub(t *testing.T) {
 	listener, err := plugins.Start(context.Background(), &cfg, database, ps, h, func(r *plugins.Registry) { h.SetPlugins(r) }, nil)
 	require.NoError(t, err)
 	t.Cleanup(listener.Stop)
+	updated := pluginUpdates(t, database)
 	m := inside.NewManager(inside.Deps{
 		DB: database, PubSub: ps, KV: store, Instance: "a", Version: "v1.3.4",
 		Service: listener.Service(), Registry: listener.Registry(), Engine: engineOn(engine, clock.NewFake(time.Now())), Timing: fast(),
@@ -90,11 +91,11 @@ func TestTheBuiltinParrotAnswersThroughTheHub(t *testing.T) {
 	require.NoError(t, m.Start(context.Background(), true))
 	t.Cleanup(func() { m.Stop(context.Background()) })
 	parrot := builtinOf(t, &cluster{db: database}, "parrot")
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		p, err := models.FindPlugin(database, parrot.ID)
 		owner, owned := listener.Registry().Owner(9990)
 		return err == nil && p.Online(time.Now()) && owned && owner == parrot.ID
-	}, 60*time.Second, 50*time.Millisecond, "the parrot runs")
+	}, updated)
 
 	sent := call(t)
 	for _, p := range sent {
@@ -102,14 +103,10 @@ func TestTheBuiltinParrotAnswersThroughTheHub(t *testing.T) {
 		time.Sleep(60 * time.Millisecond)
 	}
 	for i := range sent {
-		select {
-		case rp := <-srv.Packets:
-			require.Equal(t, repeater, rp.RepeaterID, "burst %d", i)
-			require.Equal(t, uint(9990), rp.Packet.Src, "burst %d", i)
-			require.Equal(t, caller, rp.Packet.Dst, "burst %d", i)
-			require.False(t, rp.Packet.GroupCall, "burst %d", i)
-		case <-time.After(30 * time.Second):
-			t.Fatalf("burst %d of the reply did not reach the repeater", i)
-		}
+		rp := <-srv.Packets
+		require.Equal(t, repeater, rp.RepeaterID, "burst %d", i)
+		require.Equal(t, uint(9990), rp.Packet.Src, "burst %d", i)
+		require.Equal(t, caller, rp.Packet.Dst, "burst %d", i)
+		require.False(t, rp.Packet.GroupCall, "burst %d", i)
 	}
 }

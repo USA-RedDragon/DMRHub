@@ -105,3 +105,28 @@ func TestAClientWithoutAServerSendsNothing(t *testing.T) {
 	defer c.Stop()
 	assert.ErrorIs(t, c.Send(line), aprs.ErrNotLoggedIn)
 }
+
+func TestTheClientLogsInWithItsFilterAndReadsWhatTheServerSends(t *testing.T) {
+	t.Parallel()
+	srv := aprstest.NewServer(t, "12345")
+	c := aprs.NewClient(aprs.Config{Login: "K0CALL-10", Passcode: "12345", Server: srv.Addr(), Filter: "g/N1CALL/N1CALL-*"}, "1")
+	logins := make(chan bool, 1)
+	c.OnLogin(func(verified bool) { logins <- verified })
+	got := make(chan string, 4)
+	c.OnLine(func(line string) { got <- line })
+	c.Start(context.Background())
+	t.Cleanup(c.Stop)
+	require.True(t, reply(t, logins))
+	assert.Equal(t, []string{"user K0CALL-10 pass 12345 vers DMRHub 1 filter g/N1CALL/N1CALL-*"}, srv.Logins())
+	msg := "N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL-7 :Hello{1"
+	srv.Push(msg)
+	ctx, cancel := context.WithTimeout(t.Context(), aprs.ReadTimeout)
+	defer cancel()
+	select {
+	case line := <-got:
+		assert.Equal(t, msg, line)
+	case <-ctx.Done():
+		t.Fatal("the client did not read the line")
+	}
+	assert.Empty(t, got, "the client handed on a server comment")
+}

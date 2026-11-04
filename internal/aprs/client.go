@@ -56,6 +56,7 @@ type Client struct {
 	conn     net.Conn
 	verified bool
 	onLogin  func(verified bool)
+	onLine   func(line string)
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -75,6 +76,13 @@ func (c *Client) Config() Config {
 // server: true when the server verified the login. Call it before Start.
 func (c *Client) OnLogin(f func(verified bool)) {
 	c.onLogin = f
+}
+
+// OnLine sets f, which the client calls with each line of the server that
+// is not a comment, such as the packets that pass the filter of the login.
+// Call it before Start.
+func (c *Client) OnLine(f func(line string)) {
+	c.onLine = f
 }
 
 // Start connects and logs in, and does again each time the connection
@@ -161,7 +169,11 @@ func (c *Client) session(ctx context.Context) error {
 		c.mu.Unlock()
 		_ = conn.Close()
 	}()
-	login := fmt.Sprintf("user %s pass %s vers DMRHub %s\r\n", c.cfg.Login, c.cfg.Passcode, c.version)
+	login := fmt.Sprintf("user %s pass %s vers DMRHub %s", c.cfg.Login, c.cfg.Passcode, c.version)
+	if c.cfg.Filter != "" {
+		login += " filter " + c.cfg.Filter
+	}
+	login += "\r\n"
 	if err := conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 		return fmt.Errorf("could not log in: %w", err)
 	}
@@ -184,6 +196,12 @@ func (c *Client) session(ctx context.Context) error {
 }
 
 func (c *Client) serverLine(line string) {
+	if !strings.HasPrefix(line, "#") {
+		if c.onLine != nil && line != "" {
+			c.onLine(line)
+		}
+		return
+	}
 	fields := strings.Fields(strings.TrimPrefix(line, "#"))
 	if len(fields) < 3 || fields[0] != "logresp" || !strings.EqualFold(fields[1], c.cfg.Login) {
 		return

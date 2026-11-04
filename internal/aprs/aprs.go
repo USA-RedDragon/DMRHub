@@ -41,6 +41,9 @@ type Config struct {
 	Passcode string
 	// Server is the APRS-IS server, as host:port.
 	Server string
+	// Filter is the server-side filter that the login asks for, such as
+	// "g/N0CALL/N0CALL-*", or empty for none.
+	Filter string
 }
 
 // Passcode returns the APRS-IS passcode of the callsign login, whose SSID

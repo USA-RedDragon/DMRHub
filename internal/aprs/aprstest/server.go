@@ -42,6 +42,7 @@ type Server struct {
 	logins  []string
 	lines   []string
 	conns   []net.Conn
+	clients []net.Conn
 	changed chan struct{}
 	wg      sync.WaitGroup
 }
@@ -81,7 +82,17 @@ func (s *Server) Drop() {
 	for _, c := range s.conns {
 		_ = c.Close()
 	}
-	s.conns = nil
+	s.conns, s.clients = nil, nil
+}
+
+// Push sends line to each verified client, as APRS-IS sends the packets
+// that pass the filter of a client.
+func (s *Server) Push(line string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.clients {
+		_, _ = c.Write([]byte(line + "\r\n"))
+	}
 }
 
 // Logins returns the login lines that the server received.
@@ -170,7 +181,13 @@ func (s *Server) serve(c net.Conn) {
 	if verified {
 		state = "verified"
 	}
-	if _, err := c.Write([]byte("# logresp " + fields[1] + " " + state + ", server TEST\r\n")); err != nil {
+	s.mu.Lock()
+	_, err := c.Write([]byte("# logresp " + fields[1] + " " + state + ", server TEST\r\n"))
+	if err == nil && verified {
+		s.clients = append(s.clients, c)
+	}
+	s.mu.Unlock()
+	if err != nil {
 		return
 	}
 	for r.Scan() {

@@ -87,6 +87,49 @@ func (c Config) MessageLine(m *Message) (string, error) {
 	return m.Source + ">" + ToCall + ",TCPIP*:" + m.Info(), nil
 }
 
+// maxThirdParty is how many third-party headers ParseMessage unwraps.
+const maxThirdParty = 4
+
+// ParseMessage reads the APRS message in line, a TNC2 line from APRS-IS,
+// and returns false for a line that holds no message. It unwraps a
+// third-party header. Number keeps the reply-ack form "MM}AA" of APRS 1.1
+// as it came, since the ack of such a message is "ack" and all of it.
+func ParseMessage(line string) (Message, bool) {
+	for range maxThirdParty + 1 {
+		header, info, ok := strings.Cut(line, ":")
+		if !ok || strings.HasPrefix(line, "#") {
+			return Message{}, false
+		}
+		source, _, ok := strings.Cut(header, ">")
+		if !ok || source == "" {
+			return Message{}, false
+		}
+		if inner, third := strings.CutPrefix(info, "}"); third {
+			line = inner
+			continue
+		}
+		if len(info) < 11 || info[0] != ':' || info[10] != ':' {
+			return Message{}, false
+		}
+		m := Message{Source: source, Addressee: strings.TrimRight(info[1:10], " "), Text: info[11:]}
+		if m.Addressee == "" {
+			return Message{}, false
+		}
+		if i := strings.LastIndexByte(m.Text, '{'); i >= 0 && messageNumber(m.Text[i+1:]) {
+			m.Text, m.Number = m.Text[:i], m.Text[i+1:]
+		}
+		return m, true
+	}
+	return Message{}, false
+}
+
+// messageNumber reports whether n is a message number: 1 to 5 letters or
+// digits, or the reply-ack form "MM}" or "MM}AA".
+func messageNumber(n string) bool {
+	id, ack, reply := strings.Cut(n, "}")
+	return id != "" && len(id) <= MaxMessageNumber && alphanumeric(id) && (!reply || (len(ack) <= MaxMessageNumber && alphanumeric(ack)))
+}
+
 func printable(s string) bool {
 	for i := range len(s) {
 		if s[i] < 0x20 || s[i] > 0x7e {

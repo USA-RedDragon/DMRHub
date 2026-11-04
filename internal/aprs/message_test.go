@@ -61,3 +61,29 @@ func TestAMessageThatAPRSCannotCarryIsRefused(t *testing.T) {
 		require.ErrorIs(t, err, aprs.ErrMessage)
 	}
 }
+
+func TestAMessageFromAPRSISIsRead(t *testing.T) {
+	t.Parallel()
+	for line, want := range map[string]aprs.Message{
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL-7 :Hello there{12":                  {Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "Hello there", Number: "12"},
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL-7 :See you {at} six{AB}7":           {Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "See you {at} six", Number: "AB}7"},
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL-7 :ack12":                           {Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "ack12"},
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL   :no number":                       {Source: "N2CALL-9", Addressee: "N1CALL", Text: "no number"},
+		"N3CALL>APRS,TCPIP*,qAC,T2TEST:}N2CALL-9>APDR16,TCPIP,N3CALL*::N1CALL-7 :hi{3": {Source: "N2CALL-9", Addressee: "N1CALL-7", Text: "hi", Number: "3"},
+	} {
+		got, ok := aprs.ParseMessage(line)
+		require.True(t, ok, line)
+		assert.Equal(t, want, got, line)
+	}
+	for _, line := range []string{
+		"# aprsc 2.1 3 Nov 2026 12:00:00 GMT T2TEST",
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST:!3016.03N/09744.59W>",
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::SHORT:hi",
+		"N2CALL-9>APDR16,TCPIP*,qAC,T2TEST::N1CALL-7 hi",
+		"no header at all",
+		"N3CALL>APRS:}}}}}}}}}",
+	} {
+		_, ok := aprs.ParseMessage(line)
+		assert.False(t, ok, line)
+	}
+}

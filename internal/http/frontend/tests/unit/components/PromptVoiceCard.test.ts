@@ -114,11 +114,24 @@ describe('PromptList', () => {
     const values: Record<string, unknown> = { 'dmr.routing.spoken-refusals': true, 'dmr.routing.prompt-voice': 'kitten-mini-hugo' };
     const wrapper = mount(PromptList, { props: { read: (p: string) => values[p] } });
     const rows = wrapper.findAll('tr[data-test^="prompt-"]');
-    expect(rows.map((r) => r.attributes('data-test'))).toEqual(SPOKEN_REFUSALS.map((r) => `prompt-${r.clip}`));
+    expect(rows.map((r) => r.attributes('data-test'))).toEqual(
+      SPOKEN_REFUSALS.filter((r) => r.clip !== 'channel-busy').map((r) => `prompt-${r.clip}`),
+    );
     expect(wrapper.find('[data-test="prompt-wrong-code"]').text()).toContain('"Wrong code."');
     await wrapper.find('[data-test="prompt-wrong-code"] [data-test="prompt-play"]').trigger('click');
     await flushPromises();
     expect(played).toEqual(['/api/v1/config/prompts/wrong-code.wav?voice=kitten-mini-hugo']);
-    expect(SPOKEN_REFUSALS.map((r) => r.clip)).not.toContain('channel-busy');
+  });
+
+  it('lists Channel busy only when the first call holds the timeslot', () => {
+    const values: Record<string, unknown> = { 'dmr.routing.spoken-refusals': true, 'dmr.routing.contention': 'mix' };
+    const mix = mount(PromptList, { props: { read: (p: string) => values[p] } });
+    expect(mix.find('[data-test="prompt-channel-busy"]').exists()).toBe(false);
+
+    values['dmr.routing.contention'] = 'first';
+    const first = mount(PromptList, { props: { read: (p: string) => values[p] } });
+    const rows = first.findAll('tr[data-test^="prompt-"]').map((r) => r.attributes('data-test'));
+    expect(rows).toEqual(SPOKEN_REFUSALS.map((r) => `prompt-${r.clip}`));
+    expect(first.find('[data-test="prompt-channel-busy"]').text()).toContain('"Channel busy."');
   });
 });

@@ -133,6 +133,7 @@ func turnSpokenPromptsOn(ctx context.Context, r *runner) error {
 		return errors.New("the config has no dmr.routing")
 	}
 	routing["spoken-refusals"] = true
+	routing["contention"] = "first"
 	return admin.do(ctx, http.MethodPut, "/api/v1/config", cfg, nil)
 }
 

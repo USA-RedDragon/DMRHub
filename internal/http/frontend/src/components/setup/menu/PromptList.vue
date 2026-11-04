@@ -29,7 +29,7 @@
         </TableRow>
       </TableHeader>
       <TableBody>
-        <TableRow v-for="r in SPOKEN_REFUSALS" :key="r.clip" :data-test="`prompt-${r.clip}`">
+        <TableRow v-for="r in shown" :key="r.clip" :data-test="`prompt-${r.clip}`">
           <TableCell class="whitespace-normal">{{ r.when }}</TableCell>
           <TableCell>
             <span class="inline-flex items-center gap-2">
@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { playPrompt, SPOKEN_REFUSALS } from '@/lib/prompts';
@@ -63,6 +63,7 @@ import { setupPreviewURL } from '@/services/prompts';
 
 const props = defineProps<{ read: Read }>();
 const error = ref('');
+const shown = computed(() => SPOKEN_REFUSALS.filter((r) => !r.applies || r.applies(props.read)));
 
 const play = async (clip: string) => {
   error.value = '';

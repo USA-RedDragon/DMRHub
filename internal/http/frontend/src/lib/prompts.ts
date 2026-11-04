@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import type { Option } from '@/lib/setupMenu';
+import type { Option, Read } from '@/lib/setupMenu';
 
 /** The voice sets that DMRHub embeds, as internal/prompts/voices holds them. */
 export const PROMPT_VOICES: Option[] = [
@@ -27,14 +27,29 @@ export const PROMPT_VOICES: Option[] = [
   { value: 'kokoro-bm-lewis', label: 'Lewis' },
 ];
 
+/** A refusal or on-air code reply that the hub speaks, with when it plays. */
+export interface SpokenRefusal {
+  clip: string;
+  when: string;
+  text: string;
+  /** Reports whether the settings that read gives make the hub play it, when not always. */
+  applies?: (read: Read) => boolean;
+}
+
 /** The refusals and on-air code replies that the hub speaks, with when each plays. */
-export const SPOKEN_REFUSALS: { clip: string; when: string; text: string }[] = [
+export const SPOKEN_REFUSALS: SpokenRefusal[] = [
   { clip: 'talkgroup-not-found', when: 'The talkgroup does not exist', text: 'Talkgroup not found.' },
   { clip: 'talkgroup-restricted', when: 'The talkgroup is not open to the repeater', text: 'Talkgroup restricted.' },
   { clip: 'talkgroup-blocked', when: 'The repeater blocks the talkgroup', text: 'Talkgroup blocked here.' },
   { clip: 'timeslot-reserved', when: 'The timeslot is locked to other users', text: 'Timeslot reserved.' },
   { clip: 'radio-id-not-registered', when: 'The radio may not transmit on this network', text: 'Radio ID not registered.' },
   { clip: 'time-out', when: 'The transmission ran past the longest one allowed', text: 'Time out.' },
+  {
+    clip: 'channel-busy',
+    when: 'Another call held the timeslot when the radio keyed up',
+    text: 'Channel busy.',
+    applies: (read) => read('dmr.routing.contention') === 'first',
+  },
   { clip: 'code-needed', when: 'The radio needs its on-air code', text: 'Code needed.' },
   { clip: 'unlocked', when: 'The on-air code was right', text: 'Unlocked.' },
   { clip: 'wrong-code', when: 'The on-air code was wrong', text: 'Wrong code.' },

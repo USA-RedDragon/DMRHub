@@ -38,6 +38,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd/dmrdauth"
 	"github.com/USA-RedDragon/dmrgo/v2/vocoder"
+	"github.com/USA-RedDragon/dmrgo/v2/voice"
 )
 
 const (
@@ -269,55 +270,49 @@ func (p *peer) play(t transmission, stream uint, at func(k int) error) error {
 	return nil
 }
 
-func voiceLC(group bool, dst, src uint, dt enums.DataType) (burst, error) {
-	lc := pdu.FullLinkControl{BurstDataType: dt}
-	var err error
-	if group {
-		err = lc.SetGroupVoice(pdu.FLCGroupVoice{GroupAddress: uint32(dst), SourceAddress: uint32(src)})
-	} else {
-		err = lc.SetUnitToUnit(pdu.FLCUnitToUnit{TargetAddress: uint32(dst), SourceAddress: uint32(src)})
-	}
+// voiceCall returns the bursts of a call of frames voice bursts in silence,
+// with two Voice LC Headers and one terminator. The voice bursts carry the
+// embedded LC of the call, as a radio sends them.
+func voiceCall(group bool, dst, src uint, frames int) ([]burst, error) {
+	tx, err := voice.NewTransmitter(&voice.TransmitterConfig{
+		ColorCode: colorCode, Slot: enums.Slot2, Source: layer2.SyncSourceMS,
+		Silence: vocoder.AMBESilenceSlot(), Headers: 2, Terminators: 1,
+	})
 	if err != nil {
-		return burst{}, fmt.Errorf("voice LC: %w", err)
+		return nil, fmt.Errorf("voice transmitter: %w", err)
 	}
-	raw, err := layer2.BuildBurst(&lc, colorCode, layer2.SyncSourceMS)
-	if err != nil {
-		return burst{}, fmt.Errorf("voice LC burst: %w", err)
+	if err := tx.Start(0, voice.Call{Group: group, Target: uint32(dst), Source: uint32(src)}, nil); err != nil {
+		return nil, fmt.Errorf("voice call: %w", err)
 	}
-	value := uint(dmrconst.DTypeVoiceHead)
-	if dt == enums.DataTypeTerminatorWithLC {
-		value = uint(dmrconst.DTypeVoiceTerm)
+	slots := frames * layer2.VoiceSlotsPerBurst
+	stopped := false
+	out := make([]burst, 0, frames+3)
+	for at := time.Duration(0); at < time.Duration(frames+10)*voiceBurstGap; at += voiceBurstGap {
+		for slots > 0 && tx.VocoderSlot(vocoder.AMBESilenceSlot()) == nil {
+			slots--
+		}
+		if slots == 0 && !stopped {
+			tx.Stop(at)
+			stopped = true
+		}
+		for _, o := range tx.Tick(at, nil) {
+			switch o.Kind {
+			case voice.OutputBurst:
+				var d dmrd.Data
+				if err := d.SetHint(o.Hint); err != nil {
+					return nil, fmt.Errorf("voice burst: %w", err)
+				}
+				out = append(out, burst{frame: dmrconst.FrameType(d.Frame), value: uint(d.Value), raw: o.Burst})
+			case voice.OutputEnded:
+				return out, nil
+			case voice.OutputInterrupted, voice.OutputInterruptFailed, voice.OutputInterruptCanceled:
+			}
+		}
 	}
-	return burst{frame: dmrconst.FrameDataSync, value: value, raw: raw}, nil
+	return nil, errors.New("the voice call did not end")
 }
 
-func voiceCall(group bool, dst, src uint, frames int) ([]burst, error) {
-	head, err := voiceLC(group, dst, src, enums.DataTypeVoiceLCHeader)
-	if err != nil {
-		return nil, err
-	}
-	out := []burst{head, head}
-	silence := vocoder.AMBESilence()
-	for i := range frames {
-		pos := i % 6
-		vb, _ := enums.VoiceBurstAt(pos)
-		raw, err := layer2.BuildVoiceBurst([3]vocoder.AMBEFrame{silence, silence, silence}, vb,
-			pdu.EmbeddedSignalling{ColorCode: colorCode}, [4]byte{}, layer2.SyncSourceMS)
-		if err != nil {
-			return nil, fmt.Errorf("voice burst: %w", err)
-		}
-		f := dmrconst.FrameVoice
-		if pos == 0 {
-			f = dmrconst.FrameVoiceSync
-		}
-		out = append(out, burst{frame: f, value: uint(pos), raw: raw})
-	}
-	term, err := voiceLC(group, dst, src, enums.DataTypeTerminatorWithLC)
-	if err != nil {
-		return nil, err
-	}
-	return append(out, term), nil
-}
+const voiceBurstGap = 60 * time.Millisecond
 
 func dataBurst(raw layer2.RawBurst) burst {
 	return burst{frame: dmrconst.FrameDataSync, value: uint(raw.SlotType().DataType), raw: raw}

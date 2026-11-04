@@ -231,7 +231,12 @@ func featureOf(r *pluginv1.Request) pluginv1.Feature {
 	case *pluginv1.Request_Repeater:
 		return pluginv1.Feature_FEATURE_REPEATER
 	case *pluginv1.Request_SendText:
+		if r.GetSendText().ReplyTo != nil {
+			return pluginv1.Feature_FEATURE_PROMPT
+		}
 		return pluginv1.Feature_FEATURE_SEND_TEXT
+	case *pluginv1.Request_PlayPrompt:
+		return pluginv1.Feature_FEATURE_PROMPT
 	case *pluginv1.Request_AprsSend:
 		return pluginv1.Feature_FEATURE_APRS
 	}
@@ -341,6 +346,39 @@ func (c *Conn) SendText(ctx context.Context, source, radio uint32, body string) 
 		return "", err
 	}
 	return a.GetTextSent().GetFormat(), nil
+}
+
+// ReplyText asks the hub to answer text, a Text to one of the plugin's
+// IDs, with body from source, and returns the name of the format the hub
+// sent it in. The hub builds the answer in the exact format of text, not of
+// another text of the radio, and sends it through the repeater and
+// timeslot that text came on. It returns ErrNoFormat, and the hub sends
+// nothing, when it cannot build that format again exactly or does not
+// trust the repeater of text, and ErrUnsupported from a hub without
+// FEATURE_PROMPT, which would answer in another format.
+func (c *Conn) ReplyText(ctx context.Context, source uint32, text *pluginv1.Text, body string) (string, error) {
+	if err := checkText(body); err != nil {
+		return "", err
+	}
+	id := text.GetId()
+	a, err := c.Request(ctx, &pluginv1.Request{Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{
+		Source: source, Radio: text.GetSource(), Body: body, ReplyTo: &id,
+	}}})
+	if err != nil {
+		return "", err
+	}
+	return a.GetTextSent().GetFormat(), nil
+}
+
+// PlayPrompt asks the hub to play p, spoken prompts, to a radio as a
+// private voice call from one of the plugin's IDs, as PlayPrompt in the
+// protocol describes. It returns once the hub queued the call.
+func (c *Conn) PlayPrompt(ctx context.Context, p *pluginv1.PlayPrompt) error {
+	if err := checkText(p.GetClips()...); err != nil {
+		return err
+	}
+	_, err := c.Request(ctx, &pluginv1.Request{Op: &pluginv1.Request_PlayPrompt{PlayPrompt: p}})
+	return err
 }
 
 // SendAPRS asks the hub to send the APRS message m on its APRS-IS login.

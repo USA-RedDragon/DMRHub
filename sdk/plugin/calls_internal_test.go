@@ -12,6 +12,7 @@ package plugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
@@ -236,5 +237,43 @@ func TestATextOnBothStreamsOfAMoveComesOnce(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] != 5 {
 		t.Fatalf("got the texts %v, want 5 once, then 6", ids)
+	}
+}
+
+func TestAReplyGoesOnlyToAHubThatAnswersInTheFormatOfTheText(t *testing.T) {
+	t.Parallel()
+	got := make(chan *pluginv1.ConnectRequest, 2)
+	hub := func(features ...pluginv1.Feature) func(pluginv1.PluginService_ConnectServer) error {
+		return func(s pluginv1.PluginService_ConnectServer) error {
+			welcomeWith(s, features...)
+			for {
+				m, err := s.Recv()
+				if err != nil {
+					return fmt.Errorf("the stream ended: %w", err)
+				}
+				got <- m
+				answer(s, &pluginv1.Answer{Id: m.GetRequest().GetId(), Result: &pluginv1.Answer_TextSent{TextSent: &pluginv1.TextSent{Format: "TMS"}}})
+			}
+		}
+	}
+	opts := startHub(t, hub(pluginv1.Feature_FEATURE_SEND_TEXT), hub(pluginv1.Feature_FEATURE_SEND_TEXT, pluginv1.Feature_FEATURE_PROMPT))
+	text := &pluginv1.Text{Id: 41, Source: 1000001, Destination: 5000, Format: "TMS", Body: "STATUS"}
+	old := dial(t, opts)
+	if _, err := old.ReplyText(t.Context(), 5000, text, "TS2"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("ReplyText to a hub without FEATURE_PROMPT = %v, want ErrUnsupported", err)
+	}
+	if err := old.PlayPrompt(t.Context(), &pluginv1.PlayPrompt{Source: 5000, Radio: 1000001, Slot: 2, Clips: []string{"digit-2"}}); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("PlayPrompt to a hub without FEATURE_PROMPT = %v, want ErrUnsupported", err)
+	}
+	_ = old.Close()
+	c := dial(t, opts)
+	format, err := c.ReplyText(t.Context(), 5000, text, "TS2")
+	if err != nil || format != "TMS" {
+		t.Fatalf("ReplyText = %q, %v", format, err)
+	}
+	m := within(t, got, "the reply")
+	want := &pluginv1.SendText{Source: 5000, Radio: 1000001, Body: "TS2", ReplyTo: proto.Uint64(41)}
+	if !proto.Equal(m.GetRequest().GetSendText(), want) {
+		t.Fatalf("the hub got %v, want %v", m.GetRequest().GetSendText(), want)
 	}
 }

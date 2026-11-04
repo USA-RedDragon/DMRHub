@@ -25,6 +25,7 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db"
@@ -33,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/http"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/utils"
+	"github.com/USA-RedDragon/DMRHub/internal/http/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/bubble"
@@ -52,6 +54,27 @@ type TestDB struct {
 	stop     context.CancelFunc
 	config   *config.Config
 	dir      string
+	conns    *websocket.Conns
+}
+
+// closeWait bounds the wait for the websockets of a test router to end,
+// only to end a test whose websocket never ends.
+const closeWait = time.Minute
+
+// Websockets returns the option of http.CreateRouter that keeps the
+// websockets of the router in a set that the cleanups of tb close, and
+// wait for, before those that tb registered earlier, such as the one that
+// closes the database. httptest.Server.Close does not wait for them.
+func Websockets(tb testing.TB) http.Option {
+	conns := websocket.NewConns()
+	tb.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+		defer cancel()
+		if err := conns.Close(ctx); err != nil {
+			tb.Errorf("the websockets of the test router did not end: %v", err)
+		}
+	})
+	return http.WithWebsockets(conns)
 }
 
 func (t *TestDB) useDB(cfg *config.Config) error {
@@ -72,6 +95,11 @@ func (t *TestDB) KV() kv.KV {
 }
 
 func (t *TestDB) CloseDB() {
+	if t.conns != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+		_ = t.conns.Close(ctx)
+		cancel()
+	}
 	if t.hub != nil {
 		t.hub.Stop(context.Background())
 		t.hub = nil
@@ -181,7 +209,8 @@ func CreateTestDBRouterWithConfig(change func(*config.Config), opts ...http.Opti
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	opts = append([]http.Option{http.WithKV(kvStore)}, opts...)
+	t.conns = websocket.NewConns()
+	opts = append([]http.Option{http.WithKV(kvStore), http.WithWebsockets(t.conns)}, opts...)
 	return http.CreateRouter(ctx, &defConfig, t.hub, t.database, ps, ready, nil, "test", "deadbeef", opts...), &t, nil
 }
 
@@ -254,7 +283,8 @@ func CreateTestDBRouterWithHub() (*gin.Engine, *TestDB, error) {
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
+	t.conns = websocket.NewConns()
+	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore), http.WithWebsockets(t.conns)), &t, nil
 }
 
 // ConfigOption is a function that mutates a config before the test router is created.
@@ -335,7 +365,8 @@ func CreateTestDBRouterWithOptions(opts ...ConfigOption) (*gin.Engine, *TestDB, 
 	ready := &atomic.Bool{}
 	ready.Store(true)
 
-	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore)), &t, nil
+	t.conns = websocket.NewConns()
+	return http.CreateRouter(ctx, &defConfig, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", http.WithKV(kvStore), http.WithWebsockets(t.conns)), &t, nil
 }
 
 // ReplicaRouter returns the router of a second copy of the app on the
@@ -366,5 +397,5 @@ func (t *TestDB) ReplicaRouter(tb testing.TB) *gin.Engine {
 	})
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	return http.CreateRouter(ctx, t.config, dmrHub, t.database, ps, ready, nil, "test", "deadbeef")
+	return http.CreateRouter(ctx, t.config, dmrHub, t.database, ps, ready, nil, "test", "deadbeef", Websockets(tb))
 }

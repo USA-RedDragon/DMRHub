@@ -73,7 +73,7 @@ func listenHub(t *testing.T, stack *testutils.IntegrationStack, change func(*con
 	ready.Store(true)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	router := internalhttp.CreateRouter(ctx, &cfg, stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef", internalhttp.WithKV(stack.KV))
+	router := internalhttp.CreateRouter(ctx, &cfg, stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef", internalhttp.WithKV(stack.KV), testutils.Websockets(t))
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/listen", c

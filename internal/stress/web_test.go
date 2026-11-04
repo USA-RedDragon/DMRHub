@@ -53,7 +53,7 @@ func (r *rig) web(t *testing.T) *web {
 	gin.SetMode(gin.ReleaseMode)
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	router := dmrhttp.CreateRouter(context.Background(), r.stack.Config, r.stack.Hub, r.stack.DB, r.stack.PubSub, ready, nil, "stress", "stress")
+	router := dmrhttp.CreateRouter(context.Background(), r.stack.Config, r.stack.Hub, r.stack.DB, r.stack.PubSub, ready, nil, "stress", "stress", testutils.Websockets(t))
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return &web{router: router, srv: srv}

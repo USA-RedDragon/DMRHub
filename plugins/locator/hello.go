@@ -22,7 +22,7 @@ package locator
 import pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 
 // Hello says who the location server is, and that it asks for 5050 to
-// 5059, the IDs that BrandMeister uses.
+// 5059, the location service IDs in common use.
 func Hello() *pluginv1.Hello {
 	return &pluginv1.Hello{
 		Name:        "Location server",

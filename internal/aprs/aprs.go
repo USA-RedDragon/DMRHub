@@ -65,8 +65,8 @@ func Passcode(login string) string {
 var ErrCallsign = errors.New("invalid APRS callsign")
 
 // Line returns the TNC2 line of a position from the user source heard on
-// the repeater or hotspot via, in the IGate form that BrandMeister's gateway
-// uses: source>ToCall,via*,qAR,Login:info.
+// the repeater or hotspot via, in the IGate form that DMR network gateways
+// use: source>ToCall,via*,qAR,Login:info.
 func (c Config) Line(source, via, info string) (string, error) {
 	for _, call := range []string{source, via, c.Login} {
 		if !validCallsign(call) {

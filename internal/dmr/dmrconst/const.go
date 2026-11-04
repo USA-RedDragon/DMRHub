@@ -105,8 +105,8 @@ var CallsignRegex = regexp.MustCompile(`^([A-Z0-9]{0,8})$`)
 const MaxDMRAddress = 0xFFFFFF
 
 // UnlockFirst and UnlockLast bound the private call IDs that unlock a
-// radio ID with its on-air code: 9 followed by the 6 digits of the code,
-// as on BrandMeister. A private call to one of them is a code, which the
+// radio ID with its on-air code: 9 followed by the 6 digits of the code.
+// A private call to one of them is a code, which the
 // hub never routes, records or logs.
 const (
 	UnlockFirst = 9000000

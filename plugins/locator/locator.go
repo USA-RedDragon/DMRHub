@@ -18,8 +18,8 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 // Package locator is a DMRHub plugin that serves ARS and location to
-// radios, at the IDs an admin gives it, such as 5050 to 5059 that
-// BrandMeister uses. It answers the data that radios send to those IDs, as
+// radios, at the IDs an admin gives it, such as the location service IDs
+// 5050 to 5059 in common use. It answers the data that radios send to those IDs, as
 // the destination station does, asks the radios whose owners turned
 // tracking on for their positions, and gives the hub the positions they
 // report.

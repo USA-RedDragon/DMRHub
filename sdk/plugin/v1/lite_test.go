@@ -81,6 +81,7 @@ var lites = map[protoreflect.FullName]func() lite{
 	"dmrhub.plugin.v1.TextSent":        func() lite { return &pluginv1.TextSent{} },
 	"dmrhub.plugin.v1.Text":            func() lite { return &pluginv1.Text{} },
 	"dmrhub.plugin.v1.APRSSend":        func() lite { return &pluginv1.APRSSend{} },
+	"dmrhub.plugin.v1.SendEmail":       func() lite { return &pluginv1.SendEmail{} },
 	"dmrhub.plugin.v1.APRSMessage":     func() lite { return &pluginv1.APRSMessage{} },
 }
 

@@ -105,6 +105,7 @@ type Service struct {
 	prompts   Prompts
 	aprs      *APRS
 	aprsInbox bool
+	email     *Email
 
 	mu       sync.Mutex
 	streams  map[*openStream]struct{}

@@ -110,6 +110,43 @@ func TestAConnAsksOnlyForWhatItsHubServes(t *testing.T) {
 	}
 }
 
+func TestAConnAsksTheHubToEmailAUser(t *testing.T) {
+	t.Parallel()
+	got := make(chan *pluginv1.SendEmail, 1)
+	opts := startHub(t, func(s pluginv1.PluginService_ConnectServer) error {
+		welcomeWith(s, pluginv1.Feature_FEATURE_EMAIL)
+		m, _ := s.Recv()
+		got <- m.GetRequest().GetSendEmail()
+		answer(s, &pluginv1.Answer{Id: m.GetRequest().GetId(), Code: pluginv1.ErrorCode_ERROR_CODE_REFUSED, Error: "the switch is off"})
+		<-s.Context().Done()
+		return nil
+	})
+	c := dial(t, opts)
+	if err := c.SendEmail(t.Context(), 1000001, "email", "Mail", "A message waits."); !errors.Is(err, ErrRefused) {
+		t.Fatalf("SendEmail = %v, want ErrRefused", err)
+	}
+	want := &pluginv1.SendEmail{UserId: 1000001, Switch: "email", Subject: "Mail", Body: "A message waits."}
+	if m := within(t, got, "the request"); !proto.Equal(m, want) {
+		t.Fatalf("the hub got %v, want %v", m, want)
+	}
+	if err := c.SendEmail(t.Context(), 1000001, "email", "Mail", "\xff"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("SendEmail of a body that is not UTF-8 = %v, want ErrInvalid", err)
+	}
+}
+
+func TestAConnDoesNotAskAHubWithoutEmailToEmail(t *testing.T) {
+	t.Parallel()
+	opts := startHub(t, func(s pluginv1.PluginService_ConnectServer) error {
+		welcomeWith(s, pluginv1.Feature_FEATURE_STORE)
+		<-s.Context().Done()
+		return nil
+	})
+	c := dial(t, opts)
+	if err := c.SendEmail(t.Context(), 1000001, "email", "Mail", "A message waits."); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("SendEmail = %v, want ErrUnsupported", err)
+	}
+}
+
 func TestARequestWhoseStreamEndsIsLost(t *testing.T) {
 	t.Parallel()
 	opts := startHub(t, func(s pluginv1.PluginService_ConnectServer) error {

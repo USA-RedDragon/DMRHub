@@ -50,6 +50,12 @@ const (
 	// aprsLimitWait is how long the count of the APRS messages of a
 	// plugin waits for the KV store.
 	aprsLimitWait = 5 * time.Second
+	// emailsPerMinute is how many emails a plugin sends in a minute.
+	emailsPerMinute = 30
+	// maxEmailSubject and maxEmailBody are the longest subject and body
+	// of an email of a plugin, in characters.
+	maxEmailSubject = 120
+	maxEmailBody    = 4000
 )
 
 // The errors of Texts.SendText.
@@ -129,6 +135,23 @@ func WithAPRS(a APRS) ServiceOption {
 	return func(s *Service) { s.aprs = &a }
 }
 
+// Email sends the emails of plugins.
+type Email struct {
+	// Send sends a plain text email.
+	Send func(to, subject, body string) error
+	// On reports whether the hub has SMTP set up.
+	On func() bool
+	// Limits keeps how many emails each plugin sent in the last minute,
+	// for every replica.
+	Limits kv.KV
+}
+
+// WithEmail makes the service send the emails of plugins with e. Without
+// it, the hub does not offer FEATURE_EMAIL.
+func WithEmail(e Email) ServiceOption {
+	return func(s *Service) { s.email = &e }
+}
+
 // WithAPRSInbox makes the hub offer FEATURE_APRS_INBOX: a replica
 // publishes the APRS messages from APRS-IS with PublishAPRS.
 func WithAPRSInbox() ServiceOption {
@@ -153,6 +176,9 @@ func (s *Service) features() []pluginv1.Feature {
 	}
 	if s.aprsInbox {
 		f = append(f, pluginv1.Feature_FEATURE_APRS_INBOX)
+	}
+	if s.email != nil {
+		f = append(f, pluginv1.Feature_FEATURE_EMAIL)
 	}
 	return f
 }
@@ -191,31 +217,51 @@ func (q *requester) take(r *pluginv1.Request, ranges []models.PluginRange) {
 // aprsPerMinute messages in the last minute.
 var errAPRSRate = errors.New("at most 30 APRS messages a minute")
 
+// errEmailRate stops the update of the email limit of a plugin that sent
+// emailsPerMinute emails in the last minute.
+var errEmailRate = errors.New("at most 30 emails a minute")
+
 func aprsLimitKey(plugin uint) string {
 	return "dmrhub:plugins:aprs:" + strconv.FormatUint(uint64(plugin), 10)
+}
+
+func emailLimitKey(plugin uint) string {
+	return "dmrhub:plugins:email:" + strconv.FormatUint(uint64(plugin), 10)
 }
 
 // countAPRS notes a message of the plugin at now in its limit, which every
 // replica shares, and returns errAPRSRate when the plugin sent
 // aprsPerMinute messages in the minute before now.
 func (q *requester) countAPRS(ctx context.Context, now time.Time) error {
+	return countInMinute(ctx, q.s.aprs.Limits, aprsLimitKey(q.p.ID), now, aprsPerMinute, errAPRSRate)
+}
+
+// countEmail notes an email of the plugin at now in its limit, as
+// countAPRS does.
+func (q *requester) countEmail(ctx context.Context, now time.Time) error {
+	return countInMinute(ctx, q.s.email.Limits, emailLimitKey(q.p.ID), now, emailsPerMinute, errEmailRate)
+}
+
+// countInMinute notes now in the times at key and returns full when limit
+// of them are in the minute before now.
+func countInMinute(ctx context.Context, limits kv.KV, key string, now time.Time, limit int, full error) error {
 	ms := now.UnixMilli()
 	ctx, cancel := context.WithTimeout(ctx, aprsLimitWait)
 	defer cancel()
-	err := q.s.aprs.Limits.Update(ctx, aprsLimitKey(q.p.ID), time.Minute, func(old []byte) ([]byte, error) {
+	err := limits.Update(ctx, key, time.Minute, func(old []byte) ([]byte, error) {
 		out := make([]byte, 0, len(old)+8)
 		for i := 0; i+8 <= len(old); i += 8 {
 			if at := int64(binary.BigEndian.Uint64(old[i:])); ms-at < time.Minute.Milliseconds() { //nolint:gosec // written from an int64
 				out = append(out, old[i:i+8]...)
 			}
 		}
-		if len(out)/8 >= aprsPerMinute {
-			return nil, errAPRSRate
+		if len(out)/8 >= limit {
+			return nil, full
 		}
 		return binary.BigEndian.AppendUint64(out, uint64(ms)), nil //nolint:gosec // a time after 1970
 	})
 	if err != nil {
-		return fmt.Errorf("counting the APRS messages of plugin %d: %w", q.p.ID, err)
+		return fmt.Errorf("counting at %s: %w", key, err)
 	}
 	return nil
 }
@@ -270,6 +316,8 @@ func (q *requester) serve(ctx context.Context, r request) *pluginv1.Answer {
 		return q.sendAPRS(ctx, op.AprsSend, now)
 	case *pluginv1.Request_PlayPrompt:
 		return q.playPrompt(ctx, op.PlayPrompt, r.ranges)
+	case *pluginv1.Request_SendEmail:
+		return q.sendEmail(ctx, op.SendEmail, now)
 	}
 	return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the hub does not know this request")
 }
@@ -549,6 +597,65 @@ func (q *requester) sendAPRS(ctx context.Context, a *pluginv1.APRSSend, now time
 	}
 	if err := q.s.aprs.Send(m); err != nil {
 		return q.unavailable("send an APRS message", err)
+	}
+	return &pluginv1.Answer{}
+}
+
+// emailOf returns the switch key of plugin and the confirmed email address
+// of the user id, as the hub sends a plugin's email to the user, or the
+// answer that refuses it.
+func (q *requester) emailOf(id uint, key string) (string, *models.PluginSwitchSpec, *pluginv1.Answer) {
+	var users []models.User
+	if err := q.s.db.Where("id = ?", id).Limit(1).Find(&users).Error; err != nil {
+		return "", nil, q.unavailable("look up a user", err)
+	}
+	if len(users) == 0 || !users[0].Approved || users[0].Suspended {
+		return "", nil, fail(pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, "no such user")
+	}
+	user := &users[0]
+	switches, err := models.UserPluginSwitches(q.s.db, q.p.ID, user)
+	if err != nil {
+		return "", nil, q.unavailable("read the switches of a user", err)
+	}
+	var spec *models.PluginSwitchSpec
+	for i := range switches {
+		if switches[i].Spec.Key == key && switches[i].On {
+			spec = &switches[i].Spec
+		}
+	}
+	if spec == nil {
+		return "", nil, fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the user did not turn this switch of the plugin on")
+	}
+	if user.Email == "" || !user.EmailVerified {
+		return "", nil, fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the user has no confirmed email address")
+	}
+	return user.Email, spec, nil
+}
+
+func (q *requester) sendEmail(ctx context.Context, e *pluginv1.SendEmail, now time.Time) *pluginv1.Answer {
+	if q.s.email == nil || (q.s.email.On != nil && !q.s.email.On()) {
+		return fail(pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, "this hub does not send email")
+	}
+	subject, body := e.GetSubject(), e.GetBody()
+	switch {
+	case subject == "" || len([]rune(subject)) > maxEmailSubject || strings.ContainsAny(subject, "\r\n"):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the subject is not 1 to 120 characters on one line")
+	case body == "" || len([]rune(body)) > maxEmailBody:
+		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "the body is not 1 to 4000 characters")
+	}
+	to, spec, refused := q.emailOf(uint(e.GetUserId()), e.GetSwitch())
+	if refused != nil {
+		return refused
+	}
+	switch err := q.countEmail(ctx, now); {
+	case errors.Is(err, errEmailRate):
+		return fail(pluginv1.ErrorCode_ERROR_CODE_RATE, errEmailRate.Error())
+	case err != nil:
+		return q.unavailable("count the emails", err)
+	}
+	body = strings.TrimRight(body, "\n") + "\n\n" + fmt.Sprintf("You get this email because you turned on %q of the %s plugin on your Settings page.\n", spec.Title, q.p.Name)
+	if err := q.s.email.Send(to, subject, body); err != nil {
+		return q.unavailable("send an email", err)
 	}
 	return &pluginv1.Answer{}
 }

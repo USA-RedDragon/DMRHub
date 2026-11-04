@@ -285,6 +285,8 @@ enum Feature {
   FEATURE_APRS = 8;
   // Subscribe with aprs.
   FEATURE_APRS_INBOX = 9;
+  // SendEmail.
+  FEATURE_EMAIL = 10;
   // PlayPrompt, and SendText with reply_to.
   FEATURE_PROMPT = 11;
 }
@@ -302,6 +304,7 @@ message Request {
     RepeaterQuery repeater = 7;
     SendText send_text = 8;
     APRSSend aprs_send = 9;
+    SendEmail send_email = 10;
     PlayPrompt play_prompt = 11;
   }
 }
@@ -544,6 +547,26 @@ message Text {
   string body = 8;
   // When the hub got the message, in milliseconds since 1970 UTC.
   int64 at = 9;
+}
+
+// SendEmail asks the hub to send an email to a user who turned a switch of
+// the plugin on, such as a notice that a message waits for the user. The
+// hub finds the user's email address, which the plugin never sees, and
+// sends the email only when it has SMTP set up and the user confirmed the
+// address. It ends the body with a line that names the plugin and the
+// switch. It answers ERROR_CODE_NOT_FOUND for a user that Lookup does not
+// find, ERROR_CODE_REFUSED when the switch is off or the user has no
+// confirmed email address, ERROR_CODE_UNAVAILABLE when the hub has no
+// SMTP or the email server fails, and ERROR_CODE_RATE after 30 emails of
+// the plugin in a minute.
+message SendEmail {
+  uint32 user_id = 1;
+  // The key of a switch of the plugin that the user turned on.
+  string switch = 2;
+  // 1 to 120 characters, with no line break.
+  string subject = 3;
+  // 1 to 4000 characters.
+  string body = 4;
 }
 
 // APRSSend asks the hub to send an APRS message on its APRS-IS login. The

@@ -59,6 +59,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/radioiddrift"
 	"github.com/USA-RedDragon/DMRHub/internal/repeaterdb"
 	"github.com/USA-RedDragon/DMRHub/internal/retention"
+	"github.com/USA-RedDragon/DMRHub/internal/smtp"
 	"github.com/USA-RedDragon/DMRHub/internal/storeforward"
 	"github.com/USA-RedDragon/DMRHub/internal/userdb"
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
@@ -608,7 +609,11 @@ func initializeServers(ctx context.Context, live *liveconfig.Live, hub *hub.Hub,
 			Send:   func(m aprs.Message) error { return positions.PublishMessage(pubsubClient, m) },
 			On:     func() bool { return current.Get().DMR.Positions.APRSIS.Callsign != "" },
 			Limits: kvStore,
-		}), plugins.WithAPRSInbox(), plugins.WithTexts(plugintexts.New(database, hub)), plugins.WithPrompts(hub))
+		}), plugins.WithAPRSInbox(), plugins.WithTexts(plugintexts.New(database, hub)), plugins.WithPrompts(hub), plugins.WithEmail(plugins.Email{
+			Send:   func(to, subject, body string) error { return smtp.NewMailer(current.Get()).SendText(to, subject, body) },
+			On:     func() bool { return current.Get().SMTP.Enabled },
+			Limits: kvStore,
+		}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start the plugin listener: %w", err)
 	}

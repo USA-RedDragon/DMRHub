@@ -81,6 +81,7 @@ The main parts of the SDK:
 | `conn.PlayPrompt(ctx, prompt)`                         | Asks the hub to play its spoken prompts, one after another, to a radio.                       |
 | `plugin.IsText(message)`                               | Tells whether the hub answers a data packet to the plugin's IDs itself, because it is a text. |
 | `conn.SendAPRS(ctx, message)`                          | Asks the hub to send an APRS message on its APRS-IS login.                                    |
+| `conn.SendEmail(ctx, user, switch, subject, body)`     | Asks the hub to email a user who turned a switch of the plugin on.                            |
 | `conn.Has(feature)`, `conn.Request(ctx, request)`      | Tell whether the hub serves a feature, and make any request of the hub.                       |
 
 dmrgo has voice and data receivers and transmitters that decode and build calls from DMRD packets. The parrot in `plugins/parrot` and the location server in `plugins/locator` are full examples.
@@ -177,6 +178,10 @@ The hub answers the texts to a plugin's IDs at the data link layer itself: an AC
 `SendAPRS` sends an APRS message on the hub's APRS-IS login. The source is the address, as `CALLSIGN-SSID`, of a user who turned a switch of the plugin on, and whose callsign is a licensed one. The addressee has at most 9 characters, and the text at most 67, with none of `|`, `~` or `{`. The hub sends at most 30 messages a minute for a plugin, over all its connections and replicas. A hub with no APRS-IS login answers `ErrUnavailable`. An answer with no error means that the hub handed the message to the replica that holds its APRS-IS login; APRS-IS does not say whether the addressee got it. During an upgrade, a replica of an older version that holds the login drops the message, so send it again until its ack comes.
 
 `Subscribe` with `aprs` lists the addresses whose APRS messages, acks included, come to the plugin as `APRSMessage`. It needs the feature `FEATURE_APRS_INBOX`, which a hub offers once it reads APRS messages from APRS-IS. The hub takes only the addresses of users who turned a switch of the plugin on, and drops an address when its user has no switch of the plugin on any more.
+
+#### Email a user
+
+`SendEmail` asks the hub to email a user who turned a switch of the plugin on, such as a notice that a message waits. Give the user's account ID, the key of the switch, a subject of 1 to 120 characters on one line and a body of 1 to 4000 characters. The plugin never sees the address: the hub finds it, and sends only to an address that the user confirmed. The hub ends the body with a line that names the plugin and the switch, so the user knows how to stop the emails. It answers `ErrRefused` when the switch is off or the user has no confirmed address, `ErrNotFound` for a user that `LookupRadio` does not find, `ErrUnavailable` when the hub has no SMTP server set up, and `ErrRate` after 30 emails of the plugin in a minute, over all its connections and replicas. It needs the feature `FEATURE_EMAIL`.
 
 #### Per-user switches
 

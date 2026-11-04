@@ -239,6 +239,8 @@ func featureOf(r *pluginv1.Request) pluginv1.Feature {
 		return pluginv1.Feature_FEATURE_PROMPT
 	case *pluginv1.Request_AprsSend:
 		return pluginv1.Feature_FEATURE_APRS
+	case *pluginv1.Request_SendEmail:
+		return pluginv1.Feature_FEATURE_EMAIL
 	}
 	return pluginv1.Feature_FEATURE_UNSPECIFIED
 }
@@ -391,5 +393,22 @@ func (c *Conn) SendAPRS(ctx context.Context, m *pluginv1.APRSSend) error {
 		return err
 	}
 	_, err := c.Request(ctx, &pluginv1.Request{Op: &pluginv1.Request_AprsSend{AprsSend: m}})
+	return err
+}
+
+// SendEmail asks the hub to email the user userID, who turned on the
+// switch of the plugin with the key switchKey, such as a notice that a
+// message waits. The hub finds the address, which the plugin never sees,
+// and sends only to a confirmed address. It returns ErrRefused when the
+// switch is off or the user has no confirmed address, ErrUnavailable when
+// the hub sends no email, and ErrRate after 30 emails of the plugin in a
+// minute.
+func (c *Conn) SendEmail(ctx context.Context, userID uint32, switchKey, subject, body string) error {
+	if err := checkText(switchKey, subject, body); err != nil {
+		return err
+	}
+	_, err := c.Request(ctx, &pluginv1.Request{Op: &pluginv1.Request_SendEmail{SendEmail: &pluginv1.SendEmail{
+		UserId: userID, Switch: switchKey, Subject: subject, Body: body,
+	}}})
 	return err
 }

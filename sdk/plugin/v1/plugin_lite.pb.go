@@ -132,6 +132,8 @@ const (
 	Feature_FEATURE_APRS Feature = 8
 	// Subscribe with aprs.
 	Feature_FEATURE_APRS_INBOX Feature = 9
+	// SendEmail.
+	Feature_FEATURE_EMAIL Feature = 10
 	// PlayPrompt, and SendText with reply_to.
 	Feature_FEATURE_PROMPT Feature = 11
 )
@@ -149,6 +151,7 @@ var (
 		7:  "FEATURE_SWITCHES",
 		8:  "FEATURE_APRS",
 		9:  "FEATURE_APRS_INBOX",
+		10: "FEATURE_EMAIL",
 		11: "FEATURE_PROMPT",
 	}
 	Feature_value = map[string]int32{
@@ -162,6 +165,7 @@ var (
 		"FEATURE_SWITCHES":    7,
 		"FEATURE_APRS":        8,
 		"FEATURE_APRS_INBOX":  9,
+		"FEATURE_EMAIL":       10,
 		"FEATURE_PROMPT":      11,
 	}
 )
@@ -1300,6 +1304,7 @@ type Request struct {
 	//	*Request_Repeater
 	//	*Request_SendText
 	//	*Request_AprsSend
+	//	*Request_SendEmail
 	//	*Request_PlayPrompt
 	Op isRequest_Op `protobuf_oneof:"op"`
 }
@@ -1380,6 +1385,13 @@ func (x *Request) GetAprsSend() *APRSSend {
 	return nil
 }
 
+func (x *Request) GetSendEmail() *SendEmail {
+	if x, ok := x.GetOp().(*Request_SendEmail); ok {
+		return x.SendEmail
+	}
+	return nil
+}
+
 func (x *Request) GetPlayPrompt() *PlayPrompt {
 	if x, ok := x.GetOp().(*Request_PlayPrompt); ok {
 		return x.PlayPrompt
@@ -1423,6 +1435,10 @@ type Request_AprsSend struct {
 	AprsSend *APRSSend `protobuf:"bytes,9,opt,name=aprs_send,json=aprsSend,proto3,oneof"`
 }
 
+type Request_SendEmail struct {
+	SendEmail *SendEmail `protobuf:"bytes,10,opt,name=send_email,json=sendEmail,proto3,oneof"`
+}
+
 type Request_PlayPrompt struct {
 	PlayPrompt *PlayPrompt `protobuf:"bytes,11,opt,name=play_prompt,json=playPrompt,proto3,oneof"`
 }
@@ -1442,6 +1458,8 @@ func (*Request_Repeater) isRequest_Op() {}
 func (*Request_SendText) isRequest_Op() {}
 
 func (*Request_AprsSend) isRequest_Op() {}
+
+func (*Request_SendEmail) isRequest_Op() {}
 
 func (*Request_PlayPrompt) isRequest_Op() {}
 
@@ -2283,6 +2301,61 @@ func (x *Text) GetAt() int64 {
 		return x.At
 	}
 	return 0
+}
+
+// SendEmail asks the hub to send an email to a user who turned a switch of
+// the plugin on, such as a notice that a message waits for the user. The
+// hub finds the user's email address, which the plugin never sees, and
+// sends the email only when it has SMTP set up and the user confirmed the
+// address. It ends the body with a line that names the plugin and the
+// switch. It answers ERROR_CODE_NOT_FOUND for a user that Lookup does not
+// find, ERROR_CODE_REFUSED when the switch is off or the user has no
+// confirmed email address, ERROR_CODE_UNAVAILABLE when the hub has no
+// SMTP or the email server fails, and ERROR_CODE_RATE after 30 emails of
+// the plugin in a minute.
+type SendEmail struct {
+	unknownFields []byte
+	UserId        uint32 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"userId,omitempty"`
+	// The key of a switch of the plugin that the user turned on.
+	Switch string `protobuf:"bytes,2,opt,name=switch,proto3" json:"switch,omitempty"`
+	// 1 to 120 characters, with no line break.
+	Subject string `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	// 1 to 4000 characters.
+	Body string `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+}
+
+func (x *SendEmail) Reset() {
+	*x = SendEmail{}
+}
+
+func (*SendEmail) ProtoMessage() {}
+
+func (x *SendEmail) GetUserId() uint32 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *SendEmail) GetSwitch() string {
+	if x != nil {
+		return x.Switch
+	}
+	return ""
+}
+
+func (x *SendEmail) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *SendEmail) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
 }
 
 // APRSSend asks the hub to send an APRS message on its APRS-IS login. The
@@ -3385,6 +3458,19 @@ func (m *Request_AprsSend) CloneOneofVT() isRequest_Op {
 	return m.CloneVT()
 }
 
+func (m *Request_SendEmail) CloneVT() *Request_SendEmail {
+	if m == nil {
+		return (*Request_SendEmail)(nil)
+	}
+	r := new(Request_SendEmail)
+	r.SendEmail = protobuf_go_lite.CloneVTValue(m.SendEmail)
+	return r
+}
+
+func (m *Request_SendEmail) CloneOneofVT() isRequest_Op {
+	return m.CloneVT()
+}
+
 func (m *Request_PlayPrompt) CloneVT() *Request_PlayPrompt {
 	if m == nil {
 		return (*Request_PlayPrompt)(nil)
@@ -3831,6 +3917,25 @@ func (m *Text) CloneVT() *Text {
 }
 
 func (m *Text) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *SendEmail) CloneVT() *SendEmail {
+	if m == nil {
+		return (*SendEmail)(nil)
+	}
+	r := new(SendEmail)
+	r.UserId = m.UserId
+	r.Switch = m.Switch
+	r.Subject = m.Subject
+	r.Body = m.Body
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *SendEmail) CloneMessageVT() protobuf_go_lite.CloneMessage {
 	return m.CloneVT()
 }
 
@@ -5445,6 +5550,29 @@ func (m *Request_AprsSend) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Request_SendEmail) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_SendEmail) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SendEmail != nil {
+		size, err := m.SendEmail.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x52
+	}
+	return len(dAtA) - i, nil
+}
 func (m *Request_PlayPrompt) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -6527,6 +6655,58 @@ func (m *Text) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if m.Id != 0 {
 		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SendEmail) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SendEmail) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SendEmail) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.Body) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Body)
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Subject) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Subject)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Switch) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Switch)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.UserId != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.UserId))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -7710,6 +7890,20 @@ func (m *Request_AprsSend) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Request_SendEmail) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SendEmail != nil {
+		l = m.SendEmail.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *Request_PlayPrompt) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8070,6 +8264,20 @@ func (m *Text) SizeVT() (n int) {
 	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Format)
 	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Body)
 	n += protobuf_go_lite.SizeVarintNonZero(1, m.At)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SendEmail) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.UserId)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Switch)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Subject)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Body)
 	n += len(m.unknownFields)
 	return n
 }
@@ -9827,6 +10035,26 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Op = &Request_AprsSend{AprsSend: v}
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SendEmail", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Op.(*Request_SendEmail); ok {
+				if err := oneof.SendEmail.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SendEmail{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Op = &Request_SendEmail{SendEmail: v}
+			}
+			iNdEx = postIndex
 		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PlayPrompt", wireType)
@@ -11333,6 +11561,87 @@ func (m *Text) UnmarshalVT(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SendEmail) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SendEmail: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SendEmail: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserId", wireType)
+			}
+			m.UserId = 0
+			m.UserId, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Switch", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Switch = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Subject", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Subject = v
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Body", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Body = v
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])

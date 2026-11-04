@@ -412,6 +412,99 @@ func TestAPluginSendsAPRSOnlyAsAUserWhoTurnedItsSwitchOn(t *testing.T) {
 	})
 }
 
+type sentEmail struct {
+	to, subject, body string
+}
+
+type fakeEmail struct {
+	mu   sync.Mutex
+	sent []sentEmail
+	off  atomic.Bool
+}
+
+func (f *fakeEmail) options(t *testing.T) plugins.Email {
+	t.Helper()
+	cfg, err := configulator.New(config.ConfigSchema()).Default()
+	require.NoError(t, err)
+	limits, err := kv.MakeKV(context.Background(), &cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = limits.Close() })
+	return plugins.Email{
+		Send: func(to, subject, body string) error {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.sent = append(f.sent, sentEmail{to, subject, body})
+			return nil
+		},
+		On:     func() bool { return !f.off.Load() },
+		Limits: limits,
+	}
+}
+
+func (f *fakeEmail) all() []sentEmail {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]sentEmail(nil), f.sent...)
+}
+
+func sendEmail(t *testing.T, s *stream, user uint32, key, subject string) *pluginv1.Answer {
+	t.Helper()
+	return ask(t, s, &pluginv1.Request{Op: &pluginv1.Request_SendEmail{SendEmail: &pluginv1.SendEmail{UserId: user, Switch: key, Subject: subject, Body: "A message waits for you."}}})
+}
+
+func TestAPluginEmailsOnlyAUserWhoTurnedItsSwitchOnAtAConfirmedAddress(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		out := &fakeEmail{}
+		r, p, s, w := sdkRig(t, plugins.WithEmail(out.options(t)))
+		assert.Contains(t, w.GetFeatures(), pluginv1.Feature_FEATURE_EMAIL)
+		require.NoError(t, r.db.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", "n1call@example.com", true, 1000001).Error)
+		require.NoError(t, r.db.Exec("UPDATE users SET email = ?, email_verified = ? WHERE id = ?", "n2call@example.com", false, 1000002).Error)
+
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode(), "the switch is off")
+		switchOn(t, r, p, 1000001, true, "")
+		switchOn(t, r, p, 1000002, true, "")
+		a := sendEmail(t, s, 1000001, "aprs", "Mail")
+		require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, a.GetCode(), a.GetError())
+		sent := out.all()
+		require.Len(t, sent, 1)
+		assert.Equal(t, "n1call@example.com", sent[0].to)
+		assert.Equal(t, "Mail", sent[0].subject)
+		assert.Equal(t, "A message waits for you.\n\nYou get this email because you turned on \"APRS messages\" of the APRS plugin on your Settings page.\n", sent[0].body)
+
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendEmail(t, s, 1000002, "aprs", "Mail").GetCode(), "the address is not confirmed")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendEmail(t, s, 1000001, "other", "Mail").GetCode(), "no such switch")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, sendEmail(t, s, 1000003, "aprs", "Mail").GetCode(), "the user is not approved")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_NOT_FOUND, sendEmail(t, s, 1000004, "aprs", "Mail").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendEmail(t, s, 1000001, "aprs", "Two\nlines").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendEmail(t, s, 1000001, "aprs", "").GetCode())
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_INVALID, sendEmail(t, s, 1000001, "aprs", strings.Repeat("x", 121)).GetCode())
+
+		for range 29 {
+			require.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode())
+		}
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_RATE, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode())
+		time.Sleep(time.Minute)
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNSPECIFIED, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode())
+		assert.Len(t, out.all(), 31)
+
+		out.off.Store(true)
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode(), "no SMTP")
+		out.off.Store(false)
+		switchOn(t, r, p, 1000001, false, "")
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_REFUSED, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode())
+	})
+}
+
+func TestAHubWithoutEmailRefusesEmails(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		_, _, s, w := sdkRig(t)
+		assert.NotContains(t, w.GetFeatures(), pluginv1.Feature_FEATURE_EMAIL)
+		assert.Equal(t, pluginv1.ErrorCode_ERROR_CODE_UNAVAILABLE, sendEmail(t, s, 1000001, "aprs", "Mail").GetCode())
+	})
+}
+
 // TestTheHubNeverDropsAnAnswer fills the queue of a plugin that does not
 // read with texts, so that the hub drops texts, and checks that the answer
 // to a request still comes once the plugin reads.

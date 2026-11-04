@@ -1,8 +1,8 @@
 # Plugins
 
-A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990), the location server (5050 to 5059), the status service (5000) and the mailbox are plugins. A plugin runs in one of two ways:
+A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990), the location server (5050 to 5059), the status service (5000), the mailbox and APRS messages are plugins. A plugin runs in one of two ways:
 
-- **Inside DMRHub.** DMRHub runs the plugin as a WebAssembly module, in a sandbox. You install nothing else. The parrot, the location server, the status service and the mailbox are built in, and an admin can upload other plugins as `.wasm` files. This is on by default.
+- **Inside DMRHub.** DMRHub runs the plugin as a WebAssembly module, in a sandbox. You install nothing else. The parrot, the location server, the status service, the mailbox and APRS messages are built in, and an admin can upload other plugins as `.wasm` files. This is on by default.
 - **As its own program.** The plugin runs next to DMRHub or on another computer, and connects to the hub over TLS.
 
 This page is for developers who write plugins. To install, upload and manage plugins on a DMRHub server, see [Plugins](admin/plugins.md) in the admin guide.

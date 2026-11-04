@@ -54,7 +54,7 @@ type browser struct {
 	cmd       *exec.Cmd
 	conn      *websocket.Conn
 	port      string
-	pending   map[string]string
+	pending   map[string]request
 	document  string
 	requested []string
 	target    string
@@ -150,7 +150,7 @@ func (b *browser) openPage(ctx context.Context) error {
 	}
 	conn.SetReadLimit(readLimit)
 	b.mu.Lock()
-	b.conn, b.target, b.waiting, b.pending = conn, t.ID, map[int]chan cdpReply{}, map[string]string{}
+	b.conn, b.target, b.waiting, b.pending = conn, t.ID, map[int]chan cdpReply{}, map[string]request{}
 	b.mu.Unlock()
 	go b.read(ctx, conn)
 	return b.setup(ctx)
@@ -242,6 +242,7 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		var p struct {
 			ID      string `json:"requestId"`
 			Loader  string `json:"loaderId"`
+			Frame   string `json:"frameId"`
 			Type    string `json:"type"`
 			Request struct {
 				URL    string `json:"url"`
@@ -251,24 +252,35 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		_ = json.Unmarshal(m.Params, &p)
 		b.mu.Lock()
 		if !strings.Contains(p.Request.URL, "worker") {
-			b.pending[p.ID] = fmt.Sprintf("%s %s %s (%s, document %s)", time.Now().Format("15:04:05.000"), p.Request.Method, p.Request.URL, p.Type, p.Loader)
+			b.pending[p.ID] = request{frame: p.Frame, loader: p.Loader,
+				text: fmt.Sprintf("%s %s %s (%s, document %s)", time.Now().Format("15:04:05.000"), p.Request.Method, p.Request.URL, p.Type, p.Loader)}
 		}
 		b.requested = append(b.requested, p.Request.URL)
 		b.mu.Unlock()
 	case "Page.frameNavigated":
 		var p struct {
 			Frame struct {
+				ID       string `json:"id"`
 				ParentID string `json:"parentId"`
 				Loader   string `json:"loaderId"`
 				URL      string `json:"url"`
 			} `json:"frame"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
+		b.mu.Lock()
+		b.dropRequests(p.Frame.ID, p.Frame.Loader)
 		if p.Frame.ParentID == "" {
-			b.mu.Lock()
 			b.document = p.Frame.Loader + " " + p.Frame.URL
-			b.mu.Unlock()
 		}
+		b.mu.Unlock()
+	case "Page.frameDetached":
+		var p struct {
+			ID string `json:"frameId"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		b.mu.Lock()
+		b.dropRequests(p.ID, "")
+		b.mu.Unlock()
 	case "Network.responseReceived":
 		var p struct {
 			ID   string `json:"requestId"`
@@ -289,7 +301,7 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		u := b.pending[p.ID]
 		delete(b.pending, p.ID)
 		b.mu.Unlock()
-		if strings.Contains(u, "/api/") {
+		if strings.Contains(u.text, "/api/") {
 			b.scans.Add(1)
 			go func() {
 				defer b.scans.Done()
@@ -343,6 +355,25 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 }
 
 var errNoPage = errors.New("the page is closed")
+
+// request is a request of the page that has not ended: the frame that
+// made it, the document of that frame that made it, and a line about it.
+type request struct {
+	frame, loader, text string
+}
+
+// dropRequests forgets the requests that frame made from a document other
+// than loader, or from any document when loader is "". Chromium does not
+// always report the end of the requests of a document that the frame left
+// or of a frame that went away, such as the request of a favicon, and
+// such a request no longer keeps the page loading. b.mu must be held.
+func (b *browser) dropRequests(frame, loader string) {
+	for id, r := range b.pending {
+		if r.frame == frame && (loader == "" || r.loader != loader) {
+			delete(b.pending, id)
+		}
+	}
+}
 
 func (b *browser) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	b.mu.Lock()
@@ -432,7 +463,7 @@ func (b *browser) waitFor(ctx context.Context, expression string) error {
 			_ = b.eval(ctx, "location.href + ' | ' + (document.body ? document.body.innerText.slice(0, 300) : '')", &where)
 			b.mu.Lock()
 			for _, u := range b.pending {
-				where += "\npending: " + u
+				where += "\npending: " + u.text
 			}
 			b.mu.Unlock()
 			return fmt.Errorf("waiting for %s on %q: %w", expression, where, errTimeout)
@@ -557,7 +588,7 @@ func (b *browser) idle(ctx context.Context) error {
 	b.mu.Lock()
 	var urls []string
 	for _, u := range b.pending {
-		urls = append(urls, u)
+		urls = append(urls, u.text)
 	}
 	doc := b.document
 	b.mu.Unlock()

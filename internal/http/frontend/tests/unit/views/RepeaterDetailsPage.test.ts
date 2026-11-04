@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
@@ -264,5 +264,71 @@ describe('RepeaterDetailsPage local groups', () => {
     await flushPromises();
     expect(post).toHaveBeenCalledWith('/localgroups/6/repeaters/300206801/accept');
     wrapper.unmount();
+  });
+});
+
+describe('RepeaterDetailsPage role after a failed load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('loads the role again after a server error, so the sysop actions show', async () => {
+    let failures = 2;
+    const t = new Date().toISOString();
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url.startsWith('/lastheard')) return Promise.resolve({ data: { calls: [], total: 0 } });
+      if (url.endsWith('/cosysops')) {
+        if (failures > 0) {
+          failures--;
+          return Promise.reject({ response: { status: 500 } });
+        }
+        return Promise.resolve({ data: { owner: { id: 3000001, callsign: 'N0DEMO' }, role: 'cosysop', cosysops: [] } });
+      }
+      if (url.endsWith('/on-air') || url.includes('/localgroups')) return Promise.resolve({ data: {} });
+      return Promise.resolve({
+        data: {
+          id: 300240101, callsign: 'N0CALL', type: 'mmdvm', last_ping_time: t, connected_time: t, created_at: t,
+          ts1_static_talkgroups: [], ts2_static_talkgroups: [], ts1_dynamic_talkgroup: { id: 0 }, ts2_dynamic_talkgroup: { id: 0 },
+          latitude: 0, longitude: 0, rx_frequency: 0, tx_frequency: 0, tx_power: 0, color_code: 1,
+          owner: { id: 3000001, callsign: 'N0DEMO' },
+        },
+      });
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useUserStore();
+    store.loggedIn = true;
+    store.id = 3000002;
+    const w = mount(RepeaterDetailsPage, {
+      global: {
+        plugins: [pinia],
+        mocks: { $route: { params: { id: '300240101' } }, $toast: { add: vi.fn() } },
+        stubs: { RouterLink: true, RepeaterRulesCard: true },
+      },
+    });
+    await flushPromises();
+    expect(w.find('[data-test="reset-connection"]').exists()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flushPromises();
+    expect(w.find('[data-test="reset-connection"]').exists()).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await flushPromises();
+    expect(w.find('[data-test="reset-connection"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('does not load the role again for a user who may not see it', async () => {
+    const w = await asRole(null, 3000003);
+    const calls = () => mockAPI.get.mock.calls.filter(([u]) => String(u).endsWith('/cosysops')).length;
+    expect(calls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flushPromises();
+    expect(calls()).toBe(1);
+    w.unmount();
   });
 });

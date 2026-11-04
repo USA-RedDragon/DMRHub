@@ -446,7 +446,7 @@ import {
 
 import API from '@/services/API';
 import { acceptLocalGroup, removeLocalGroupRepeater, repeaterLocalGroups, type RepeaterLocalGroup } from '@/services/localGroups';
-import { errorText } from '@/services/settings';
+import { errorStatus, errorText } from '@/services/settings';
 import { getWebsocketURI } from '@/services/util';
 import { useUserStore } from '@/store';
 import ws from '@/services/ws';
@@ -506,6 +506,10 @@ type SlotKey = 'ts1' | 'ts2';
 /** SESSION_TIMEOUT_MS is how long after its last ping the hub keeps a repeater logged in. */
 const SESSION_TIMEOUT_MS = 60_000;
 
+/** COSYSOPS_RETRY_MS is the first wait before the page loads the role of the user again after a server error; each failure doubles it up to COSYSOPS_RETRY_MAX_MS. */
+const COSYSOPS_RETRY_MS = 1_000;
+const COSYSOPS_RETRY_MAX_MS = 30_000;
+
 const CODEC_OPTIONS: { value: SlotCodec; label: string }[] = [
   { value: 'auto', label: 'Automatic' },
   { value: 'codec2', label: 'Codec2' },
@@ -564,6 +568,9 @@ export default {
     if (this.timeInterval !== null) {
       clearInterval(this.timeInterval);
     }
+    if (this.cosysopsRetry !== null) {
+      clearTimeout(this.cosysopsRetry);
+    }
     if (this.socket) {
       this.socket.close();
     }
@@ -589,6 +596,8 @@ export default {
       codecMessage: '',
       codecFailed: false,
       cosysops: null as Cosysops | null,
+      cosysopsRetry: null as ReturnType<typeof setTimeout> | null,
+      cosysopsDelay: COSYSOPS_RETRY_MS,
       onAir: [] as OnAirCall[],
       resetOpen: false,
       resetting: false,
@@ -753,12 +762,18 @@ export default {
         this.cosysops = null;
         return;
       }
+      this.cosysopsRetry = null;
       API.get(`/repeaters/${this.repeaterID}/cosysops`)
         .then((res) => {
           this.cosysops = asCosysops(res.data);
+          this.cosysopsDelay = COSYSOPS_RETRY_MS;
         })
-        .catch(() => {
+        .catch((err) => {
           this.cosysops = null;
+          const status = errorStatus(err);
+          if (status !== 0 && status < 500) return;
+          this.cosysopsRetry = setTimeout(() => this.fetchCosysops(), this.cosysopsDelay);
+          this.cosysopsDelay = Math.min(this.cosysopsDelay * 2, COSYSOPS_RETRY_MAX_MS);
         });
     },
     setCodec(slot: SlotKey, value: AcceptableValue) {

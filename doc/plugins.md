@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990) and the location server (5050 to 5059) are plugins. A plugin runs in one of two ways:
+A plugin is a program that answers the calls to the DMR IDs that an admin gives it. The parrot (9990), the location server (5050 to 5059) and the status service (5000) are plugins. A plugin runs in one of two ways:
 
 - **Inside DMRHub.** DMRHub runs the plugin as a WebAssembly module, in a sandbox. You install nothing else. The parrot and the location server are built in, and an admin can upload other plugins as `.wasm` files. This is on by default.
 - **As its own program.** The plugin runs next to DMRHub or on another computer, and connects to the hub over TLS.
@@ -77,6 +77,9 @@ The main parts of the SDK:
 | `conn.LookupRadio(ctx, id)`, `conn.LookupCallsign(ctx, call)` | Find a user, the user's radio IDs and how the user set the plugin's switches.            |
 | `conn.Repeater(ctx, id)`                               | The static and dynamic talkgroups of each timeslot of a repeater or hotspot.                  |
 | `conn.SendText(ctx, from, radio, text)`                | Asks the hub to send a text message to a radio.                                               |
+| `conn.ReplyText(ctx, from, text, body)`                | Answers a `Text` in the exact format of that text.                                            |
+| `conn.PlayPrompt(ctx, prompt)`                         | Asks the hub to play its spoken prompts, one after another, to a radio.                       |
+| `plugin.IsText(message)`                               | Tells whether the hub answers a data packet to the plugin's IDs itself, because it is a text. |
 | `conn.SendAPRS(ctx, message)`                          | Asks the hub to send an APRS message on its APRS-IS login.                                    |
 | `conn.Has(feature)`, `conn.Request(ctx, request)`      | Tell whether the hub serves a feature, and make any request of the hub.                       |
 
@@ -161,7 +164,13 @@ A plugin never builds the bursts of a text message itself. It asks the hub with 
 
 The hub reads the format only from a text that the radio sent through a repeater or hotspot of its owner, or one that an admin trusts, so that another hotspot cannot set it with the radio's ID. It sends the text through the repeater and timeslot of that text. `SendText` returns once the hub sent the text, or, when the format asks the radio for an answer, once the radio acknowledged it. It returns `ErrRefused` when the radio refused the text, `ErrUnavailable` when the radio did not answer, and `ErrInvalid` for a text that the format cannot carry, such as Chinese in a 7-bit format.
 
-To answer a text, send to its source: the text that just came is then the format of the answer, unless it came through a hotspot that is not the owner's and not trusted.
+To answer a text, use `ReplyText` with the `Text` that came. The hub then builds the answer from that exact text, not from the last text of the radio, and sends it through the repeater and timeslot of that text. It returns `ErrNoFormat`, and sends nothing, when that text came through a hotspot that is not the owner's and not trusted, or in a format that the hub cannot build again exactly, such as a UDT. `ReplyText` needs the feature `FEATURE_PROMPT`; on an older hub it returns `ErrUnsupported`, so that no answer goes in another format.
+
+The hub answers the texts to a plugin's IDs at the data link layer itself: an ACK for a confirmed text, a NACK for any packet that came damaged (never a SACK, which some radios do not take), and the TMS acknowledgement that a TMS text asks for, in the rate of the text. It answers only while the plugin is connected. A radio must get one answer for each packet, so a plugin that answers its own confirmed data, as with a `data.Receiver` that responds, sends only the ACKs of the packets for which `plugin.IsText` is false.
+
+#### Spoken prompts
+
+`PlayPrompt` asks the hub to play its spoken prompts to a radio as a private voice call from one of the plugin's IDs: 1 to 64 clips, such as `word-timeslot` and `digit-2`, one after another. The hub plays them as it plays its spoken refusals: in the voice that the radio's owner picked or the network's voice, in the codec of the timeslot, through the hotspot or repeater where it sends private calls to the radio, after the timeslot is quiet for about a second, and at most once for each `stream_id`. It never plays them through an OpenBridge peer. `Clips` in `internal/prompts` lists the clips; the status service (`plugins/status`) is an example. `PlayPrompt` returns `ErrNotFound` when the hub does not know where the radio is, and `ErrInvalid` for an unknown clip.
 
 #### APRS messages
 

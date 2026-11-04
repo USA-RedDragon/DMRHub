@@ -22,6 +22,7 @@ No. Each DMRHub network has its own accounts, talkgroups and hotspot passwords.
 
 - **4000** unlinks the dynamic talkgroup of the timeslot you call it on. See [Pick your talkgroups](guides/talkgroups.md#unlink-the-dynamic-talkgroup).
 - **9990** is the parrot, when the admin installed the parrot plugin. See [Test with the parrot](guides/parrot.md).
+- **5000** tells you the talkgroups of your timeslot, by voice for a call and by text for a text. See [Ask 5000 for your status](guides/status.md).
 - **9000000 to 9999999**, as private calls, are on-air codes: 9 and the 6 digits of the code unlock your radio ID. DMRHub never routes or records them. See [Lock your radio ID with an on-air code](guides/on-air-code.md).
 - **5050 to 5059** are the location server, when the admin installed the location server plugin. See the [Positions reference](positions.md#location-server-ids).
 

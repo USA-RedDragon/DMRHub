@@ -319,6 +319,11 @@ shots:
     as: n0call
     route: "/admin/plugins/{plugin:uploaded:Parrot}"
     wait: Upload a new version
+  - name: admin-plugin-status.png
+    phase: main
+    as: n0call
+    route: "/admin/plugins/{plugin:builtin:Status}"
+    wait: Built in
   - name: admin-plugin-token.png
     phase: main
     as: n0call

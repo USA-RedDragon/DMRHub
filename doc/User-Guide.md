@@ -23,6 +23,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 
 - [Pick your talkgroups](guides/talkgroups.md): static, dynamic and unlink with TG 4000
 - [Test with the parrot](guides/parrot.md) on 9990
+- [Ask 5000 for your status](guides/status.md)
 - [Make a private call](guides/private-calls.md)
 - [Send and read text messages](guides/text-messages.md)
 - [Share the position of your radio](guides/positions.md)

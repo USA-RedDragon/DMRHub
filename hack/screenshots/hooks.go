@@ -83,6 +83,7 @@ func hooks() map[string]hook {
 		"on-air-code":    turnOnAirCodeOn,
 		"on-air-example": exampleOnAirSetup,
 		"spoken-prompts": turnSpokenPromptsOn,
+		"aprs-switch":    aprsSwitch,
 	}
 }
 
@@ -571,6 +572,30 @@ func pluginSwitch(ctx context.Context, r *runner) error {
 		return fmt.Errorf("the plugin's request after its hello: %w", err)
 	}
 	return a.do(ctx, http.MethodPut, fmt.Sprintf("/api/v1/users/me/plugin-switches/%d/list", made.Plugin.ID), map[string]any{"on": true, "choice": "Thursday"}, nil)
+}
+
+// aprsSwitch turns the switch of the APRS messages plugin on for n0call,
+// with the SSID 9, once the plugin, which shot admin-plugin-aprs.png turns
+// on, declared it.
+func aprsSwitch(ctx context.Context, r *runner) error {
+	a := r.api("n0call")
+	deadline := time.Now().Add(startTimeout)
+	for time.Now().Before(deadline) {
+		var switches []struct {
+			PluginID uint   `json:"plugin_id"`
+			Key      string `json:"key"`
+		}
+		if err := a.do(ctx, http.MethodGet, "/api/v1/users/me/plugin-switches", nil, &switches); err != nil {
+			return err
+		}
+		for _, sw := range switches {
+			if sw.Key == "aprs" {
+				return a.do(ctx, http.MethodPut, fmt.Sprintf("/api/v1/users/me/plugin-switches/%d/aprs", sw.PluginID), map[string]any{"on": true, "choice": "9"}, nil)
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("the APRS messages plugin declared no switch: %w", errTimeout)
 }
 
 func repeaterRules(ctx context.Context, r *runner) error {

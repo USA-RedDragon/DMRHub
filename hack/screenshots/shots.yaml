@@ -324,6 +324,20 @@ shots:
     as: n0call
     route: "/admin/plugins/{plugin:builtin:Status}"
     wait: Built in
+  - name: admin-plugin-aprs.png
+    phase: main
+    as: n0call
+    route: "/admin/plugins/{plugin:builtin:APRS messages}"
+    wait: APRS messages
+    steps: ["fill #pp-ids = 4700", "toggle #pp-on", blur]
+    after: ["clicktest inside-save", "wait Saved."]
+  - name: settings-plugin-aprs.png
+    phase: main
+    as: n0call
+    needs: [aprs-switch]
+    route: /settings
+    wait: Your APRS address
+    clip: card APRS messages
   - name: admin-plugin-token.png
     phase: main
     as: n0call

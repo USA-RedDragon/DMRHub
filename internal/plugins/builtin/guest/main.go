@@ -29,6 +29,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
+	"github.com/USA-RedDragon/DMRHub/plugins/status"
 	"github.com/USA-RedDragon/DMRHub/sdk/plugin"
 )
 
@@ -42,6 +43,8 @@ func main() {
 		plugin.MainWith(parrot.Hello(), parrot.Serve)
 	case "locator":
 		plugin.MainWith(locator.Hello(), locator.Serve)
+	case "status":
+		plugin.MainWith(status.Hello(), status.Serve)
 	default:
 		fmt.Fprintln(os.Stderr, "no such built-in plugin:", key)
 		os.Exit(2)

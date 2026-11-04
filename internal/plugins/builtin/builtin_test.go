@@ -29,10 +29,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTheBuiltinPluginsAreTheParrotAndTheLocationServer(t *testing.T) {
+func TestTheBuiltinPluginsAreTheParrotTheLocationServerAndTheStatus(t *testing.T) {
 	t.Parallel()
 	all := builtin.All()
-	require.Len(t, all, 2)
+	require.Len(t, all, 3)
 	assert.Equal(t, "parrot", all[0].Key)
 	assert.Equal(t, "Parrot", all[0].Name)
 	require.Len(t, all[0].Ranges, 1)
@@ -43,6 +43,11 @@ func TestTheBuiltinPluginsAreTheParrotAndTheLocationServer(t *testing.T) {
 	require.Len(t, all[1].Ranges, 1)
 	assert.Equal(t, uint(5050), all[1].Ranges[0].First)
 	assert.Equal(t, uint(5059), all[1].Ranges[0].Last)
+	assert.Equal(t, "status", all[2].Key)
+	assert.Equal(t, "Status", all[2].Name)
+	require.Len(t, all[2].Ranges, 1)
+	assert.Equal(t, uint(5000), all[2].Ranges[0].First, "the status owns 5000 by default")
+	assert.Equal(t, uint(5000), all[2].Ranges[0].Last)
 }
 
 func TestEachBuiltinModuleSaysWhoItIs(t *testing.T) {

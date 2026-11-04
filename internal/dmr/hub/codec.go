@@ -328,13 +328,13 @@ func (h *Hub) pruneCodecStreams(now time.Time) {
 	hold, recheck := h.claimTimes()
 	kept := hold + recheck
 	h.codecStreams.Range(func(id uint, sc *streamCodec) bool {
-		if _, queued := h.inRouting.Load(id); !queued && sc.idle(now, kept) {
+		if !h.streamInRouting(id) && sc.idle(now, kept) {
 			h.codecStreams.Delete(id)
 			sc.setTranscoder(nil)
 		}
 		return true
 	})
-	pruneStreams(h.copyReports, now)
+	pruneStreams(h, h.copyReports, now, func(k copyReport) uint { return k.stream })
 	h.tgRepeaters.Prune(now)
 }
 

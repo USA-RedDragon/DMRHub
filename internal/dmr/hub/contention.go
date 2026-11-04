@@ -128,13 +128,13 @@ func (h *Hub) pruneSlotHolders(now time.Time) {
 		return true
 	})
 	h.slotRefused.Range(func(k slotStream, at time.Time) bool {
-		if now.Sub(at) > sightedStreamTTL {
+		if h.idleStream(k.stream, at, now, sightedStreamTTL) {
 			h.slotRefused.Delete(k)
 		}
 		return true
 	})
 	h.slotHolders.Range(func(k repeaterSlot, v slotHolder) bool {
-		if now.Sub(v.last) > sightedStreamTTL {
+		if h.idleStream(v.stream, v.last, now, sightedStreamTTL) {
 			h.slotHolders.Delete(k)
 		}
 		return true

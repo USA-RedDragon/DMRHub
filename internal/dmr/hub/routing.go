@@ -122,6 +122,21 @@ func (h *Hub) routeStreamAt(ctx context.Context, packet models.Packet, sourceNam
 	})
 }
 
+// streamInRouting reports whether a burst of stream waits for the routing
+// worker of its source or is routed now. Every prune of the state of a
+// stream keeps it while this holds, so that a routing worker that stalls,
+// as on a slow database, finds the state of its streams when it goes on.
+func (h *Hub) streamInRouting(stream uint) bool {
+	_, ok := h.inRouting.Load(stream)
+	return ok
+}
+
+// idleStream reports whether the state of stream, last touched at last,
+// idled for longer than ttl at now, and no burst of stream is in routing.
+func (h *Hub) idleStream(stream uint, last, now time.Time, ttl time.Duration) bool {
+	return now.Sub(last) > ttl && !h.streamInRouting(stream)
+}
+
 // queueRouting adds n to the bursts of stream that wait for routing or
 // that the routing worker routes now.
 func (h *Hub) queueRouting(stream uint, n int) {

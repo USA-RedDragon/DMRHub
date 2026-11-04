@@ -128,7 +128,7 @@ func (h *Hub) refuseStream(key claimKey, p *streamPolicy, packet models.Packet, 
 
 func (h *Hub) pruneStreamPolicies(now time.Time) {
 	h.streamPolicies.Range(func(k claimKey, p streamPolicy) bool {
-		if now.Sub(p.last) > sightedStreamTTL {
+		if h.idleStream(k.stream, p.last, now, sightedStreamTTL) {
 			h.streamPolicies.Delete(k)
 		}
 		return true

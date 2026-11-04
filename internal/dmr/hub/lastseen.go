@@ -98,45 +98,53 @@ func (h *Hub) runSightings() {
 		case s := <-h.sightings:
 			h.recordSighting(s)
 		case now := <-ticker.C():
-			pruneStreams(h.sightedStreams, now)
-			h.heardOn.Range(func(src uint, heard heardAt) bool {
-				if now.Sub(heard.at) > sightedStreamTTL {
-					h.heardOn.Delete(src)
-				}
-				return true
-			})
-			pruneStreams(h.undeliverableLogged, now)
-			pruneStreams(h.loopLogged, now)
-			pruneStreams(h.privateDropLogged, now)
-			pruneStreams(h.unlockStreams, now)
-			pruneStreams(h.lockedStreams, now)
-			h.unlockGrants.Prune(now)
-			pruneStreams(h.streamTalkgroups, now)
-			h.talkgroupIDs.Prune(now)
-			h.radioOwners.Prune(now)
-			h.radioCalls.Prune(now)
-			h.egressTable.Prune(now)
-			h.repeaters.prune(now)
-			h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
-				if now.Sub(v.at) > sightedStreamTTL {
-					h.streamPeers.Delete(k)
-				}
-				return true
-			})
-			h.pruneStreamClaims(now)
-			h.pruneSlotBuckets(now)
-			h.pruneSlotHolders(now)
-			h.pruneDrops(now)
-			h.pruneStreamPolicies(now)
-			h.pruneCodecStreams(now)
-			h.streamTargets.Range(func(k streamTarget, v targetAt) bool {
-				if now.Sub(v.at) > sightedStreamTTL {
-					h.streamTargets.Delete(k)
-				}
-				return true
-			})
+			h.pruneIdle(now)
 		}
 	}
+}
+
+// pruneIdle forgets the state that idled at now: of the radios, the
+// lookups, the timeslots and the streams. The state of a stream stays
+// while a burst of it waits for routing or is routed, however long the
+// routing worker of its source takes; see streamInRouting.
+func (h *Hub) pruneIdle(now time.Time) {
+	pruneStreams(h, h.sightedStreams, now, func(k sightingKey) uint { return k.stream })
+	h.heardOn.Range(func(src uint, heard heardAt) bool {
+		if now.Sub(heard.at) > sightedStreamTTL {
+			h.heardOn.Delete(src)
+		}
+		return true
+	})
+	pruneStreams(h, h.undeliverableLogged, now, streamID)
+	pruneStreams(h, h.loopLogged, now, streamID)
+	pruneStreams(h, h.privateDropLogged, now, streamID)
+	pruneStreams(h, h.unlockStreams, now, func(k unlockStream) uint { return k.stream })
+	pruneStreams(h, h.lockedStreams, now, func(k unlockStream) uint { return k.stream })
+	h.unlockGrants.Prune(now)
+	pruneStreams(h, h.streamTalkgroups, now, func(k streamTarget) uint { return k.stream })
+	h.talkgroupIDs.Prune(now)
+	h.radioOwners.Prune(now)
+	h.radioCalls.Prune(now)
+	h.egressTable.Prune(now)
+	h.repeaters.prune(now)
+	h.streamPeers.Range(func(k streamTarget, v streamPeerSet) bool {
+		if h.idleStream(k.stream, v.at, now, sightedStreamTTL) {
+			h.streamPeers.Delete(k)
+		}
+		return true
+	})
+	h.pruneStreamClaims(now)
+	h.pruneSlotBuckets(now)
+	h.pruneSlotHolders(now)
+	h.pruneDrops(now)
+	h.pruneStreamPolicies(now)
+	h.pruneCodecStreams(now)
+	h.streamTargets.Range(func(k streamTarget, v targetAt) bool {
+		if h.idleStream(k.stream, v.at, now, sightedStreamTTL) {
+			h.streamTargets.Delete(k)
+		}
+		return true
+	})
 }
 
 // recordSighting keeps where the radio of s was heard, in a record that
@@ -383,14 +391,18 @@ func (h *Hub) lastCallRepeater(userID uint) (heardAt, error) {
 	return heardAt{repeater: row.RepeaterID, at: row.CreatedAt}, nil
 }
 
-func pruneStreams[K comparable](m *xsync.Map[K, time.Time], now time.Time) {
-	m.Range(func(stream K, at time.Time) bool {
-		if now.Sub(at) > sightedStreamTTL {
-			m.Delete(stream)
+// pruneStreams forgets the entries of m, by the stream that streamOf
+// returns of each key, that idled for sightedStreamTTL at now.
+func pruneStreams[K comparable](h *Hub, m *xsync.Map[K, time.Time], now time.Time, streamOf func(K) uint) {
+	m.Range(func(k K, at time.Time) bool {
+		if h.idleStream(streamOf(k), at, now, sightedStreamTTL) {
+			m.Delete(k)
 		}
 		return true
 	})
 }
+
+func streamID(stream uint) uint { return stream }
 
 // routableFor reports whether private traffic for the radio of userID may
 // follow it to repeaterID: the user owns the repeater or an admin trusts

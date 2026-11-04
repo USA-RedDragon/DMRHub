@@ -147,7 +147,7 @@ func (h *Hub) dropsIngress(packet *models.Packet, sourceName string) bool {
 
 func (h *Hub) pruneDrops(now time.Time) {
 	h.drops.Range(func(k repeaterSlot, d dropRecord) bool {
-		if now.Sub(d.last) > StreamIdle {
+		if h.idleStream(d.stream, d.last, now, StreamIdle) {
 			h.drops.Delete(k)
 		}
 		return true

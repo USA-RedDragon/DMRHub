@@ -482,7 +482,7 @@ func (h *Hub) claimTimes() (hold, recheck time.Duration) {
 func (h *Hub) pruneStreamClaims(now time.Time) {
 	hold, recheck := h.claimTimes()
 	h.streamClaims.Range(func(k claimKey, v streamClaim) bool {
-		if now.Sub(v.checked) > hold+recheck {
+		if h.idleStream(k.stream, v.checked, now, hold+recheck) {
 			h.streamClaims.Delete(k)
 		}
 		return true

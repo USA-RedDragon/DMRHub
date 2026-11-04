@@ -86,11 +86,14 @@ With **Tell the radio why its call was refused** on, under **Spoken refusals** o
 | The timeslot is locked to other users | "Timeslot reserved." |
 | The radio may not transmit on this network (see [Who may transmit](#who-may-transmit)) | "Radio ID not registered." |
 | The transmission ran past the longest one allowed | "Time out." |
+| Another call held the timeslot when the radio keyed up (see below) | "Channel busy." |
 | The radio needs its [on-air code](../guides/on-air-code.md) | "Code needed." |
 | The on-air code was right | "Unlocked." |
 | The on-air code was wrong | "Wrong code." |
 
-DMRHub plays no prompt when a call reaches some repeaters but a timeslot of another one is busy, as the call still reaches the others.
+DMRHub plays "Channel busy." only when [Two calls at once](#two-calls-at-once) is `first` and spoken refusals are on, and only when the first burst of the transmission comes in while the call of another radio holds that timeslot of the hotspot or repeater that the radio transmits through. DMRHub still routes the transmission as before; the prompt only tells the radio that its timeslot was busy. The radio whose call held the timeslot first hears no prompt. The Spoken refusals card lists this prompt only when Two calls at once is `first`. DMRHub plays no prompt when a call reaches some repeaters but a timeslot of another one is busy, as the call still reaches the others.
+
+With `first`, any prompt also waits until 1 second after the last burst of a call that holds the timeslot, so it does not play over that call.
 
 **Voice** sets the voice for users who did not pick their own in Settings; each user can pick a voice for the prompts to their radios. **Play** plays a prompt in the voice on the page. **Service ID** is the ID that the prompts come from. It must be a number from 1 to 16777215, other than 4000 and the on-air code IDs 9000000 to 9999999. Pick an ID that no talkgroup, repeater or plugin uses on the network.
 

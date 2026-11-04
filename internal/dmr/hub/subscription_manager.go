@@ -32,6 +32,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/utils"
 	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -211,7 +212,13 @@ func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
 	if s.stopped {
 		return
 	}
-	h.slotEgress.Store(repeaterSlot{repeater: rp.RepeaterID, slot: rp.Packet.Slot}, h.clock.Now())
+	key, now := repeaterSlot{repeater: rp.RepeaterID, slot: rp.Packet.Slot}, h.clock.Now()
+	h.slotEgress.Store(key, now)
+	if isVoice, _ := utils.CheckPacketType(rp.Packet); isVoice {
+		if _, own := h.hubStreams.Load(rp.Packet.StreamID); !own {
+			h.slotVoice.Store(key, now)
+		}
+	}
 	h.deliverToServerUnless(s.done, serverName, rp)
 }
 

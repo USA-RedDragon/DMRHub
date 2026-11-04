@@ -114,7 +114,10 @@ func (h *Hub) tapData(packet models.Packet) {
 // It returns when ctx ends or the hub stops, with data.ResultCancelled.
 // The messages to one timeslot of a repeater go one after another, as a
 // radio takes one packet at a time, each once the timeslot carried no
-// burst for the hang of the prompts.
+// burst for the hang of the prompts. Voice goes first: a call that
+// reaches the timeslot while a burst of m is due stops m, which goes again
+// in full once the timeslot is quiet. A call while m waits for the answer
+// of the radio does not stop it.
 func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.Message) (data.Result, error) {
 	busy, _ := h.dataSlots.LoadOrStore(dataSlot{repeater: repeaterID, slot: slot}, make(chan struct{}, 1))
 	select {
@@ -125,16 +128,27 @@ func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.M
 		return data.ResultCancelled, nil
 	}
 	defer func() { <-busy }()
-	if !h.waitQuietSlot(ctx, repeaterID, slot) {
-		return data.ResultCancelled, nil
+	for {
+		if !h.waitQuietSlot(ctx, repeaterID, slot) {
+			return data.ResultCancelled, nil
+		}
+		r, stopped, err := h.sendDataOnce(ctx, repeaterID, slot, m)
+		if !stopped {
+			return r, err
+		}
 	}
+}
+
+// sendDataOnce sends m once, and reports stopped when a call reached the
+// timeslot while a burst of m was due.
+func (h *Hub) sendDataOnce(ctx context.Context, repeaterID uint, slot bool, m data.Message) (data.Result, bool, error) {
 	rpt, err := h.routingRepeater(repeaterID)
 	if err != nil {
-		return 0, fmt.Errorf("finding repeater %d: %w", repeaterID, err)
+		return 0, false, fmt.Errorf("finding repeater %d: %w", repeaterID, err)
 	}
 	dst, src, ok := m.Header.Addresses()
 	if !ok {
-		return 0, errNoAddresses
+		return 0, false, errNoAddresses
 	}
 	var seed [8]byte
 	_, _ = rand.Read(seed[:])
@@ -147,7 +161,7 @@ func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.M
 		ResponseWait: storeForwardResponseWait, Retries: storeForwardRetries, Slot: es, Seed: binary.BigEndian.Uint64(seed[:]),
 	})
 	if err != nil {
-		return 0, fmt.Errorf("making a data sender: %w", err)
+		return 0, false, fmt.Errorf("making a data sender: %w", err)
 	}
 	tap := make(chan models.Packet, tapDepth)
 	key := tapKey{src: uint(dst), dst: uint(src)}
@@ -162,19 +176,25 @@ func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.M
 	start := h.clock.Now()
 	since := func() time.Duration { return h.clock.Since(start) }
 	if err := tx.Send(0, &m); err != nil {
-		return 0, fmt.Errorf("sending a data message: %w", err)
+		return 0, false, fmt.Errorf("sending a data message: %w", err)
 	}
 	tx.Channel(0, false)
 	out := &sfOutput{h: h, repeater: repeaterID, slot: slot, src: uint(src), dst: uint(dst), stream: newStreamID()}
+	h.hubStreams.Store(out.stream, struct{}{})
+	defer h.hubStreams.Delete(out.stream)
+	rs := repeaterSlot{repeater: repeaterID, slot: slot}
 	outs := make([]data.Output, 0, data.MaxOutputs)
 	for {
 		outs = tx.Tick(since(), outs[:0])
+		if h.voiceSince(rs, start) && hasBurst(outs) {
+			return 0, true, nil
+		}
 		if r, done := out.emit(outs); done {
-			return r, nil
+			return r, false, nil
 		}
 		at, ok := tx.Deadline()
 		if !ok {
-			return data.ResultCancelled, nil
+			return data.ResultCancelled, false, nil
 		}
 		timer := h.clock.NewTimer(max(at-since(), 0))
 		select {
@@ -183,17 +203,36 @@ func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.M
 			timer.Stop()
 			raw := layer2.RawBurst(p.DMRData)
 			outs = tx.Burst(since(), &raw, layer2.Hint{Kind: layer2.KindData}, outs[:0])
+			if h.voiceSince(rs, start) && hasBurst(outs) {
+				return 0, true, nil
+			}
 			if r, done := out.emit(outs); done {
-				return r, nil
+				return r, false, nil
 			}
 		case <-ctx.Done():
 			timer.Stop()
-			return data.ResultCancelled, nil
+			return data.ResultCancelled, false, nil
 		case <-h.done:
 			timer.Stop()
-			return data.ResultCancelled, nil
+			return data.ResultCancelled, false, nil
 		}
 	}
+}
+
+func hasBurst(outs []data.Output) bool {
+	for i := range outs {
+		if outs[i].Kind == data.OutputBurst {
+			return true
+		}
+	}
+	return false
+}
+
+// voiceSince reports whether the hub sent a voice burst of a call that it
+// did not make itself to the timeslot key at or after since.
+func (h *Hub) voiceSince(key repeaterSlot, since time.Time) bool {
+	at, ok := h.slotVoice.Load(key)
+	return ok && !at.Before(since)
 }
 
 type sfOutput struct {

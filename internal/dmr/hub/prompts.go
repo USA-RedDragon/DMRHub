@@ -216,9 +216,11 @@ func (h *Hub) waitQuietSlot(ctx context.Context, repeaterID uint, slot bool) boo
 	}
 }
 
-// playPrompt sends p to its repeater slot as a private call from the
-// service ID, in the voice of the owner of the radio or the default voice,
-// one burst every 60 ms.
+// playPrompt sends p to its repeater slot as a private call from p.Src or
+// the service ID, in the voice of the owner of the radio or the default
+// voice, one burst every 60 ms. It drops the rest of p when a call that
+// the hub did not make reaches that slot meanwhile, so that voice goes
+// first.
 func (h *Hub) playPrompt(p Prompt, cc enums.ColorCode) {
 	r := h.routingConfig()
 	rpt, err := h.routingRepeater(p.Repeater)
@@ -242,12 +244,21 @@ func (h *Hub) playPrompt(p Prompt, cc enums.ColorCode) {
 		return
 	}
 	key := sourceSlot{streamSource: streamSource{server: promptSource, repeater: p.Repeater}, slot: p.Slot2}
+	rs := repeaterSlot{repeater: p.Repeater, slot: p.Slot2}
+	stream, start := packets[0].StreamID, h.clock.Now()
+	h.hubStreams.Store(stream, struct{}{})
 	var send func(i int)
 	send = func(i int) {
+		if h.voiceSince(rs, start) {
+			h.hubStreams.Delete(stream)
+			return
+		}
 		h.publishToRepeater(key, p.Repeater, packets[i])
 		if i+1 < len(packets) {
 			h.clock.AfterFunc(prompts.Duration(1), func() { send(i + 1) })
+			return
 		}
+		h.clock.AfterFunc(promptQuiet, func() { h.hubStreams.Delete(stream) })
 	}
 	send(0)
 }

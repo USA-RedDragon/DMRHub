@@ -183,8 +183,8 @@ shots:
     phase: main
     as: n0call
     route: "radio:/"
-    wait: I understand
-    steps: ["click I understand", "fill Hub = http://127.0.0.1:3955", blur]
+    wait: Hear a talkgroup
+    steps: ["click Talk", "wait I understand", "click I understand", "fill Hub = http://127.0.0.1:3955", blur]
     after: ["click Log in with DMRHub", "wait Allow", "click Allow", "wait Welcome"]
   - name: browser-radio-hotspots.png
     phase: main
@@ -546,3 +546,30 @@ shots:
     route: /settings
     wait: Network default
     clip: card Spoken prompts
+  - name: setup-listen.png
+    phase: main
+    needs: [seed]
+    as: n0call
+    route: /admin/setup#accounts
+    wait: Listen-only monitor
+    clip: card Listen-only monitor
+  - name: talkgroup-listen.png
+    phase: main
+    needs: [seed]
+    as: n0call
+    route: /talkgroups/3100
+    wait: Let visitors listen
+    clip: card Listen-only monitor
+  - name: browser-radio-listen-or-talk.png
+    phase: main
+    needs: [seed]
+    as: guest
+    route: "visitor:/settings/connection"
+    wait: Host
+    steps: ["fill Host = http://127.0.0.1:3955", blur, "goto visitor:/", "wait Hear a talkgroup"]
+  - name: browser-radio-listen.png
+    phase: main
+    needs: [seed]
+    as: guest
+    wait: Hear a talkgroup
+    steps: ["click Listen", "wait LISTENING", "pick [data-test=listen-talkgroup] = 3100", "wait TG 3100", "run listen-calls", "wait N0CALL"]

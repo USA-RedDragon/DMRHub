@@ -33,6 +33,10 @@ import (
 
 const radioURL = "http://127.0.0.1:4180"
 
+// visitorURL is DMRHub Radio on another origin of the same server, so a
+// visitor starts with none of the settings of radioURL.
+const visitorURL = "http://localhost:4180"
+
 func startRadio(ctx context.Context, dir string) (*http.Server, error) {
 	if dir == "" {
 		return nil, errors.New("-radio is required: a built dmr-web (its dist directory)")

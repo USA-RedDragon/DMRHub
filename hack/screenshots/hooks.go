@@ -84,6 +84,7 @@ func hooks() map[string]hook {
 		"on-air-example": exampleOnAirSetup,
 		"spoken-prompts": turnSpokenPromptsOn,
 		"aprs-switch":    aprsSwitch,
+		"listen-calls":   playCalls(listenCalls()),
 	}
 }
 
@@ -362,6 +363,13 @@ func netCalls() []call {
 		{repeater: 300000201, src: 3000002, dst: 3100, group: true, slot2: true, frames: 50},
 		{repeater: 300000301, src: 3000003, dst: 3100, group: true, slot2: true, frames: 35},
 		{repeater: 990001, src: 3000001, dst: 3100, group: true, slot2: true, frames: 30},
+	}
+}
+
+func listenCalls() []call {
+	return []call{
+		{repeater: 300000301, src: 3000003, dst: 3100, group: true, slot2: true, frames: 40},
+		{repeater: 300000101, src: 3000001, dst: 3100, group: true, slot2: true, frames: 30},
 	}
 }
 

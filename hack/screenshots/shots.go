@@ -243,11 +243,7 @@ func (r *runner) take(ctx context.Context, s shot) error {
 		if err != nil {
 			return fmt.Errorf("shot %s: %w", s.Name, err)
 		}
-		route := r.base + path
-		if strings.HasPrefix(path, "radio:") {
-			route = radioURL + strings.TrimPrefix(path, "radio:")
-		}
-		if err := r.b.navigate(ctx, route); err != nil {
+		if err := r.b.navigate(ctx, r.url(path)); err != nil {
 			return fmt.Errorf("shot %s: %w", s.Name, err)
 		}
 	}
@@ -285,6 +281,20 @@ func (r *runner) take(ctx context.Context, s shot) error {
 		}
 	}
 	return nil
+}
+
+// url returns the address of route: a page of DMRHub, of DMRHub Radio
+// after "radio:", or of DMRHub Radio on another origin after "visitor:",
+// whose browser storage starts empty.
+func (r *runner) url(route string) string {
+	switch {
+	case strings.HasPrefix(route, "radio:"):
+		return radioURL + strings.TrimPrefix(route, "radio:")
+	case strings.HasPrefix(route, "visitor:"):
+		return visitorURL + strings.TrimPrefix(route, "visitor:")
+	default:
+		return r.base + route
+	}
 }
 
 func (r *runner) step(ctx context.Context, st string) error {
@@ -330,7 +340,7 @@ func (r *runner) step(ctx context.Context, st string) error {
 		time.Sleep(d)
 		return nil
 	case "goto":
-		return r.b.navigate(ctx, r.base+arg)
+		return r.b.navigate(ctx, r.url(arg))
 	case "run":
 		h, ok := r.hooks[arg]
 		if !ok {

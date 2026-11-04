@@ -115,11 +115,12 @@ src/lib/password.ts	11	3
 src/lib/prompts.ts	6	3
 src/lib/setupMenu.ts	220	132
 src/lib/setupState.ts	34	19
+src/lib/staleBuild.ts	9	3
 src/lib/sysop.ts	5	0
 src/lib/timeConversion.ts	46	14
 src/lib/transmissions.ts	181	119
 src/lib/utils.ts	1	1
-src/main.ts	15	13
+src/main.ts	16	14
 src/plugins/confirmBridge.ts	27	20
 src/plugins/toastBridge.ts	22	15
 src/router/index.ts	10	8

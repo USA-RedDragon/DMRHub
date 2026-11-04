@@ -323,17 +323,19 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 		},
 		subscribe: make(chan *pluginv1.Subscribe, 1), positions: make(chan *pluginv1.Position, sendQueue), heardOn: map[uint32]uint{}, sentFrom: map[uint32]uint{},
 	}
-	go w.watch(ctx)
+	var work sync.WaitGroup
+	work.Go(func() { w.watch(ctx) })
 	q := newRequester(s, &p, func(m *pluginv1.ConnectResponse) {
 		select {
 		case out <- m:
 		case <-ctx.Done():
 		}
 	})
-	go q.run(ctx)
+	work.Go(func() { q.run(ctx) })
 
 	go s.receive(ctx, cancel, stream, &p, send, ranges, w, q)
 	<-ctx.Done()
+	work.Wait()
 	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, errPluginDone) && !errors.Is(cause, context.Canceled) {
 		return cause //nolint:wrapcheck // a gRPC status of this package, or the error of a failed send
 	}

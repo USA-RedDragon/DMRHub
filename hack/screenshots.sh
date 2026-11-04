@@ -79,17 +79,20 @@ if [ -z "$radio" ]; then
     radio=$work/dmr-web/dist
 fi
 
-if [ -z "$only" ]; then
-    find "$out" -name '*.png' -delete
-fi
-run=("$work/screenshots" -hub "$work/DMRHub" -chromium "$chromium" -work "$work" -out "$out" -list "$root/hack/screenshots/shots.yaml" -only "$only" -radio "$radio" -root "$root"
+shots=$work/shots
+mkdir -p "$shots"
+run=("$work/screenshots" -hub "$work/DMRHub" -chromium "$chromium" -work "$work" -out "$shots" -list "$root/hack/screenshots/shots.yaml" -only "$only" -radio "$radio" -root "$root"
     -ext "${DMRHUB_SHOTS_EXT:-${XDG_CACHE_HOME:-$HOME/.cache}/dmrhub-ext}")
 unshare -r -n sh -c 'ip link set lo up && exec "$@"' sh "${run[@]}" -phase setup
 pasta --config-net --quiet -t none -u none -T none -U none -- "${run[@]}" -phase main
 
 if command -v oxipng > /dev/null; then
-    oxipng -q -o max --strip safe "$out"/*.png
+    oxipng -q -o max --strip safe "$shots"/*.png
 else
     echo "oxipng not found; the screenshots are not compressed" >&2
 fi
+if [ -z "$only" ]; then
+    find "$out" -name '*.png' -delete
+fi
+mv "$shots"/*.png "$out"/
 "$work/screenshots" -phase check -root "$root" -list "$root/hack/screenshots/shots.yaml"

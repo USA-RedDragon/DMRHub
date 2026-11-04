@@ -28,6 +28,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	ipscwire "github.com/USA-RedDragon/dmrgo/v2/transport/ipsc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -232,4 +233,97 @@ func TestAnEarlyHandoverSendsWhatFollowsIt(t *testing.T) {
 			assert.Equal(t, seqs[0]+uint16(i), seq, "burst %d", i) //nolint:gosec
 		}
 	})
+}
+
+// blockingPacer returns a pacer whose sends to a peer block until release
+// gets a value, and the times at which the frames left.
+func blockingPacer(t *testing.T) (p *pacer, left <-chan time.Time, release chan<- struct{}) {
+	t.Helper()
+	l := make(chan time.Time)
+	r := make(chan struct{})
+	p = newPacer(clock.Real(), func(slotKey, []byte) {
+		l <- time.Now()
+		<-r
+	}, nil)
+	t.Cleanup(p.stop)
+	return p, l, r
+}
+
+// TestHandOverNoPacketThatLeftJustOverMoveSlackBeforeTheClaim sends a peer
+// a packet whose send returns a moment after the packet left, just over
+// MoveSlack before the packet of the peer reached the other replica. The
+// load balancer moved the peer no earlier than that, so the peer got the
+// packet before the move, and the handover must not hold it, or the peer
+// gets it twice outside the move.
+func TestHandOverNoPacketThatLeftJustOverMoveSlackBeforeTheClaim(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		p, left, release := blockingPacer(t)
+		p.enqueue(slotKey{peer: 1}, 7, []byte{'v'}, false, handedVoice(3), &packetState{}, time.Time{})
+		at := <-left
+		time.Sleep(time.Millisecond)
+		release <- struct{}{}
+		synctest.Wait()
+		_, lost, _ := p.handOver(1, at.Add(hub.MoveSlack+500*time.Microsecond))
+		assert.Empty(t, lost, "the handover holds a packet that the peer got before the move")
+	})
+}
+
+// TestHandOverAPacketWhoseSendStalledPastTheMove stalls the send of a
+// packet to a peer for longer than MoveSlack, past the move of the peer,
+// and builds the handover once the send returned. The packet may have left
+// after the move, which the load balancer no longer takes to the peer, so
+// the handover must hold it.
+func TestHandOverAPacketWhoseSendStalledPastTheMove(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		p, left, release := blockingPacer(t)
+		p.enqueue(slotKey{peer: 1}, 7, []byte{'v'}, false, handedVoice(3), &packetState{}, time.Time{})
+		at := <-left
+		time.Sleep(2 * hub.MoveSlack)
+		release <- struct{}{}
+		synctest.Wait()
+		_, lost, _ := p.handOver(1, at.Add(hub.MoveSlack+hub.MoveSlack/2))
+		assert.Len(t, lost, 1, "the handover misses a packet whose send ended after the move")
+	})
+}
+
+// TestHandOverAPacketByWhenItsFirstFrameLeft sends a peer a voice header,
+// which goes out as three frames a burst apart. A handover for a claim just
+// over MoveSlack after the first frame left must not hold the packet, since
+// the peer got that frame before the move and would get it again outside
+// the move, and one for a claim just under MoveSlack after must hold it.
+func TestHandOverAPacketByWhenItsFirstFrameLeft(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		after time.Duration
+		held  int
+	}{
+		"just over MoveSlack":  {hub.MoveSlack + 500*time.Microsecond, 0},
+		"just under MoveSlack": {hub.MoveSlack - 500*time.Microsecond, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				p, left, release := blockingPacer(t)
+				header := dataSync(7, enums.DataTypeVoiceLCHeader)
+				for i := range 3 {
+					var state *packetState
+					if i == 2 {
+						state = &packetState{}
+					}
+					p.enqueue(slotKey{peer: 1}, 7, []byte{'h'}, false, header, state, time.Time{})
+				}
+				first := <-left
+				release <- struct{}{}
+				for range 2 {
+					<-left
+					release <- struct{}{}
+				}
+				synctest.Wait()
+				_, lost, _ := p.handOver(1, first.Add(c.after))
+				assert.Len(t, lost, c.held)
+			})
+		})
+	}
 }

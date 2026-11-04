@@ -158,6 +158,11 @@ type slotQueue struct {
 	// sent, and sendingCall its call.
 	sending     *queuedFrame
 	sendingCall *queuedCall
+	// leaving is the packet whose frames go out, and leftAt when it left
+	// for a handover: when its first frame went out, or when a send of it
+	// that stalled past hub.MoveSlack returned.
+	leaving packetKey
+	leftAt  time.Time
 	// holdUntil is the end of the call hang of the peer on the slot, until
 	// which data and CSBK calls wait.
 	holdUntil time.Time
@@ -607,7 +612,7 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 		}
 		onGrid = true
 		p.send(k, frame.frame)
-		p.sent(q, frame)
+		p.sent(q, frame, now, p.clock.Now())
 		next = next.Add(burstTime)
 		if !idle.Stop() {
 			select {
@@ -619,9 +624,14 @@ func (p *pacer) run(k slotKey, q *slotQueue) {
 	}
 }
 
-// sent remembers f, which went out, when it is the last frame of its
-// packet.
-func (p *pacer) sent(q *slotQueue, f queuedFrame) {
+// sent remembers f, whose send began at began and returned at returned,
+// when it is the last frame of its packet. The packet left when the send
+// of its first frame began, so that a peer that got it before a move does
+// not get it again outside the move, or when a send of it returned, if it
+// took longer than hub.MoveSlack and so may have left after a move. Until
+// then the frame counts as one that waits, which a handover holds, so that
+// a send that stalls past a move is not missed.
+func (p *pacer) sent(q *slotQueue, f queuedFrame, began, returned time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	q.sending = nil
@@ -629,11 +639,22 @@ func (p *pacer) sent(q *slotQueue, f queuedFrame) {
 		c.sentAt = p.clock.Now()
 		q.sendingCall = nil
 	}
+	stalled := returned.Sub(began) > hub.MoveSlack
+	switch key := keyOf(f.pkt); {
+	case key != q.leaving || q.leftAt.IsZero():
+		q.leaving, q.leftAt = key, began
+		if stalled {
+			q.leftAt = returned
+		}
+	case stalled:
+		q.leftAt = later(q.leftAt, returned)
+	}
 	if f.state == nil {
 		return
 	}
-	now := p.clock.Now()
-	q.sent = append(p.trimSent(q.sent, now), sentPacket{at: now, pkt: f.pkt, before: f.state.before, state: f.state.after})
+	at := q.leftAt
+	q.leaving, q.leftAt = packetKey{}, time.Time{}
+	q.sent = append(p.trimSent(q.sent, p.clock.Now()), sentPacket{at: at, pkt: f.pkt, before: f.state.before, state: f.state.after})
 }
 
 // trimSent drops the oldest packets of sent, which went to one peer slot,
@@ -730,6 +751,7 @@ func (p *pacer) handOver(peer uint32, since time.Time) ([]handedCall, []models.P
 			calls = append(calls, last[stream])
 		}
 		q.sent = nil
+		q.leaving, q.leftAt = packetKey{}, time.Time{}
 	}
 	return calls, lost, hangs
 }

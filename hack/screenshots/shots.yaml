@@ -6,7 +6,9 @@
 #          n1call, n2call or n3call
 #   needs  states of the demo network that the shot needs, made once, in
 #          order (see hooks.go)
-#   route  the page to open; none stays on the page of the shot before
+#   route  the page to open; none stays on the page of the shot before.
+#          {plugin:<kind>:<name>} in it is the ID of that plugin, such as
+#          {plugin:builtin:Parrot}
 #   wait   a text that the page must show
 #   steps  what to do before the capture; after: what to do after it
 #          fill <label or #id> = <text>, pick <label or #id> = <option>,
@@ -315,7 +317,7 @@ shots:
   - name: admin-plugin-inside.png
     phase: main
     as: n0call
-    route: /admin/plugins/3
+    route: "/admin/plugins/{plugin:uploaded:Parrot}"
     wait: Upload a new version
   - name: admin-plugin-token.png
     phase: main

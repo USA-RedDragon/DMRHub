@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -238,9 +239,13 @@ func (r *runner) take(ctx context.Context, s shot) error {
 		}
 	}
 	if s.Route != "" {
-		route := r.base + s.Route
-		if strings.HasPrefix(s.Route, "radio:") {
-			route = radioURL + strings.TrimPrefix(s.Route, "radio:")
+		path, err := r.pluginRoute(ctx, s.Route)
+		if err != nil {
+			return fmt.Errorf("shot %s: %w", s.Name, err)
+		}
+		route := r.base + path
+		if strings.HasPrefix(path, "radio:") {
+			route = radioURL + strings.TrimPrefix(path, "radio:")
 		}
 		if err := r.b.navigate(ctx, route); err != nil {
 			return fmt.Errorf("shot %s: %w", s.Name, err)
@@ -622,4 +627,41 @@ func (s *secrets) latest(kind string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.last[kind]
+}
+
+// pluginRef is a plugin in a route, as {plugin:<kind>:<name>}, such as
+// {plugin:builtin:APRS messages}.
+var pluginRef = regexp.MustCompile(`\{plugin:([a-z]+):([^}]+)\}`)
+
+// pluginRoute returns route with each plugin reference replaced by the ID
+// of the plugin of that kind and name, which the admin API lists, so that
+// a shot does not hang on how many plugins came before.
+func (r *runner) pluginRoute(ctx context.Context, route string) (string, error) {
+	refs := pluginRef.FindAllStringSubmatch(route, -1)
+	if len(refs) == 0 {
+		return route, nil
+	}
+	var list struct {
+		Plugins []struct {
+			ID   uint   `json:"id"`
+			Name string `json:"name"`
+			Kind string `json:"kind"`
+		} `json:"plugins"`
+	}
+	if err := r.api("n0call").do(ctx, http.MethodGet, "/api/v1/admin/plugins", nil, &list); err != nil {
+		return "", err
+	}
+	for _, ref := range refs {
+		id := uint(0)
+		for _, p := range list.Plugins {
+			if p.Kind == ref[1] && p.Name == ref[2] {
+				id = p.ID
+			}
+		}
+		if id == 0 {
+			return "", fmt.Errorf("route %s: no %s plugin %q", route, ref[1], ref[2])
+		}
+		route = strings.Replace(route, ref[0], strconv.FormatUint(uint64(id), 10), 1)
+	}
+	return route, nil
 }

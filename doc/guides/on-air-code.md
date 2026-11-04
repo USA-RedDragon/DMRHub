@@ -2,7 +2,7 @@
 
 Someone can program your DMR ID into their radio and transmit as you. The on-air code stops that: when it is on, DMRHub refuses every transmission from your radio IDs until you unlock the radio ID with a code from an authenticator app, on the hotspot or repeater timeslot that you use.
 
-This works as the AirSecurity feature of BrandMeister does. It uses TOTP codes, which change every 30 seconds, so any authenticator app works, such as FreeOTP, Aegis, Google Authenticator or 1Password.
+The code is a TOTP code (RFC 6238) that changes every 30 seconds, so any authenticator app works, such as FreeOTP, Aegis, Google Authenticator or 1Password.
 
 In this page, `<siteurl>` is the URL of your DMRHub instance.
 

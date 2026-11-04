@@ -107,8 +107,8 @@ type handover struct {
 }
 
 // lost returns the packets of the handover that the repeater lost: with
-// anchors, which a browser hotspot sent, those of Earlier after the
-// anchors and Packets, else Packets.
+// anchors, which a browser hotspot sent, those of Earlier and Packets
+// that the anchors tell it lost, else Packets.
 func (h handover) lost(anchors []wtAnchor) []models.Packet {
 	pkts := decodePackets(h.Packets)
 	if anchors == nil {
@@ -427,8 +427,8 @@ func (s *Server) wait(d time.Duration) bool {
 // new one, as at a move of the hotspot. A hotspot that answers the anchor
 // question gets every packet that left after its anchors; any other gets
 // those that left from hub.MoveSlack before at, and drops what it got
-// already. A hotspot that answers also gets those, as its anchor does not
-// tell what it lost of them.
+// already. A hotspot whose anchors do not tell the first burst that it
+// took of their streams, as an older one, also gets those.
 func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 	ep := endpoint{transport: webTransportName, addr: addr}
 	var id uint

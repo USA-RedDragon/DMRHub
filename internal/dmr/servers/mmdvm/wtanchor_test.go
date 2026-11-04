@@ -129,6 +129,21 @@ func TestAHandoverHoldsTheWindowBeforeTheFirstBurstThatTheBrowserTook(t *testing
 	})
 }
 
+// TestAHandoverResendsTheStartOfAStreamThatTheBrowserLost hands over a
+// browser hotspot that lost the first bursts of a call, longer than
+// hub.MoveSlack, and took the next ones. Its anchor tells the first burst
+// that it took, so it must get every burst of the call before that one,
+// and none that it took.
+func TestAHandoverResendsTheStartOfAStreamThatTheBrowserLost(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		since := sendBrowserBursts(s, oneCall(20), 19, time.Sleep)
+		got := handedOver(t, s, since, []wtAnchor{{Slot: 1, Stream: 7, Seq: 19, First: new(uint(17))}})
+		assert.Equal(t, oneCall(20)[:17], got)
+	})
+}
+
 // TestAHandoverToABrowserThatTookNothing hands over a browser hotspot
 // that sent anchors for no slot: it took no burst. It must get all that
 // the replica kept.
@@ -278,4 +293,43 @@ func TestAPathMoveSendsAgainTheWindowBeforeTheFirstBurstThatTheBrowserTook(t *te
 		}
 		assert.Equal(t, oneCall(30)[22:], got)
 	})
+}
+
+// TestAPathMoveResendsTheStartOfAStreamThatTheBrowserLost moves the QUIC
+// path of a browser hotspot after the load balancer lost the first 25
+// bursts of a call, longer than hub.MoveSlack, and the hotspot took the
+// next ones on the new path. Its anchor tells the first burst that it
+// took, so the replica must send again every burst of the call before that
+// one, and none that it took.
+func TestAPathMoveResendsTheStartOfAStreamThatTheBrowserLost(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		s.anchorsOf = func(wtAddr) ([]wtAnchor, bool) {
+			return []wtAnchor{{Slot: 1, Stream: 7, Seq: 29, First: new(uint(25))}}, true
+		}
+		sendBrowserBursts(s, oneCall(30), 0, time.Sleep)
+		s.resendMoved(wtAddr("a"), time.Now())
+		synctest.Wait()
+		var got []browserBurst
+		for len(s.outgoingChan) > 0 {
+			p, ok := models.UnpackPacket((<-s.outgoingChan).raw.Data)
+			require.True(t, ok)
+			got = append(got, browserBurst{slot2: p.Slot, stream: p.StreamID, seq: p.Seq})
+			time.Sleep(wtHandoverGap)
+			synctest.Wait()
+		}
+		assert.Equal(t, oneCall(30)[:25], got)
+	})
+}
+
+// TestTheFirstBurstOfAnAnchorIsOptional reads the anchors of a browser
+// hotspot that sends the first burst that it took of the stream of each,
+// and of one that does not, as an older one.
+func TestTheFirstBurstOfAnAnchorIsOptional(t *testing.T) {
+	t.Parallel()
+	var a wtAnchors
+	require.NoError(t, json.Unmarshal([]byte(`{"anchor":[{"slot":1,"stream":7,"seq":9,"first":3},{"slot":2,"stream":8,"seq":4}]}`), &a))
+	assert.Equal(t, []wtAnchor{{Slot: 1, Stream: 7, Seq: 9, First: new(uint(3))}, {Slot: 2, Stream: 8, Seq: 4}}, a.Anchor)
 }

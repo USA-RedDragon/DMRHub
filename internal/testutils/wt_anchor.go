@@ -28,17 +28,19 @@ import "github.com/USA-RedDragon/DMRHub/internal/db/models"
 const anchorGap = 64
 
 // Anchor is the last burst of a slot that a browser hotspot took with no
-// burst of its stream missing before it, as it sends it to DMRHub.
+// burst of its stream missing before it, as it sends it to DMRHub, and
+// First, the first burst of that stream that it took.
 type Anchor struct {
-	Slot   uint `json:"slot"`
-	Stream uint `json:"stream"`
-	Seq    uint `json:"seq"`
+	Slot   uint  `json:"slot"`
+	Stream uint  `json:"stream"`
+	Seq    uint  `json:"seq"`
+	First  *uint `json:"first,omitempty"`
 }
 
 type slotAnchor struct {
-	stream, last uint
-	seq          uint8
-	ahead        map[uint8]bool
+	stream, last  uint
+	seq, first    uint8
+	ahead, behind map[uint8]bool
 }
 
 // anchors are the anchors of a browser hotspot on its two slots, as
@@ -61,13 +63,20 @@ func (a *anchors) take(p models.Packet) {
 		if s != nil {
 			last = s.stream
 		}
-		a.slots[i] = &slotAnchor{stream: p.StreamID, last: last, seq: seq, ahead: map[uint8]bool{}}
+		a.slots[i] = &slotAnchor{stream: p.StreamID, last: last, seq: seq, first: seq, ahead: map[uint8]bool{}, behind: map[uint8]bool{}}
 		return
 	case p.StreamID != s.stream:
 		return
 	}
 	d := seq - s.seq
 	if d == 0 || d > 128 {
+		if b := s.first - seq; b > 0 && b <= 128 {
+			s.behind[seq] = true
+			for s.behind[s.first-1] {
+				s.first--
+				delete(s.behind, s.first)
+			}
+		}
 		return
 	}
 	s.ahead[seq] = true
@@ -91,7 +100,7 @@ func (a *anchors) list() []Anchor {
 	out := []Anchor{}
 	for i, s := range a.slots {
 		if s != nil {
-			out = append(out, Anchor{Slot: uint(i) + 1, Stream: s.stream, Seq: uint(s.seq)})
+			out = append(out, Anchor{Slot: uint(i) + 1, Stream: s.stream, Seq: uint(s.seq), First: new(uint(s.first))})
 		}
 	}
 	return out

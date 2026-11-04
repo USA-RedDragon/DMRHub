@@ -321,11 +321,14 @@ func (h *Hub) listenCodecChanges(sub pubsub.Subscription) {
 	}
 }
 
+// pruneCodecStreams forgets what the hub knows of the codec of the streams
+// that idled at now. A stream with bursts that wait for the routing worker
+// of their source did not idle, however long the worker took.
 func (h *Hub) pruneCodecStreams(now time.Time) {
 	hold, recheck := h.claimTimes()
 	kept := hold + recheck
 	h.codecStreams.Range(func(id uint, sc *streamCodec) bool {
-		if sc.idle(now, kept) {
+		if _, queued := h.inRouting.Load(id); !queued && sc.idle(now, kept) {
 			h.codecStreams.Delete(id)
 			sc.setTranscoder(nil)
 		}

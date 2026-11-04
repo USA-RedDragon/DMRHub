@@ -181,3 +181,7 @@ func (h *Hub) PromptQueued(repeater uint, slot2 bool) bool {
 	}
 	return false
 }
+
+// SightedStreamTTL is sightedStreamTTL, the time between two prunes of the
+// streams that idled.
+const SightedStreamTTL = sightedStreamTTL

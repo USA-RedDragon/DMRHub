@@ -253,6 +253,9 @@ type Hub struct {
 	transcoder   *transcode.Service
 	transcoders  inflight
 	codecStreams *xsync.Map[uint, *streamCodec]
+	// inRouting counts, by stream, the bursts that wait for the routing
+	// worker of their source or that it routes now.
+	inRouting    *xsync.Map[uint, int]
 	copyMu       sync.Mutex
 	copyOrders   map[sourceSlot]*copyOrder
 	copyReports  *xsync.Map[copyReport, time.Time]
@@ -362,6 +365,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.streamPolicies = xsync.NewMap[claimKey, streamPolicy]()
 	h.transcoder = transcode.NewService(kvStore, h.clock)
 	h.codecStreams = xsync.NewMap[uint, *streamCodec]()
+	h.inRouting = xsync.NewMap[uint, int]()
 	h.copyOrders = map[sourceSlot]*copyOrder{}
 	h.copyReports = xsync.NewMap[copyReport, time.Time]()
 	h.tgRepeaters = lookup.New(h.clock, "talkgroup repeaters", tgRepeatersTTL, func(tg uint) ([]uint, error) {

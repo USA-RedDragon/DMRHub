@@ -34,6 +34,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/DMRHub/internal/plugins"
 	"github.com/USA-RedDragon/DMRHub/internal/prompts"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -108,9 +109,27 @@ func (h *Hub) routeStreamAt(ctx context.Context, packet models.Packet, sourceNam
 			return
 		}
 		h.trackCall(ctx, &packet, sourceName, at)
-		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() { h.routeNow(ctx, packet, sourceName, at, epoch) }) && ctx.Err() == nil {
-			slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
+		h.queueRouting(packet.StreamID, 1)
+		if !h.routing.Do(ctx, h.sourceSlotOf(packet, sourceName), func() {
+			defer h.queueRouting(packet.StreamID, -1)
+			h.routeNow(ctx, packet, sourceName, at, epoch)
+		}) {
+			h.queueRouting(packet.StreamID, -1)
+			if ctx.Err() == nil {
+				slog.Warn("Dropping packet of a backed-up stream", "stream", packet.StreamID, "src", packet.Src, "dst", packet.Dst)
+			}
 		}
+	})
+}
+
+// queueRouting adds n to the bursts of stream that wait for routing or
+// that the routing worker routes now.
+func (h *Hub) queueRouting(stream uint, n int) {
+	h.inRouting.Compute(stream, func(old int, _ bool) (int, xsync.ComputeOp) {
+		if old+n <= 0 {
+			return 0, xsync.DeleteOp
+		}
+		return old + n, xsync.UpdateOp
 	})
 }
 

@@ -297,6 +297,25 @@ func TestABuiltinPluginIsNeitherRemovedNorGivenAToken(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestABuiltinPluginWithNoIDsIsTurnedOnOnlyWithAnID(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	builtin, err := models.EnsureBuiltinPlugin(e.db, "mailbox", "Mailbox", "v1.3.4", nil, time.Now())
+	require.NoError(t, err)
+	require.False(t, builtin.Enabled)
+	w := testutils.Do(t, e.router, e.admin, http.MethodPut, fmt.Sprintf("/api/v1/admin/plugins/%d", builtin.ID),
+		map[string]any{"name": "Mailbox", "enabled": true, "ranges": []map[string]uint{}})
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var refused map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &refused))
+	assert.Equal(t, "Give the plugin an ID before you turn it on.", refused["error"])
+	var got apimodels.AdminPlugin
+	require.Equal(t, http.StatusOK, e.do(e.admin, http.MethodPut, fmt.Sprintf("/api/v1/admin/plugins/%d", builtin.ID),
+		map[string]any{"name": "Mailbox", "enabled": true, "ranges": []map[string]uint{{"first": 4321, "last": 4321}}}, &got))
+	assert.True(t, got.Enabled)
+	assert.Equal(t, []apimodels.PluginRange{{First: 4321, Last: 4321}}, got.Ranges)
+}
+
 func TestAPluginFileOver32MiBIsRefused(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

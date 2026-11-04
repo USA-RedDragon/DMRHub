@@ -142,6 +142,84 @@ func TestABuiltinPluginIsMadeOnceWithItsDefaultIDs(t *testing.T) {
 	assert.Equal(t, uint(9991), again.Ranges[0].First)
 }
 
+func TestABuiltinPluginWithNoIDsStartsOffUntilAnAdminGivesItAnID(t *testing.T) {
+	t.Parallel()
+	for _, be := range localGroupBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			database := localGroupDB(t, be)
+			p, err := models.EnsureBuiltinPlugin(database, "mailbox", "Mailbox", "v1.3.4", nil, time.Now())
+			require.NoError(t, err)
+			assert.False(t, p.Enabled, "a built-in plugin with no IDs starts off")
+			assert.Empty(t, p.Ranges)
+
+			_, err = models.UpdatePlugin(database, p.ID, "Mailbox", true, nil)
+			var none *models.PluginNoIDsError
+			require.ErrorAs(t, err, &none, "a built-in plugin is not turned on without an ID")
+			require.ErrorIs(t, err, models.ErrPluginRange)
+			on, err := models.UpdatePlugin(database, p.ID, "Mailbox", true, []models.PluginRange{rng(4321, 4321)})
+			require.NoError(t, err)
+			assert.True(t, on.Enabled)
+
+			again, err := models.EnsureBuiltinPlugin(database, "mailbox", "Mailbox", "v1.3.5", nil, time.Now())
+			require.NoError(t, err)
+			assert.True(t, again.Enabled, "the next start keeps it on")
+			require.Len(t, again.Ranges, 1)
+			assert.Equal(t, uint(4321), again.Ranges[0].First)
+
+			external, _, err := models.CreatePlugin(database, "Weather", nil, time.Now())
+			require.NoError(t, err)
+			_, err = models.UpdatePlugin(database, external.ID, "Weather", true, nil)
+			require.NoError(t, err, "a plugin that is not built in may be on with no IDs")
+		})
+	}
+}
+
+func TestAnUpgradeKeepsTheBuiltinPluginsAsTheyWereAndAddsTheNewOnesOff(t *testing.T) {
+	t.Parallel()
+	for _, be := range localGroupBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			database := localGroupDB(t, be)
+			parrot, err := models.EnsureBuiltinPlugin(database, "parrot", "Parrot", "v1.3.4", []models.PluginRange{rng(9990, 9990)}, time.Now())
+			require.NoError(t, err)
+			locator, err := models.EnsureBuiltinPlugin(database, "locator", "Location server", "v1.3.4", []models.PluginRange{rng(5050, 5059)}, time.Now())
+			require.NoError(t, err)
+			_, err = models.UpdatePlugin(database, locator.ID, "Location server", true, []models.PluginRange{rng(5060, 5069)})
+			require.NoError(t, err)
+
+			for _, b := range []struct {
+				key, name string
+				ranges    []models.PluginRange
+			}{
+				{"parrot", "Parrot", []models.PluginRange{rng(9990, 9990)}},
+				{"locator", "Location server", []models.PluginRange{rng(5050, 5059)}},
+				{"mailbox", "Mailbox", nil},
+			} {
+				_, err := models.EnsureBuiltinPlugin(database, b.key, b.name, "v1.4.0", b.ranges, time.Now())
+				require.NoError(t, err, b.key)
+			}
+			list, err := models.ListPlugins(database)
+			require.NoError(t, err)
+			require.Len(t, list, 3)
+			byKey := map[string]models.Plugin{}
+			for _, p := range list {
+				byKey[p.Builtin] = p
+				assert.Equal(t, "v1.4.0", p.Version, p.Builtin)
+			}
+			assert.True(t, byKey["parrot"].Enabled)
+			assert.Equal(t, parrot.ID, byKey["parrot"].ID)
+			require.Len(t, byKey["parrot"].Ranges, 1)
+			assert.Equal(t, uint(9990), byKey["parrot"].Ranges[0].First)
+			assert.True(t, byKey["locator"].Enabled)
+			require.Len(t, byKey["locator"].Ranges, 1)
+			assert.Equal(t, uint(5060), byKey["locator"].Ranges[0].First, "the admin's IDs stay")
+			assert.False(t, byKey["mailbox"].Enabled, "the new built-in plugin with no IDs is off")
+			assert.Empty(t, byKey["mailbox"].Ranges)
+		})
+	}
+}
+
 func TestABuiltinPluginWhoseIDsAreTakenWaitsForThem(t *testing.T) {
 	t.Parallel()
 	database, cleanup := openDB(t)

@@ -164,7 +164,10 @@ func rangeProblem(err error, asked bool) string {
 	var bad *models.PluginIDError
 	var taken *models.PluginIDTakenError
 	var reserved *models.PluginIDReservedError
+	var none *models.PluginNoIDsError
 	switch {
+	case errors.As(err, &none):
+		return "Give the plugin an ID before you turn it on."
 	case errors.As(err, &reserved):
 		return fmt.Sprintf("%d is kept for the on-air codes. DMRHub keeps 9000000 to 9999999 for them.", reserved.ID)
 	case errors.As(err, &taken):

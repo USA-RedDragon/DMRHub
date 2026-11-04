@@ -154,6 +154,19 @@ func (e *PluginIDReservedError) Unwrap() error {
 	return ErrPluginRange
 }
 
+// PluginNoIDsError is returned, with ErrPluginRange, for a built-in plugin
+// that is turned on with no IDs.
+type PluginNoIDsError struct{}
+
+func (e *PluginNoIDsError) Error() string {
+	return fmt.Sprintf("%v: a built-in plugin needs an ID to be on", ErrPluginRange)
+}
+
+// Unwrap returns ErrPluginRange.
+func (e *PluginNoIDsError) Unwrap() error {
+	return ErrPluginRange
+}
+
 // PluginIDTakenError is returned, with ErrPluginRange, for an ID that
 // another plugin that is on has.
 type PluginIDTakenError struct {
@@ -354,6 +367,9 @@ func UpdatePlugin(db *gorm.DB, id uint, name string, enabled bool, ranges []Plug
 		}
 		if err := checkPluginName(tx, id, p.Builtin, name); err != nil {
 			return err
+		}
+		if enabled && p.Kind == PluginBuiltin && len(ranges) == 0 {
+			return &PluginNoIDsError{}
 		}
 		if err := checkPluginRanges(tx, id, ranges, enabled); err != nil {
 			return err

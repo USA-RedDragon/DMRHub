@@ -291,7 +291,8 @@ func PluginModuleOf(db *gorm.DB, id uint) ([]byte, []byte, error) {
 
 // EnsureBuiltinPlugin returns the built-in plugin key, and adds it, named
 // name with ranges, when there is none yet. When another plugin that is on
-// has some of ranges, it waits for them, as WaitingPlugins says. Its
+// has some of ranges, it waits for them, as WaitingPlugins says. With no
+// ranges, it starts off, until an admin gives it IDs and turns it on. Its
 // version follows DMRHub's; its name, IDs and whether it is on stay as the
 // admin set them.
 func EnsureBuiltinPlugin(db *gorm.DB, key, name, version string, ranges []PluginRange, now time.Time) (Plugin, error) {
@@ -317,6 +318,11 @@ func EnsureBuiltinPlugin(db *gorm.DB, key, name, version string, ranges []Plugin
 			return fmt.Errorf("could not add the built-in plugin: %w", err)
 		}
 		id = p.ID
+		if len(ranges) == 0 {
+			if err := tx.Model(&Plugin{}).Where("id = ?", id).Update("enabled", false).Error; err != nil {
+				return fmt.Errorf("could not add the built-in plugin: %w", err)
+			}
+		}
 		return replacePluginRanges(tx, id, ranges)
 	})
 	if err != nil {

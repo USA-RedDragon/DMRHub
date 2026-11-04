@@ -115,6 +115,20 @@ func TestAHandoverStartsAfterTheAnchor(t *testing.T) {
 	})
 }
 
+// TestAHandoverHoldsTheWindowBeforeTheFirstBurstThatTheBrowserTook hands
+// over a browser hotspot that lost the first bursts of a call in the time
+// window of the move and took the next ones. Its anchor is the first burst
+// that it took, as it cannot tell that a call began before it, so the
+// hotspot must get the whole window, and every burst after its anchor.
+func TestAHandoverHoldsTheWindowBeforeTheFirstBurstThatTheBrowserTook(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		since := sendBrowserBursts(s, oneCall(20), 15, time.Sleep)
+		assert.Equal(t, oneCall(20)[7:], handedOver(t, s, since, []wtAnchor{{Slot: 1, Stream: 7, Seq: 16}}))
+	})
+}
+
 // TestAHandoverToABrowserThatTookNothing hands over a browser hotspot
 // that sent anchors for no slot: it took no burst. It must get all that
 // the replica kept.
@@ -155,10 +169,10 @@ func TestAHandoverStartsAfterTheAnchorOfEachSlot(t *testing.T) {
 			calls = append(calls, browserBurst{stream: 7, seq: uint(i)}, browserBurst{slot2: true, stream: 8, seq: uint(i)})
 		}
 		since := sendBrowserBursts(s, calls, 19, time.Sleep)
-		got := handedOver(t, s, since, []wtAnchor{{Slot: 1, Stream: 7, Seq: 2}, {Slot: 2, Stream: 8, Seq: 5}})
+		got := handedOver(t, s, since, []wtAnchor{{Slot: 1, Stream: 7, Seq: 2}, {Slot: 2, Stream: 8, Seq: 4}})
 		var want []browserBurst
 		for _, b := range calls {
-			if (!b.slot2 && b.seq > 2) || (b.slot2 && b.seq > 5) {
+			if (!b.slot2 && b.seq > 2) || (b.slot2 && b.seq > 4) {
 				want = append(want, b)
 			}
 		}
@@ -168,8 +182,8 @@ func TestAHandoverStartsAfterTheAnchorOfEachSlot(t *testing.T) {
 
 // TestAnAnchoredHandoverFromAnOlderReplica hands a browser hotspot with an
 // anchor over from a replica that sends only the time window, as one
-// before anchors does. The hotspot must get the bursts of the window after
-// its anchor.
+// before anchors does. The hotspot must get the whole window, as the
+// anchor does not tell what it lost of the window before the anchor.
 func TestAnAnchoredHandoverFromAnOlderReplica(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -179,7 +193,7 @@ func TestAnAnchoredHandoverFromAnOlderReplica(t *testing.T) {
 		require.NoError(t, err)
 		var old handover
 		require.NoError(t, json.Unmarshal(b, &old))
-		assert.Equal(t, oneCall(20)[11:], burstsOf(old.lost([]wtAnchor{{Slot: 1, Stream: 7, Seq: 10}})))
+		assert.Equal(t, oneCall(20)[7:], burstsOf(old.lost([]wtAnchor{{Slot: 1, Stream: 7, Seq: 10}})))
 	})
 }
 
@@ -223,6 +237,34 @@ func TestAPathMoveWithoutAnAnswerSendsAgainTheTimeWindow(t *testing.T) {
 		s := browserServer()
 		s.outgoingChan = make(chan outgoing, 64)
 		s.anchorsOf = func(wtAddr) ([]wtAnchor, bool) { return nil, false }
+		sendBrowserBursts(s, oneCall(30), 0, time.Sleep)
+		s.resendMoved(wtAddr("a"), time.Now())
+		synctest.Wait()
+		var got []browserBurst
+		for len(s.outgoingChan) > 0 {
+			p, ok := models.UnpackPacket((<-s.outgoingChan).raw.Data)
+			require.True(t, ok)
+			got = append(got, browserBurst{slot2: p.Slot, stream: p.StreamID, seq: p.Seq})
+			time.Sleep(wtHandoverGap)
+			synctest.Wait()
+		}
+		assert.Equal(t, oneCall(30)[22:], got)
+	})
+}
+
+// TestAPathMoveSendsAgainTheWindowBeforeTheFirstBurstThatTheBrowserTook
+// moves the QUIC path of a browser hotspot that lost the first bursts of a
+// call on the old path and took the next ones on the new path before the
+// replica asked for its anchors. Its anchor is the first burst that it
+// took, as it cannot tell that the call began before it, so the replica
+// must send again what left in hub.MoveSlack before the move, and every
+// burst after the anchor.
+func TestAPathMoveSendsAgainTheWindowBeforeTheFirstBurstThatTheBrowserTook(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		s := browserServer()
+		s.outgoingChan = make(chan outgoing, 64)
+		s.anchorsOf = func(wtAddr) ([]wtAnchor, bool) { return []wtAnchor{{Slot: 1, Stream: 7, Seq: 29}}, true }
 		sendBrowserBursts(s, oneCall(30), 0, time.Sleep)
 		s.resendMoved(wtAddr("a"), time.Now())
 		synctest.Wait()

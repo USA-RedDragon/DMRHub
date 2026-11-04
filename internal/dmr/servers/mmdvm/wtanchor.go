@@ -62,8 +62,11 @@ type wtAnchors struct {
 // of the slot that it took with no burst of its stream missing before it.
 // A hotspot that knows what it got sends its anchors to the replica that
 // takes it over, and to the replica whose path to it moved, which then
-// sends it every burst that went to it after them, rather than those of a
-// time window, which a load balancer that stalls can outlast.
+// sends it every burst that went to it after them, as well as those of a
+// time window, which a load balancer that stalls can outlast. The window
+// stays: a hotspot that lost the first bursts of a stream anchors it at
+// the first burst that it took, as it cannot tell that the stream began
+// before it.
 type wtAnchor struct {
 	Slot   uint `json:"slot"`
 	Stream uint `json:"stream"`
@@ -76,11 +79,13 @@ func (a wtAnchor) slot2() bool {
 }
 
 // afterAnchors returns the packets of sent, which went to a browser
-// hotspot in that order, that came after the anchors of the hotspot, in
+// hotspot in that order, that came after the anchors of the hotspot, and
+// those from window on, the packets of the time window of the move, in
 // order. Of a slot whose anchor is in sent, these are the packets after
 // its last copy there; of a slot with no anchor, or whose anchor is older
-// than sent, all of them, as the hotspot took none of them.
-func afterAnchors(sent []models.Packet, anchors []wtAnchor) []models.Packet {
+// than sent, all of them, as the hotspot took none of them. The hotspot
+// drops a copy of a packet of the window that it took.
+func afterAnchors(sent []models.Packet, anchors []wtAnchor, window int) []models.Packet {
 	from := map[bool]int{}
 	for _, a := range anchors {
 		if a.Slot != 1 && a.Slot != 2 {
@@ -89,7 +94,7 @@ func afterAnchors(sent []models.Packet, anchors []wtAnchor) []models.Packet {
 		for i := len(sent) - 1; i >= 0; i-- {
 			p := sent[i]
 			if p.Slot == a.slot2() && p.StreamID == a.Stream && p.Seq&0xff == a.Seq&0xff {
-				from[p.Slot] = i + 1
+				from[p.Slot] = min(i+1, window)
 				break
 			}
 		}

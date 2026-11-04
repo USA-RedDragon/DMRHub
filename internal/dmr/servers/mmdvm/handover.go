@@ -107,14 +107,15 @@ type handover struct {
 }
 
 // lost returns the packets of the handover that the repeater lost: with
-// anchors, which a browser hotspot sent, those of Earlier and Packets after
-// the anchors, else Packets.
+// anchors, which a browser hotspot sent, those of Earlier after the
+// anchors and Packets, else Packets.
 func (h handover) lost(anchors []wtAnchor) []models.Packet {
 	pkts := decodePackets(h.Packets)
 	if anchors == nil {
 		return pkts
 	}
-	return afterAnchors(append(decodePackets(h.Earlier), pkts...), anchors)
+	earlier := decodePackets(h.Earlier)
+	return afterAnchors(append(earlier, pkts...), anchors, len(earlier))
 }
 
 func decodePackets(raw [][]byte) []models.Packet {
@@ -426,7 +427,8 @@ func (s *Server) wait(d time.Duration) bool {
 // new one, as at a move of the hotspot. A hotspot that answers the anchor
 // question gets every packet that left after its anchors; any other gets
 // those that left from hub.MoveSlack before at, and drops what it got
-// already.
+// already. A hotspot that answers also gets those, as its anchor does not
+// tell what it lost of them.
 func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 	ep := endpoint{transport: webTransportName, addr: addr}
 	var id uint
@@ -443,10 +445,11 @@ func (s *Server) resendMoved(addr wtAddr, at time.Time) {
 	go func() {
 		var pkts []models.Packet
 		anchors, ok := s.askAnchorsOf(addr)
+		sent, window := s.leftSince(id, at.Add(-ruleFor(ep).slack))
 		if ok {
-			pkts = afterAnchors(s.leftSince(id, time.Time{}), anchors)
+			pkts = afterAnchors(sent, anchors, window)
 		} else {
-			pkts = s.leftSince(id, at.Add(-ruleFor(ep).slack))
+			pkts = sent[window:]
 		}
 		if len(pkts) == 0 {
 			return
@@ -477,20 +480,24 @@ func (s *Server) askAnchorsOf(addr wtAddr) ([]wtAnchor, bool) {
 	return s.anchorsOf(addr)
 }
 
-// leftSince returns the packets to the repeater id that left at or after
-// since, or that still wait or are being written, in order. A packet that
+// leftSince returns the packets that the server keeps of those to the
+// repeater id, in order, and the index of the first of them that left at
+// or after since, or that still waits or is being written. A packet that
 // the writer writes while the path of the connection moves may go out on
 // the old path.
-func (s *Server) leftSince(id uint, since time.Time) []models.Packet {
+func (s *Server) leftSince(id uint, since time.Time) ([]models.Packet, int) {
 	s.sentMu.Lock()
 	defer s.sentMu.Unlock()
-	var out []models.Packet
-	for _, p := range s.sent[id] {
-		if p.at.IsZero() || !p.at.Before(since) {
-			out = append(out, p.pkt)
+	list := s.sent[id]
+	out := make([]models.Packet, 0, len(list))
+	window := len(list)
+	for i, p := range list {
+		if window == len(list) && (p.at.IsZero() || !p.at.Before(since)) {
+			window = i
 		}
+		out = append(out, p.pkt)
 	}
-	return out
+	return out, window
 }
 
 // forgetSent forgets the packets sent to the repeater id.

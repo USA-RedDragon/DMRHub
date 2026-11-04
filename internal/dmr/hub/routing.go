@@ -214,7 +214,7 @@ func (h *Hub) fanOut(ctx context.Context, packet models.Packet, sourceName strin
 // Packets from network peers are not handled: their Repeater field is a
 // peer ID, not a repeater to play back to or unlink.
 func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packet, isVoice bool, sourceName string, came time.Time, epoch uint64) bool {
-	if h.toPlugin(packet, sourceName) {
+	if h.toPlugin(ctx, packet, sourceName) {
 		return true
 	}
 	if h.getServerRole(sourceName) == RolePeer {
@@ -233,7 +233,7 @@ func (h *Hub) handleSpecialDestinations(ctx context.Context, packet models.Packe
 // goes only to the plugin; a group call also goes to the talkgroup's
 // subscribers when the talkgroup exists. It reports whether routing ends
 // here.
-func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
+func (h *Hub) toPlugin(ctx context.Context, packet models.Packet, sourceName string) bool {
 	p := h.plugins.Load()
 	if p == nil {
 		return false
@@ -248,6 +248,7 @@ func (h *Hub) toPlugin(packet models.Packet, sourceName string) bool {
 			Topic: plugins.InTopic(owner),
 			Send:  func() error { return pl.Deliver(owner, packet) },
 		})
+		h.answerPluginData(ctx, packet, sourceName, owner)
 	}
 	if !packet.GroupCall {
 		return true

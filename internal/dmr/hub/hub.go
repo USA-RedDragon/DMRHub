@@ -282,6 +282,7 @@ type Hub struct {
 	lockedStreams *xsync.Map[unlockStream, time.Time]
 	unlockReplies atomic.Pointer[UnlockReplies]
 	promptState   promptState
+	pluginAnswers pluginAnswers
 }
 
 // NewHub creates a new Hub.

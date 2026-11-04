@@ -43,6 +43,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2"
+	l2packet "github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/location"
 	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/ars"
@@ -354,12 +355,26 @@ func newLink(service uint32, now time.Time) (*link, error) {
 	return &link{rx: rx, slot: 1, cc: 1, last: now}, nil
 }
 
+// apply acts on the events of a burst. The Locator sends only the ACKs of
+// the packets that are not texts: the hub answers the texts and sends the
+// NACKs, so that a radio gets one answer (see plugin.IsText).
 func (l *Locator) apply(k linkKey, ln *link, now time.Duration) {
+	text := false
+	for i := range l.events {
+		e := &l.events[i]
+		if (e.Kind == data.EventDelivered || e.Kind == data.EventReassembled) && !e.Message.BadCRC {
+			if _, ok := plugin.IsText(&e.Message); ok {
+				text = true
+			}
+		}
+	}
 	for i := range l.events {
 		e := &l.events[i]
 		switch e.Kind { //nolint:exhaustive
 		case data.EventRespond:
-			l.respond(k, ln, e.Burst, e.Due-now)
+			if e.Response == l2packet.ResponseACK && !text {
+				l.respond(k, ln, e.Burst, e.Due-now)
+			}
 		case data.EventDelivered, data.EventReassembled:
 			l.deliver(k, ln, &e.Message)
 		}

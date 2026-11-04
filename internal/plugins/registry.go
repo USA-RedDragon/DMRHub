@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
@@ -176,6 +177,16 @@ func (r *Registry) Owner(id uint) (uint, bool) {
 		return ranges[i].plugin, true
 	}
 	return 0, false
+}
+
+// Online reports whether the plugin id has a stream to a replica of the
+// hub, by its last heartbeat.
+func (r *Registry) Online(id uint) bool {
+	p, err := models.FindPlugin(r.db, id)
+	if err != nil {
+		return false
+	}
+	return p.Online(time.Now())
 }
 
 // Deliver hands p to the plugin id, through the replica that holds its

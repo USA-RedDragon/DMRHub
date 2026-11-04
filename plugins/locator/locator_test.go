@@ -37,6 +37,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/ars"
 	"github.com/USA-RedDragon/dmrgo/v2/mototrbo/lrrp"
+	"github.com/USA-RedDragon/dmrgo/v2/sms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -616,5 +617,21 @@ func TestARadioIsAskedFromTheIDItRegisteredWith(t *testing.T) {
 		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[1].lrrp.Document)
 		last := o.sent()[len(o.sent())-1]
 		assert.Equal(t, uint32(service), last.GetSource(), "from the ID the radio registered with, not the plugin's first")
+	})
+}
+
+func TestAConfirmedTextIsLeftToTheHub(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		l, o := newLocator(t)
+		var h sms.Header
+		payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: radio, Destination: service, Body: []byte("STATUS")}, &h)
+		require.NoError(t, err)
+		d, err := ip.Decode(enums.SAPIPBasedPacketData, payload)
+		require.NoError(t, err)
+		handle(l, radioBursts(t, datagram(t, d.DestinationPort, d.Payload), true))
+		time.Sleep(3 * time.Second)
+		synctest.Wait()
+		assert.Empty(t, o.sent(), "the hub answers a text, so the radio gets one answer")
 	})
 }

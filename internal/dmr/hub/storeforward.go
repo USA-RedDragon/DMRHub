@@ -60,6 +60,11 @@ type storeForwardBox struct{ sf StoreForward }
 
 type tapKey struct{ src, dst uint }
 
+type dataSlot struct {
+	repeater uint
+	slot     bool
+}
+
 // SetStoreForward sets what the hub tells of the private data that it
 // cannot route and the radios that it hears.
 func (h *Hub) SetStoreForward(sf StoreForward) {
@@ -107,7 +112,18 @@ func (h *Hub) tapData(packet models.Packet) {
 // or for a confirmed message acknowledged, refused or not answered. The
 // responses of the radio come from the bursts that this replica routes.
 // It returns when ctx ends or the hub stops, with data.ResultCancelled.
+// The messages to one timeslot of a repeater go one after another, as a
+// radio takes one packet at a time.
 func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.Message) (data.Result, error) {
+	busy, _ := h.dataSlots.LoadOrStore(dataSlot{repeater: repeaterID, slot: slot}, make(chan struct{}, 1))
+	select {
+	case busy <- struct{}{}:
+	case <-ctx.Done():
+		return data.ResultCancelled, nil
+	case <-h.done:
+		return data.ResultCancelled, nil
+	}
+	defer func() { <-busy }()
 	rpt, err := h.routingRepeater(repeaterID)
 	if err != nil {
 		return 0, fmt.Errorf("finding repeater %d: %w", repeaterID, err)

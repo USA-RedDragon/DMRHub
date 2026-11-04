@@ -1,6 +1,6 @@
 src/App.vue	28	27
-src/components/AppFooter.vue	10	10
-src/components/AppHeader.vue	99	65
+src/components/AppFooter.vue	10	9
+src/components/AppHeader.vue	99	64
 src/components/CallCodec.vue	2	1
 src/components/ConnectionLogCard.vue	35	28
 src/components/CosysopInvites.vue	31	29
@@ -137,7 +137,7 @@ src/services/talkgroup.ts	15	11
 src/services/totp.ts	12	0
 src/services/userdb.ts	15	11
 src/services/util.ts	7	6
-src/services/ws.ts	51	35
+src/services/ws.ts	51	37
 src/store/index.ts	25	25
 src/views/LastHeard.vue	1	1
 src/views/admin/NetsPage.vue	72	39

@@ -368,7 +368,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.lockedStreams = xsync.NewMap[unlockStream, time.Time]()
 	h.initUnlocks()
 	h.heard = make(chan heardNote, heardQueue)
-	for _, q := range []interface{ GoWith(func(func())) }{h.outbox, h.later, h.peerEgress, h.routing, h.links, h.talkgroupIDs, h.radioOwners, h.radioCalls, h.egressTable, h.lastSeen, h.owners, h.tgRepeaters, h.unlockGrants} {
+	for _, q := range []interface{ GoWith(func(func())) }{h.outbox, h.later, h.peerEgress, h.routing, h.links, h.talkgroupIDs, h.radioOwners, h.radioCalls, h.egressTable, h.lastSeen, h.owners, h.tgRepeaters, h.localMembers, h.unlockGrants} {
 		q.GoWith(h.goTracked)
 	}
 	if h.db != nil {

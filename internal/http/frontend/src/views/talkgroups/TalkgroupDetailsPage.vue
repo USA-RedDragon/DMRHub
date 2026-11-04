@@ -118,6 +118,7 @@
       </div>
 
       <TalkgroupAccessCard v-if="canManage" :talkgroup-id="talkgroup.id" />
+      <TalkgroupListenCard v-if="canManage" :talkgroup-id="talkgroup.id" :no-listen="talkgroup.no_listen" />
 
       <!-- Net Control -->
       <Card>
@@ -254,6 +255,7 @@ import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
 import TalkgroupAccessCard from '@/components/TalkgroupAccessCard.vue';
+import TalkgroupListenCard from '@/components/TalkgroupListenCard.vue';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import {
@@ -293,6 +295,7 @@ type TalkgroupData = {
   description: string;
   admins: UserRef[];
   ncos: UserRef[];
+  no_listen: boolean;
   created_at: string;
 };
 
@@ -311,6 +314,7 @@ export default {
     ShadInput,
     RelativeTimestamp,
     TalkgroupAccessCard,
+    TalkgroupListenCard,
     User,
   },
   head: {

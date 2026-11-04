@@ -292,6 +292,23 @@ export const TABS: TabDef[] = [
         title: 'Visibility',
         rows: [{ path: 'visibility', label: 'Visitors who are not logged in see', kind: 'segment', options: visibility }],
       },
+      {
+        title: 'Listen-only monitor',
+        rows: [
+          {
+            path: 'listen.listeners', label: 'Listeners at once', kind: 'number',
+            toggle: { label: 'Let visitors listen in DMRHub Radio', value: 200 },
+            help: 'Visitors with no account hear one talkgroup at a time and cannot talk. The limit is for each server.',
+            warn: (read) => (read('visibility') === 'login' && Number(read('listen.listeners')) > 0
+              ? 'Visitors see nothing, so nobody can listen.'
+              : undefined),
+          },
+          {
+            path: 'listen.per-address', label: 'Listeners from one address', kind: 'number', show: (read) => Number(read('listen.listeners')) > 0,
+            help: 'For each server. 0 is no limit.',
+          },
+        ],
+      },
     ],
   },
   {

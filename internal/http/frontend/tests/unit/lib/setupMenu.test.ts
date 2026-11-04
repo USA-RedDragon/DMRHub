@@ -327,6 +327,25 @@ describe('setup menu browser radios', () => {
   });
 });
 
+describe('setup menu listen-only monitor', () => {
+  const reader = (v: Record<string, unknown>) => (p: string) => v[p];
+
+  it('turns the monitor on at 200 listeners, with the address limit only while it is on', () => {
+    expect(tab('accounts').cards.map((c) => c.title)).toContain('Listen-only monitor');
+    expect(field('listen.listeners').toggle).toEqual({ label: 'Let visitors listen in DMRHub Radio', value: 200 });
+    const perAddress = field('listen.per-address');
+    expect(perAddress.show?.(reader({ 'listen.listeners': 0 }))).toBe(false);
+    expect(perAddress.show?.(reader({ 'listen.listeners': 200 }))).toBe(true);
+  });
+
+  it('warns that nobody can listen while visitors see nothing', () => {
+    const warn = field('listen.listeners').warn!;
+    expect(warn(reader({ visibility: 'login', 'listen.listeners': 200 }))).toBe('Visitors see nothing, so nobody can listen.');
+    expect(warn(reader({ visibility: 'login', 'listen.listeners': 0 }))).toBeUndefined();
+    expect(warn(reader({ visibility: 'hide-names', 'listen.listeners': 200 }))).toBeUndefined();
+  });
+});
+
 describe('setup menu of the setup wizard', () => {
   it('puts Database first and keeps every other tab in the order of the menu', () => {
     const ids = wizardTabs(stateWith({})).map((t) => t.id);

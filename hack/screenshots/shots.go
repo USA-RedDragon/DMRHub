@@ -58,6 +58,7 @@ type runner struct {
 	b       *browser
 	hub     *hubProcess
 	base    string
+	mmdvm   string
 	cursor  time.Time
 	as      string
 	apis    map[string]*api
@@ -71,7 +72,7 @@ type runner struct {
 }
 
 func newRunner(o options, l *shotList, c *clock, base string, start time.Time) *runner {
-	return &runner{o: o, l: l, c: c, base: base, cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}}
+	return &runner{o: o, l: l, c: c, base: base, mmdvm: fmt.Sprintf("127.0.0.1:%d", mmdvmPort), cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}}
 }
 
 func (r *runner) api(user string) *api {

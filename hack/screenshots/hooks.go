@@ -225,7 +225,7 @@ func seed(ctx context.Context, r *runner) error {
 	if err := admin.do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/talkgroups", map[string]any{"ts1_static_talkgroups": talkgroupList([]uint{91}), "ts2_static_talkgroups": talkgroupList([]uint{3100})}, nil); err != nil {
 		return err
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", mmdvmPort)
+	addr := r.mmdvm
 	for _, rp := range demoRepeaters() {
 		a := r.api(rp.owner)
 		var res struct {
@@ -280,7 +280,7 @@ func hotspotLogin(_ context.Context, r *runner) error {
 	if pw == "" {
 		return errors.New("the connect page showed no password")
 	}
-	p, err := dialPeer(fmt.Sprintf("127.0.0.1:%d", mmdvmPort), 300000101, pw, site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
+	p, err := dialPeer(r.mmdvm, 300000101, pw, site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
 	if err != nil {
 		return err
 	}
@@ -622,15 +622,23 @@ func inviteCosysops(ctx context.Context, r *runner) error {
 	return r.api("n1call").do(ctx, http.MethodPost, "/api/v1/repeaters/300000101/cosysop-invite/accept", nil, nil)
 }
 
-func wrongLogin(_ context.Context, _ *runner) error {
+// wrongLogin logs in three times with a wrong password, and then pings
+// the hotspot that is logged in: DMRHub handles the packets of its MMDVM
+// port one after another, so the answer to that ping comes only after it
+// noted the last refusal, at the time of the demo clock.
+func wrongLogin(_ context.Context, r *runner) error {
 	for range 3 {
-		p, err := dialPeer(fmt.Sprintf("127.0.0.1:%d", mmdvmPort), 300000101, "wrong-password", site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
+		p, err := dialPeer(r.mmdvm, 300000101, "wrong-password", site{"N0CALL", 438800000, 438800000, 32.7767, -96.7970, "Dallas, TX", "Hotspot of N0CALL", 4})
 		if err == nil {
 			p.close()
 			return errors.New("the hub took a wrong password")
 		}
 	}
-	return nil
+	p, ok := r.peers[300000101]
+	if !ok {
+		return errors.New("repeater 300000101 is not connected")
+	}
+	return p.ping()
 }
 
 func offlineAlert(ctx context.Context, r *runner) error {

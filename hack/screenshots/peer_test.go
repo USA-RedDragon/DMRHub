@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/stretchr/testify/assert"
@@ -135,4 +136,51 @@ func TestSteppedPlayWaitsForDMRHubBeforeEachStep(t *testing.T) {
 	}
 	assert.Equal(t, want, steps)
 	assert.Equal(t, sent, heard)
+}
+
+// TestWrongLoginEndsWithAPingOfTheHotspot runs the wrong logins against a
+// hub that refuses them. The hook must then ping the hotspot that is
+// logged in, so that the demo clock moves on only after the hub handled
+// the last refusal.
+func TestWrongLoginEndsWithAPingOfTheHotspot(t *testing.T) {
+	t.Parallel()
+	m, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	var mu sync.Mutex
+	var heard []string
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, from, err := m.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			c := dmrd.Classify(buf[:n], dmrd.DialectMMDVM)
+			mu.Lock()
+			heard = append(heard, c.String())
+			mu.Unlock()
+			answer := dmrd.CommandMSTNAK
+			if c == dmrd.CommandRPTPING {
+				answer = dmrd.CommandMSTPONG
+			}
+			b, err := (&dmrd.Control{Command: answer, ID: 300000101}).AppendBinary(nil, dmrd.DialectMMDVM)
+			if err == nil {
+				_, _ = m.WriteToUDP(b, from)
+			}
+		}
+	}()
+	addr, ok := m.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	conn, err := net.DialUDP("udp", nil, addr)
+	require.NoError(t, err)
+	r := newRunner(options{}, nil, nil, "http://hub", time.Time{})
+	r.mmdvm = addr.String()
+	r.peers[300000101] = newPeer(300000101, conn)
+	t.Cleanup(r.peers[300000101].close)
+	require.NoError(t, wrongLogin(t.Context(), r))
+	mu.Lock()
+	defer mu.Unlock()
+	login, ping := dmrd.CommandRPTL.String(), dmrd.CommandRPTPING.String()
+	assert.Equal(t, []string{login, login, login, ping}, heard)
 }

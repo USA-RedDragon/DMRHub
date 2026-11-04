@@ -90,7 +90,8 @@ func (h *Hub) promptable(packet models.Packet, sourceName string) bool {
 
 // promptRefused queues the prompt clip for the radio of packet, a burst
 // that the hub refuses, once for its stream. The prompt plays promptQuiet
-// after the last refused burst on the slot.
+// after the last refused burst on the slot and after the last burst of the
+// call that holds the slot, if one does.
 func (h *Hub) promptRefused(packet models.Packet, sourceName, clip string) {
 	if clip == "" || !h.promptsOn() || !h.promptable(packet, sourceName) {
 		return
@@ -102,7 +103,8 @@ func (h *Hub) promptRefused(packet models.Packet, sourceName, clip string) {
 }
 
 // Say plays the prompt p on its slot promptQuiet after the last refused
-// or taken burst on that slot, when spoken prompts are on.
+// or taken burst on that slot and after the last burst of the call that
+// holds the slot, if one does, when spoken prompts are on.
 func (h *Hub) Say(p Prompt) {
 	if !h.promptsOn() {
 		return
@@ -158,7 +160,11 @@ func (h *Hub) firePrompt(key promptSlot) {
 		s.mu.Unlock()
 		return
 	}
-	if wait := promptQuiet - h.clock.Since(p.last); wait > 0 {
+	last := p.last
+	if held := h.heldUntil(key.repeater, key.slot); held.After(last) {
+		last = held
+	}
+	if wait := promptQuiet - h.clock.Since(last); wait > 0 {
 		s.mu.Unlock()
 		h.clock.AfterFunc(wait, func() { h.firePrompt(key) })
 		return
@@ -166,6 +172,13 @@ func (h *Hub) firePrompt(key promptSlot) {
 	delete(s.pending, key)
 	s.mu.Unlock()
 	h.playPrompt(p.prompt, p.cc)
+}
+
+// heldUntil returns the time of the last burst of the call that holds the
+// timeslot of the repeater, or the zero time when none does.
+func (h *Hub) heldUntil(repeaterID uint, slot bool) time.Time {
+	cur, _ := h.slotHolders.Load(repeaterSlot{repeater: repeaterID, slot: slot})
+	return cur.last
 }
 
 // playPrompt sends p to its repeater slot as a private call from the

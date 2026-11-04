@@ -221,3 +221,25 @@ func TestNoChannelBusyForPeersAndPlugins(t *testing.T) {
 		})
 	}
 }
+
+// TestAPromptWaitsForTheCallThatHoldsTheTimeslot keeps the talker on the
+// air after the refused call ends: the prompt waits until a second passes
+// with no burst of the call that holds the timeslot.
+func TestAPromptWaitsForTheCallThatHoldsTheTimeslot(t *testing.T) {
+	t.Parallel()
+	forPromptBackends(t, true, func(t *testing.T, e *promptEnv) {
+		b := busySetup(t, e, models.RepeaterTypeMMDVM, hub.RoleRepeater, true)
+		b.talkerKeysUp(t)
+		b.radioKeysUp(t)
+		b.clk.Advance(900 * time.Millisecond)
+		b.hub.RoutePacket(context.Background(), busyBurst(busyTalker, ruleReceiver, busyTalkerRun, false), models.RepeaterTypeMMDVM)
+		await(t, b.out.Packets, ruleSender, busyTalkerRun, false)
+		b.clk.Advance(100 * time.Millisecond)
+		assert.True(t, b.hub.PromptQueued(ruleSender, false), "the prompt played over the call that holds the timeslot")
+		assert.Empty(t, b.sentToSender())
+
+		b.talkerEnds(t)
+		b.clk.Advance(900 * time.Millisecond)
+		b.busyPrompt(t)
+	})
+}

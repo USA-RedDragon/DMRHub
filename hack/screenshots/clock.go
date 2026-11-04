@@ -86,7 +86,18 @@ func shotsOffset() (int64, bool) {
 
 const frozenBit = int64(1) << 62
 
-func writeOverlay(goroot, dir string) error {
+// kernelStamps is the receive-time file of DMRHub that asks the kernel
+// for the arrival time of each packet, and plainStamps the one that does
+// not. The kernel stamps the wall clock, which the clock patch does not
+// move, so the screenshot build uses plainStamps in the place of
+// kernelStamps and stamps each packet with the demo clock when it reads
+// it.
+const (
+	kernelStamps = "internal/dmr/servers/rxtime_linux.go"
+	plainStamps  = "internal/dmr/servers/rxtime_other.go"
+)
+
+func writeOverlay(goroot, root, dir string) error {
 	src := filepath.Join(goroot, "src", "time", "time.go")
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -106,9 +117,26 @@ func writeOverlay(goroot, dir string) error {
 	if err := os.WriteFile(extra, []byte(clockFile), 0o600); err != nil {
 		return fmt.Errorf("could not write the clock patch: %w", err)
 	}
+	plain, err := os.ReadFile(filepath.Join(root, plainStamps))
+	if err != nil {
+		return fmt.Errorf("could not read %s: %w", plainStamps, err)
+	}
+	build, rest, ok := strings.Cut(string(plain), "\n")
+	if !ok || !strings.HasPrefix(build, "//go:build ") {
+		return fmt.Errorf("%s does not start with its build constraint", plainStamps)
+	}
+	unstamped := filepath.Join(dir, "rxtime_linux.go")
+	if err := os.WriteFile(unstamped, []byte(rest), 0o600); err != nil {
+		return fmt.Errorf("could not write the receive-time patch: %w", err)
+	}
+	kernel, err := filepath.Abs(filepath.Join(root, kernelStamps))
+	if err != nil {
+		return fmt.Errorf("could not find %s: %w", kernelStamps, err)
+	}
 	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {
 		src: patched,
 		filepath.Join(goroot, "src", "time", "zz_shotsclock.go"): extra,
+		kernel: unstamped,
 	}})
 	if err != nil {
 		return fmt.Errorf("could not encode the overlay: %w", err)

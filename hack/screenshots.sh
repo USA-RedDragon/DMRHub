@@ -56,7 +56,7 @@ if [ "${DMRHUB_SHOTS_GENERATE:-1}" != 0 ]; then
     go generate ./...
 fi
 go build -o "$work/screenshots" ./hack/screenshots
-"$work/screenshots" -phase overlay -work "$work/clock-overlay"
+"$work/screenshots" -phase overlay -root "$root" -work "$work/clock-overlay"
 CGO_ENABLED=0 go build -overlay "$work/clock-overlay/overlay.json" -o "$work/DMRHub" .
 if [ -n "${DMRHUB_SHOTS_WASM:-}" ]; then
     cp "$DMRHUB_SHOTS_WASM" "$work/parrot.wasm"

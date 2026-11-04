@@ -21,6 +21,8 @@ package main
 
 import (
 	"net"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -73,4 +75,64 @@ func TestAPingWaitsForThePong(t *testing.T) {
 func TestAPingThatTheHubRefusesFails(t *testing.T) {
 	t.Parallel()
 	assert.ErrorContains(t, fakeMaster(t, dmrd.CommandMSTNAK).ping(), "refused")
+}
+
+// TestSteppedPlayWaitsForDMRHubBeforeEachStep plays the bursts of a short
+// call with a clock step before each. Before each step after the first, and at the
+// end, the hub must have answered a ping sent after the burst before:
+// the hub reads the packets of a repeater in order, so the burst then has
+// the time of its own step, however late the hub handles it.
+func TestSteppedPlayWaitsForDMRHubBeforeEachStep(t *testing.T) {
+	t.Parallel()
+	m, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	var mu sync.Mutex
+	var heard []string
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, from, err := m.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			c := dmrd.Classify(buf[:n], dmrd.DialectMMDVM)
+			mu.Lock()
+			heard = append(heard, c.String())
+			mu.Unlock()
+			if c != dmrd.CommandRPTPING {
+				continue
+			}
+			b, err := (&dmrd.Control{Command: dmrd.CommandMSTPONG, ID: 300000401}).AppendBinary(nil, dmrd.DialectMMDVM)
+			if err == nil {
+				_, _ = m.WriteToUDP(b, from)
+			}
+		}
+	}()
+	addr, ok := m.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	conn, err := net.DialUDP("udp", nil, addr)
+	require.NoError(t, err)
+	p := newPeer(300000401, conn)
+	t.Cleanup(p.close)
+	bursts, err := voiceCall(true, 8, 3000004, 1)
+	require.NoError(t, err)
+	var steps []string
+	require.NoError(t, p.play(transmission{src: 3000004, dst: 8, group: true, slot2: true, bursts: bursts}, 1, func(k int) error {
+		mu.Lock()
+		steps = append(steps, strings.Join(heard, " "))
+		mu.Unlock()
+		return nil
+	}))
+	mu.Lock()
+	defer mu.Unlock()
+	pair := []string{dmrd.CommandDMRD.String(), dmrd.CommandRPTPING.String()}
+	want := make([]string, 0, len(bursts))
+	sent := make([]string, 0, len(pair)*len(bursts))
+	for range bursts {
+		want = append(want, strings.Join(sent, " "))
+		sent = append(sent, pair...)
+	}
+	assert.Equal(t, want, steps)
+	assert.Equal(t, sent, heard)
 }

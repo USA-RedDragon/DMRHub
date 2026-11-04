@@ -65,6 +65,7 @@ type peer struct {
 	answers chan dmrd.Command
 	wg      sync.WaitGroup
 	mu      sync.Mutex
+	pingMu  sync.Mutex
 }
 
 func newPeer(id uint32, conn *net.UDPConn) *peer {
@@ -206,6 +207,8 @@ func (p *peer) drain() {
 }
 
 func (p *peer) ping() error {
+	p.pingMu.Lock()
+	defer p.pingMu.Unlock()
 	select {
 	case <-p.answers:
 	default:
@@ -244,6 +247,12 @@ type transmission struct {
 	bursts   []burst
 }
 
+// play sends the bursts of t on stream. With at, it calls at(k) before
+// burst k, to move the demo clock, and only after DMRHub answered a ping
+// sent after burst k-1: DMRHub reads the packets of a repeater in order and
+// stamps each with the demo clock when it reads it, so each burst keeps
+// the time of its step on any load. It ends with such a ping too, so that
+// the caller can move the clock on.
 func (p *peer) play(t transmission, stream uint, at func(k int) error) error {
 	gap := burstGap
 	if at != nil {
@@ -253,6 +262,11 @@ func (p *peer) play(t transmission, stream uint, at func(k int) error) error {
 	for k, b := range t.bursts {
 		time.Sleep(time.Until(next))
 		if at != nil {
+			if k > 0 {
+				if err := p.ping(); err != nil {
+					return err
+				}
+			}
 			if err := at(k); err != nil {
 				return err
 			}
@@ -267,7 +281,7 @@ func (p *peer) play(t transmission, stream uint, at func(k int) error) error {
 			return err
 		}
 	}
-	return nil
+	return p.ping()
 }
 
 // voiceCall returns the bursts of a call of frames voice bursts in silence,

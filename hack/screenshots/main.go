@@ -106,7 +106,7 @@ func run(ctx context.Context, o options) error {
 		if err != nil {
 			return fmt.Errorf("could not find GOROOT: %w", err)
 		}
-		return writeOverlay(strings.TrimSpace(string(goroot)), o.work)
+		return writeOverlay(strings.TrimSpace(string(goroot)), o.root, o.work)
 	}
 	l, err := loadList(o.list)
 	if err != nil {

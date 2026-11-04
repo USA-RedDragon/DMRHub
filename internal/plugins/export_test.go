@@ -19,7 +19,27 @@
 
 package plugins
 
+import (
+	"net"
+
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
+	"gorm.io/gorm"
+)
+
 // HeartbeatEvery is heartbeatEvery for the tests.
 const HeartbeatEvery = heartbeatEvery
 
 const TwinWait = twinWait
+
+// ListenOn serves the plugins on lis, as Start does on its listener.
+func ListenOn(lis net.Listener, secret []byte, db *gorm.DB, ps pubsub.PubSub, router Router, opts ...ServiceOption) (*Server, error) {
+	registry, err := NewRegistry(db, ps)
+	if err != nil {
+		return nil, err
+	}
+	certs, err := NewCertSource(secret, "", "")
+	if err != nil {
+		return nil, err
+	}
+	return listening(lis, certs, registry, NewService(db, ps, registry, router, nil, opts...), func(*Registry) {}), nil
+}

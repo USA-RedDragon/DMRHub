@@ -115,6 +115,7 @@ type Service struct {
 // openStream is a plugin's stream on this replica.
 type openStream struct {
 	send func(*pluginv1.ConnectResponse)
+	cut  context.CancelCauseFunc
 }
 
 // ServiceOption changes how NewService makes the service.
@@ -162,6 +163,17 @@ func (s *Service) closed(st *openStream) {
 		default:
 			close(s.drained)
 		}
+	}
+}
+
+// cut ends every stream, as a stopping hub does with the streams that
+// outlive its wait. Each stream ends once the requests that it answers
+// end with its context.
+func (s *Service) cut() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for st := range s.streams {
+		st.cut(errDraining)
 	}
 }
 
@@ -258,7 +270,9 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 			slog.Warn("Plugins: dropping a message to a plugin that reads slowly", "plugin", p.Name)
 		}
 	}
-	open := &openStream{send: send}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	open := &openStream{send: send, cut: cancel}
 	if !s.open(open) {
 		return errDraining
 	}
@@ -291,8 +305,6 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 		slog.Info("Plugins: disconnected", "plugin", p.Name)
 	}()
 
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
 	go func() {
 		for {
 			select {

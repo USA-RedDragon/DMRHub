@@ -21,6 +21,8 @@ package plugins_test
 
 import (
 	"context"
+	"crypto/tls"
+	"net"
 	"testing"
 	"testing/synctest"
 
@@ -28,6 +30,10 @@ import (
 	pluginv1 "github.com/USA-RedDragon/DMRHub/sdk/plugin/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 // slowTexts is a Texts whose SendText waits for its context to end, and
@@ -79,5 +85,50 @@ func TestTheStreamOfAPluginEndsAfterItsRequests(t *testing.T) {
 		}
 		close(slow.release)
 		<-ended
+	})
+}
+
+// TestAStopThatCutsAStreamWaitsForItsRequests stops a listener whose
+// plugin keeps its stream past the graceful wait, while the hub sends a
+// text for it. Stop cuts the stream, and must return only after the send
+// ended, so that nothing of the stream uses the database after Stop.
+func TestAStopThatCutsAStreamWaitsForItsRequests(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		slow := &slowTexts{entered: make(chan struct{}), stopping: make(chan struct{}), release: make(chan struct{})}
+		lis := bufconn.Listen(1 << 20)
+		srv, err := plugins.ListenOn(lis, []byte("a secret of the config, long enough"), r.db, r.ps, r.router, plugins.WithTexts(slow))
+		require.NoError(t, err)
+		_, token := r.add("APRS", rng(4700, 4709))
+		conn, err := grpc.NewClient("passthrough:///bufnet",
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13})), //nolint:gosec // the test's own certificate
+		)
+		require.NoError(t, err)
+		defer func() { _ = conn.Close() }()
+		s, err := pluginv1.NewPluginServiceClient(conn).Connect(metadata.AppendToOutgoingContext(t.Context(), "authorization", "Bearer "+token))
+		require.NoError(t, err)
+		m, err := s.Recv()
+		require.NoError(t, err)
+		require.NotNil(t, m.GetWelcome())
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Request{Request: &pluginv1.Request{
+			Id: 1, Op: &pluginv1.Request_SendText{SendText: &pluginv1.SendText{Source: 4700, Radio: 1000001, Body: "hi"}},
+		}}}))
+		<-slow.entered
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			srv.Stop()
+		}()
+		<-slow.stopping
+		synctest.Wait()
+		select {
+		case <-stopped:
+			assert.Fail(t, "Stop returned while a request of the stream it cut still ran")
+		default:
+		}
+		close(slow.release)
+		<-stopped
 	})
 }

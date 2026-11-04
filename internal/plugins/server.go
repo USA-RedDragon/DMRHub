@@ -97,6 +97,11 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 	if err != nil {
 		return nil, fmt.Errorf("could not listen for plugins: %w", err)
 	}
+	return listening(lis, certs, registry, service, setPlugins), nil
+}
+
+// listening serves the plugins on lis with the certificates of certs.
+func listening(lis net.Listener, certs *CertSource, registry *Registry, service *Service, setPlugins func(*Registry)) *Server {
 	s := &Server{
 		grpc: grpc.NewServer(
 			grpc.Creds(credentials.NewTLS(&tls.Config{GetCertificate: certs.GetCertificate, MinVersion: tls.VersionTLS13})),
@@ -118,7 +123,7 @@ func Start(ctx context.Context, cfg *config.Config, db *gorm.DB, ps pubsub.PubSu
 		}
 	}()
 	slog.Info("Plugins: listening", "address", lis.Addr().String())
-	return s, nil
+	return s
 }
 
 // Registry returns the registry of the plugins' IDs.
@@ -154,7 +159,9 @@ func (s *Server) Drain(ctx context.Context) int {
 }
 
 // Stop ends the streams of the plugins, closes the listener, and returns
-// once the registry no longer reads the database.
+// once the registry and the streams no longer use the database. It cuts a
+// stream that outlives stopWait, and waits for the requests that the
+// stream was answering, which end with the context of the stream.
 func (s *Server) Stop() {
 	if s == nil {
 		return
@@ -173,7 +180,8 @@ func (s *Server) Stop() {
 		select {
 		case <-stopped:
 		case <-time.After(stopWait):
-			s.grpc.Stop()
+			s.service.cut()
+			<-stopped
 		}
 	})
 }

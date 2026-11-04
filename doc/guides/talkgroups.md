@@ -88,3 +88,10 @@ To restrict a talkgroup, open its page (click its ID on the Talkgroups page). Th
 
 To open the talkgroup again, click **Open**, and click **Save**.
 
+## Keep a talkgroup off the listen monitor
+
+Visitors with no account can listen to the talkgroups of the network in DMRHub Radio when the admin turns the monitor on. See [Use DMRHub Radio](browser-radio.md#listen-without-an-account). Every talkgroup is open to listeners by default.
+
+To keep a talkgroup off the monitor, open its page. In the **Listen-only monitor** card, turn off **Let visitors listen**. Listeners on the talkgroup stop hearing it at once. The card shows only to the admins of the talkgroup and the admins of the network.
+
+![The Listen-only monitor card on the page of a talkgroup](../Screenshots/talkgroup-listen.png)

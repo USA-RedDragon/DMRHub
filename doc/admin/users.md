@@ -48,6 +48,22 @@ In the **Visibility** card of the **Accounts** tab, **Visitors who are not logge
 
 A logged-in user sees the same in each mode. The login, register and password reset pages work in each mode. The config key is `visibility` (`public`, `hide-names` or `login`).
 
+## Listen-only monitor
+
+Visitors with no account can listen to one talkgroup at a time in DMRHub Radio. They cannot talk, and DMRHub does not count them as radios or hotspots. The hub sends them the voice of the group calls to the talkgroup, and the callsign of the radio and repeater of each call. It never sends private calls, text messages or data. Talkgroup admins can keep a talkgroup off the monitor. See [Pick your talkgroups](../guides/talkgroups.md#keep-a-talkgroup-off-the-listen-monitor).
+
+In the **Listen-only monitor** card of the **Accounts** tab:
+
+- **Let visitors listen in DMRHub Radio** turns the monitor on or off. It is on by default.
+- **Listeners at once** is the most listeners on each server, 200 by default.
+- **Listeners from one address** is the most listeners from one IP address on each server, 4 by default. 0 is no limit.
+
+The monitor follows **What visitors see**: with **Nothing**, nobody can listen. With **No names or positions**, listeners get the calls without the talker alias.
+
+The config keys are `listen.listeners` (0 turns the monitor off) and `listen.per-address`. DMRHub Radio connects to the hub at `/ws/listen` with a websocket on the HTTP port, so it needs no WebTransport.
+
+![The Listen-only monitor card of the Accounts tab](../Screenshots/setup-listen.png)
+
 ## Edit a user
 
 1. Go to **Admin**, then **Users** (`<siteurl>/admin/users`).

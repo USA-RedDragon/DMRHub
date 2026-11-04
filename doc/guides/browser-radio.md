@@ -1,8 +1,19 @@
 # Use DMRHub Radio
 
-[DMRHub Radio](https://radio.dmrhub.net) is a DMR radio that runs in a web browser, on a computer or a phone. You can talk on talkgroups, make private calls, send text messages, and share your position, with nothing to install. DMRHub Radio joins the network as a hotspot of your account, so it follows the same rules as any other hotspot.
+[DMRHub Radio](https://radio.dmrhub.net) is a DMR radio that runs in a web browser, on a computer or a phone. You can talk on talkgroups, make private calls, send text messages, and share your position, with nothing to install. DMRHub Radio joins the network as a hotspot of your account, so it follows the same rules as any other hotspot. With no account, you can listen to a talkgroup.
 
-> **This is a real DMR radio.** What you send goes on the air under your callsign and DMR ID, and your license rules apply, such as identifying your station. Nothing is encrypted. DMRHub Radio shows this notice before you first use it, and you click **I understand**.
+> **This is a real DMR radio.** What you send goes on the air under your callsign and DMR ID, and your license rules apply, such as identifying your station. Nothing is encrypted. DMRHub Radio shows this notice before you first talk, and you click **I understand**.
+
+## Listen or talk
+
+The first time you open DMRHub Radio, it shows the hub and two choices:
+
+- **Listen**: hear a talkgroup. No account needed. See [Listen without an account](#listen-without-an-account).
+- **Talk**: log in with your DMRHub account and use this browser as a hotspot. See the next sections.
+
+To use another hub, click **Hub** under the choices and change it in **Settings**, **Connection**.
+
+![The first page of DMRHub Radio with the Listen and Talk choices](../Screenshots/browser-radio-listen-or-talk.png)
 
 ## What you need
 
@@ -15,7 +26,7 @@
 
 DMRHub Radio does not ask for your DMRHub password. It sends you to the DMRHub web site, and you allow it there.
 
-1. Open DMRHub Radio at <https://radio.dmrhub.net>.
+1. Open DMRHub Radio at <https://radio.dmrhub.net> and click **Talk**.
 2. In **Hub**, type the address of your DMRHub network, for example `dmrhub.example.org`.
 3. Click **Log in with DMRHub**.
 4. DMRHub opens. Log in, if you are not logged in already.
@@ -92,6 +103,29 @@ DMRHub Radio shows the messages that it sends and receives while it is on. When 
 DMRHub Radio sends your position to the location server of the network. DMRHub keeps it only when position tracking is on for your radio ID. To turn it on, go to **Positions** on DMRHub and click **Settings** next to your radio ID. See [Share the position of your radio](positions.md).
 
 In **Settings**, **Connection**, **ARS registration** tells the location and text servers that this radio is on, so they can send it texts and location requests.
+
+## Listen without an account
+
+In listen mode, DMRHub Radio plays the calls of one talkgroup. It cannot transmit, and the hub does not count it as a radio or a hotspot. It needs no microphone and no WebTransport.
+
+1. Open DMRHub Radio and click **Listen**.
+2. Turn the **TALKGROUP** knob, click a preset, or pick a talkgroup in the list. The list has the talkgroups of the hub that are open to listeners.
+3. Turn the **VOLUME** knob to set the volume.
+
+The display shows the callsign of the radio that talks and the repeater or hotspot that it talks through. **Last heard** lists the calls that you heard in this session.
+
+Calls in AMBE play only when you load an AMBE module in **Settings**, **Vocoder**. Calls in Codec2 always play.
+
+To talk, click **Log in to talk** at the top.
+
+![DMRHub Radio in listen mode on a talkgroup](../Screenshots/browser-radio-listen.png)
+
+| DMRHub Radio shows | Why |
+| --- | --- |
+| LISTENING IS OFF ON THIS NETWORK | The admin turned listening off, or visitors see nothing on this network. |
+| TOO MANY LISTENERS, TRY AGAIN LATER | The hub has as many listeners as its admin allows. |
+| TOO MANY LISTENERS FROM YOUR ADDRESS | Too many browsers on your network listen at once. Close one. |
+| THIS TALKGROUP IS NOT OPEN TO LISTENERS | The talkgroup does not exist, or its admins keep it off the monitor. Pick another one. |
 
 ## If DMRHub Radio does not connect
 

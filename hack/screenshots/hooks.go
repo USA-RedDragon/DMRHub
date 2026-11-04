@@ -658,16 +658,30 @@ func openCall(_ context.Context, r *runner) error {
 	return p.play(transmission{src: 3000002, dst: 3100, group: true, slot2: true, bursts: bursts[:len(bursts)-1]}, r.stream, nil)
 }
 
-func endCall(_ context.Context, r *runner) error {
-	bursts, err := voiceCall(true, 3100, 3000002, 1)
+// endCall waits until DMRHub ended the call that openCall left open. The
+// clock moved on past the hang time of a call after the last burst, so the
+// call tracker ends the call by itself, from its last burst. A terminator
+// sent now would race that end, so none is sent.
+func endCall(ctx context.Context, r *runner) error {
+	db, closeDB, err := demoDB(r)
 	if err != nil {
 		return err
 	}
-	p, ok := r.peers[300000201]
-	if !ok {
-		return errors.New("repeater 300000201 is not connected")
+	defer closeDB()
+	for {
+		var open int64
+		if err := db.Model(&models.Call{}).Where("active = ? AND kind = ? AND repeater_id = ?", true, models.CallKindVoice, 300000201).Count(&open).Error; err != nil {
+			return fmt.Errorf("could not read the calls on the air: %w", err)
+		}
+		if open == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for the end of the open call: %w", ctx.Err())
+		case <-time.After(requestStep):
+		}
 	}
-	return p.play(transmission{src: 3000002, dst: 3100, group: true, slot2: true, bursts: bursts[len(bursts)-1:]}, r.stream, nil)
 }
 
 func setEmail(ctx context.Context, r *runner) error {

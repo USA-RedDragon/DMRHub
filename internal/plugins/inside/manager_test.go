@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -123,14 +124,41 @@ var engine = wasm.NewCachedEngine(func() wasm.Limits { //nolint:gochecknoglobals
 }())
 
 type routed struct {
-	mu   sync.Mutex
-	pkts []models.Packet
+	mu     sync.Mutex
+	pkts   []models.Packet
+	notify chan struct{}
+}
+
+func newRouted() *routed {
+	return &routed{notify: make(chan struct{}, 1)}
 }
 
 func (r *routed) RoutePacket(_ context.Context, p models.Packet, _ string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.pkts = append(r.pkts, p)
+	r.mu.Unlock()
+	signal(r.notify)
+}
+
+func signal(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+// await returns once cond holds. It checks cond again after each value of
+// wakes, whose senders send after each change that cond reads, so that a
+// test waits for an event rather than for a time and its bound is the
+// timeout of the test binary.
+func await(cond func() bool, wakes ...<-chan struct{}) {
+	cases := make([]reflect.SelectCase, len(wakes))
+	for i, w := range wakes {
+		cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(w)}
+	}
+	for !cond() {
+		reflect.Select(cases)
+	}
 }
 
 func (r *routed) count() int {
@@ -148,10 +176,11 @@ func (r *routed) last() models.Packet {
 // cluster is the database, pubsub and KV store that the replicas of a
 // test share.
 type cluster struct {
-	db    *gorm.DB
-	ps    pubsub.PubSub
-	kv    kv.KV
-	clock clock.Clock
+	db      *gorm.DB
+	ps      pubsub.PubSub
+	kv      kv.KV
+	clock   clock.Clock
+	updated <-chan struct{}
 }
 
 func (c *cluster) now() time.Time {
@@ -181,7 +210,7 @@ func newClusterOn(t *testing.T, c clock.Clock) *cluster {
 			_ = sqlDB.Close()
 		}
 	})
-	return &cluster{db: database, ps: ps, kv: store, clock: c}
+	return &cluster{db: database, ps: ps, kv: store, clock: c, updated: pluginUpdates(t, database)}
 }
 
 // replica is one DMRHub replica of a cluster, which runs plugins inside.
@@ -190,6 +219,8 @@ type replica struct {
 	registry *plugins.Registry
 	svc      *plugins.Service
 	router   *routed
+	passes   chan time.Time
+	passed   chan struct{}
 }
 
 func fast() inside.Timing {
@@ -213,11 +244,18 @@ func (c *cluster) replica(t *testing.T, name string, e *wasm.Engine, on bool) *r
 	require.NoError(t, err)
 	done := make(chan struct{})
 	followed := registry.Follow(done)
-	r := &replica{registry: registry, router: &routed{}}
+	r := &replica{registry: registry, router: newRouted(), passes: make(chan time.Time, 1024), passed: make(chan struct{}, 1)}
 	r.svc = plugins.NewService(c.db, c.ps, registry, r.router, nil, plugins.WithClock(c.clock))
 	r.m = inside.NewManager(inside.Deps{
 		DB: c.db, PubSub: c.ps, KV: c.kv, Instance: name, Version: "v1.3.4", Service: r.svc, Registry: registry, Engine: e, Timing: fast(),
 		Clock: c.clock,
+	})
+	inside.OnReconcile(r.m, func(at time.Time) {
+		select {
+		case r.passes <- at:
+		default:
+		}
+		signal(r.passed)
 	})
 	require.NoError(t, r.m.Start(context.Background(), on))
 	t.Cleanup(func() {
@@ -269,21 +307,17 @@ func TestTheBuiltinPluginsRunWithTheirIDs(t *testing.T) {
 	require.Len(t, locator.Ranges, 1)
 	assert.Equal(t, uint(5050), locator.Ranges[0].First)
 	assert.Equal(t, uint(5059), locator.Ranges[0].Last)
-	require.Eventually(t, func() bool { return online(t, c, parrot.ID) && online(t, c, locator.ID) }, 60*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, parrot.ID) && online(t, c, locator.ID) }, c.updated)
 	owner, ok := r.registry.Owner(9990)
 	require.True(t, ok)
 	assert.Equal(t, parrot.ID, owner)
 }
 
 func watchPasses(r *replica) <-chan time.Time {
-	ch := make(chan time.Time, 1024)
-	inside.OnReconcile(r.m, func(at time.Time) {
-		select {
-		case ch <- at:
-		default:
-		}
-	})
-	return ch
+	for len(r.passes) > 0 {
+		<-r.passes
+	}
+	return r.passes
 }
 
 func passedSince(t *testing.T, passes <-chan time.Time, at time.Time) {
@@ -320,29 +354,21 @@ func TestNothingRunsInsideWhenItIsOff(t *testing.T) {
 	_, ok := r.registry.Owner(9100)
 	assert.False(t, ok, "nobody gets the calls to a plugin inside DMRHub that does not run")
 
-	updated := pluginUpdates(t, c)
 	require.NoError(t, r.m.SetOn(context.Background(), true))
-	for !online(t, c, p.ID) {
-		<-updated
-	}
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 	_, ok = r.registry.Owner(9100)
 	assert.True(t, ok)
 	require.NoError(t, r.m.SetOn(context.Background(), false))
-	for len(r.m.Running()) > 0 || online(t, c, p.ID) {
-		select {
-		case <-updated:
-		case <-passes:
-		}
-	}
+	await(func() bool { return len(r.m.Running()) == 0 && !online(t, c, p.ID) }, c.updated, r.passed)
 }
 
 // pluginUpdates returns a channel that gets a value after each committed
-// update of the plugins of c, so that a test waits for a plugin to go
+// update of the plugins in db, so that a test waits for a plugin to go
 // online or offline on the event rather than for a time.
-func pluginUpdates(t *testing.T, c *cluster) <-chan struct{} {
+func pluginUpdates(t *testing.T, db *gorm.DB) <-chan struct{} {
 	t.Helper()
 	ch := make(chan struct{}, 1)
-	require.NoError(t, c.db.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:plugin updated", func(tx *gorm.DB) {
+	require.NoError(t, db.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:plugin updated", func(tx *gorm.DB) {
 		if tx.Statement.Table != "plugins" {
 			return
 		}
@@ -362,7 +388,7 @@ func TestOnlyOneReplicaRunsAPlugin(t *testing.T) {
 	b := c.replica(t, "b", engine, true)
 	passesA, passesB := watchPasses(a), watchPasses(b)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 	timing := fast()
 	for step := time.Duration(0); step < 3*timing.Lease; step += timing.Renew {
 		fake.Advance(timing.Renew)
@@ -377,10 +403,10 @@ func TestOnlyOneReplicaRunsAPlugin(t *testing.T) {
 		first, other = b, a
 	}
 	first.m.Stop(context.Background())
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		_, ok := other.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)
-	}, 30*time.Second, 50*time.Millisecond, "the other replica takes the plugin over")
+	}, c.updated, other.passed)
 }
 
 func TestADrainHandsThePluginsInsideToAnotherReplica(t *testing.T) {
@@ -388,10 +414,10 @@ func TestADrainHandsThePluginsInsideToAnotherReplica(t *testing.T) {
 	c := newCluster(t)
 	a := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9110, Last: 9110})
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		_, ok := a.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)
-	}, 60*time.Second, 50*time.Millisecond)
+	}, c.updated, a.passed)
 	b := c.replica(t, "b", engine, true)
 	cfg, err := configulator.New(config.ConfigSchema()).Default()
 	require.NoError(t, err)
@@ -400,10 +426,10 @@ func TestADrainHandsThePluginsInsideToAnotherReplica(t *testing.T) {
 	left := inside.Drain(ctx, a.m, a.svc)
 	require.NoError(t, ctx.Err(), "the drain waited for its deadline of %d s rather than for the streams to end", cfg.DMR.DrainTimeout)
 	assert.Equal(t, 0, left, "no stream is left on the draining replica")
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		_, ok := b.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)
-	}, 30*time.Second, 50*time.Millisecond, "the other replica runs the plugin")
+	}, c.updated, b.passed)
 }
 
 func TestAPluginInsideFollowsItsSwitch(t *testing.T) {
@@ -411,18 +437,18 @@ func TestAPluginInsideFollowsItsSwitch(t *testing.T) {
 	c := newCluster(t)
 	r := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 	_, err := models.UpdatePlugin(c.db, p.ID, p.Name, false, p.Ranges)
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { _, ok := r.m.Running()[p.ID]; return !ok }, 30*time.Second, 50*time.Millisecond)
+	await(func() bool { _, ok := r.m.Running()[p.ID]; return !ok }, r.passed)
 	_, err = models.UpdatePlugin(c.db, p.ID, p.Name, true, p.Ranges)
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 30*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 	require.NoError(t, models.DeletePlugin(c.db, p.ID))
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { _, ok := r.m.Running()[p.ID]; return !ok }, 30*time.Second, 50*time.Millisecond)
+	await(func() bool { _, ok := r.m.Running()[p.ID]; return !ok }, r.passed)
 }
 
 func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
@@ -431,13 +457,13 @@ func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
 	c := newClusterOn(t, fake)
 	r := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Echo", guest(t, "echo"), models.PluginRange{First: 9100, Last: 9100})
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 	before := r.m.Running()[p.ID]
 	call := func(seq uint) {
 		t.Helper()
 		n := r.router.count()
 		require.NoError(t, r.registry.Deliver(p.ID, models.Packet{Src: 3002068, Dst: 9100, StreamID: 5, Seq: seq}))
-		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond, "the guest echoes burst %d", seq)
+		await(func() bool { return r.router.count() > n }, r.router.notify)
 	}
 
 	call(0)
@@ -451,10 +477,10 @@ func TestANewVersionTakesOverWhenTheCallsEnd(t *testing.T) {
 	}
 	assert.Equal(t, before, r.m.Running()[p.ID], "the old version stays while a call goes on, past the quiet time")
 	fake.Advance(timing.Quiet)
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		now, ok := r.m.Running()[p.ID]
 		return ok && now != before
-	}, 30*time.Second, 50*time.Millisecond, "the new version takes over after the call")
+	}, r.passed)
 }
 
 func stops(t *testing.T, c *cluster, id uint) int {
@@ -472,7 +498,7 @@ func TestAPluginThatFailsStartsAgain(t *testing.T) {
 	p := upload(t, c, "Quit", guest(t, "quit"))
 	timing := fast()
 	for n := 1; n <= 3; n++ {
-		require.Eventually(t, func() bool { return stops(t, c, p.ID) == n }, 60*time.Second, 50*time.Millisecond, "the guest quits")
+		await(func() bool { return stops(t, c, p.ID) == n }, r.passed)
 		assert.Equal(t, n, r.m.Starts(p.ID), "the plugin waits for its backoff before it starts again")
 		st, _, err := plugins.StateOf(context.Background(), c.kv, p.ID, c.now())
 		require.NoError(t, err)
@@ -486,9 +512,9 @@ func TestAPluginThatStopsTellsTheOtherReplicasWhy(t *testing.T) {
 	t.Parallel()
 	fake := clock.NewFake(time.Now())
 	c := newClusterOn(t, fake)
-	c.replica(t, "a", engine, true)
+	r := c.replica(t, "a", engine, true)
 	p := upload(t, c, "Quit", guest(t, "quit"))
-	require.Eventually(t, func() bool { return stops(t, c, p.ID) == 1 }, 60*time.Second, 50*time.Millisecond, "the guest quits")
+	await(func() bool { return stops(t, c, p.ID) == 1 }, r.passed)
 	st, ok, err := plugins.StateOf(context.Background(), c.kv, p.ID, c.now())
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -512,10 +538,10 @@ func TestAnExpiredLeaseLetsAnotherReplicaRunThePlugin(t *testing.T) {
 		assert.Empty(t, b.m.Running(), "the lease of a replica that went away holds until it expires")
 	}
 	fake.Advance(2 * timing.Renew)
-	require.Eventually(t, func() bool {
+	await(func() bool {
 		_, ok := b.m.Running()[p.ID]
 		return ok && online(t, c, p.ID)
-	}, 60*time.Second, 50*time.Millisecond, "the other replica runs the plugin once the lease expired")
+	}, c.updated, b.passed)
 }
 
 // pong listens on loopback and answers each connection's "ping" with
@@ -556,14 +582,14 @@ func TestTheAdminAllowsAndRevokesTheHostsOfAPlugin(t *testing.T) {
 		[]models.PluginRange{{First: 9200, Last: 9200}}, nil, guest(t, "netprobe"), time.Now())
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 60*time.Second, 50*time.Millisecond)
+	await(func() bool { return online(t, c, p.ID) }, c.updated)
 
 	probe := func() string {
 		n := r.router.count()
 		pkt := models.Packet{Src: 3002068, Dst: 9200, StreamID: 3}
 		copy(pkt.DMRData[:], addr)
 		require.NoError(t, r.registry.Deliver(p.ID, pkt))
-		require.Eventually(t, func() bool { return r.router.count() > n }, 10*time.Second, 20*time.Millisecond)
+		await(func() bool { return r.router.count() > n }, r.router.notify)
 		got := r.router.last()
 		return strings.TrimRight(string(got.DMRData[:]), "\x00")
 	}
@@ -571,9 +597,9 @@ func TestTheAdminAllowsAndRevokesTheHostsOfAPlugin(t *testing.T) {
 	_, err = models.SetAllowedPluginHosts(c.db, p.ID, []string{addr})
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { return probe() == "pong" }, 10*time.Second, 100*time.Millisecond)
+	await(func() bool { return probe() == "pong" }, r.passed)
 	_, err = models.SetAllowedPluginHosts(c.db, p.ID, nil)
 	require.NoError(t, err)
 	require.NoError(t, plugins.PublishChanged(c.ps))
-	require.Eventually(t, func() bool { return strings.HasPrefix(probe(), "ERR") }, 10*time.Second, 100*time.Millisecond)
+	await(func() bool { return strings.HasPrefix(probe(), "ERR") }, r.passed)
 }

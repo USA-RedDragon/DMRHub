@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/USA-RedDragon/DMRHub/plugins/aprstext"
 	"github.com/USA-RedDragon/DMRHub/plugins/locator"
 	"github.com/USA-RedDragon/DMRHub/plugins/parrot"
 	"github.com/USA-RedDragon/DMRHub/plugins/status"
@@ -45,6 +46,8 @@ func main() {
 		plugin.MainWith(locator.Hello(), locator.Serve)
 	case "status":
 		plugin.MainWith(status.Hello(), status.Serve)
+	case "aprs":
+		plugin.MainWith(aprstext.Hello(), aprstext.Serve)
 	default:
 		fmt.Fprintln(os.Stderr, "no such built-in plugin:", key)
 		os.Exit(2)

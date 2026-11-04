@@ -123,6 +123,34 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
+  - id: aprstext
+    main: ./plugins/aprstext/cmd/aprstext
+    binary: dmrhub-aprstext
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - riscv64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goarch: arm
+        goos: windows
+      - goarch: riscv64
+        goos: windows
+      - goarch: arm
+        goos: darwin
+      - goarch: riscv64
+        goos: darwin
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
 
 milestones:
   - close: true

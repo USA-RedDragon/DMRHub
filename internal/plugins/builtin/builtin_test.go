@@ -29,10 +29,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTheBuiltinPluginsAreTheParrotTheLocationServerAndTheStatus(t *testing.T) {
+func TestTheBuiltinPluginsAreTheParrotTheLocationServerTheStatusAndAPRSMessages(t *testing.T) {
 	t.Parallel()
 	all := builtin.All()
-	require.Len(t, all, 3)
+	require.Len(t, all, 4)
 	assert.Equal(t, "parrot", all[0].Key)
 	assert.Equal(t, "Parrot", all[0].Name)
 	require.Len(t, all[0].Ranges, 1)
@@ -48,6 +48,9 @@ func TestTheBuiltinPluginsAreTheParrotTheLocationServerAndTheStatus(t *testing.T
 	require.Len(t, all[2].Ranges, 1)
 	assert.Equal(t, uint(5000), all[2].Ranges[0].First, "the status owns 5000 by default")
 	assert.Equal(t, uint(5000), all[2].Ranges[0].Last)
+	assert.Equal(t, "aprs", all[3].Key)
+	assert.Equal(t, "APRS messages", all[3].Name)
+	assert.Empty(t, all[3].Ranges, "APRS messages starts off with no ID until an admin gives it one")
 }
 
 func TestEachBuiltinModuleSaysWhoItIs(t *testing.T) {

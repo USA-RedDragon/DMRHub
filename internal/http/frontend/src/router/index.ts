@@ -17,9 +17,10 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router';
+import { createRouter, createWebHistory, type RouteLocationNormalized, type Router } from 'vue-router';
 import { routes, setupwizardRoutes } from './routes';
 import { useUserStore } from '@/store';
+import { routeEnded, routeStarted } from '@/services/busy';
 
 const passwordPages = ['/settings', '/login', '/forgot-password', '/reset-password', '/verify-email'];
 
@@ -35,18 +36,30 @@ export function ownPasswordGuard(to: RouteLocationNormalized) {
   return true;
 }
 
+/** countRouteChanges counts each route change of router as work of the page, from its start until the new page has mounted. */
+function countRouteChanges(router: Router): Router {
+  router.beforeEach(() => {
+    routeStarted();
+    return true;
+  });
+  router.afterEach(() => routeEnded());
+  router.onError(() => routeEnded());
+  return router;
+}
+
 export default (setupwizard: boolean) => {
   if (setupwizard) {
-    return createRouter({
+    return countRouteChanges(createRouter({
       history: createWebHistory(import.meta.env.BASE_URL),
       routes: setupwizardRoutes(),
-    });
+    }));
   }
 
   const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: routes(),
   });
+  countRouteChanges(router);
   router.beforeEach(ownPasswordGuard);
 
   return router;

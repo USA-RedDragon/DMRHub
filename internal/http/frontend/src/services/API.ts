@@ -18,6 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 import axios from 'axios';
+import { begin, end } from '@/services/busy';
 
 const baseURL = '/api/v1';
 
@@ -26,11 +27,18 @@ const instance = axios.create({
   withCredentials: true,
 });
 
+instance.interceptors.request.use((config) => {
+  begin();
+  return config;
+});
+
 instance.interceptors.response.use(
   (response) => {
+    end();
     return response;
   },
   (error) => {
+    end();
     if (error.response === undefined) {
       return Promise.reject(error);
     }

@@ -52,6 +52,7 @@ func setupPaths() []string {
 		"login-backoff",
 		"registration",
 		"visibility",
+		"listen",
 		"http.robots-txt",
 		"http.canonical-host",
 		"http.session-length",

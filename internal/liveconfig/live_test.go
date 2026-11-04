@@ -131,6 +131,7 @@ func TestEverySettingIsClassified(t *testing.T) {
 		"secret": false, "database.host": false, "redis.enabled": false, "http.port": false, "smtp.password": false,
 		"dmr.plugins.port": false, "dmr.ipsc.network-id": true, "dmr.transcoding.ambe-servers": true,
 		"dmr.plugins.in-process": true, "log-level": true, "smtp.host": true,
+		"listen.listeners": true, "listen.per-address": true,
 	} {
 		got, ok := paths[p]
 		require.True(t, ok, p)

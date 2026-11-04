@@ -46,7 +46,7 @@ var likeEscaper = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_") //nolint:
 func validFormat(f string) bool {
 	switch models.MessageFormat(f) {
 	case models.MessageFormatTMS, models.MessageFormatIP, models.MessageFormatAnyTone, models.MessageFormatDefinedData,
-		models.MessageFormatHytera, models.MessageFormatData, models.MessageFormatUnknown:
+		models.MessageFormatHytera, models.MessageFormatUDT, models.MessageFormatData, models.MessageFormatUnknown:
 		return true
 	}
 	return false

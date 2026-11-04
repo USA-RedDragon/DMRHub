@@ -22,7 +22,7 @@ import type { BadgeTone } from '@/lib/badge';
 
 export const MESSAGE_BOX_CAP = 250;
 
-export type MessageFormat = 'tms' | 'ip' | 'anytone' | 'defined_data' | 'hytera' | 'data' | 'unknown';
+export type MessageFormat = 'tms' | 'ip' | 'anytone' | 'defined_data' | 'hytera' | 'udt' | 'data' | 'unknown';
 
 export type MessageResponse = 'none' | 'ack' | 'nack' | 'sack';
 
@@ -81,11 +81,12 @@ export const FORMAT_LABELS: Record<MessageFormat, string> = {
   anytone: 'AnyTone',
   hytera: 'Hytera',
   defined_data: 'Defined Data',
+  udt: 'UDT',
   data: 'Data (not text)',
   unknown: 'Unknown',
 };
 
-export const FORMAT_ORDER: MessageFormat[] = ['ip', 'tms', 'anytone', 'hytera', 'defined_data', 'data', 'unknown'];
+export const FORMAT_ORDER: MessageFormat[] = ['ip', 'tms', 'anytone', 'hytera', 'defined_data', 'udt', 'data', 'unknown'];
 
 export function formatLabel(format: string): string {
   return FORMAT_LABELS[format as MessageFormat] ?? format;

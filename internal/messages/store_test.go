@@ -40,6 +40,7 @@ import (
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
+	"github.com/USA-RedDragon/dmrgo/v2/trunk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -573,4 +574,88 @@ func TestStoreMarksAMessageWithAProprietaryHeader(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.True(t, msgs[0].Proprietary)
 	assert.Equal(t, uint8(enums.DataTypeRate34), msgs[0].Rate)
+}
+
+func udtBursts(t *testing.T, src, dst uint, f enums.UDTFormat, body string) []layer2.RawBurst {
+	t.Helper()
+	var a trunk.Appended
+	require.NoError(t, a.SetText(f, []byte(body)))
+	var h pdu.DataHeader
+	require.NoError(t, h.SetUDT(pdu.UDTHeader{
+		SAP: enums.SAPUnifiedDataTransport, UDTFormat: f, LLIDDestination: uint32(dst), LLIDSource: uint32(src), //nolint:gosec // test IDs
+		PadNibble: a.PadNibble, UAB: uint8(a.Blocks - 1), Opcode: pdu.UDTOpcodeInboundHeader, //nolint:gosec // 1 to 4 blocks
+	}))
+	head, err := h.Encode()
+	require.NoError(t, err)
+	raw, err := layer2.BuildDataBurst(head, enums.DataTypeDataHeader, 1, layer2.SyncSourceMS)
+	require.NoError(t, err)
+	blocks := make([][12]byte, a.Blocks)
+	out := make([]layer2.RawBurst, 0, 1+len(blocks))
+	out = append(out, raw)
+	for i := range blocks {
+		copy(blocks[i][:], a.Data[12*i:min(12*i+12, trunk.MaxAppendedOctets)])
+	}
+	pdu.SetMBCLastBlockCRC(blocks)
+	for _, b := range blocks {
+		raw, err := layer2.BuildDataBurst(b, enums.DataTypeRate12, 1, layer2.SyncSourceMS)
+		require.NoError(t, err)
+		out = append(out, raw)
+	}
+	return out
+}
+
+func TestStoreDecodesTheTextOfAUDT(t *testing.T) {
+	t.Parallel()
+	for i, tc := range []struct {
+		format enums.UDTFormat
+		body   string
+	}{
+		{enums.UDTISO7, "STATUS"},
+		{enums.UDTISO8, "status please"},
+		{enums.UDTUTF16BE, "Grüße"},
+	} {
+		t.Run(tc.format.String(), func(t *testing.T) {
+			t.Parallel()
+			r := newRig(t)
+			r.send(userB, userA, false, uint(7400+i), udtBursts(t, userB, userA, tc.format, tc.body))
+			m := r.messages(1)[0]
+			assert.Equal(t, models.MessageFormatUDT, m.Format)
+			require.NotNil(t, m.Text)
+			assert.Equal(t, tc.body, *m.Text)
+			assert.Equal(t, userB, m.SourceID)
+			assert.Equal(t, userA, m.DestinationID)
+			assert.True(t, m.ChecksumOK)
+			assert.False(t, m.BadCRC)
+			require.Greater(t, len(m.Raw), 12)
+			h := pdu.DecodeDataHeader([12]byte(m.Raw[:12]))
+			u, ok := h.AsUDT()
+			require.True(t, ok)
+			assert.Equal(t, tc.format, u.UDTFormat)
+			assert.Equal(t, pdu.UDTOpcodeInboundHeader, u.Opcode)
+		})
+	}
+}
+
+func TestStoreKeepsAUDTThatIsNotTextAsData(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	var a trunk.Appended
+	require.NoError(t, a.SetBinary([]byte{1, 2, 3, 4}, 32))
+	var h pdu.DataHeader
+	require.NoError(t, h.SetUDT(pdu.UDTHeader{
+		SAP: enums.SAPUnifiedDataTransport, UDTFormat: enums.UDTBinary, LLIDDestination: uint32(userA), LLIDSource: uint32(userB),
+		PadNibble: a.PadNibble, Opcode: pdu.UDTOpcodeInboundHeader,
+	}))
+	head, err := h.Encode()
+	require.NoError(t, err)
+	raw, err := layer2.BuildDataBurst(head, enums.DataTypeDataHeader, 1, layer2.SyncSourceMS)
+	require.NoError(t, err)
+	block := [][12]byte{[12]byte(a.Data[:12])}
+	pdu.SetMBCLastBlockCRC(block)
+	braw, err := layer2.BuildDataBurst(block[0], enums.DataTypeRate12, 1, layer2.SyncSourceMS)
+	require.NoError(t, err)
+	r.send(userB, userA, false, 7410, []layer2.RawBurst{raw, braw})
+	m := r.messages(1)[0]
+	assert.Equal(t, models.MessageFormatData, m.Format)
+	assert.Nil(t, m.Text)
 }

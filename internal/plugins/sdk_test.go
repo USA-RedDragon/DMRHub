@@ -501,3 +501,18 @@ func TestAPluginGetsAPRSMessagesOnlyToTheAddressesOfItsUsers(t *testing.T) {
 		assert.NotNil(t, m.GetHeard(), "no APRS message after its user turned the switch off: got %v", m)
 	})
 }
+
+func TestAPluginGetsAUDTTextAsUDT(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, _, s, _ := sdkRig(t)
+		subscribeTo(t, s, &pluginv1.Subscribe{Texts: true})
+		udt := text(6, 4700, "STATUS")
+		udt.Format = models.MessageFormatUDT
+		plugins.PublishText(r.ps, udt)
+		m, err := recv(t, s)
+		require.NoError(t, err)
+		assert.Equal(t, "UDT", m.GetText().GetFormat(), "got %v", m)
+		assert.Equal(t, "STATUS", m.GetText().GetBody())
+	})
+}

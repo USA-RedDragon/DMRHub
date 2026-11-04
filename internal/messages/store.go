@@ -39,10 +39,12 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/kv"
 	"github.com/USA-RedDragon/DMRHub/internal/metrics"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
+	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/ip"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/packet"
 	"github.com/USA-RedDragon/dmrgo/v2/layer2/pdu"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
+	"github.com/USA-RedDragon/dmrgo/v2/trunk"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -560,6 +562,11 @@ func (s *Store) decode(j *job) *models.Message {
 		msg.Raw = bytes.Clone(j.payload)
 	}
 
+	if u, ok := h.AsUDT(); ok {
+		msg.Confirmed = u.ResponseRequested
+		decodeUDT(msg, u, j.payload)
+		return msg
+	}
 	buf, text, err := sms.Decode(nil, h, j.payload)
 	switch {
 	case err == nil || errors.Is(err, ip.ErrChecksum):
@@ -573,6 +580,31 @@ func (s *Store) decode(j *job) *models.Message {
 		msg.Format = models.MessageFormatUnknown
 	}
 	return msg
+}
+
+// decodeUDT sets the format and text of msg, a UDT whose appended data,
+// without the pad nibbles and the CRC, is payload. A UDT in a format that
+// is not text is data.
+func decodeUDT(msg *models.Message, u pdu.UDTHeader, payload []byte) {
+	switch u.UDTFormat {
+	case enums.UDTISO7, enums.UDTISO8, enums.UDTUTF16BE:
+	case enums.UDTBinary, enums.UDTAddress, enums.UDTBCD, enums.UDTNMEA, enums.UDTIP, enums.UDTManufacturer1,
+		enums.UDTManufacturer2, enums.UDTMixed, enums.UDTLIP:
+		fallthrough
+	default:
+		msg.Format = models.MessageFormatData
+		return
+	}
+	a := trunk.Appended{Format: u.UDTFormat, PadNibble: u.PadNibble, Blocks: int(u.UAB) + 1}
+	copy(a.Data[:], payload)
+	buf, err := a.Text(nil)
+	if err != nil {
+		msg.Format = models.MessageFormatUnknown
+		return
+	}
+	msg.Format = models.MessageFormatUDT
+	body := clean(buf)
+	msg.Text = &body
 }
 
 func clean(b []byte) string {

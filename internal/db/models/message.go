@@ -36,6 +36,7 @@ const (
 	MessageFormatAnyTone     MessageFormat = "anytone"
 	MessageFormatDefinedData MessageFormat = "defined_data"
 	MessageFormatHytera      MessageFormat = "hytera"
+	MessageFormatUDT         MessageFormat = "udt"
 	MessageFormatData        MessageFormat = "data"
 	MessageFormatUnknown     MessageFormat = "unknown"
 )

@@ -63,6 +63,8 @@ func formatName(f models.MessageFormat) (string, bool) {
 		return "Defined data", true
 	case models.MessageFormatHytera:
 		return "Hytera", true
+	case models.MessageFormatUDT:
+		return "UDT", true
 	case models.MessageFormatData, models.MessageFormatUnknown:
 	}
 	return "", false

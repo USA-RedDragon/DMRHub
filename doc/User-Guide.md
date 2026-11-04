@@ -26,6 +26,7 @@ New to DMRHub? Start with [Get started](getting-started.md).
 - [Ask 5000 for your status](guides/status.md)
 - [Make a private call](guides/private-calls.md)
 - [Send and read text messages](guides/text-messages.md)
+- [Send and get APRS messages](guides/aprs-messages.md) from your radio
 - [Share the position of your radio](guides/positions.md)
 - [Run or join a net](guides/nets.md)
 - [See who is on the air](guides/last-heard.md)

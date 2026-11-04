@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin is a program that answers the calls to the DMR IDs that you give it. The parrot (9990), the location server (5050 to 5059) and the status service (5000) are plugins. A plugin runs inside DMRHub, as a WebAssembly module in a sandbox, or as its own program that connects to the hub over TLS.
+A plugin is a program that answers the calls to the DMR IDs that you give it. The parrot (9990) and the location server (5050 to 5059) are plugins. A plugin runs inside DMRHub, as a WebAssembly module in a sandbox, or as its own program that connects to the hub over TLS.
 
 This page tells how to run plugins on your DMRHub server. To write a plugin, see [Plugins](../plugins.md) in the developer docs. For how the hub routes the calls of a plugin, see [How the hub routes plugin calls](../plugins.md#how-the-hub-routes-plugin-calls).
 
@@ -56,17 +56,30 @@ The **Status** of an external plugin is **Connected for** a time and from an add
 
 When **Run plugins inside DMRHub** is on, DMRHub adds these built-in plugins:
 
-| Plugin          | IDs          | What it does                                                                                                                                                                     |
-| --------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parrot          | 9990         | Records each voice call to its IDs, private or group, and plays it back to the caller as a private call 3 seconds after the call ends. It keeps at most 3 minutes of a call. |
-| Location server | 5050 to 5059 | Answers radio registrations (ARS) and location reports, asks the radios whose owners turned tracking on for their positions, and gives the positions to the hub. See [Positions](../positions.md). |
+| Plugin          | IDs          | What it does                                                                                                                                                                                                                      |
+| --------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parrot          | 9990         | Records each voice call to its IDs, private or group, and plays it back to the caller as a private call 3 seconds after the call ends. It keeps at most 3 minutes of a call.                                                      |
+| Location server | 5050 to 5059 | Answers radio registrations (ARS) and location reports, asks the radios whose owners turned tracking on for their positions, and gives the positions to the hub. See [Positions](../positions.md).                                |
 | Status          | 5000         | Answers a private call to 5000 with the talkgroups of the caller's timeslot as spoken prompts, and a text to 5000 with the same as a text, in the exact format of that text. See [Ask 5000 for your status](../guides/status.md). |
+| APRS messages   | None, off    | Two-way APRS text messages for the users who turn it on in **Settings**, through the APRS-IS login of the hub. See [Send and get APRS messages](../guides/aprs-messages.md).                                                      |
 
 ![The page of the built-in Status plugin](../Screenshots/admin-plugin-status.png)
 
 The status service speaks with the clips of the spoken prompts (see [Spoken refusals](routing.md#spoken-refusals)), in the voice of the caller or of the network, whether or not spoken refusals are on. It answers a text only in the format of that text, and only when the text came through a hotspot or repeater of the radio's owner or a trusted one. It does not answer a UDT text yet. When another plugin already has 5000, the status service waits for the ID, as the Status column shows.
 
 You cannot remove a built-in plugin. Turn it off on its page instead. You can change its IDs.
+
+### Turn on APRS messages
+
+APRS messages starts off and with no ID, so that it does not take an ID that your network uses for something else. It needs the APRS-IS login of the hub: set **APRS-IS callsign** first, as [Positions and APRS-IS](positions.md#aprs-is) tells.
+
+1. Open **APRS messages** from the plugins page.
+2. In **IDs**, type one free ID, such as `4700`. Users send their APRS messages to this ID, and get the APRS messages to them from it.
+3. Turn on **On**, then click **Save**.
+
+![The page of the APRS messages plugin with the ID 4700 and On](../Screenshots/admin-plugin-aprs.png)
+
+The plugin does nothing for a user until that user turns on its switch in **Settings**. It sends at most 30 APRS messages a minute, retries included.
 
 ## Upload a plugin
 

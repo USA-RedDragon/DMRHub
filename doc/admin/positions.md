@@ -28,6 +28,8 @@ DMRHub logs in to APRS-IS once, and sends the positions of the radios whose owne
 | **APRS-IS callsign** | The callsign and SSID that the hub logs in as, such as `N0CALL-10`. Empty sends nothing. | `dmr.positions.aprs-is.callsign` |
 | **APRS-IS server** | The APRS-IS server, as host and port. The default is `rotate.aprs2.net:14580`. | `dmr.positions.aprs-is.server` |
 
+The [APRS messages](plugins.md#turn-on-aprs-messages) plugin uses the same login. While users have its switch on, the login asks APRS-IS for the messages to their callsigns, with a `g/` filter such as `g/N0CALL/N0CALL-*`, and gives those to the plugin. When a user turns the switch on or off, the hub logs in again with the new filter within 10 seconds. With no such user, the login asks for no messages.
+
 DMRHub calculates the APRS-IS passcode from the callsign, so there is nothing to register. Use a callsign that you hold a license for. When DMRHub runs as several replicas, only one of them logs in at a time.
 
 Each packet has the destination `APZDMH` and the path `<repeater or hotspot callsign>*,qAR,<hub login>`, like the packets of the BrandMeister APRS gateway.

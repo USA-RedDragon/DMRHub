@@ -320,12 +320,38 @@ func TestNothingRunsInsideWhenItIsOff(t *testing.T) {
 	_, ok := r.registry.Owner(9100)
 	assert.False(t, ok, "nobody gets the calls to a plugin inside DMRHub that does not run")
 
+	updated := pluginUpdates(t, c)
 	require.NoError(t, r.m.SetOn(context.Background(), true))
-	require.Eventually(t, func() bool { return online(t, c, p.ID) }, 30*time.Second, 50*time.Millisecond)
+	for !online(t, c, p.ID) {
+		<-updated
+	}
 	_, ok = r.registry.Owner(9100)
 	assert.True(t, ok)
 	require.NoError(t, r.m.SetOn(context.Background(), false))
-	require.Eventually(t, func() bool { return len(r.m.Running()) == 0 && !online(t, c, p.ID) }, 30*time.Second, 50*time.Millisecond)
+	for len(r.m.Running()) > 0 || online(t, c, p.ID) {
+		select {
+		case <-updated:
+		case <-passes:
+		}
+	}
+}
+
+// pluginUpdates returns a channel that gets a value after each committed
+// update of the plugins of c, so that a test waits for a plugin to go
+// online or offline on the event rather than for a time.
+func pluginUpdates(t *testing.T, c *cluster) <-chan struct{} {
+	t.Helper()
+	ch := make(chan struct{}, 1)
+	require.NoError(t, c.db.Callback().Update().After("gorm:commit_or_rollback_transaction").Register("test:plugin updated", func(tx *gorm.DB) {
+		if tx.Statement.Table != "plugins" {
+			return
+		}
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}))
+	return ch
 }
 
 func TestOnlyOneReplicaRunsAPlugin(t *testing.T) {

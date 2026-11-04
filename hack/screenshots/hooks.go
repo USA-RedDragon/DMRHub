@@ -387,7 +387,11 @@ func holdText(ctx context.Context, r *runner) error {
 	if err := r.api("n0call").do(ctx, http.MethodPut, "/api/v1/users/me/settings/store-forward", on, nil); err != nil {
 		return err
 	}
-	return playCalls([]call{{repeater: 300000301, src: 3000003, dst: 3000011, slot2: true, text: "N0CALL, the net moved to 8 pm"}})(ctx, r)
+	if err := playCalls([]call{{repeater: 300000301, src: 3000003, dst: 3000011, slot2: true, text: "N0CALL, the net moved to 8 pm"}})(ctx, r); err != nil {
+		return err
+	}
+	r.expectHeld(3000011)
+	return nil
 }
 
 func (r *runner) play(c call) error {

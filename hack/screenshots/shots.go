@@ -70,10 +70,11 @@ type runner struct {
 	stop    []func()
 	peersMu sync.Mutex
 	groups  map[repeaterSlot]time.Time
+	held    map[uint]time.Time
 }
 
 func newRunner(o options, l *shotList, c *clock, base string, start time.Time) *runner {
-	return &runner{o: o, l: l, c: c, base: base, mmdvm: fmt.Sprintf("127.0.0.1:%d", mmdvmPort), cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}, groups: map[repeaterSlot]time.Time{}}
+	return &runner{o: o, l: l, c: c, base: base, mmdvm: fmt.Sprintf("127.0.0.1:%d", mmdvmPort), cursor: start, apis: map[string]*api{}, peers: map[uint32]*peer{}, secrets: newSecrets(), hooks: hooks(), done: map[string]bool{}, groups: map[repeaterSlot]time.Time{}, held: map[uint]time.Time{}}
 }
 
 func (r *runner) api(user string) *api {
@@ -326,7 +327,10 @@ func (r *runner) settleHub(ctx context.Context, s shot) error {
 			return err
 		}
 	}
-	return r.waitDynamicOfHub(ctx)
+	if err := r.waitDynamicOfHub(ctx); err != nil {
+		return err
+	}
+	return r.waitHeldOfHub(ctx)
 }
 
 func (r *runner) step(ctx context.Context, st string) error {

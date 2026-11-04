@@ -33,6 +33,7 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	internalhttp "github.com/USA-RedDragon/DMRHub/internal/http"
+	"github.com/USA-RedDragon/DMRHub/internal/http/api/apimodels"
 	listenws "github.com/USA-RedDragon/DMRHub/internal/http/api/websocket"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/coder/websocket"
@@ -353,6 +354,52 @@ func TestListenRefusedWhenOff(t *testing.T) {
 				ce := dialListen(t, url).refused()
 				assert.Equal(t, websocket.StatusPolicyViolation, ce.Code)
 				assert.Equal(t, listenws.ListenRefusedOff, ce.Reason)
+			})
+		})
+	}
+}
+
+// TestListenFollowsVisibility checks each visibility: a listener gets no
+// more than a visitor on the last heard page. Everything shows the talker
+// alias of a call, no names or positions drops it, and nothing refuses
+// the session.
+func TestListenFollowsVisibility(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		visibility config.Visibility
+		alias      string
+	}{
+		{config.VisibilityPublic, "N0CALL Demo"},
+		{config.VisibilityHideNames, ""},
+		{config.VisibilityLogin, ""},
+	} {
+		t.Run(string(tc.visibility), func(t *testing.T) {
+			t.Parallel()
+			forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
+				url, _ := listenHub(t, stack, func(cfg *config.Config) { cfg.Visibility = tc.visibility })
+				l := dialListen(t, url)
+				if tc.visibility == config.VisibilityLogin {
+					ce := l.refused()
+					assert.Equal(t, websocket.StatusPolicyViolation, ce.Code)
+					assert.Equal(t, listenws.ListenRefusedOff, ce.Reason)
+					return
+				}
+				l.hello()
+				l.tune(1)
+				lat := 32.7767
+				call, err := json.Marshal(apimodels.WSCallResponse{
+					ID: 1, Active: true, GroupCall: true, IsToTalkgroup: true, Kind: models.CallKindVoice,
+					ToTalkgroup: apimodels.WSCallResponseTalkgroup{ID: 1}, SourceID: listenTalker,
+					User:        apimodels.WSCallResponseUser{ID: listenTalker, Callsign: "N0CALL"},
+					TalkerAlias: "N0CALL Demo", Latitude: &lat, Longitude: &lat,
+				})
+				require.NoError(t, err)
+				require.NoError(t, stack.PubSub.Publish("calls:public", call))
+				got := l.until(func(m listenMsg) bool { return m.text["type"] == "call" })
+				m := got[len(got)-1].text
+				assert.Equal(t, "N0CALL", m["callsign"])
+				assert.Equal(t, tc.alias, m["alias"])
+				assert.NotContains(t, m, "latitude")
 			})
 		})
 	}

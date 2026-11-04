@@ -227,6 +227,7 @@ func TestAStalledPubSubHoldsNoBurst(t *testing.T) {
 		held := gather(arrivals, sent, map[string]int{
 			"70201 peers:3002500": bursts, "70211 mmdvm:100002": bursts, "70211 peers:3002500": bursts,
 		}, 0)
+		synctest.Wait()
 		t.Logf("while Redis held %d publishes the targets got %v", stalled.held.Load(), held.seqs)
 		assert.Positive(t, stalled.held.Load(), "the call sent no publish for Redis to hold")
 		assert.Empty(t, held.seqs["70201 mmdvm:100002"], "a burst reached the repeater through a held publish")
@@ -267,20 +268,6 @@ func TestAPublishThatDidNotReachRedisIsSentAgain(t *testing.T) {
 	})
 }
 
-// lastHeardReads counts the reads of the records of where radios were
-// heard.
-type lastHeardReads struct {
-	kv.KV
-	n atomic.Int64
-}
-
-func (r *lastHeardReads) Get(ctx context.Context, key string) ([]byte, error) {
-	if strings.HasPrefix(key, "dmrhub:lastheard:") {
-		r.n.Add(1)
-	}
-	return r.KV.Get(ctx, key) //nolint:wrapcheck
-}
-
 // TestAStalledKVHoldsNoBurstOfAPrivateCall starts a private call to a
 // radio while every call to the KV store hangs, as a paused Redis makes
 // it. Finding where the radio is must wait on the KV store no longer than
@@ -291,7 +278,7 @@ func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		slow := &slowKV{hang: make(chan struct{})}
-		reads := &lastHeardReads{KV: slow}
+		reads := &countedGets{KV: slow, key: "dmrhub:lastheard:1000002"}
 		h, database, _ := makeTestHubWrappingKV(t, func(ps pubsub.PubSub) pubsub.PubSub { return ps }, func(k kv.KV) kv.KV {
 			slow.KV = k
 			return reads
@@ -313,6 +300,7 @@ func TestAStalledKVHoldsNoBurstOfAPrivateCall(t *testing.T) {
 		endClaims()
 		endLookups()
 		worstDelay(t, arrivals, 70300, sent, "mmdvm:100002")
+		synctest.Wait()
 		slow.mu.Lock()
 		claims := len(slow.setNX)
 		slow.mu.Unlock()

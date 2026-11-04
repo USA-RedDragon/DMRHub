@@ -29,16 +29,19 @@ import (
 )
 
 type Talkgroup struct {
-	ID          uint           `json:"id" gorm:"primaryKey"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Admins      []User         `json:"admins" gorm:"many2many:talkgroup_admins;"`
-	NCOs        []User         `json:"ncos" gorm:"many2many:talkgroup_ncos;"`
-	AutoCreated bool           `json:"-" gorm:"not null;default:false"`
-	LastCallAt  *time.Time     `json:"-"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"-"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	ID          uint   `json:"id" gorm:"primaryKey"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Admins      []User `json:"admins" gorm:"many2many:talkgroup_admins;"`
+	NCOs        []User `json:"ncos" gorm:"many2many:talkgroup_ncos;"`
+	AutoCreated bool   `json:"-" gorm:"not null;default:false"`
+	// NoListen keeps the talkgroup off the listen-only monitor of DMRHub
+	// Radio.
+	NoListen   bool           `json:"no_listen" gorm:"not null;default:false"`
+	LastCallAt *time.Time     `json:"-"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"-"`
+	DeletedAt  gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func ListTalkgroups(db *gorm.DB) ([]Talkgroup, error) {
@@ -63,6 +66,29 @@ func FindTalkgroupByID(db *gorm.DB, id uint) (Talkgroup, error) {
 	var talkgroup Talkgroup
 	err := db.Preload("Admins").Preload("NCOs").First(&talkgroup, id).Error
 	return talkgroup, err
+}
+
+// ListenTalkgroup is a talkgroup that visitors may hear on the
+// listen-only monitor.
+type ListenTalkgroup struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListenTalkgroups returns the talkgroups that visitors may hear, in order
+// of ID.
+func ListenTalkgroups(db *gorm.DB) ([]ListenTalkgroup, error) {
+	list := []ListenTalkgroup{}
+	err := db.Model(&Talkgroup{}).Select("id", "name").Where("no_listen = ?", false).Order("id asc").Find(&list).Error
+	return list, err
+}
+
+// Listenable reports whether visitors may hear the talkgroup id: it exists
+// and its admins did not take it off the monitor.
+func Listenable(db *gorm.DB, id uint) (bool, error) {
+	var count int64
+	err := db.Model(&Talkgroup{}).Where("id = ? AND no_listen = ?", id, false).Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
 // FindTalkgroupsByIDs returns the talkgroups of ids that exist, in order of

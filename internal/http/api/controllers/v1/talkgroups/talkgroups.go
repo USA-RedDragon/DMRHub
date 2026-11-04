@@ -305,6 +305,9 @@ func PATCHTalkgroup(c *gin.Context) {
 			}
 			talkgroup.Description = json.Description
 		}
+		if json.Listen != nil {
+			talkgroup.NoListen = !*json.Listen
+		}
 		talkgroup.AutoCreated = false
 
 		err = db.Save(&talkgroup).Error

@@ -28,6 +28,9 @@ type TalkgroupPost struct {
 type TalkgroupPatch struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	// Listen puts the talkgroup on the listen-only monitor or takes it
+	// off; nil keeps it as it is.
+	Listen *bool `json:"listen"`
 }
 
 type TalkgroupAdminAction struct {

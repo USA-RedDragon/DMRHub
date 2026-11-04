@@ -110,5 +110,6 @@ func migrations(db *gorm.DB, cfg *config.Config) []*gormigrate.Migration {
 		add_plugin_sdk_migration_202611020200(db, cfg),
 		add_totp_secret_migration_202611020300(db, cfg),
 		add_prompt_voice_migration_202611030000(db, cfg),
+		add_talkgroup_no_listen_migration_202611032200(db, cfg),
 	}
 }

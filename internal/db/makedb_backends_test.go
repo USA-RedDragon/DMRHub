@@ -162,7 +162,7 @@ var ddl = regexp.MustCompile(`(?i)^\s*(ALTER|CREATE|DROP|RENAME)\s`)
 // alerts and the session and link epochs of the repeaters, the rate and
 // the held texts of store and forward, the local groups, and the stores
 // and switches of the plugins, and the on-air codes and the prompt voices.
-var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private|routing_rule|auto_created|last_call_at|login_failures|invites|message_access|call_parts|personal_tokens|repeater_cosysops|repeater_events|offline_alerts|session_epoch|link_epoch|held_messages|store_forward|add .rate.|proprietary|local_group|plugin_store_entries|plugin_switches|plugin_user_switches|totp_secret|prompt_voice")
+var newerSchema = regexp.MustCompile("(?i)idx_plugins_name|idx_plugins_builtin_name|setup_settings|generated_secrets|email_verified|email_verifications|first_admins|username_ci|is_to_plugin|callsign_override|radio_id_drifts|match_kind|ingress_private|egress_private|routing_rule|auto_created|last_call_at|login_failures|invites|message_access|call_parts|personal_tokens|repeater_cosysops|repeater_events|offline_alerts|session_epoch|link_epoch|held_messages|store_forward|add .rate.|proprietary|local_group|plugin_store_entries|plugin_switches|plugin_user_switches|totp_secret|prompt_voice|no_listen")
 
 func (r *recorder) ddl() []string {
 	r.mu.Lock()

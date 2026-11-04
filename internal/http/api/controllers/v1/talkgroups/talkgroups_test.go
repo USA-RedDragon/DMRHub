@@ -490,3 +490,38 @@ func TestGETMyTalkgroupsReturnsAdminsAndNCOs(t *testing.T) {
 	require.Len(t, res.Talkgroups[0].NCOs, 1)
 	assert.Equal(t, "N0TEST", res.Talkgroups[0].NCOs[0].Callsign)
 }
+
+// TestPATCHTalkgroupListen takes a talkgroup off the listen monitor and
+// puts it back, and checks that a PATCH without the field keeps it.
+func TestPATCHTalkgroupListen(t *testing.T) {
+	t.Parallel()
+
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	tg := apimodels.TalkgroupPost{ID: 10003, Name: "Listen", Description: "Listen test"}
+	_, w := testutils.CreateTalkgroup(t, router, adminJar, tg)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	off, on := false, true
+	for _, step := range []struct {
+		patch    apimodels.TalkgroupPatch
+		noListen bool
+	}{
+		{apimodels.TalkgroupPatch{}, false},
+		{apimodels.TalkgroupPatch{Listen: &off}, true},
+		{apimodels.TalkgroupPatch{Name: "Renamed"}, true},
+		{apimodels.TalkgroupPatch{Listen: &on}, false},
+	} {
+		_, w = testutils.PatchTalkgroup(t, router, tg.ID, adminJar, step.patch)
+		require.Equal(t, http.StatusOK, w.Code)
+		got, w := testutils.GetTalkgroup(t, router, tg.ID, adminJar)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, step.noListen, got.NoListen)
+		ok, err := models.Listenable(tdb.DB(), tg.ID)
+		require.NoError(t, err)
+		assert.Equal(t, !step.noListen, ok)
+	}
+}

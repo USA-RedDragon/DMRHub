@@ -100,3 +100,18 @@ func TestACallThatChromiumNeverAnswersFails(t *testing.T) {
 	require.ErrorIs(t, err, errTimeout)
 	assert.Contains(t, err.Error(), "Runtime.evaluate: Chromium did not answer")
 }
+
+// TestOnlyIdleTimeCountsTowardAWait has a page busy for a minute, as a
+// starved page with slow requests is, between two short idle spells. Only
+// the idle spells count toward the limit of a wait, so a slow page never
+// fails a wait while it still works.
+func TestOnlyIdleTimeCountsTowardAWait(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 10, 13, 18, 30, 0, 0, time.UTC)
+	var w idleTime
+	assert.Equal(t, time.Duration(0), w.add(start, true))
+	assert.Equal(t, 5*time.Second, w.add(start.Add(5*time.Second), true))
+	assert.Equal(t, 5*time.Second, w.add(start.Add(65*time.Second), false))
+	assert.Equal(t, 5*time.Second, w.add(start.Add(66*time.Second), true))
+	assert.Equal(t, 9*time.Second, w.add(start.Add(70*time.Second), true))
+}

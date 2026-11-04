@@ -44,6 +44,7 @@ const (
 	viewHeight  = 800
 	scale       = 2
 	cdpTimeout  = 30 * time.Second
+	waitCeiling = 10 * time.Minute
 	readLimit   = 128 << 20
 	devToolsMax = 20 * time.Second
 )
@@ -460,14 +461,54 @@ func (b *browser) eval(ctx context.Context, expression string, out any) error {
 	return nil
 }
 
+// idleTime adds up the time that a page spends idle, from samples of
+// whether it is idle: the time between two idle samples counts.
+type idleTime struct {
+	total time.Duration
+	last  time.Time
+	idle  bool
+}
+
+func (t *idleTime) add(now time.Time, idle bool) time.Duration {
+	if idle && t.idle {
+		t.total += now.Sub(t.last)
+	}
+	t.last, t.idle = now, idle
+	return t.total
+}
+
+// pageIdle reports whether the page has no request open and counts no
+// work of its own in the data-busy attribute of its html element, which
+// the DMRHub frontend keeps. A page without the attribute counts as
+// idle when it has no request open.
+func (b *browser) pageIdle(ctx context.Context) bool {
+	b.mu.Lock()
+	n := len(b.pending)
+	b.mu.Unlock()
+	if n > 0 {
+		return false
+	}
+	var busy string
+	if err := b.eval(ctx, "(document.documentElement && document.documentElement.dataset.busy) || '0'", &busy); err != nil {
+		return true
+	}
+	return busy == "0"
+}
+
+// waitFor waits until expression is true on the page. It fails once the
+// page has spent cdpTimeout idle without it: the time in which the page
+// still loads or works does not count, so a slow machine does not fail
+// the wait. waitCeiling bounds the whole wait, for a page that never
+// stops working.
 func (b *browser) waitFor(ctx context.Context, expression string) error {
-	deadline := time.Now().Add(cdpTimeout)
+	ceiling := time.Now().Add(waitCeiling)
+	var idle idleTime
 	for {
 		var ok bool
 		if err := b.eval(ctx, "Boolean("+expression+")", &ok); err == nil && ok {
 			return nil
 		}
-		if time.Now().After(deadline) {
+		if idle.add(time.Now(), b.pageIdle(ctx)) >= cdpTimeout || time.Now().After(ceiling) {
 			var where string
 			_ = b.eval(ctx, "location.href + ' | ' + (document.body ? document.body.innerText.slice(0, 300) : '')", &where)
 			b.mu.Lock()
@@ -576,14 +617,14 @@ func pageScript(at time.Time) string {
 })()`, at.UnixMilli())
 }
 
+// idle waits until the page has been idle, as pageIdle tells, for
+// quietTime. It fails only after waitCeiling, for a page that never stops
+// working.
 func (b *browser) idle(ctx context.Context) error {
-	deadline := time.Now().Add(cdpTimeout)
+	deadline := time.Now().Add(waitCeiling)
 	quiet := time.Now()
 	for time.Now().Before(deadline) {
-		b.mu.Lock()
-		n := len(b.pending)
-		b.mu.Unlock()
-		if n > 0 {
+		if !b.pageIdle(ctx) {
 			quiet = time.Now()
 		} else if time.Since(quiet) >= quietTime {
 			return nil

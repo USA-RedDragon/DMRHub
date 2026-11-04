@@ -278,3 +278,17 @@ func TestNoReplyGoesForATextThatTheHubCannotMirror(t *testing.T) {
 	require.ErrorIs(t, err, plugins.ErrNoFormat, "a text of another radio")
 	assert.Empty(t, out.all(), "never a format the radio did not send")
 }
+
+func TestATextOfAStreamThatEndedReadsNoFormat(t *testing.T) {
+	t.Parallel()
+	database := openDB(t)
+	radioSent(t, database, ownRepeater)
+	out := &fakeSender{result: data.ResultSent}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := plugintexts.New(database, out).SendText(ctx, service, radio, "hi")
+	require.ErrorIs(t, err, context.Canceled, "the query of the format ends with the context of the request")
+	_, err = plugintexts.New(database, out).ReplyText(ctx, service, 1, radio, "hi")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, out.all())
+}

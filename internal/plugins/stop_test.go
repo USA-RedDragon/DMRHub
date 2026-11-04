@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
+	"gorm.io/gorm"
 )
 
 // slowTexts is a Texts whose SendText waits for its context to end, and
@@ -130,5 +131,50 @@ func TestAStopThatCutsAStreamWaitsForItsRequests(t *testing.T) {
 		}
 		close(slow.release)
 		<-stopped
+	})
+}
+
+// TestAStreamThatEndsCutsTheQueriesOfItsRequests ends the stream of a
+// plugin while the database holds a query of its store. The query must end
+// with the stream, so that a stuck query does not keep the stream, and a
+// stop of the hub, waiting.
+func TestAStreamThatEndsCutsTheQueriesOfItsRequests(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		r, _, s, _ := sdkRig(t)
+		entered, release := make(chan struct{}), make(chan struct{})
+		require.NoError(t, r.db.Callback().Query().Before("gorm:query").Register("test:hold", func(tx *gorm.DB) {
+			if tx.Statement.Table != "plugin_store_entries" {
+				return
+			}
+			close(entered)
+			select {
+			case <-tx.Statement.Context.Done():
+				_ = tx.AddError(tx.Statement.Context.Err())
+			case <-release:
+			}
+		}))
+		require.NoError(t, s.Send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Request{Request: &pluginv1.Request{
+			Id: 99, Op: &pluginv1.Request_StoreGet{StoreGet: &pluginv1.StoreGet{Key: "held"}},
+		}}}))
+		<-entered
+		ended := make(chan struct{})
+		go func() {
+			defer close(ended)
+			for {
+				if _, err := s.Recv(); err != nil {
+					return
+				}
+			}
+		}()
+		require.NoError(t, s.CloseSend())
+		synctest.Wait()
+		select {
+		case <-ended:
+		default:
+			assert.Fail(t, "the stream waited for a query that its end did not cut")
+		}
+		close(release)
+		<-ended
 	})
 }

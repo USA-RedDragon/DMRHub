@@ -58,7 +58,7 @@ func New(db *gorm.DB, sender Sender) *Texts {
 // of the format. It sends nothing when the hub knows no format of the
 // radio.
 func (t *Texts) SendText(ctx context.Context, source, radio uint, body string) (string, error) {
-	tpl, f, err := storeforward.RadioText(t.db, radio)
+	tpl, f, err := storeforward.RadioText(t.db.WithContext(ctx), radio)
 	return t.send(ctx, tpl, f, err, source, radio, body)
 }
 
@@ -69,7 +69,7 @@ func (t *Texts) SendText(ctx context.Context, source, radio uint, body string) (
 // radio's owner nor a trusted one, or in a format that the hub cannot build
 // again exactly, and the errors of SendText.
 func (t *Texts) ReplyText(ctx context.Context, source uint, id uint64, radio uint, body string) (string, error) {
-	tpl, f, err := storeforward.MessageText(t.db, id, radio, source)
+	tpl, f, err := storeforward.MessageText(t.db.WithContext(ctx), id, radio, source)
 	return t.send(ctx, tpl, f, err, source, radio, body)
 }
 

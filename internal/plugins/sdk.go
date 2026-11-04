@@ -247,22 +247,23 @@ func (q *requester) unavailable(what string, err error) *pluginv1.Answer {
 
 func (q *requester) serve(ctx context.Context, r request) *pluginv1.Answer {
 	now := q.s.clock.Now()
+	db := q.s.db.WithContext(ctx)
 	switch op := r.r.GetOp().(type) {
 	case *pluginv1.Request_StoreGet:
-		return q.storeGet(op.StoreGet, now)
+		return q.storeGet(db, op.StoreGet, now)
 	case *pluginv1.Request_StorePut:
-		return q.storePut(op.StorePut, now)
+		return q.storePut(db, op.StorePut, now)
 	case *pluginv1.Request_StoreDelete:
-		if err := models.PluginStoreDelete(q.s.db, q.p.ID, op.StoreDelete.GetKey()); err != nil {
+		if err := models.PluginStoreDelete(db, q.p.ID, op.StoreDelete.GetKey()); err != nil {
 			return q.storeError(err)
 		}
 		return &pluginv1.Answer{}
 	case *pluginv1.Request_StoreList:
-		return q.storeList(op.StoreList, now)
+		return q.storeList(db, op.StoreList, now)
 	case *pluginv1.Request_Lookup:
-		return q.lookup(op.Lookup)
+		return q.lookup(db, op.Lookup)
 	case *pluginv1.Request_Repeater:
-		return q.repeater(op.Repeater.GetRepeater())
+		return q.repeater(db, op.Repeater.GetRepeater())
 	case *pluginv1.Request_SendText:
 		return q.sendText(ctx, op.SendText, r.ranges)
 	case *pluginv1.Request_AprsSend:
@@ -291,8 +292,8 @@ func expiresOf(at *time.Time) *int64 {
 	return &ms
 }
 
-func (q *requester) storeGet(g *pluginv1.StoreGet, now time.Time) *pluginv1.Answer {
-	e, ok, err := models.PluginStoreGet(q.s.db, q.p.ID, g.GetKey(), now)
+func (q *requester) storeGet(db *gorm.DB, g *pluginv1.StoreGet, now time.Time) *pluginv1.Answer {
+	e, ok, err := models.PluginStoreGet(db, q.p.ID, g.GetKey(), now)
 	if err != nil {
 		return q.storeError(err)
 	}
@@ -302,23 +303,23 @@ func (q *requester) storeGet(g *pluginv1.StoreGet, now time.Time) *pluginv1.Answ
 	return &pluginv1.Answer{Result: &pluginv1.Answer_StoreValue{StoreValue: &pluginv1.StoreValue{Value: e.Value, ExpiresAt: expiresOf(e.ExpiresAt)}}}
 }
 
-func (q *requester) storePut(p *pluginv1.StorePut, now time.Time) *pluginv1.Answer {
+func (q *requester) storePut(db *gorm.DB, p *pluginv1.StorePut, now time.Time) *pluginv1.Answer {
 	var expires *time.Time
 	if p.TtlSeconds != nil {
 		at := now.Add(time.Duration(p.GetTtlSeconds()) * time.Second)
 		expires = &at
 	}
-	if err := models.PluginStorePut(q.s.db, q.p.ID, p.GetKey(), p.GetValue(), expires, now); err != nil {
+	if err := models.PluginStorePut(db, q.p.ID, p.GetKey(), p.GetValue(), expires, now); err != nil {
 		return q.storeError(err)
 	}
 	return &pluginv1.Answer{}
 }
 
-func (q *requester) storeList(l *pluginv1.StoreList, now time.Time) *pluginv1.Answer {
+func (q *requester) storeList(db *gorm.DB, l *pluginv1.StoreList, now time.Time) *pluginv1.Answer {
 	if l.GetLimit() > models.MaxPluginStoreList {
 		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "a list returns at most 100 keys")
 	}
-	found, more, err := models.PluginStoreList(q.s.db, q.p.ID, l.GetPrefix(), l.GetAfter(), int(l.GetLimit()), now)
+	found, more, err := models.PluginStoreList(db, q.p.ID, l.GetPrefix(), l.GetAfter(), int(l.GetLimit()), now)
 	if err != nil {
 		return q.storeError(err)
 	}
@@ -382,11 +383,11 @@ func userSwitchOf(u *models.UserPluginSwitch) *pluginv1.UserSwitch {
 	return &pluginv1.UserSwitch{UserId: uint32(u.UserID), Callsign: u.Callsign, Key: u.Spec.Key, On: u.On, Choice: u.Choice} //nolint:gosec // DMR IDs are 24 bits
 }
 
-func (q *requester) lookup(l *pluginv1.Lookup) *pluginv1.Answer {
+func (q *requester) lookup(db *gorm.DB, l *pluginv1.Lookup) *pluginv1.Answer {
 	if l.GetRadio() == 0 && l.GetCallsign() == "" {
 		return fail(pluginv1.ErrorCode_ERROR_CODE_INVALID, "give a radio ID or a callsign")
 	}
-	u, ok, err := LookupUser(q.s.db, q.p.ID, uint(l.GetRadio()), l.GetCallsign())
+	u, ok, err := LookupUser(db, q.p.ID, uint(l.GetRadio()), l.GetCallsign())
 	if err != nil {
 		return q.unavailable("look up a user", err)
 	}
@@ -413,9 +414,9 @@ func dynamicOf(id *uint) *uint32 {
 	return &v
 }
 
-func (q *requester) repeater(id uint32) *pluginv1.Answer {
+func (q *requester) repeater(db *gorm.DB, id uint32) *pluginv1.Answer {
 	var found []models.Repeater
-	err := q.s.db.Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("id = ?", id).Limit(1).Find(&found).Error
+	err := db.Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").Where("id = ?", id).Limit(1).Find(&found).Error
 	if err != nil {
 		return q.unavailable("read a repeater", err)
 	}
@@ -533,7 +534,7 @@ func (q *requester) sendAPRS(ctx context.Context, a *pluginv1.APRSSend, now time
 	if !aprs.Licensed(baseCall(m.Source)) {
 		return fail(pluginv1.ErrorCode_ERROR_CODE_REFUSED, "the source is not a licensed callsign")
 	}
-	on, err := optedIn(q.s.db, q.p.ID)
+	on, err := optedIn(q.s.db.WithContext(ctx), q.p.ID)
 	if err != nil {
 		return q.unavailable("check the users of the plugin", err)
 	}

@@ -533,3 +533,30 @@ func PluginSwitchesOn(db *gorm.DB, plugin uint) ([]UserPluginSwitch, error) {
 	}
 	return out, nil
 }
+
+// PluginSwitchCallsigns returns, in upper case and sorted, the callsigns of
+// the approved users who are not suspended and turned on a switch of a
+// plugin that is enabled.
+func PluginSwitchCallsigns(db *gorm.DB) ([]string, error) {
+	var plugins []uint
+	err := db.Model(&Plugin{}).Where("enabled = ? AND id IN (?)", true, db.Model(&PluginSwitch{}).Select("plugin_id")).Order("id").Pluck("id", &plugins).Error
+	if err != nil {
+		return nil, fmt.Errorf("could not list the plugins with switches: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, id := range plugins {
+		on, err := PluginSwitchesOn(db, id)
+		if err != nil {
+			return nil, err
+		}
+		for i := range on {
+			seen[strings.ToUpper(on[i].Callsign)] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for c := range seen {
+		out = append(out, c)
+	}
+	slices.Sort(out)
+	return out, nil
+}

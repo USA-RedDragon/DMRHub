@@ -273,3 +273,40 @@ func TestTwoReplicasSaveTheSameSwitchesOfAPluginAtOnce(t *testing.T) {
 		}
 	})
 }
+
+func TestTheCallsignsWithAPluginSwitchOnAreOnlyOfEnabledPlugins(t *testing.T) {
+	t.Parallel()
+	forAllBackends(t, func(t *testing.T, database *gorm.DB) {
+		now := time.Now()
+		calls, err := models.PluginSwitchCallsigns(database)
+		require.NoError(t, err)
+		assert.Empty(t, calls)
+		p, _, err := models.CreatePlugin(database, "APRS", []models.PluginRange{rng(4700, 4700)}, now)
+		require.NoError(t, err)
+		q, _, err := models.CreatePlugin(database, "Other", []models.PluginRange{rng(4800, 4800)}, now)
+		require.NoError(t, err)
+		for _, id := range []uint{p.ID, q.ID} {
+			require.NoError(t, models.SetPluginSwitches(database, id, []models.PluginSwitchSpec{aprsSwitch()}))
+		}
+		addUser(t, database, 1000001, "n1call", true, false)
+		addUser(t, database, 1000002, "N2CALL", true, false)
+		addUser(t, database, 1000003, "N7CALL", true, true)
+		addUser(t, database, 1000004, "N6CALL", true, false)
+		for _, set := range []struct {
+			plugin, user uint
+			on           bool
+		}{{p.ID, 1000001, true}, {q.ID, 1000001, true}, {q.ID, 1000002, true}, {p.ID, 1000003, true}, {p.ID, 1000004, false}} {
+			_, err := models.SetUserPluginSwitch(database, set.plugin, set.user, "aprs", set.on, "", now)
+			require.NoError(t, err)
+		}
+		calls, err = models.PluginSwitchCallsigns(database)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"N1CALL", "N2CALL"}, calls)
+
+		_, err = models.UpdatePlugin(database, q.ID, q.Name, false, q.Ranges)
+		require.NoError(t, err)
+		calls, err = models.PluginSwitchCallsigns(database)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"N1CALL"}, calls, "a disabled plugin adds no callsign")
+	})
+}

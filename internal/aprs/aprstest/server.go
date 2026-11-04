@@ -43,8 +43,10 @@ type Server struct {
 	lines   []string
 	conns   []net.Conn
 	clients []net.Conn
-	changed chan struct{}
-	wg      sync.WaitGroup
+	// verified counts the clients that the server verified.
+	verified int
+	changed  chan struct{}
+	wg       sync.WaitGroup
 }
 
 // NewServer starts a Server that verifies passcode, closed at the end of
@@ -121,6 +123,24 @@ func (s *Server) WaitLines(ctx context.Context, n int) []string {
 	return s.wait(ctx, func() []string { return s.lines }, n)
 }
 
+// WaitClients waits until n verified clients connected or ctx ends, and
+// returns how many did. A line that Push sends after it reaches them.
+func (s *Server) WaitClients(ctx context.Context, n int) int {
+	for {
+		s.mu.Lock()
+		got, changed := s.verified, s.changed
+		s.mu.Unlock()
+		if got >= n {
+			return got
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return got
+		}
+	}
+}
+
 func (s *Server) wait(ctx context.Context, list func() []string, n int) []string {
 	for {
 		s.mu.Lock()
@@ -185,6 +205,9 @@ func (s *Server) serve(c net.Conn) {
 	_, err := c.Write([]byte("# logresp " + fields[1] + " " + state + ", server TEST\r\n"))
 	if err == nil && verified {
 		s.clients = append(s.clients, c)
+		s.verified++
+		close(s.changed)
+		s.changed = make(chan struct{})
 	}
 	s.mu.Unlock()
 	if err != nil {

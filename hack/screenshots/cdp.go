@@ -63,7 +63,7 @@ type browser struct {
 	timeZone  string
 	status    []byte
 	secrets   *secrets
-	scans     sync.WaitGroup
+	scans     scans
 
 	mu      sync.Mutex
 	nextID  int
@@ -125,7 +125,7 @@ func startBrowser(ctx context.Context, chromium, dir, timeZone string, status []
 }
 
 func (b *browser) openPage(ctx context.Context) error {
-	b.scans.Wait()
+	b.scans.wait()
 	b.mu.Lock()
 	old := b.conn
 	b.conn = nil
@@ -305,9 +305,9 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 		delete(b.pending, p.ID)
 		b.mu.Unlock()
 		if strings.Contains(u.text, "/api/") {
-			b.scans.Add(1)
+			b.scans.add()
 			go func() {
-				defer b.scans.Done()
+				defer b.scans.done()
 				b.scanBody(ctx, p.ID)
 			}()
 		}
@@ -358,6 +358,46 @@ func (b *browser) event(ctx context.Context, m cdpMessage) {
 }
 
 var errNoPage = errors.New("the page is closed")
+
+// scans counts the scans of response bodies that run. Unlike a
+// sync.WaitGroup, a scan may start while another goroutine waits for the
+// scans, as the event reader of a page starts them while a shot waits.
+type scans struct {
+	mu   sync.Mutex
+	cond *sync.Cond
+	n    int
+}
+
+func (s *scans) lock() {
+	s.mu.Lock()
+	if s.cond == nil {
+		s.cond = sync.NewCond(&s.mu)
+	}
+}
+
+func (s *scans) add() {
+	s.lock()
+	s.n++
+	s.mu.Unlock()
+}
+
+func (s *scans) done() {
+	s.lock()
+	s.n--
+	if s.n == 0 {
+		s.cond.Broadcast()
+	}
+	s.mu.Unlock()
+}
+
+// wait returns once no scan runs.
+func (s *scans) wait() {
+	s.lock()
+	for s.n > 0 {
+		s.cond.Wait()
+	}
+	s.mu.Unlock()
+}
 
 // request is a request of the page that has not ended: the frame that
 // made it, the document of that frame that made it, and a line about it.
@@ -693,7 +733,7 @@ func (b *browser) scanBody(ctx context.Context, id string) {
 }
 
 func (b *browser) waitSecrets() {
-	b.scans.Wait()
+	b.scans.wait()
 }
 
 func (b *browser) mask(ctx context.Context, secrets map[string]string) error {

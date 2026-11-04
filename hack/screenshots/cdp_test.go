@@ -115,3 +115,25 @@ func TestOnlyIdleTimeCountsTowardAWait(t *testing.T) {
 	assert.Equal(t, 5*time.Second, w.add(start.Add(66*time.Second), true))
 	assert.Equal(t, 9*time.Second, w.add(start.Add(70*time.Second), true))
 }
+
+// TestScansCanStartWhileOthersAreAwaited starts scans of response bodies
+// while other goroutines wait for the scans, as the event reader of a page
+// does while the shot waits for its secrets. A sync.WaitGroup panics with
+// "WaitGroup is reused before previous Wait has returned" there.
+func TestScansCanStartWhileOthersAreAwaited(t *testing.T) {
+	t.Parallel()
+	var s scans
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 2000 {
+			s.add()
+			go s.done()
+		}
+	}()
+	for range 2000 {
+		s.wait()
+	}
+	<-done
+	s.wait()
+}

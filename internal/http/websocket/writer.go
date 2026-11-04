@@ -92,3 +92,12 @@ func (w *wsWriter) writing() <-chan struct{} {
 	}
 	return nil
 }
+
+// Refuse ends the connection of w with status 1008, policy violation, and
+// reason, which a browser reads in the close event. The messages that w
+// did not send yet are dropped.
+func Refuse(w Writer, reason string) {
+	if ws, ok := w.(*wsWriter); ok {
+		ws.cancel(policyCloseError{reason: reason})
+	}
+}

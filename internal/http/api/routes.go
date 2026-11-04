@@ -82,6 +82,7 @@ func ApplyRoutes(current configPkg.Source, router *gin.Engine, dmrHub *hub.Hub, 
 	v1(current, apiV1, userSuspension, v1AuthControllers.NewResetLimits(db))
 
 	router.GET("/ws/lastheard", ratelimit, middleware.RequireLoginToView(current), websocket.CreatePublicHandler(config, websocketControllers.CreatePublicCallsWebsocket(current, pubsub)))
+	router.GET("/ws/listen", ratelimit, websocketControllers.ListenAddress(), websocket.CreatePublicHandler(config, websocketControllers.CreateListenWebsocket(current, dmrHub, db, pubsub)))
 
 	ws := router.Group("/ws")
 	ws.Use(ratelimit, bearer, ownPassword, websocket.WatchUser(pubsub))

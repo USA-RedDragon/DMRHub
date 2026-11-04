@@ -155,6 +155,7 @@ type Hub struct {
 	servers map[string]*serverEntry
 
 	subscriptionMgr *subscriptionManager
+	monitor         monitor
 
 	// instanceID uniquely identifies this running instance. Used for peer
 	// ownership tracking to detect when a repeater migrates to another pod.

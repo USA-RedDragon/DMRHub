@@ -95,6 +95,7 @@ type Server struct {
 
 	DB       *gorm.DB
 	peers    *lookup.Cache[struct{}, peerTable]
+	loads    servers.Tracked
 	unwatch  func()
 	pubsub   pubsub.PubSub
 	hub      *hub.Hub
@@ -356,7 +357,9 @@ func (s *Server) Start(ctx context.Context) error {
 	slog.Info("OpenBridge Server listening", "address", s.SocketAddress.IP.String(), "port", s.SocketAddress.Port)
 
 	s.ingress = streamorder.New[ingressLane](ingressQueueSize, s.done)
+	s.ingress.GoWith(s.wg.Go)
 	if s.peers != nil {
+		s.peers.GoWith(s.loads.Go)
 		changes := context.WithoutCancel(ctx)
 		s.unwatch = s.hub.OnPeerChange(func(id uint) {
 			s.peers.Reload(struct{}{})
@@ -435,6 +438,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	})
 
 	s.wg.Wait()
+	s.loads.Wait()
 	return nil
 }
 

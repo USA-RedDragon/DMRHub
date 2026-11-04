@@ -211,6 +211,7 @@ func (s *subscription) deliver(h *Hub, serverName string, rp RoutedPacket) {
 	if s.stopped {
 		return
 	}
+	h.slotEgress.Store(repeaterSlot{repeater: rp.RepeaterID, slot: rp.Packet.Slot}, h.clock.Now())
 	h.deliverToServerUnless(s.done, serverName, rp)
 }
 

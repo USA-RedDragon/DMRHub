@@ -113,7 +113,8 @@ func (h *Hub) tapData(packet models.Packet) {
 // responses of the radio come from the bursts that this replica routes.
 // It returns when ctx ends or the hub stops, with data.ResultCancelled.
 // The messages to one timeslot of a repeater go one after another, as a
-// radio takes one packet at a time.
+// radio takes one packet at a time, each once the timeslot carried no
+// burst for the hang of the prompts.
 func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.Message) (data.Result, error) {
 	busy, _ := h.dataSlots.LoadOrStore(dataSlot{repeater: repeaterID, slot: slot}, make(chan struct{}, 1))
 	select {
@@ -124,6 +125,9 @@ func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.M
 		return data.ResultCancelled, nil
 	}
 	defer func() { <-busy }()
+	if !h.waitQuietSlot(ctx, repeaterID, slot) {
+		return data.ResultCancelled, nil
+	}
 	rpt, err := h.routingRepeater(repeaterID)
 	if err != nil {
 		return 0, fmt.Errorf("finding repeater %d: %w", repeaterID, err)

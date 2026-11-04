@@ -183,10 +183,37 @@ func (h *Hub) firePrompt(key promptSlot) {
 }
 
 // heldUntil returns the time of the last burst of the call that holds the
-// timeslot of the repeater, or the zero time when none does.
+// timeslot of the repeater, or of the last burst that this replica sent to
+// that timeslot if later, or the zero time when there is none.
 func (h *Hub) heldUntil(repeaterID uint, slot bool) time.Time {
-	cur, _ := h.slotHolders.Load(repeaterSlot{repeater: repeaterID, slot: slot})
+	key := repeaterSlot{repeater: repeaterID, slot: slot}
+	cur, _ := h.slotHolders.Load(key)
+	if sent, ok := h.slotEgress.Load(key); ok && sent.After(cur.last) {
+		return sent
+	}
 	return cur.last
+}
+
+// waitQuietSlot waits until the timeslot of the repeater carried no burst
+// for promptQuiet, the hang that the prompts also wait, and returns false
+// when ctx ends or the hub stops first.
+func (h *Hub) waitQuietSlot(ctx context.Context, repeaterID uint, slot bool) bool {
+	for {
+		wait := promptQuiet - h.clock.Since(h.heldUntil(repeaterID, slot))
+		if wait <= 0 {
+			return true
+		}
+		timer := h.clock.NewTimer(wait)
+		select {
+		case <-timer.C():
+		case <-ctx.Done():
+			timer.Stop()
+			return false
+		case <-h.done:
+			timer.Stop()
+			return false
+		}
+	}
 }
 
 // playPrompt sends p to its repeater slot as a private call from the

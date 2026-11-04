@@ -224,7 +224,8 @@ func TestNoChannelBusyForPeersAndPlugins(t *testing.T) {
 
 // TestAPromptWaitsForTheCallThatHoldsTheTimeslot keeps the talker on the
 // air after the refused call ends: the prompt waits until a second passes
-// with no burst of the call that holds the timeslot.
+// with no burst of the call that holds the timeslot, its terminator
+// included.
 func TestAPromptWaitsForTheCallThatHoldsTheTimeslot(t *testing.T) {
 	t.Parallel()
 	forPromptBackends(t, true, func(t *testing.T, e *promptEnv) {
@@ -240,6 +241,8 @@ func TestAPromptWaitsForTheCallThatHoldsTheTimeslot(t *testing.T) {
 
 		b.talkerEnds(t)
 		b.clk.Advance(900 * time.Millisecond)
+		assert.Empty(t, b.sentToSender(), "the prompt waits a second after the end of the call that held the timeslot")
+		b.clk.Advance(100 * time.Millisecond)
 		b.busyPrompt(t)
 	})
 }

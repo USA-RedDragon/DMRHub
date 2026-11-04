@@ -24,7 +24,10 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
+	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
 	"github.com/USA-RedDragon/dmrgo/v2/enums"
 	"github.com/USA-RedDragon/dmrgo/v2/sms"
@@ -59,5 +62,81 @@ func TestTwoDataMessagesToOneTimeslotGoOneAfterTheOther(t *testing.T) {
 			bodies = append(bodies, string(body))
 		}
 		assert.ElementsMatch(t, []string{"first", "second"}, bodies)
+	})
+}
+
+type stamped struct {
+	at time.Time
+	p  models.Packet
+}
+
+// stamp reads what srv gets, with the time of the bubble each came.
+func stamp(srv *hub.ServerHandle, out chan<- stamped, done <-chan struct{}) {
+	for {
+		select {
+		case rp := <-srv.Packets:
+			out <- stamped{at: time.Now(), p: rp.Packet}
+		case <-done:
+			return
+		}
+	}
+}
+
+// TestADataMessageWaitsForTheVoiceCallOnItsTimeslot routes a group call to
+// timeslot 1 of a repeater and sends a text there while it is on the air:
+// the text starts only once the timeslot carried no burst for a second.
+func TestADataMessageWaitsForTheVoiceCallOnItsTimeslot(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := pluginHub(t)
+		got := make(chan stamped, 256)
+		done := make(chan struct{})
+		defer close(done)
+		go stamp(srv, got, done)
+
+		var hd sms.Header
+		payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: uint32(answerService), Destination: uint32(answerRadio), Body: []byte("status")}, &hd)
+		require.NoError(t, err)
+		m := data.Message{Header: hd.Data, Rate: enums.DataTypeRate12, Payload: payload}
+
+		call := make([]models.Packet, 0, 6)
+		for i := range 5 {
+			p := makeVoicePacket(weatherTG, 7301, true, false)
+			p.Repeater, p.Seq = 100003, uint(i)
+			call = append(call, p)
+		}
+		end := makeVoiceTermPacket(weatherTG, 7301, true, false)
+		end.Repeater, end.Seq = 100003, 5
+		call = append(call, end)
+
+		h.RoutePacket(context.Background(), call[0], models.RepeaterTypeMMDVM)
+		time.Sleep(60 * time.Millisecond)
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			res, err := h.SendData(context.Background(), answerRepeater, false, m)
+			assert.NoError(t, err)
+			assert.Equal(t, data.ResultSent, res)
+		})
+		for _, p := range call[1:] {
+			h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM)
+			time.Sleep(60 * time.Millisecond)
+		}
+		wg.Wait()
+		synctest.Wait()
+
+		var lastVoice, firstData time.Time
+		for len(got) > 0 {
+			s := <-got
+			switch {
+			case s.p.Src == answerService && firstData.IsZero():
+				firstData = s.at
+			case s.p.Src != answerService:
+				require.True(t, firstData.IsZero(), "a data burst went out amid the call")
+				lastVoice = s.at
+			}
+		}
+		require.False(t, lastVoice.IsZero(), "the call reached the repeater")
+		require.False(t, firstData.IsZero(), "the text went out")
+		assert.GreaterOrEqual(t, firstData.Sub(lastVoice), time.Second, "the text waits for the hang after the call")
 	})
 }

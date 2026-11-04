@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -66,6 +67,14 @@ func TestAStopWaitsForALoadOfAKey(t *testing.T) {
 		}
 		<-release
 	}))
+	ended := make(chan struct{})
+	var endOnce sync.Once
+	require.NoError(t, stack.DB.Callback().Query().After("gorm:after_query").Register("note the keys", func(tx *gorm.DB) {
+		where, ok := tx.Statement.Clauses["WHERE"]
+		if holding.Load() && tx.Statement.Table == "repeaters" && ok && strings.Contains(fmt.Sprint(where.Expression), "type = ?") {
+			endOnce.Do(func() { close(ended) })
+		}
+	}))
 	stack.StartServers(t)
 	peer := testutils.NewIPSCClient(200001, "0000000000000000000000000000000000003039")
 	require.NoError(t, peer.Connect(stack.IPSCAddr))
@@ -82,11 +91,11 @@ func TestAStopWaitsForALoadOfAKey(t *testing.T) {
 		_ = stack.IPSCServer.Stop(context.Background())
 		close(stopped)
 	}()
-	select {
-	case <-stopped:
-		require.Fail(t, "Stop returned while a load of a key ran")
-	case <-time.After(time.Second):
-	}
 	close(release)
 	<-stopped
+	select {
+	case <-ended:
+	default:
+		require.Fail(t, "Stop returned before a load of a key ended")
+	}
 }

@@ -21,20 +21,19 @@ package openbridge_test
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/lookup"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-// TestAStopWaitsForALoadOfThePeers holds the load of the peers that a
-// packet of a peer starts in the background once the peers that the server
-// read are older than lookup.TTL, and stops the server. Stop must not return
+// TestAStopWaitsForALoadOfThePeers holds the load of the peers that the
+// first packet of a peer starts, and stops the server. Stop must not return
 // while the load runs, since the load reads the database that the caller
 // of Stop closes next.
 func TestAStopWaitsForALoadOfThePeers(t *testing.T) {
@@ -51,7 +50,8 @@ func TestAStopWaitsForALoadOfThePeers(t *testing.T) {
 			close(release)
 		}
 	})
-	loads := make(chan struct{}, 64)
+	ended := make(chan struct{})
+	var endOnce sync.Once
 	require.NoError(t, stack.DB.Callback().Query().Before("gorm:query").Register("hold the peers", func(tx *gorm.DB) {
 		if tx.Statement.Table != "peers" || !holding.Load() {
 			return
@@ -62,27 +62,17 @@ func TestAStopWaitsForALoadOfThePeers(t *testing.T) {
 		}
 		<-release
 	}))
-	require.NoError(t, stack.DB.Callback().Query().After("gorm:query").Register("note the peers", func(tx *gorm.DB) {
-		if tx.Statement.Table == "peers" {
-			select {
-			case loads <- struct{}{}:
-			default:
-			}
+	require.NoError(t, stack.DB.Callback().Query().After("gorm:after_query").Register("note the peers", func(tx *gorm.DB) {
+		if tx.Statement.Table == "peers" && holding.Load() {
+			endOnce.Do(func() { close(ended) })
 		}
 	}))
 	stack.StartServers(t)
 	peer := testutils.NewOpenBridgeClient(500001, "password")
 	require.NoError(t, peer.Connect(stack.OpenBridgeAddr))
 	t.Cleanup(peer.Close)
-	for len(loads) > 0 {
-		<-loads
-	}
-	require.NoError(t, peer.SendGroupVoice(1000001, 1, 1))
-	<-loads
-
 	holding.Store(true)
-	fake.Advance(lookup.TTL + time.Second)
-	require.NoError(t, peer.SendGroupVoice(1000001, 1, 2))
+	require.NoError(t, peer.SendGroupVoice(1000001, 1, 1))
 	<-started
 
 	stopped := make(chan struct{})
@@ -90,11 +80,11 @@ func TestAStopWaitsForALoadOfThePeers(t *testing.T) {
 		_ = stack.OpenBridgeServer.Stop(context.Background())
 		close(stopped)
 	}()
-	select {
-	case <-stopped:
-		require.Fail(t, "Stop returned while a load of the peers ran")
-	case <-time.After(time.Second):
-	}
 	close(release)
 	<-stopped
+	select {
+	case <-ended:
+	default:
+		require.Fail(t, "Stop returned before a load of the peers ended")
+	}
 }

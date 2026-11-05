@@ -18,7 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
+import { featureFilter, validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import type { StyleSpecification } from 'maplibre-gl';
 
 import { archiveSource, latestKey, PartsSource, partName, spans } from '@/lib/map/archive';
@@ -92,6 +92,21 @@ describe('basemap style', () => {
       expect([...fonts].every((f) => Object.values(FONTS).includes(f))).toBe(true);
       expect((raw as unknown as StyleSpecification).sources[SOURCE]).not.toHaveProperty('url', 'pmtiles://https://tiles.example/a.pmtiles');
       expect(validateStyleMin(s).map((e) => e.message)).toEqual([]);
+    });
+
+    it(`gives ${name} filters that MapLibre reads without conversion`, () => {
+      const bad = (raw as unknown as StyleSpecification).layers.flatMap((l, i) => {
+        if (!('filter' in l) || !l.filter) {
+          return [];
+        }
+        try {
+          featureFilter(l.filter, `layers[${i}].filter`);
+          return [];
+        } catch (e) {
+          return [`${l.id}: ${(e as Error).message}`];
+        }
+      });
+      expect(bad).toEqual([]);
     });
   }
 

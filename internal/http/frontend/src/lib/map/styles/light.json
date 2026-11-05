@@ -5206,13 +5206,10 @@
           "capital"
         ],
         [
-          "!",
-          [
-            "in",
-            "class",
-            "country",
-            "state"
-          ]
+          "!in",
+          "class",
+          "country",
+          "state"
         ]
       ],
       "id": "place_city_dot_z7",

@@ -83,7 +83,7 @@
     "vite": "8.3.5",
     "vite-plugin-istanbul": "9.0.1",
     "vitest": "5.0.5",
-    "vue-tsc": "3.3.13"
+    "vue-tsc": "3.3.14"
   },
   "nyc": {
     "report-dir": "coverage/e2e",

@@ -16,9 +16,20 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { zstdDecompressSync } from 'node:zlib';
+
 import { describe, expect, it } from 'vitest';
 
-import { hillshadeOpacity, nodataMask, remapHillshade, remapPixel } from '@/lib/map/hillshade';
+import {
+  HILLSHADE_NODATA_CEILING,
+  HILLSHADE_NODATA_RIM_CEILING,
+  hillshadeOpacity,
+  nodataMask,
+  remapHillshade,
+  remapPixel,
+} from '@/lib/map/hillshade';
 
 const W = 32;
 
@@ -38,6 +49,24 @@ function rgba(grey: Uint8Array): Uint8Array {
   const out = new Uint8Array(grey.length * 4);
   grey.forEach((v, i) => out.set([v, v, v, 255], i * 4));
   return out;
+}
+
+function fixture(name: string): Uint8Array {
+  return new Uint8Array(zstdDecompressSync(readFileSync(resolve(__dirname, `fixtures/hillshade/${name}.grey.zst`))));
+}
+
+function besideAny(at: number, width: number, height: number, test: (n: number) => boolean): boolean {
+  const x = at % width;
+  const y = (at - x) / width;
+  for (let ny = Math.max(0, y - 1); ny <= Math.min(height - 1, y + 1); ny++) {
+    for (let nx = Math.max(0, x - 1); nx <= Math.min(width - 1, x + 1); nx++) {
+      const n = ny * width + nx;
+      if (n !== at && test(n)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 describe('remapPixel', () => {
@@ -91,6 +120,20 @@ describe('nodataMask', () => {
     expect(mask[4 * W + 16]).toBe(0);
   });
 
+  it('takes the ringing one pixel round water for water, and nothing past it', () => {
+    const grey = tile(181);
+    paint(grey, 4, 4, 28, 28, 8);
+    paint(grey, 5, 5, 27, 27, HILLSHADE_NODATA_RIM_CEILING);
+    paint(grey, 6, 6, 26, 26, 0);
+    paint(grey, 16, 5, 17, 6, HILLSHADE_NODATA_RIM_CEILING + 1);
+    const mask = nodataMask(W, grey);
+    expect(mask[16 * W + 16]).toBe(1);
+    expect(mask[5 * W + 10]).toBe(1);
+    expect(mask[5 * W + 5]).toBe(1);
+    expect(mask[5 * W + 16]).toBe(0);
+    expect(mask[4 * W + 10]).toBe(0);
+  });
+
   it('leaves a small solid block of zeros in shadow as shadow', () => {
     const grey = tile(20);
     paint(grey, 10, 10, 15, 15, 0);
@@ -108,6 +151,41 @@ describe('remapHillshade', () => {
     expect([...out.subarray((4 * W + 4) * 4, (4 * W + 4) * 4 + 4)]).toEqual([0, 0, 0, 0]);
     expect([...out.subarray((25 * W + 25) * 4, (25 * W + 25) * 4 + 4)]).toEqual([0, 0, 0, 255]);
     expect(out[(16 * W + 16) * 4 + 3]).toBe(0);
+  });
+});
+
+describe('remapHillshade on archive tiles', () => {
+  const tiles = [
+    ['Oakland Estuary z12/656/1582', 'z12-656-1582'],
+    ['Golden Gate z12/654/1582', 'z12-654-1582'],
+    ['Kenai Fjords z11/172/596', 'z11-172-596'],
+    ['Kenai Fjords open water z11/170/599', 'z11-170-599'],
+    ['Geirangerfjord z12/2128/1140', 'z12-2128-1140'],
+  ] as const;
+
+  it('draws no dark dot on the first pixel beside water', () => {
+    const size = 256;
+    let total = 0;
+    for (const [place, name] of tiles) {
+      const grey = fixture(name);
+      expect(grey.length).toBe(size * size);
+      const out = remapHillshade(size, rgba(grey));
+      const water = (i: number) => grey[i]! <= HILLSHADE_NODATA_CEILING && out[i * 4 + 3] === 0;
+      let rim = 0;
+      let drawn = 0;
+      for (let i = 0; i < grey.length; i++) {
+        const v = grey[i]!;
+        if (v > HILLSHADE_NODATA_CEILING && v <= HILLSHADE_NODATA_RIM_CEILING && besideAny(i, size, size, water)) {
+          rim++;
+          if (out[i * 4 + 3] !== 0) {
+            drawn++;
+          }
+        }
+      }
+      total += rim;
+      expect(drawn, `${place}: ${drawn} of ${rim} ringing shore pixels drew`).toBe(0);
+    }
+    expect(total).toBeGreaterThan(800);
   });
 });
 

@@ -41,6 +41,9 @@ export const HILLSHADE_NODATA_CORE_MIN_PX = 64;
 /** HILLSHADE_NODATA_CORE_REACH is how many steps through dark pixels nodata reaches out from a counted core. */
 export const HILLSHADE_NODATA_CORE_REACH = 24;
 
+/** HILLSHADE_NODATA_RIM_CEILING is the highest level a pixel directly beside nodata may sit at and still be the lossy encoder's ringing round it rather than shadow. */
+export const HILLSHADE_NODATA_RIM_CEILING = 20;
+
 /** HILLSHADE_FADE_ZOOMS is the zoom the shading starts to fade at and the one it is gone by, since its elevation data counts buildings as hills. */
 export const HILLSHADE_FADE_ZOOMS: readonly [number, number] = [13, 15];
 
@@ -74,14 +77,39 @@ export function remapHillshade(width: number, rgba: Uint8ClampedArray | Uint8Arr
   return out;
 }
 
-/** nodataMask marks the pixels of a grey tile that are water rather than deep shadow. */
+/** nodataMask marks the pixels of a grey tile that are water rather than deep shadow, with the one-pixel rim of ringing round the water. */
 export function nodataMask(width: number, grey: Uint8Array): Uint8Array {
   const nodata = shoreNodata(width, grey);
   const water = waterCoreReach(width, grey);
   for (let i = 0; i < nodata.length; i++) {
     nodata[i]! |= water[i]!;
   }
+  for (const at of nodataRim(width, grey, nodata)) {
+    nodata[at] = 1;
+  }
   return nodata;
+}
+
+function nodataRim(width: number, grey: Uint8Array, nodata: Uint8Array): number[] {
+  const rim: number[] = [];
+  if (width === 0) {
+    return rim;
+  }
+  const height = grey.length / width;
+  for (let at = 0; at < grey.length; at++) {
+    const v = grey[at]!;
+    if (nodata[at] || v <= HILLSHADE_NODATA_CEILING || v > HILLSHADE_NODATA_RIM_CEILING) {
+      continue;
+    }
+    let beside = false;
+    eachNeighbour(at, width, height, (n) => {
+      beside ||= nodata[n] === 1;
+    });
+    if (beside) {
+      rim.push(at);
+    }
+  }
+  return rim;
 }
 
 function eachNeighbour(at: number, width: number, height: number, visit: (n: number) => void): void {

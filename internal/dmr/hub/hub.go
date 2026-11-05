@@ -244,6 +244,7 @@ type Hub struct {
 	dataTaps     *xsync.Map[tapKey, chan models.Packet]
 	dataSlots    *xsync.Map[dataSlot, chan struct{}]
 	slotEgress   *xsync.Map[repeaterSlot, time.Time]
+	slotIngress  *xsync.Map[repeaterSlot, time.Time]
 	slotVoice    *xsync.Map[repeaterSlot, time.Time]
 	hubStreams   *xsync.Map[uint, struct{}]
 
@@ -353,6 +354,7 @@ func NewHub(db *gorm.DB, kvStore kv.KV, ps pubsub.PubSub, ct *calltracker.CallTr
 	h.dataTaps = xsync.NewMap[tapKey, chan models.Packet]()
 	h.dataSlots = xsync.NewMap[dataSlot, chan struct{}]()
 	h.slotEgress = xsync.NewMap[repeaterSlot, time.Time]()
+	h.slotIngress = xsync.NewMap[repeaterSlot, time.Time]()
 	h.slotVoice = xsync.NewMap[repeaterSlot, time.Time]()
 	h.hubStreams = xsync.NewMap[uint, struct{}]()
 	h.dynamicUses = xsync.NewMap[repeaterSlot, dynamicUse]()

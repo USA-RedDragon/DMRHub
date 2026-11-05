@@ -94,6 +94,22 @@ func (h *Hub) LastBurst(radio uint) (time.Time, bool) {
 	return heard.at, ok
 }
 
+// noteIngress records when a burst of a radio from sourceName, a server
+// of repeaters, reached the timeslot of its repeater.
+func (h *Hub) noteIngress(packet models.Packet, sourceName string) {
+	if packet.Repeater == 0 || h.getServerRole(sourceName) != RoleRepeater {
+		return
+	}
+	h.slotIngress.Store(repeaterSlot{repeater: packet.Repeater, slot: packet.Slot}, h.clock.Now())
+}
+
+// heardAfter reports whether this replica routed a burst from the timeslot
+// key after at.
+func (h *Hub) heardAfter(key repeaterSlot, at time.Time) bool {
+	heard, ok := h.slotIngress.Load(key)
+	return ok && heard.After(at)
+}
+
 func (h *Hub) tapData(packet models.Packet) {
 	if packet.GroupCall || packet.FrameType != dmrconst.FrameDataSync {
 		return
@@ -116,8 +132,9 @@ func (h *Hub) tapData(packet models.Packet) {
 // radio takes one packet at a time, each once the timeslot carried no
 // burst for the hang of the prompts. Voice goes first: a call that
 // reaches the timeslot while a burst of m is due stops m, which goes again
-// in full once the timeslot is quiet. A call while m waits for the answer
-// of the radio does not stop it.
+// in full once the timeslot is quiet. So does a burst of a radio that
+// reaches the timeslot during a try of m, after its first burst. A call
+// while m waits for the answer of the radio does not stop it.
 func (h *Hub) SendData(ctx context.Context, repeaterID uint, slot bool, m data.Message) (data.Result, error) {
 	busy, _ := h.dataSlots.LoadOrStore(dataSlot{repeater: repeaterID, slot: slot}, make(chan struct{}, 1))
 	select {
@@ -184,9 +201,10 @@ func (h *Hub) sendDataOnce(ctx context.Context, repeaterID uint, slot bool, m da
 	defer h.hubStreams.Delete(out.stream)
 	rs := repeaterSlot{repeater: repeaterID, slot: slot}
 	outs := make([]data.Output, 0, data.MaxOutputs)
+	var try dataTry
 	for {
 		outs = tx.Tick(since(), outs[:0])
-		if h.voiceSince(rs, start) && hasBurst(outs) {
+		if h.givesWay(rs, start, &try, outs) {
 			return 0, true, nil
 		}
 		if r, done := out.emit(outs); done {
@@ -203,7 +221,7 @@ func (h *Hub) sendDataOnce(ctx context.Context, repeaterID uint, slot bool, m da
 			timer.Stop()
 			raw := layer2.RawBurst(p.DMRData)
 			outs = tx.Burst(since(), &raw, layer2.Hint{Kind: layer2.KindData}, outs[:0])
-			if h.voiceSince(rs, start) && hasBurst(outs) {
+			if h.givesWay(rs, start, &try, outs) {
 				return 0, true, nil
 			}
 			if r, done := out.emit(outs); done {
@@ -219,11 +237,28 @@ func (h *Hub) sendDataOnce(ctx context.Context, repeaterID uint, slot bool, m da
 	}
 }
 
-func hasBurst(outs []data.Output) bool {
+// dataTry is the try of a data message that the hub sends, and when its
+// first burst went out.
+type dataTry struct {
+	n  uint8
+	at time.Time
+}
+
+// givesWay reports whether outs, the next outputs of a data message that
+// the hub sends to the timeslot key since start, have a burst while the
+// timeslot carries other traffic: a voice burst that the hub did not make
+// since start, or a burst of a radio after the first burst of the try. The
+// response of the radio, which comes before the try that it asks for, does
+// not count. It records the start of each try in try.
+func (h *Hub) givesWay(key repeaterSlot, start time.Time, try *dataTry, outs []data.Output) bool {
 	for i := range outs {
-		if outs[i].Kind == data.OutputBurst {
-			return true
+		if outs[i].Kind != data.OutputBurst {
+			continue
 		}
+		if outs[i].Try != try.n {
+			try.n, try.at = outs[i].Try, h.clock.Now()
+		}
+		return h.voiceSince(key, start) || h.heardAfter(key, try.at)
 	}
 	return false
 }

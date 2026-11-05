@@ -155,6 +155,7 @@ func (h *Hub) routeNow(ctx context.Context, packet models.Packet, sourceName str
 	isVoice, _ := utils.CheckPacketType(packet)
 
 	h.streamActive(packet.StreamID)
+	h.noteIngress(packet, sourceName)
 	h.tapData(packet)
 	if packet.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(packet.DTypeOrVSeq) == dmrconst.DTypeVoiceTerm {
 		defer h.streamEnded(packet.StreamID)

@@ -183,15 +183,20 @@ func (h *Hub) firePrompt(key promptSlot) {
 }
 
 // heldUntil returns the time of the last burst of the call that holds the
-// timeslot of the repeater, or of the last burst that this replica sent to
-// that timeslot if later, or the zero time when there is none.
+// timeslot of the repeater, of the last burst that this replica routed
+// from that timeslot or sent to it, whichever is latest, or the zero time
+// when there is none.
 func (h *Hub) heldUntil(repeaterID uint, slot bool) time.Time {
 	key := repeaterSlot{repeater: repeaterID, slot: slot}
 	cur, _ := h.slotHolders.Load(key)
-	if sent, ok := h.slotEgress.Load(key); ok && sent.After(cur.last) {
-		return sent
+	last := cur.last
+	if sent, ok := h.slotEgress.Load(key); ok && sent.After(last) {
+		last = sent
 	}
-	return cur.last
+	if heard, ok := h.slotIngress.Load(key); ok && heard.After(last) {
+		last = heard
+	}
+	return last
 }
 
 // waitQuietSlot waits until the timeslot of the repeater carried no burst

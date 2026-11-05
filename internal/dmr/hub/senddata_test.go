@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
+	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
 	"github.com/USA-RedDragon/DMRHub/internal/prompts"
 	"github.com/USA-RedDragon/dmrgo/v2/data"
@@ -266,5 +267,195 @@ func TestAVoiceCallStopsAPrompt(t *testing.T) {
 		}
 		assert.Equal(t, call, voice, "the call goes out whole")
 		assert.Positive(t, prompt, "the prompt started")
+	})
+}
+
+// radioData routes, one slot apart from now, the bursts of an unconfirmed
+// ETSI text from the radio to the plugin's ID on timeslot 1 of the
+// repeater, which the hub does not answer, and returns when the last burst
+// came. wait is the time.Sleep of the bubble of the test.
+func radioData(t *testing.T, h *hub.Hub, stream uint, wait func(time.Duration)) time.Time {
+	t.Helper()
+	p := textPacket(t, &sms.Text{Format: sms.FormatIP, Source: uint32(answerRadio), Destination: uint32(answerService), Body: []byte("a text on the air")}, enums.DataTypeRate12)
+	var last time.Time
+	for i, b := range burstsOf(t, &p) {
+		last = time.Now()
+		h.RoutePacket(context.Background(), models.Packet{
+			Signature: string(dmrconst.CommandDMRD), Seq: uint(i), Src: answerRadio, Dst: answerService, Repeater: answerRepeater,
+			FrameType: dmrconst.FrameDataSync, DTypeOrVSeq: uint(b.SlotType().DataType), StreamID: stream, DMRData: b, BER: -1, RSSI: -1,
+		}, models.RepeaterTypeMMDVM)
+		wait(60 * time.Millisecond)
+	}
+	return last
+}
+
+// hubData returns the times of the bursts from the plugin's ID that srv
+// got, and the texts that they carry to a radio.
+func hubData(t *testing.T, got <-chan stamped) ([]time.Time, []string) {
+	t.Helper()
+	rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(answerRadio), Source: layer2.SyncSourceMS, Lost: -1})
+	require.NoError(t, err)
+	var at []time.Time
+	var texts []string
+	var events []data.Event
+	for i := 0; len(got) > 0; i++ {
+		s := <-got
+		require.Equal(t, answerService, s.p.Src, "only the text of the hub goes out")
+		at = append(at, s.at)
+		raw := layer2.RawBurst(s.p.DMRData)
+		events = rx.Burst(time.Duration(i)*60*time.Millisecond, &raw, layer2.Hint{Kind: layer2.KindData}, events[:0])
+		for _, e := range events {
+			if e.Kind == data.EventDelivered {
+				b, _, err := sms.Decode(nil, &e.Message.Header, e.Message.Payload)
+				require.NoError(t, err)
+				texts = append(texts, string(b))
+			}
+		}
+	}
+	return at, texts
+}
+
+// TestADataMessageWaitsForTheDataOfARadioOnItsTimeslot sends a text to
+// timeslot 1 of a repeater while a radio sends data there: the text starts
+// only once the timeslot carried no burst for a second.
+func TestADataMessageWaitsForTheDataOfARadioOnItsTimeslot(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := pluginHub(t)
+		got := make(chan stamped, 256)
+		done := make(chan struct{})
+		defer close(done)
+		go stamp(srv, got, done)
+
+		var hd sms.Header
+		payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: uint32(answerService), Destination: uint32(answerRadio), Body: []byte("status")}, &hd)
+		require.NoError(t, err)
+		m := data.Message{Header: hd.Data, Rate: enums.DataTypeRate12, Payload: payload}
+		var wg sync.WaitGroup
+		var last time.Time
+		wg.Go(func() { last = radioData(t, h, 7601, time.Sleep) })
+		time.Sleep(90 * time.Millisecond)
+		wg.Go(func() {
+			res, err := h.SendData(context.Background(), answerRepeater, false, m)
+			assert.NoError(t, err)
+			assert.Equal(t, data.ResultSent, res)
+		})
+		wg.Wait()
+		synctest.Wait()
+
+		at, texts := hubData(t, got)
+		require.NotEmpty(t, at, "the text went out")
+		assert.GreaterOrEqual(t, at[0].Sub(last), time.Second, "the text waits for the hang after the data of the radio")
+		assert.Equal(t, []string{"status"}, texts)
+	})
+}
+
+// TestARadioThatKeysUpStopsADataMessageThatGoesAgainAfterIt sends a long
+// text to timeslot 1 of a repeater and routes data of a radio there while
+// it goes out: the text stops at once, no burst of it goes out from the
+// first burst of the radio until a second after its last, and then the
+// text goes again in full.
+func TestARadioThatKeysUpStopsADataMessageThatGoesAgainAfterIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := pluginHub(t)
+		got := make(chan stamped, 1024)
+		done := make(chan struct{})
+		defer close(done)
+		go stamp(srv, got, done)
+
+		body := strings.Repeat("status ", 40)
+		var hd sms.Header
+		payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: uint32(answerService), Destination: uint32(answerRadio), Body: []byte(body)}, &hd)
+		require.NoError(t, err)
+		m := data.Message{Header: hd.Data, Rate: enums.DataTypeRate12, Payload: payload}
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			res, err := h.SendData(context.Background(), answerRepeater, false, m)
+			assert.NoError(t, err)
+			assert.Equal(t, data.ResultSent, res)
+		})
+		time.Sleep(330 * time.Millisecond)
+		first := time.Now()
+		last := radioData(t, h, 7602, time.Sleep)
+		wg.Wait()
+		synctest.Wait()
+
+		at, texts := hubData(t, got)
+		for _, a := range at {
+			assert.False(t, a.After(first) && a.Before(last.Add(time.Second)), "a data burst at %s, during the data of the radio or its hang", a.Sub(first))
+		}
+		assert.Equal(t, []string{body}, texts, "the text in full, once")
+	})
+}
+
+// TestTheResponseOfARadioDoesNotStopTheTryThatItAsksFor sends a confirmed
+// text to a radio that misses a block of the first try: the response of
+// the radio, which comes in on the timeslot, does not stop the try that it
+// asks for, and the text arrives.
+func TestTheResponseOfARadioDoesNotStopTheTryThatItAsksFor(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h, _, srv := pluginHub(t)
+		rx, err := data.NewReceiver(&data.ReceiverConfig{Address: uint32(answerRadio), Respond: true, Source: layer2.SyncSourceMS, Lost: -1})
+		require.NoError(t, err)
+		start := time.Now()
+		done := make(chan struct{})
+		radio := make(chan struct{})
+		var responses, texts int
+		var tries []uint
+		go func() {
+			defer close(radio)
+			var events []data.Event
+			bursts, seq := 0, uint(0)
+			for {
+				var rp hub.RoutedPacket
+				select {
+				case rp = <-srv.Packets:
+				case <-done:
+					return
+				}
+				at := time.Since(start)
+				raw := layer2.RawBurst(rp.Packet.DMRData)
+				if len(tries) == 0 || tries[len(tries)-1] != rp.Packet.StreamID {
+					tries = append(tries, rp.Packet.StreamID)
+				}
+				if bursts++; bursts == 9 {
+					for i := range 13 {
+						raw[i] ^= 0xFF
+					}
+				}
+				events = rx.Burst(at, &raw, layer2.Hint{Kind: layer2.KindData}, events[:0])
+				for _, e := range events {
+					switch e.Kind {
+					case data.EventRespond:
+						responses++
+						p := models.Packet{
+							Signature: string(dmrconst.CommandDMRD), Seq: seq, Src: answerRadio, Dst: answerService, Repeater: answerRepeater,
+							FrameType: dmrconst.FrameDataSync, DTypeOrVSeq: uint(e.Burst.SlotType().DataType), StreamID: 7701, DMRData: e.Burst, BER: -1, RSSI: -1,
+						}
+						seq++
+						time.AfterFunc(e.Due-at, func() { h.RoutePacket(context.Background(), p, models.RepeaterTypeMMDVM) })
+					case data.EventDelivered:
+						texts++
+					case data.EventCallStart, data.EventCallEnd, data.EventResponse, data.EventReassembled:
+					}
+				}
+			}
+		}()
+
+		body := strings.Repeat("status ", 10)
+		var hd sms.Header
+		payload, err := sms.AppendPacket(nil, &sms.Text{Format: sms.FormatIP, Source: uint32(answerService), Destination: uint32(answerRadio), Confirmed: true, Body: []byte(body)}, &hd)
+		require.NoError(t, err)
+		m := data.Message{Header: hd.Data, Rate: enums.DataTypeRate12, Payload: payload}
+		res, err := h.SendData(context.Background(), answerRepeater, false, m)
+		require.NoError(t, err)
+		close(done)
+		<-radio
+		assert.Equal(t, data.ResultDelivered, res, "the radio got the text and said so")
+		assert.Equal(t, 1, texts, "the text arrives")
+		assert.GreaterOrEqual(t, responses, 2, "a response that asks for a retry, and the ACK")
+		assert.Len(t, tries, 1, "one send, not stopped and sent again")
 	})
 }

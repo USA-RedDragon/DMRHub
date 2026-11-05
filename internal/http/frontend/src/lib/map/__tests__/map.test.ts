@@ -19,7 +19,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { featureFilter, validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
-import type { StyleSpecification } from 'maplibre-gl';
+import type { FilterSpecification, StyleSpecification } from 'maplibre-gl';
 
 import { archiveSource, latestKey, PartsSource, partName, spans } from '@/lib/map/archive';
 import { BlockCachedSource } from '@/lib/map/blockCache';
@@ -107,6 +107,26 @@ describe('basemap style', () => {
         }
       });
       expect(bad).toEqual([]);
+    });
+
+    it(`draws ${name} lakes and rivers as inland water from low zoom, and ponds from zoom 13`, () => {
+      const s = basemapStyle(raw as unknown as StyleSpecification, 'https://tiles.example/a.pmtiles', '/glyphs/{fontstack}/{range}.pbf');
+      const i = s.layers.findIndex((l) => l.id === 'water_inland');
+      const layer = s.layers[i] as { filter: FilterSpecification; minzoom?: number };
+      const f = featureFilter(layer.filter, `layers[${i}].filter`);
+      const ring = [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 0 }]];
+      const water = (cls: string) => ({ type: 3 as const, id: 1, properties: { class: cls, id: 1, intermittent: 0 }, geometry: ring });
+      const at = (zoom: number, cls: string) => f.filter({ zoom }, water(cls) as never);
+      expect(layer.minzoom ?? 0).toBeLessThanOrEqual(2);
+      for (const zoom of [2, 6, 8, 10, 12, 13, 16]) {
+        expect(at(zoom, 'lake')).toBe(true);
+        expect(at(zoom, 'river')).toBe(true);
+        expect(at(zoom, 'ocean')).toBe(false);
+      }
+      expect(at(12, 'pond')).toBe(false);
+      expect(at(13, 'pond')).toBe(true);
+      const added = ((raw as { metadata: Record<string, unknown> }).metadata['squallar:added-layers'] as { id: string; 'source-layer': string }[]).find((a) => a.id === 'water_inland');
+      expect(added?.['source-layer']).toBe('water');
     });
   }
 

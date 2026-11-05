@@ -391,8 +391,17 @@
         [
           "any",
           [
-            "has",
-            "name"
+            "match",
+            [
+              "get",
+              "class"
+            ],
+            [
+              "lake",
+              "river"
+            ],
+            true,
+            false
           ],
           [
             ">=",
@@ -5957,6 +5966,11 @@
         "id": "mountain_peak",
         "reason": "The only elevation values in the OpenMapTiles schema (`ele`, `ele_ft`, `customary_ft`). CARTO never styled it.",
         "source-layer": "mountain_peak"
+      },
+      {
+        "id": "water_inland",
+        "reason": "Lakes and rivers in a blue apart from the ocean, so they stand out. Other inland water, such as ponds, takes it from zoom 13. CARTO painted all water one color.",
+        "source-layer": "water"
       }
     ],
     "squallar:dropped-layers": [],

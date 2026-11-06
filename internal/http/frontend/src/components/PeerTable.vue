@@ -48,7 +48,7 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { h } from 'vue';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { Button as ShadButton } from '@/components/ui/button';
@@ -212,7 +212,7 @@ export default {
             }, 'Delete');
           },
         },
-      ] as ColumnDef<PeerRow, unknown>[];
+      ] as DataTableColumn<PeerRow, unknown>[];
     },
     totalPages() {
       if (!this.totalRecords || this.totalRecords <= 0) {

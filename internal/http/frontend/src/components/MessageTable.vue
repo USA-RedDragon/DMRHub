@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { computed, h, type VNode } from 'vue';
 import { RouterLink } from 'vue-router';
 import { DataTable } from '@/components/ui/data-table';
@@ -145,7 +145,7 @@ const repeaterLink = (id: number): VNode =>
     () => String(id),
   );
 
-const userColumns: ColumnDef<Message, unknown>[] = [
+const userColumns: DataTableColumn<Message, unknown>[] = [
   {
     id: 'time',
     header: 'Time',
@@ -181,7 +181,7 @@ const userColumns: ColumnDef<Message, unknown>[] = [
   },
 ];
 
-const adminColumns: ColumnDef<Message, unknown>[] = [
+const adminColumns: DataTableColumn<Message, unknown>[] = [
   {
     id: 'repeater',
     header: 'Repeater',

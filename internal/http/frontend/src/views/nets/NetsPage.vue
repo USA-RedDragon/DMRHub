@@ -127,7 +127,7 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { h } from 'vue';
 import { RouterLink } from 'vue-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -225,7 +225,7 @@ export default {
             );
           },
         },
-      ] as ColumnDef<Net, unknown>[];
+      ] as DataTableColumn<Net, unknown>[];
     },
     totalPages(): number {
       if (!this.totalRecords || this.totalRecords <= 0) return 1;

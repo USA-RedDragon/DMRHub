@@ -27,7 +27,7 @@
     "@fontsource-variable/inconsolata": "5.3.0",
     "@fontsource-variable/nunito-sans": "5.3.0",
     "@maplibre/maplibre-gl-style-spec": "26.5.1",
-    "@tanstack/vue-table": "8.21.3",
+    "@tanstack/vue-table": "9.3.1",
     "@vuelidate/core": "2.0.3",
     "@vuelidate/validators": "2.0.4",
     "@vueuse/core": "15.0.0",

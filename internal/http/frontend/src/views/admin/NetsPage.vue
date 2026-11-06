@@ -54,7 +54,7 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { h } from 'vue';
 import { RouterLink } from 'vue-router';
 import { DataTable } from '@/components/ui/data-table';
@@ -152,7 +152,7 @@ export default {
             });
           },
         },
-      ] as ColumnDef<Net, unknown>[];
+      ] as DataTableColumn<Net, unknown>[];
     },
     scheduledColumns() {
       return [
@@ -227,7 +227,7 @@ export default {
               ),
             ]),
         },
-      ] as ColumnDef<ScheduledNet, unknown>[];
+      ] as DataTableColumn<ScheduledNet, unknown>[];
     },
     totalPages(): number {
       if (!this.totalRecords || this.totalRecords <= 0) return 1;

@@ -59,8 +59,8 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
-import { h, type RendererElement } from 'vue';
+import type { DataTableColumn } from '@/components/ui/data-table';
+import { h } from 'vue';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Button as ShadButton } from '@/components/ui/button';
@@ -436,7 +436,7 @@ export default {
     columns() {
       // Reference this.now to trigger recomputation when the timer updates
       void this.now;
-      const columns: ColumnDef<UserRow, RendererElement>[] = []
+      const columns: DataTableColumn<UserRow>[] = []
       if (!this.approval) {
         columns.push({
           accessorKey: 'actions',

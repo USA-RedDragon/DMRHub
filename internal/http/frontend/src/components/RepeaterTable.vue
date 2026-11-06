@@ -44,7 +44,7 @@
 </template>
 
 <script lang="ts">
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { h } from 'vue';
 import { RouterLink } from 'vue-router';
 import { format, formatDistanceToNowStrict } from 'date-fns';
@@ -140,7 +140,7 @@ export default {
     columns() {
       // Reference this.now to trigger recomputation when the timer updates
       void this.now;
-      const columns: ColumnDef<RepeaterRow, unknown>[] = [
+      const columns: DataTableColumn<RepeaterRow, unknown>[] = [
         {
           accessorKey: 'row_actions',
           header: '',

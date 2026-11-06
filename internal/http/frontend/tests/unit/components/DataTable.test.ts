@@ -20,12 +20,12 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { h } from 'vue';
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { DataTable } from '@/components/ui/data-table';
 
 type Row = Record<string, unknown>;
 
-const columns: ColumnDef<Row, unknown>[] = [
+const columns: DataTableColumn<Row, unknown>[] = [
   { id: 'input', header: 'Name', cell: () => h('input', { 'data-test': 'cell-input' }) },
   { id: 'link', header: 'Link', cell: () => h('a', { href: '#x', 'data-test': 'cell-link' }, 'x') },
 ];
@@ -68,6 +68,36 @@ describe('DataTable rows', () => {
     expect(wrapper.emitted('rowClick')).toHaveLength(2);
     await row.find('td').trigger('click');
     expect(wrapper.emitted('rowClick')).toHaveLength(3);
+    wrapper.unmount();
+  });
+});
+
+describe('DataTable pages', () => {
+  const nameColumns: DataTableColumn<Row>[] = [{ accessorKey: 'name', header: 'Name' }];
+  const data = [{ name: 'N0CALL' }, { name: 'N1CALL' }, { name: 'N2CALL' }];
+
+  it('shows the rows of a server page as given and moves to the next page', async () => {
+    const wrapper = mount(DataTable, {
+      props: { columns: nameColumns, data, pageSize: 2, pageCount: 2, manualPagination: true },
+    });
+    expect(wrapper.findAll('tbody tr').map((tr) => tr.text())).toEqual(['N0CALL', 'N1CALL', 'N2CALL']);
+    expect(wrapper.text()).toContain('Page 1 of 2');
+    const [previous, next] = wrapper.findAll('button');
+    expect(previous!.attributes('disabled')).toBeDefined();
+    expect(next!.attributes('disabled')).toBeUndefined();
+    await next!.trigger('click');
+    expect(wrapper.emitted('update:pageIndex')).toEqual([[1]]);
+    expect(wrapper.text()).toContain('Page 2 of 2');
+    expect(next!.attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('follows the page index that its parent sets', async () => {
+    const wrapper = mount(DataTable, {
+      props: { columns: nameColumns, data, pageSize: 2, pageCount: 5, manualPagination: true },
+    });
+    await wrapper.setProps({ pageIndex: 3 });
+    expect(wrapper.text()).toContain('Page 4 of 5');
     wrapper.unmount();
   });
 });

@@ -17,7 +17,7 @@
 //
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
-import type { ColumnDef } from '@tanstack/vue-table';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { h } from 'vue';
 import User from '@/components/User.vue';
 import Talkgroup from '@/components/Talkgroup.vue';
@@ -71,9 +71,9 @@ function destination(call: CallRow) {
   return h('span', { class: 'font-medium' }, call.group_call ? `TG ${call.destination_id}` : String(call.destination_id));
 }
 
-export function lastHeardColumns(opts: LastHeardColumnOptions = {}): ColumnDef<CallRow, unknown>[] {
+export function lastHeardColumns(opts: LastHeardColumnOptions = {}): DataTableColumn<CallRow, unknown>[] {
   const { user = true, destination: showDestination = true, repeater = false } = opts;
-  const columns: ColumnDef<CallRow, unknown>[] = [
+  const columns: DataTableColumn<CallRow, unknown>[] = [
     {
       accessorKey: 'time',
       header: 'Time',

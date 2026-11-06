@@ -1,17 +1,6 @@
 <script setup lang="ts" generic="TData extends Record<string, unknown>">
-import type {
-  ColumnDef,
-  PaginationState,
-  SortingState,
-  Updater,
-} from "@tanstack/vue-table"
-import {
-  FlexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useVueTable,
-} from "@tanstack/vue-table"
+import type { PaginationState, Updater } from "@tanstack/vue-table"
+import { FlexRender, useTable } from "@tanstack/vue-table"
 import { computed, ref, watch } from "vue"
 
 import {
@@ -22,12 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { valueUpdater } from "@/components/ui/table/utils"
 import DataTablePagination from "./DataTablePagination.vue"
+import { dataTableFeatures, type DataTableColumn } from "./features"
 
 const props = withDefaults(
   defineProps<{
-    columns: ColumnDef<TData, unknown>[]
+    columns: DataTableColumn<TData>[]
     data: TData[]
     loading?: boolean
     loadingText?: string
@@ -60,7 +49,6 @@ const emit = defineEmits<{
   (e: "rowClick", value: TData): void
 }>()
 
-const sorting = ref<SortingState>([])
 const pagination = ref<PaginationState>({
   pageIndex: props.pageIndex ?? 0,
   pageSize: props.pageSize ?? 30,
@@ -76,7 +64,8 @@ watch(
   },
 )
 
-const table = useVueTable({
+const table = useTable({
+  features: dataTableFeatures,
   get data() {
     return props.data
   },
@@ -89,11 +78,6 @@ const table = useVueTable({
   get manualPagination() {
     return props.manualPagination
   },
-  getCoreRowModel: getCoreRowModel(),
-  getPaginationRowModel: getPaginationRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  onSortingChange: (updaterOrValue: Updater<SortingState>) =>
-    valueUpdater(updaterOrValue, sorting),
   onPaginationChange: (updaterOrValue: Updater<PaginationState>) => {
     const nextValue =
       typeof updaterOrValue === "function"
@@ -105,9 +89,6 @@ const table = useVueTable({
     emit("update:pageSize", nextValue.pageSize)
   },
   state: {
-    get sorting() {
-      return sorting.value
-    },
     get pagination() {
       return pagination.value
     },
@@ -149,11 +130,7 @@ const visibleRows = computed(() => {
       <TableHeader>
         <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
           <TableHead v-for="header in headerGroup.headers" :key="header.id">
-            <FlexRender
-              v-if="!header.isPlaceholder"
-              :render="header.column.columnDef.header"
-              :props="header.getContext()"
-            />
+            <FlexRender v-if="!header.isPlaceholder" :header="header" />
           </TableHead>
         </TableRow>
       </TableHeader>
@@ -172,8 +149,8 @@ const visibleRows = computed(() => {
             @click="onRowClick($event, row.original)"
             @keydown="onRowKeydown($event, row.original)"
           >
-            <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+            <TableCell v-for="cell in row.getAllCells()" :key="cell.id">
+              <FlexRender :cell="cell" />
             </TableCell>
           </TableRow>
           <slot name="after-row" :row="row.original" :colspan="columns.length" />

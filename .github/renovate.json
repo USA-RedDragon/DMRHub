@@ -16,5 +16,14 @@
             "depNameTemplate": "redis",
             "datasourceTemplate": "docker"
         }
+    ],
+    "packageRules": [
+        {
+            "description": "The docs build carries assets from the last published docs image, so it must stay on the moving main tag.",
+            "matchPackageNames": [
+                "ghcr.io/usa-reddragon/dmrhub-docs"
+            ],
+            "pinDigests": false
+        }
     ]
 }

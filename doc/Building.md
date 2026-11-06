@@ -7,7 +7,7 @@ This page tells how to build DMRHub and its plugins from source, and how to run 
 | Tool                                                          | Version                                   | Used for                                                                                   |
 | ------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [Go](https://go.dev/doc/install)                              | The `go` line of `go.mod` (1.27.3 now)    | The binary and the Go code generators.                                                     |
-| [Node.js](https://nodejs.org/en/download/) and npm            | `.node-version` (24.22.2 now)             | The web frontend, which DMRHub embeds.                                                     |
+| [Node.js](https://nodejs.org/en/download/) and npm            | `.node-version` (26.13.0 now)             | The web frontend, which DMRHub embeds.                                                     |
 | [TinyGo](https://tinygo.org/getting-started/install/)         | 0.43.0 or later                           | The built-in plugins. `go generate` runs `tinygo` from the `PATH`, or the command that the `TINYGO` environment variable names. |
 | make                                                          | Any                                       | The Makefile targets.                                                                      |
 | [golangci-lint](https://golangci-lint.run/)                   | The latest release, as CI uses        | `make lint` only.                                                                          |

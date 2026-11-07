@@ -70,3 +70,11 @@ type UserPatch struct {
 	// give the DMR ID of the user. Others cannot override the check.
 	OverrideRadioID bool `json:"override_radio_id"`
 }
+
+// RequirePasswordChange is the body of POST
+// /api/v1/users/:id/require-password-change.
+type RequirePasswordChange struct {
+	// GeneratePassword also gives the user a new random password, which
+	// the answer holds once.
+	GeneratePassword bool `json:"generate_password"`
+}

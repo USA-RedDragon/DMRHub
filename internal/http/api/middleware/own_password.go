@@ -30,11 +30,12 @@ import (
 )
 
 // MsgMustChangePassword is the error of a request from a user whose
-// password an admin set, to a route that RequireOwnPassword closes.
-const MsgMustChangePassword = "An admin set a temporary password for you. Choose your own password in Settings first." //nolint:gosec // an error text, not a credential
+// password an admin set or who an admin asked for a new password, to a
+// route that RequireOwnPassword closes.
+const MsgMustChangePassword = "An admin asked you to choose a new password. Choose your own password in Settings first." //nolint:gosec // an error text, not a credential
 
-// ownPasswordRoutes are the routes that stay open to a user whose
-// password an admin set: logging in and out, a forgotten password,
+// ownPasswordRoutes are the routes that stay open to a user who must
+// choose a new password: logging in and out, a forgotten password,
 // reading their own account, and the facts about the network that every
 // page shows.
 func ownPasswordRoutes() map[string]bool {
@@ -54,7 +55,7 @@ func ownPasswordRoutes() map[string]bool {
 }
 
 // RequireOwnPassword answers 403 to every request of a user whose password
-// an admin set, until the user chooses their own with PATCH
+// an admin set or who an admin asked for a new password, until the user chooses their own with PATCH
 // /api/v1/users/:id. The routes of ownPasswordRoutes stay open. Requests
 // without a logged-in user pass.
 func RequireOwnPassword() gin.HandlerFunc {

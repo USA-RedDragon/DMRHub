@@ -260,6 +260,29 @@ func RandomPassword(length int, minNumbers, minSpecial int) (string, error) {
 	return string(b), nil
 }
 
+// TemporaryPasswordAlphabet is the characters of a temporary password,
+// without look-alikes such as 0, O, 1, l and I.
+const TemporaryPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+
+// TemporaryPasswordLength is the length of a temporary password.
+const TemporaryPasswordLength = 16
+
+// TemporaryPassword returns a password of TemporaryPasswordLength
+// characters of TemporaryPasswordAlphabet from crypto/rand, for an admin
+// to give to a user who then chooses their own.
+func TemporaryPassword() (string, error) {
+	b := make([]byte, TemporaryPasswordLength)
+	limit := big.NewInt(int64(len(TemporaryPasswordAlphabet)))
+	for i := range b {
+		idx, err := rand.Int(rand.Reader, limit)
+		if err != nil {
+			return "", ErrNoRandom
+		}
+		b[i] = TemporaryPasswordAlphabet[idx.Int64()]
+	}
+	return string(b), nil
+}
+
 // RandomHexString generates a cryptographically random hex string of the given length.
 // The length is the number of hex characters (each character is 4 bits).
 func RandomHexString(hexLen int) (string, error) {

@@ -59,14 +59,15 @@ type User struct {
 	// radios that it cannot deliver, and sends them when the radio is
 	// heard again. Only SetStoreForward writes it.
 	StoreForward bool `json:"-" gorm:"<-:create;not null;default:false"`
-	// MustChangePassword reports that an admin set the password of the
-	// user, who must choose their own before they use the rest of
-	// DMRHub. Only SetPassword writes it.
 	// PromptVoice is the voice set of the spoken prompts that the hub
 	// plays to the radios of the user, or empty for the default voice of
 	// the hub. Only SetPromptVoice writes it.
-	PromptVoice        string `json:"-" gorm:"<-:create;size:64;not null;default:''"`
-	MustChangePassword bool   `json:"must_change_password" gorm:"<-:create;not null;default:false"`
+	PromptVoice string `json:"-" gorm:"<-:create;size:64;not null;default:''"`
+	// MustChangePassword reports that an admin set the password of the
+	// user or asked them for a new one, and the user must choose their
+	// own before they use the rest of DMRHub. Only SetPassword and
+	// RequirePasswordChange write it.
+	MustChangePassword bool `json:"must_change_password" gorm:"<-:create;not null;default:false"`
 	// CallsignOverride reports that an admin set a callsign that RadioID
 	// did not give the DMR ID of the user, so the RadioID drift check
 	// skips the user. Only SetCallsignOverride writes it.

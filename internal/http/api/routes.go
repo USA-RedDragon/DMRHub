@@ -220,6 +220,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Users.POST("/unsuspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserUnsuspend)
 	v1Users.POST("/suspend/:id", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserSuspend)
 	v1Users.GET("/:id/profile", middleware.RequireLogin(), userSuspension, v1UsersControllers.GETUserProfile)
+	v1Users.POST("/:id/require-password-change", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserRequirePasswordChange)
 	v1Users.DELETE("/:id/totp", middleware.RequireAdmin(), userSuspension, v1UsersControllers.DELETEUserOnAirCode)
 	v1Users.GET("/:id/radio-ids", middleware.RequireAdmin(), userSuspension, v1UsersControllers.GETUserRadioIDs)
 	v1Users.POST("/:id/radio-ids", middleware.RequireAdmin(), userSuspension, v1UsersControllers.POSTUserRadioID)

@@ -61,6 +61,8 @@ const (
 	msgCallsignMismatch = "Callsign does not match DMR ID"
 	msgInvalidJSON      = "JSON data is invalid"
 
+	msgErrHashingPassword = "Error hashing password" //nolint:gosec // an error text, not a credential
+
 	msgRegistrationClosed = "Registration is closed"
 	msgBadInvite          = "This invite does not work. Ask an admin for a new one."
 )
@@ -292,7 +294,7 @@ func registration(c *gin.Context, db *gorm.DB, checks configPkg.RadioIDChecks, i
 	hashedPassword, err := utils.HashPassword(json.Password, salt)
 	if err != nil {
 		slog.Error("Error hashing password", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrHashingPassword})
 		return models.User{}, "", false
 	}
 	return models.User{
@@ -559,12 +561,13 @@ func POSTUserApprove(c *gin.Context) {
 // userProfileResponse is the public-safe view of a user profile.
 // It intentionally omits username, email, and password.
 type userProfileResponse struct {
-	ID        uint              `json:"id"`
-	Callsign  string            `json:"callsign"`
-	Admin     bool              `json:"admin"`
-	Approved  bool              `json:"approved"`
-	Repeaters []models.Repeater `json:"repeaters"`
-	CreatedAt string            `json:"created_at"`
+	ID         uint              `json:"id"`
+	Callsign   string            `json:"callsign"`
+	Admin      bool              `json:"admin"`
+	SuperAdmin bool              `json:"superAdmin"`
+	Approved   bool              `json:"approved"`
+	Repeaters  []models.Repeater `json:"repeaters"`
+	CreatedAt  string            `json:"created_at"`
 }
 
 func GETUserProfile(c *gin.Context) {
@@ -585,12 +588,13 @@ func GETUserProfile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, userProfileResponse{
-		ID:        user.ID,
-		Callsign:  user.Callsign,
-		Admin:     user.Admin,
-		Approved:  user.Approved,
-		Repeaters: user.Repeaters,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:         user.ID,
+		Callsign:   user.Callsign,
+		Admin:      user.Admin,
+		SuperAdmin: user.SuperAdmin,
+		Approved:   user.Approved,
+		Repeaters:  user.Repeaters,
+		CreatedAt:  user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 
@@ -753,7 +757,7 @@ func PATCHUser(c *gin.Context) {
 			hashedPassword, hashErr = utils.HashPassword(json.Password, config.PasswordSalt)
 			if hashErr != nil {
 				slog.Error("Error hashing password", "error", hashErr)
-				c.JSON(http.StatusInternalServerError, gin.H{errorKey: "Error hashing password"})
+				c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrHashingPassword})
 				return
 			}
 		}
@@ -928,19 +932,30 @@ func checkPasswordChange(c *gin.Context, db *gorm.DB, json apimodels.UserPatch, 
 		}
 	}
 	adminReset = json.Password != "" && actorID != user.ID
-	if adminReset && (user.Admin || user.SuperAdmin) {
-		actor, err := models.FindUserByID(db, actorID)
-		if err != nil {
-			slog.Error(msgErrFindingUser, "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
-			return false, false
-		}
-		if !actor.SuperAdmin {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Only the System Admin can reset the password of an admin."})
-			return false, false
-		}
+	if adminReset && !mayResetPassword(c, db, actorID, user) {
+		return false, false
 	}
 	return adminReset, true
+}
+
+// mayResetPassword answers the request and returns false when the user
+// actorID must not set the password of user or require a new one: user
+// is an admin and actorID is not the System Admin.
+func mayResetPassword(c *gin.Context, db *gorm.DB, actorID uint, user models.User) bool {
+	if !user.Admin && !user.SuperAdmin {
+		return true
+	}
+	actor, err := models.FindUserWithoutRepeaters(db, actorID)
+	if err != nil {
+		slog.Error(msgErrFindingUser, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgErrFindingUser})
+		return false
+	}
+	if !actor.SuperAdmin {
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Only the System Admin can reset the password of an admin."})
+		return false
+	}
+	return true
 }
 
 func DELETEUser(c *gin.Context) {

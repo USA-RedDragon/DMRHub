@@ -43,3 +43,12 @@ func SetPassword(db *gorm.DB, id uint, hash string, mustChange bool) error {
 	}
 	return nil
 }
+
+// RequirePasswordChange makes the user id choose a new password before
+// they use the rest of DMRHub, and keeps their current password.
+func RequirePasswordChange(db *gorm.DB, id uint) error {
+	if err := db.Exec("UPDATE users SET must_change_password = ?, updated_at = ? WHERE id = ?", true, time.Now(), id).Error; err != nil {
+		return fmt.Errorf("could not require a password change of user %d: %w", id, err)
+	}
+	return nil
+}

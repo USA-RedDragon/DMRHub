@@ -229,7 +229,7 @@ func TestATemporaryPasswordOpensOnlyThePasswordChange(t *testing.T) {
 	for _, r := range closed {
 		w := testutils.Do(t, router, jar, r.method, r.path, nil)
 		assert.Equal(t, http.StatusForbidden, w.Code, "%s %s", r.method, r.path)
-		assert.JSONEq(t, `{"error":"An admin set a temporary password for you. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String(), "%s %s", r.method, r.path)
+		assert.JSONEq(t, `{"error":"An admin asked you to choose a new password. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String(), "%s %s", r.method, r.path)
 	}
 	for _, p := range []string{"/api/v1/users/me", "/api/v1/network/name", "/api/v1/network/features", "/api/v1/version"} {
 		assert.Equal(t, http.StatusOK, testutils.Do(t, router, jar, http.MethodGet, p, nil).Code, p)
@@ -258,7 +258,7 @@ func TestATemporaryPasswordMustBeReplaced(t *testing.T) {
 
 	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"username": "someone-else"})
 	assert.Equal(t, http.StatusForbidden, w.Code, "only the password change is open")
-	assert.JSONEq(t, `{"error":"An admin set a temporary password for you. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String())
+	assert.JSONEq(t, `{"error":"An admin asked you to choose a new password. Choose your own password in Settings first.","must_change_password":true}`, w.Body.String())
 
 	w = testutils.Do(t, router, jar, http.MethodPatch, path(user.ID), map[string]string{"password": "Qm4tVx8rKp2Hw9Ns", "current_password": "Qm4tVx8rKp2Hw9Ns"})
 	assert.Equal(t, http.StatusBadRequest, w.Code, "the admin knows the temporary password")

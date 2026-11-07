@@ -232,3 +232,34 @@ func TestRandomPasswordGuaranteesMinCounts(t *testing.T) {
 		}
 	}
 }
+
+func TestTemporaryPasswordUsesOnlyTheAlphabet(t *testing.T) {
+	t.Parallel()
+	seen := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		pw, err := utils.TemporaryPassword()
+		if err != nil {
+			t.Fatalf("TemporaryPassword failed: %v", err)
+		}
+		if len(pw) != utils.TemporaryPasswordLength || utils.TemporaryPasswordLength < 16 {
+			t.Fatalf("got %d characters, want %d of at least 16", len(pw), utils.TemporaryPasswordLength)
+		}
+		for _, r := range pw {
+			if !strings.ContainsRune(utils.TemporaryPasswordAlphabet, r) {
+				t.Fatalf("character %q is not in the alphabet", r)
+			}
+		}
+		if utils.ShortPassword(pw) {
+			t.Fatal("a temporary password is too short to set")
+		}
+		seen[pw] = true
+	}
+	if len(seen) != 100 {
+		t.Errorf("got %d different passwords of 100", len(seen))
+	}
+	for _, r := range "0O1lI" {
+		if strings.ContainsRune(utils.TemporaryPasswordAlphabet, r) {
+			t.Errorf("the alphabet has the look-alike %q", r)
+		}
+	}
+}

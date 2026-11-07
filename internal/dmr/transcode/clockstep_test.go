@@ -25,12 +25,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/clock"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils/clockstep"
 	"github.com/stretchr/testify/require"
 )
 
 func TestClockStepForwardKeepsAServerThatJustAnswered(t *testing.T) { //nolint:paralleltest
-	s := NewService(nil)
+	s := NewService(nil, clock.Real())
 	srv := &server{leases: newLeases(nil, ServerConfig{})}
 	list := []*server{srv}
 	s.servers.Store(&list)

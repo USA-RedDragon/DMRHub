@@ -147,7 +147,7 @@ src/services/positions.ts	44	26
 src/services/prompts.ts	7	0
 src/services/radioid.ts	13	0
 src/services/repeater.ts	37	11
-src/services/settings.ts	20	2
+src/services/settings.ts	20	5
 src/services/talkgroup.ts	15	11
 src/services/totp.ts	12	0
 src/services/userdb.ts	15	12
@@ -169,7 +169,7 @@ src/views/nets/NetsPage.vue	45	25
 src/views/positions/PositionsPage.vue	191	131
 src/views/repeaters/LocalGroupPage.vue	57	39
 src/views/repeaters/NewRepeaterPage.vue	39	32
-src/views/repeaters/RepeaterConnectPage.vue	65	43
+src/views/repeaters/RepeaterConnectPage.vue	65	46
 src/views/repeaters/RepeaterDetailsPage.vue	157	62
 src/views/repeaters/RepeatersPage.vue	5	5
 src/views/talkgroups/TalkgroupsPage.vue	1	1

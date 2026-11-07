@@ -83,7 +83,7 @@ func TestConnectedRepeaterPositionsListsOnlyConnectedRepeatersWithAPosition(t *t
 	ids := func(all bool, user uint) []uint {
 		rs, err := models.ConnectedRepeaterPositions(db, user, all, now)
 		require.NoError(t, err)
-		out := []uint{}
+		out := make([]uint, 0, len(rs))
 		for _, r := range rs {
 			out = append(out, r.ID)
 		}

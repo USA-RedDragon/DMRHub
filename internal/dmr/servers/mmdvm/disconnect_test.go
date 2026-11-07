@@ -43,10 +43,10 @@ func (r *dialectRig) shownRepeaters() []uint {
 	return ids
 }
 
-func (r *dialectRig) row(id uint) *models.Repeater {
+func (r *dialectRig) row() *models.Repeater {
 	r.t.Helper()
 	var row models.Repeater
-	require.NoError(r.t, r.s.DB.First(&row, id).Error)
+	require.NoError(r.t, r.s.DB.First(&row, homeRepeaterID).Error)
 	return &row
 }
 
@@ -73,27 +73,27 @@ func TestARepeaterLeavesThePositionsAtOnceWhenItsSessionEnds(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			const id = 310999901
+			const id = homeRepeaterID
 			fake := clock.NewFake(time.Now())
 			r := newRig(t, []uint{id}, withClock(fake))
 			r.login(dmrd.DialectMMDVM, id)
-			r.homePosition(id, "+30.2669-097.7729")
+			r.homePosition("+30.2669-097.7729")
 			require.Equal(t, []uint{id}, r.shownRepeaters())
-			require.True(t, r.row(id).Online(fake.Now()))
-			require.Nil(t, r.row(id).Disconnected)
+			require.True(t, r.row().Online(fake.Now()))
+			require.Nil(t, r.row().Disconnected)
 
 			end(r, fake, id)
 			assert.Empty(t, r.shownRepeaters())
-			row := r.row(id)
+			row := r.row()
 			assert.False(t, row.Online(fake.Now()))
 			require.NotNil(t, row.Disconnected, "the disconnect is recorded")
 			assert.True(t, row.Disconnected.Equal(fake.Now()))
 
 			fake.Advance(time.Second)
 			r.login(dmrd.DialectMMDVM, id)
-			r.homePosition(id, "+30.2669-097.7729")
+			r.homePosition("+30.2669-097.7729")
 			assert.Equal(t, []uint{id}, r.shownRepeaters(), "a new login shows it again")
-			assert.True(t, r.row(id).Online(fake.Now()))
+			assert.True(t, r.row().Online(fake.Now()))
 		})
 	}
 }

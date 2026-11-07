@@ -60,7 +60,7 @@ func ParseHomePosition(text []byte) (float64, float64, error) {
 
 // SetRepeaterPosition stores the latitude and longitude of the repeater id.
 func SetRepeaterPosition(db *gorm.DB, id uint, lat, lon float64) error {
-	err := db.Model(&Repeater{}).Where("id = ?", id).UpdateColumns(map[string]any{"latitude": lat, "longitude": lon}).Error
+	err := db.Model(&Repeater{}).Where("id = ?", id).Select("Latitude", "Longitude").UpdateColumns(Repeater{Latitude: lat, Longitude: lon}).Error
 	if err != nil {
 		return fmt.Errorf("could not store the position of repeater %d: %w", id, err)
 	}

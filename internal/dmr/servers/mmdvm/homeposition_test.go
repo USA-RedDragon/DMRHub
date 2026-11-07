@@ -28,7 +28,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (r *dialectRig) homePosition(id uint32, text string) {
+const homeRepeaterID = 310999901
+
+func (r *dialectRig) homePosition(text string) {
+	const id = uint32(homeRepeaterID)
 	r.t.Helper()
 	r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTG, ID: id, Text: []byte(text)})
 	r.ping(id)
@@ -45,20 +48,20 @@ func (r *dialectRig) storedPosition(id uint) (float64, float64) {
 
 func TestAnRPTGMovesTheRepeater(t *testing.T) {
 	t.Parallel()
-	const id = 310999901
+	const id = homeRepeaterID
 	r := newDialectRig(t, id)
 	r.login(dmrd.DialectMMDVM, id)
 	lat, lon := r.storedPosition(id)
 	require.Zero(t, lat)
 	require.Zero(t, lon)
 
-	r.homePosition(id, "+30.2669-097.7729")
+	r.homePosition("+30.2669-097.7729")
 	lat, lon = r.storedPosition(id)
 	assert.InDelta(t, 30.2669, lat, 1e-9)
 	assert.InDelta(t, -97.7729, lon, 1e-9)
 
 	for _, bad := range []string{"", "+30.2669", "garbage", "+91.0000-097.7729", "+30.2669-181.0000"} {
-		r.homePosition(id, bad)
+		r.homePosition(bad)
 		lat, lon = r.storedPosition(id)
 		assert.InDelta(t, 30.2669, lat, 1e-9, "%q", bad)
 		assert.InDelta(t, -97.7729, lon, 1e-9, "%q", bad)

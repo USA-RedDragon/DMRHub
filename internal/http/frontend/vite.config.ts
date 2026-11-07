@@ -32,6 +32,9 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    proxy: {},
+  },
   worker: {
     format: 'es',
   },

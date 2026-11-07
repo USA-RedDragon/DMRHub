@@ -23,3 +23,8 @@ import './commands';
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
+
+beforeEach(() => {
+  cy.intercept({ pathname: /^\/api\// }, { statusCode: 404, body: {} });
+  cy.intercept({ pathname: /^\/ws\// }, { statusCode: 404 });
+});

@@ -1,6 +1,6 @@
 src/App.vue	28	27
-src/components/AppFooter.vue	10	10
-src/components/AppHeader.vue	99	65
+src/components/AppFooter.vue	10	9
+src/components/AppHeader.vue	99	64
 src/components/CallCodec.vue	2	1
 src/components/ConnectionLogCard.vue	35	28
 src/components/CosysopInvites.vue	31	29
@@ -15,11 +15,11 @@ src/components/Repeater.vue	7	0
 src/components/RepeaterRulesCard.vue	101	47
 src/components/RepeaterTable.vue	218	146
 src/components/SegmentPicker.vue	4	4
-src/components/Talkgroup.vue	5	5
+src/components/Talkgroup.vue	5	4
 src/components/TalkgroupTable.vue	165	100
 src/components/TransmissionType.vue	5	5
 src/components/TypeFilter.vue	7	5
-src/components/User.vue	9	6
+src/components/User.vue	9	5
 src/components/UserRegistrationCard.vue	15	11
 src/components/UserTable.vue	170	98
 src/components/enroll/ClientSteps.vue	23	15
@@ -49,8 +49,9 @@ src/components/ui/card/CardDescription.vue	2	2
 src/components/ui/card/CardFooter.vue	2	2
 src/components/ui/card/CardHeader.vue	2	2
 src/components/ui/card/CardTitle.vue	2	2
-src/components/ui/data-table/DataTable.vue	44	33
+src/components/ui/data-table/DataTable.vue	39	29
 src/components/ui/data-table/DataTablePagination.vue	5	5
+src/components/ui/data-table/features.ts	1	1
 src/components/ui/dialog/Dialog.vue	1	1
 src/components/ui/dialog/DialogContent.vue	1	1
 src/components/ui/dialog/DialogDescription.vue	1	0
@@ -88,7 +89,6 @@ src/components/ui/table/TableFooter.vue	2	0
 src/components/ui/table/TableHead.vue	2	2
 src/components/ui/table/TableHeader.vue	2	2
 src/components/ui/table/TableRow.vue	2	2
-src/components/ui/table/utils.ts	1	0
 src/components/ui/tabs/Tabs.vue	1	1
 src/components/ui/tabs/TabsContent.vue	1	1
 src/components/ui/tabs/TabsList.vue	1	1
@@ -134,9 +134,9 @@ src/services/prompts.ts	7	0
 src/services/radioid.ts	13	0
 src/services/repeater.ts	29	5
 src/services/settings.ts	20	0
-src/services/talkgroup.ts	15	11
+src/services/talkgroup.ts	15	8
 src/services/totp.ts	12	0
-src/services/userdb.ts	15	11
+src/services/userdb.ts	15	8
 src/services/util.ts	7	6
 src/services/ws.ts	51	35
 src/store/index.ts	25	25

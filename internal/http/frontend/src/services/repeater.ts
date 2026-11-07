@@ -112,3 +112,24 @@ export function kindLabel(r: Pick<UnassignedRepeater, 'type' | 'slots'>): string
   }
   return r.slots === 4 ? `${kind}, hotspot` : `${kind}, repeater`;
 }
+
+/** SESSION_TIMEOUT_MS is how long after its last ping the hub keeps a repeater logged in. */
+export const SESSION_TIMEOUT_MS = 60_000;
+
+function timeOf(s: string | null | undefined): number {
+  if (!s) return 0;
+  const t = new Date(s).getTime();
+  return Number.isNaN(t) || new Date(s).getFullYear() <= 1 ? 0 : t;
+}
+
+/**
+ * repeaterOnline reports whether a repeater has a session at now, as the
+ * server's Repeater.Online decides it: it pinged within SESSION_TIMEOUT_MS,
+ * and no session ended at or after that ping.
+ */
+export function repeaterOnline(r: { last_ping_time?: string; disconnected_time?: string | null }, now: number): boolean {
+  const ping = timeOf(r.last_ping_time);
+  if (!ping || now - ping >= SESSION_TIMEOUT_MS) return false;
+  const down = timeOf(r.disconnected_time);
+  return !down || ping > down;
+}

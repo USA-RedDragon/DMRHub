@@ -430,6 +430,7 @@ import OnAirCard from '@/components/OnAirCard.vue';
 import OfflineAlertCard from '@/components/OfflineAlertCard.vue';
 import { resetText, type OnAirCall } from '@/lib/sysop';
 import Talkgroup from '@/components/Talkgroup.vue';
+import { repeaterOnline } from '@/services/repeater';
 import User from '@/components/User.vue';
 import { lastHeardColumns } from '@/lib/lastHeardColumns';
 import { connectKind } from '@/lib/enroll';
@@ -468,6 +469,7 @@ type RepeaterData = {
   dialect: string;
   connected_time: string;
   last_ping_time: string;
+  disconnected_time: string | null;
   created_at: string;
   rx_frequency: number;
   tx_frequency: number;
@@ -502,9 +504,6 @@ type RepeaterData = {
 };
 
 type SlotKey = 'ts1' | 'ts2';
-
-/** SESSION_TIMEOUT_MS is how long after its last ping the hub keeps a repeater logged in. */
-const SESSION_TIMEOUT_MS = 60_000;
 
 /** COSYSOPS_RETRY_MS is the first wait before the page loads the role of the user again after a server error; each failure doubles it up to COSYSOPS_RETRY_MAX_MS. */
 const COSYSOPS_RETRY_MS = 1_000;
@@ -624,8 +623,7 @@ export default {
       return useUserStore().loggedIn;
     },
     isOnline(): boolean {
-      if (!this.repeater || !this.hasTimestamp(this.repeater.last_ping_time)) return false;
-      return this.now - new Date(this.repeater.last_ping_time).getTime() < SESSION_TIMEOUT_MS;
+      return !!this.repeater && repeaterOnline(this.repeater, this.now);
     },
     protocol(): string {
       if (!this.repeater || (this.repeater.type || 'mmdvm') !== 'mmdvm') return '';

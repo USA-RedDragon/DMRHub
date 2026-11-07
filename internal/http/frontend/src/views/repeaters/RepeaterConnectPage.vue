@@ -179,6 +179,7 @@ import {
   type ConnectValues,
 } from '@/lib/enroll';
 import API from '@/services/API';
+import { repeaterOnline } from '@/services/repeater';
 import { errorText } from '@/services/settings';
 import { useSettingsStore, useUserStore } from '@/store';
 import { formatDistanceStrict } from 'date-fns';
@@ -189,11 +190,9 @@ type RepeaterData = {
   type: string;
   connected_time: string;
   last_ping_time: string;
+  disconnected_time?: string | null;
   owner?: { id: number; callsign: string };
 };
-
-/** SESSION_TIMEOUT_MS is how long after its last ping the hub keeps a repeater logged in. */
-const SESSION_TIMEOUT_MS = 60_000;
 
 /** POLL_MS is how often the page reads the repeater again for its live status. */
 const POLL_MS = 5_000;
@@ -320,7 +319,7 @@ export default {
       return timeOf(this.repeater?.last_ping_time);
     },
     connected(): boolean {
-      if (!this.lastPing || this.now - this.lastPing >= SESSION_TIMEOUT_MS) return false;
+      if (!this.repeater || !repeaterOnline(this.repeater, this.now)) return false;
       return !this.rotatedAt || this.lastPing > this.rotatedAt.getTime();
     },
     liveText(): string {

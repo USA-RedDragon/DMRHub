@@ -73,6 +73,17 @@ describe('RepeaterDetailsPage online badge', () => {
     expect(text).not.toContain('Offline');
   });
 
+  it('shows Offline at once after the session ends', async () => {
+    const text = await badge(new Date(Date.now() - 10_000).toISOString(), { disconnected_time: new Date(Date.now() - 5_000).toISOString() });
+    expect(text).toContain('Offline');
+  });
+
+  it('shows Online after a login that follows an end', async () => {
+    const text = await badge(new Date(Date.now() - 10_000).toISOString(), { disconnected_time: new Date(Date.now() - 60_000).toISOString() });
+    expect(text).toContain('Online');
+    expect(text).not.toContain('Offline');
+  });
+
   it('shows Offline when the last ping is older than the session timeout', async () => {
     const text = await badge(new Date(Date.now() - 10 * 60_000).toISOString());
     expect(text).toContain('Offline');

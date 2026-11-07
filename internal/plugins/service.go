@@ -499,10 +499,7 @@ func (w *watcher) watch(ctx context.Context) {
 			w.sent(&pkt)
 			w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
 		case sub := <-w.subscribe:
-			w.setSubscribe(sub)
-			if w.s.applied != nil {
-				w.s.applied(w.p.ID, sub)
-			}
+			w.applySubscribe(sub)
 		case pos := <-w.positions:
 			w.store(pos, current)
 		case b, ok := <-tracking:
@@ -549,6 +546,15 @@ func (w *watcher) watch(ctx context.Context) {
 				w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Ranges{Ranges: &pluginv1.Ranges{Ranges: rangesOf(&now)}}})
 			}
 		}
+	}
+}
+
+// applySubscribe sets what the plugin hears from sub and then reports
+// sub to the WithSubscribed function, if there is one.
+func (w *watcher) applySubscribe(sub *pluginv1.Subscribe) {
+	w.setSubscribe(sub)
+	if w.s.applied != nil {
+		w.s.applied(w.p.ID, sub)
 	}
 }
 

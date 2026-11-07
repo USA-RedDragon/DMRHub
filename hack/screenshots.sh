@@ -33,7 +33,7 @@
 # ERR_NETWORK_CHANGED.
 set -euo pipefail
 
-dmrweb_commit=35a28177f5708f6bce54928700fc2383765d0d5d
+dmrweb_commit=0df08f202083f46cb3af137934f7a25336864eb6
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=${DMRHUB_SHOTS_WORK:-$root/artifacts/screenshots}

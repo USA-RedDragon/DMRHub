@@ -117,17 +117,18 @@ A user who lost the authenticator app of their [on-air code](../guides/on-air-co
 
 ![The Users page with the Turn off on-air code button in the row of a user](../Screenshots/admin-users-on-air-code.png)
 
-## Reset the password of a user
+## Require a password change
 
-1. On the **Users** page, click **Reset password** in the row of the user.
-2. DMRHub shows a temporary password. Copy it, then click **Set password**.
-3. Give the temporary password to the user.
+1. On the **Users** page, click **Require password change** in the row of the user. On the page of a user, click **Require password change** at the top.
+2. To also give the user a new password, turn on **Generate a random password**. Their current password then stops working.
+3. Click **Require password change**.
+4. If you generated a password, copy it and give it to the user. DMRHub shows it only once.
 
-DMRHub logs the user out everywhere. When the user logs in with the temporary password, DMRHub asks them to choose their own password before they can use the other pages. You cannot reset your own password here.
+DMRHub logs the user out everywhere and signs out their apps. When the user logs in, DMRHub asks them to choose their own password before they can use the other pages. Only the super admin can do this to an admin. You cannot do this to yourself.
 
 When SMTP is on, users can also reset their own password with **Forgot your password?** on the login page. DMRHub sends the link only to the email address of the account, and only when the user confirmed that address. The link works once, for 1 hour. Users set and confirm their address in the **Email** card on **Settings**.
 
-![The Reset password dialog of a user](../Screenshots/admin-reset-password.png)
+![The Require password change dialog of a user](../Screenshots/admin-require-password-change.png)
 
 ## Make a user an admin
 

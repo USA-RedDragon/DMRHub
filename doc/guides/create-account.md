@@ -45,7 +45,7 @@ DMRHub stores only a salted Argon2id hash of your password, never the password i
 2. Enter your username or callsign, and your password.
 3. Click **Log in**.
 
-If an admin set a temporary password for you, DMRHub opens **Settings** and asks you to choose your own password before you can use the other pages. See [Manage your account](account.md).
+If an admin asked you to choose a new password, DMRHub opens **Settings** and asks you to choose your own password before you can use the other pages. See [Manage your account](account.md).
 
 ## Forgot your password
 
@@ -54,7 +54,7 @@ The login page shows **Forgot your password?** only when the network can send em
 1. Click **Forgot your password?** and enter your username or callsign.
 2. DMRHub sends a reset link to the email address of your account, but only when you confirmed that address. The link works once, for 1 hour.
 
-To add or confirm an email address, see [Manage your account](account.md#email). If your account has no confirmed email address, or the network cannot send email, ask an admin to set a temporary password for you.
+To add or confirm an email address, see [Manage your account](account.md#email). If your account has no confirmed email address, or the network cannot send email, ask an admin to give you a new password.
 
 ## Next
 

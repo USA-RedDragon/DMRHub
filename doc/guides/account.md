@@ -12,7 +12,7 @@ Go to **Settings** (`<siteurl>/settings`) to change your password, set your emai
 
 DMRHub logs out your other sessions.
 
-If an admin set a temporary password for you, DMRHub shows only the Password card until you choose your own password. Until then, the other pages send you back to Settings.
+If an admin asked you to choose a new password, DMRHub shows only the Password card until you choose your own password. Until then, the other pages send you back to Settings.
 
 ## Email
 

@@ -8,7 +8,7 @@ To install DMRHub, see [Install DMRHub](install.md).
 
 An admin is a user with the **Admin?** box on in the **Users** page. An admin can:
 
-- Approve new users, suspend users, edit their callsign and username, and set a temporary password.
+- Approve new users, suspend users, edit their callsign and username, and require a password change.
 - Make, edit and delete talkgroups, and pick the admins and the net control operators (NCOs) of each talkgroup.
 - See, edit and delete every repeater, and mark a repeater as trusted.
 - Add and delete OpenBridge peers.

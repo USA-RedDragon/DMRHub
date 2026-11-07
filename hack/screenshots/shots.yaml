@@ -259,12 +259,12 @@ shots:
     route: /lastheard
     wait: Admin
     steps: ["click Admin"]
-  - name: admin-reset-password.png
+  - name: admin-require-password-change.png
     phase: main
     as: n0call
     route: /admin/users
     wait: N1CALL
-    steps: ["click Reset password", "wait Temporary password", blur]
+    steps: ["click Require password change", "wait Generate a random password", "clicktest require-generate", "wait Their current password stops working", blur]
     clip: dialog
   - name: repeaters-edit.png
     phase: main

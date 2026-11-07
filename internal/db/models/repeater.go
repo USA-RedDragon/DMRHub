@@ -101,6 +101,7 @@ type Repeater struct {
 	Connected             time.Time      `json:"connected_time" msg:"connected"`
 	PingsReceived         uint           `json:"-" gorm:"-" msg:"pings_received"`
 	LastPing              time.Time      `json:"last_ping_time" msg:"last_ping"`
+	Disconnected          *time.Time     `json:"disconnected_time" msg:"-"`
 	IP                    string         `json:"-" gorm:"-" msg:"ip"`
 	Port                  int            `json:"-" gorm:"-" msg:"port"`
 	Salt                  uint32         `json:"-" gorm:"-" msg:"salt"`

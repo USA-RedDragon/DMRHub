@@ -37,6 +37,7 @@ const (
 	ownGone          = uint(310999903)
 	otherRepeater    = uint(310999801)
 	cosysopRepeater  = uint(310999802)
+	ownClosed        = uint(310999904)
 	repeaterLat      = 30.2669
 	repeaterLon      = -97.7729
 	repeaterLocation = "Zilker Park"
@@ -69,6 +70,8 @@ func TestRepeaterPositionsShowConnectedRepeatersThatReportAPosition(t *testing.T
 	e.repeater(ownSilent, owner, 0, 0, 5*time.Second)
 	e.repeater(ownGone, owner, repeaterLat, repeaterLon, 2*models.RepeaterOnline)
 	e.repeater(otherRepeater, other, repeaterLat, repeaterLon, 5*time.Second)
+	e.repeater(ownClosed, owner, repeaterLat, repeaterLon, 5*time.Second)
+	require.NoError(t, models.SetRepeaterDisconnected(e.db, ownClosed, time.Now()))
 
 	var l apimodels.RepeaterPositionList
 	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions/repeaters", &l))

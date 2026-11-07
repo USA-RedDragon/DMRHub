@@ -93,3 +93,31 @@ func TestConnectedRepeaterPositionsListsOnlyConnectedRepeatersWithAPosition(t *t
 	assert.Equal(t, []uint{310999801}, ids(false, 3109998))
 	assert.Equal(t, []uint{310999801, 310999901}, ids(true, 3109999))
 }
+
+func TestARepeaterIsOnlineFromItsLastPingUntilItsSessionEnds(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	at := func(d time.Duration) *time.Time {
+		v := now.Add(d)
+		return &v
+	}
+	for name, tc := range map[string]struct {
+		ping         time.Duration
+		never        bool
+		disconnected *time.Time
+		online       bool
+	}{
+		"pinged":                  {ping: -5 * time.Second, online: true},
+		"never pinged":            {never: true},
+		"last ping too old":       {ping: -models.RepeaterOnline},
+		"closed after its ping":   {ping: -5 * time.Second, disconnected: at(-time.Second)},
+		"closed at its ping":      {ping: -5 * time.Second, disconnected: at(-5 * time.Second)},
+		"logged in after a close": {ping: -5 * time.Second, disconnected: at(-time.Minute), online: true},
+	} {
+		r := models.Repeater{Disconnected: tc.disconnected}
+		if !tc.never {
+			r.LastPing = now.Add(tc.ping)
+		}
+		assert.Equal(t, tc.online, r.Online(now), name)
+	}
+}

@@ -910,6 +910,7 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 		owned := s.kvOwned(ctx, o, downAt)
 		if owned {
 			s.noteDown(o, ep)
+			s.recordDisconnect(uint(o.ID), downAt)
 		}
 		deleted := owned && s.kvClient.DeleteRepeater(ctx, uint(o.ID))
 		if owned && !deleted {
@@ -922,6 +923,17 @@ func (s *Server) down(ctx context.Context, l *link, o dmrdsession.Output) {
 			s.hub.DeactivateRepeater(ctx, uint(o.ID))
 		}
 	})
+}
+
+// recordDisconnect stores downAt, when the session of the repeater id
+// ended, so that the repeater stops being Online at once.
+func (s *Server) recordDisconnect(id uint, downAt time.Time) {
+	if s.DB == nil {
+		return
+	}
+	if err := models.SetRepeaterDisconnected(s.DB, id, downAt); err != nil {
+		slog.Error("Error saving the disconnect of a repeater", "repeaterID", id, "error", err)
+	}
 }
 
 func (s *Server) noteDown(o dmrdsession.Output, ep endpoint) {

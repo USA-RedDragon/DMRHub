@@ -96,7 +96,7 @@ func (s fuzzServer) deliver(t *testing.T, data []byte) {
 	t.Helper()
 	from, ok := s.Server.Server.LocalAddr().(*net.UDPAddr)
 	require.True(t, ok)
-	s.handlePacket(s.ctx, from, data)
+	s.handlePacket(s.ctx, from, data, s.clock.Now())
 }
 
 // FuzzHandleOpenBridgePacket hands fuzzed payloads to the packet handler of a

@@ -92,6 +92,7 @@ type Server struct {
 	SocketAddress net.UDPAddr
 	Server        *net.UDPConn
 	Tracer        trace.Tracer
+	stamped       bool
 
 	DB       *gorm.DB
 	peers    *lookup.Cache[struct{}, peerTable]
@@ -318,6 +319,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 	return Server{
 		clock:         hub.Clock(),
 		Buffer:        make([]byte, dmrdsession.MaxPacket+1),
+		stamped:       servers.StampArrivals(server),
 		SocketAddress: socketAddress,
 		hub:           hub,
 		Server:        server,
@@ -383,8 +385,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go func() {
 		defer s.wg.Done()
+		oob := make([]byte, servers.RxOOBLen)
 		for {
-			length, remoteaddr, err := s.Server.ReadFromUDP(s.Buffer)
+			length, remoteaddr, at, err := servers.ReadStamped(s.Server, s.clock, s.stamped, s.Buffer, oob)
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					return
@@ -400,7 +403,7 @@ func (s *Server) Start(ctx context.Context) error {
 			data := make([]byte, length)
 			copy(data, s.Buffer[:length])
 			lane := laneOf(data)
-			if !s.ingress.Do(ctx, lane, func() { s.handlePacket(ctx, remoteaddr, data) }) {
+			if !s.ingress.Do(ctx, lane, func() { s.handlePacket(ctx, remoteaddr, data, at) }) {
 				slog.Warn("Dropping OpenBridge packet of a backed-up peer", "peerID", lane.peer, "dst", lane.dst)
 			}
 		}
@@ -647,7 +650,7 @@ func laneOf(data []byte) ingressLane {
 	return ingressLane{peer: uint(b.Data.Repeater), dst: uint(b.Data.Destination)}
 }
 
-func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte) {
+func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data []byte, at time.Time) {
 	ctx, span := otel.Tracer("DMRHub").Start(ctx, "Server.handlePacket")
 	defer span.End()
 
@@ -729,7 +732,7 @@ func (s *Server) handlePacket(ctx context.Context, remoteAddr *net.UDPAddr, data
 	}
 
 	talkgroup, stream := bridge.Data.Destination, bridge.Data.Stream
-	s.hub.RouteStream(ctx, packet, "openbridge", func(admitted bool) {
+	s.hub.RouteStreamAt(ctx, packet, "openbridge", at, func(admitted bool) {
 		if !admitted {
 			s.sendQuench(peer, b, talkgroup, stream, remoteAddr)
 			return

@@ -756,7 +756,7 @@ const handleOutsideClick = (event: MouseEvent) => {
 };
 
 const logout = () => {
-  API.get('/auth/logout')
+  API.post('/auth/logout')
     .then(() => {
       closeMenus();
       userStore.loggedIn = false;

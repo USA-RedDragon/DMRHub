@@ -74,7 +74,7 @@ describe('Auth Flow', () => {
 
   it('logs out and redirects to login', () => {
     cy.login();
-    cy.intercept('GET', '/api/v1/auth/logout', {
+    cy.intercept('POST', '/api/v1/auth/logout', {
       statusCode: 200,
       body: { message: 'Logged out' },
     });

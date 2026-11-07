@@ -18,7 +18,7 @@
 // The source code is available at <https://github.com/USA-RedDragon/DMRHub>
 
 const repeater = {
-  id: 310999901,
+  id: 300999901,
   callsign: 'N0CALL',
   latitude: 30.2669,
   longitude: -97.7729,
@@ -51,14 +51,14 @@ describe('Positions of repeaters', () => {
     cy.wait(['@getPositions', '@getRepeaters']);
 
     cy.get('[data-test="repeaters"]').should('contain.text', 'Repeaters');
-    cy.get('[data-test="repeater-310999901"]')
-      .should('contain.text', 'N0CALL · 310999901')
+    cy.get('[data-test="repeater-300999901"]')
+      .should('contain.text', 'N0CALL · 300999901')
       .and('contain.text', '30.2669, −97.7729')
       .and('contain.text', 'Zilker Park · Test repeater')
       .and('contain.text', '2 hours ago');
-    cy.get('[data-test="repeater-310999901"] a').should('have.attr', 'href', '/repeaters/310999901');
-    cy.get('[data-test="repeater-310999901"]').click();
-    cy.get('[data-test="repeater-310999901"]').should('have.class', 'bg-muted/50');
+    cy.get('[data-test="repeater-300999901"] a').should('have.attr', 'href', '/repeaters/300999901');
+    cy.get('[data-test="repeater-300999901"]').click();
+    cy.get('[data-test="repeater-300999901"]').should('have.class', 'bg-muted/50');
   });
 
   it('shows no repeaters when none reports a position', () => {
@@ -110,7 +110,7 @@ function emit(path: string, frame: unknown) {
 }
 
 describe('Positions blips', () => {
-  const radio = 3109999;
+  const radio = 3009999;
   const position = {
     radio_id: radio,
     shared: false,
@@ -128,7 +128,7 @@ describe('Positions blips', () => {
     service_id: 5057,
   };
   const call = { id: 41, active: true, kind: 'voice', source_id: radio, repeater_id: repeater.id };
-  const far = { ...repeater, id: 310999903, callsign: 'N3CALL', latitude: 30.2500, longitude: -97.7475, location: 'South Congress', talkgroups: [3100] };
+  const far = { ...repeater, id: 300999903, callsign: 'N3CALL', latitude: 30.2500, longitude: -97.7475, location: 'South Congress', talkgroups: [3100] };
 
   beforeEach(() => {
     cy.stubCommonEndpoints();
@@ -169,7 +169,7 @@ describe('Positions blips', () => {
   });
 
   it('ignores a call from a radio that is not on the map', () => {
-    emit('/ws/calls', { ...call, id: 43, source_id: 3108888, repeater_id: 310888801 });
+    emit('/ws/calls', { ...call, id: 43, source_id: 3008888, repeater_id: 300888801 });
     emit('/ws/calls', { ...call, id: 44 });
     cy.get(`[data-test="radio-blip-${radio}"]`).should('exist');
     cy.get('[data-test^="radio-blip-"]').should('have.length', 1);

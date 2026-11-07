@@ -39,7 +39,7 @@ import (
 )
 
 // capturedCall returns the call of DMRGateway in
-// ../../internal/dmr/testdata/dmrgateway-master.txt, 3109999 to talkgroup
+// ../../internal/dmr/testdata/dmrgateway-master.txt, 3009999 to talkgroup
 // 91 in one superframe, as bursts sent to the parrot at 91 as a private
 // call.
 func capturedCall(t *testing.T) []*pluginv1.Burst {
@@ -108,7 +108,7 @@ func TestParrotPlaysTheCallBack(t *testing.T) {
 		t.Fatal("reply has the stream of the call")
 	}
 	for i, b := range reply {
-		if b.GetSource() != 91 || b.GetDestination() != 3109999 || b.GetGroupCall() || b.GetStreamId() != stream || b.GetSequence() != uint32(i) || b.GetSlot() != call[0].GetSlot() {
+		if b.GetSource() != 91 || b.GetDestination() != 3009999 || b.GetGroupCall() || b.GetStreamId() != stream || b.GetSequence() != uint32(i) || b.GetSlot() != call[0].GetSlot() {
 			t.Fatalf("burst %d: %v", i, b)
 		}
 	}
@@ -126,8 +126,8 @@ func TestParrotPlaysTheCallBack(t *testing.T) {
 		}
 		lc := pdu.LCBytes(cw[:9])
 		group, target, source, ok := lc.Call()
-		if !ok || group || target != 3109999 || source != 91 {
-			t.Fatalf("burst %d: LC %x, want a private call from 91 to 3109999", i, cw)
+		if !ok || group || target != 3009999 || source != 91 {
+			t.Fatalf("burst %d: LC %x, want a private call from 91 to 3009999", i, cw)
 		}
 	}
 	for i := 1; i < 7; i++ {
@@ -208,8 +208,8 @@ func TestParrotAnswersAGroupCallWithAPrivateCall(t *testing.T) {
 	reply := sent()
 	require.Len(t, reply, 8)
 	for i, b := range reply {
-		if b.GetGroupCall() || b.GetSource() != 91 || b.GetDestination() != 3109999 {
-			t.Fatalf("burst %d: %v, want a private call from 91 to 3109999", i, b)
+		if b.GetGroupCall() || b.GetSource() != 91 || b.GetDestination() != 3009999 {
+			t.Fatalf("burst %d: %v, want a private call from 91 to 3009999", i, b)
 		}
 	}
 }
@@ -218,7 +218,7 @@ func TestParrotIgnoresData(t *testing.T) {
 	t.Parallel()
 	p, sent := testParrot()
 	call := capturedCall(t)
-	csbk := &pluginv1.Burst{Source: 3109999, Destination: 91, Slot: 1, StreamId: 7, FrameType: pluginv1.FrameType_FRAME_TYPE_DATA_SYNC, DataTypeOrVoiceSequence: uint32(enums.DataTypeCSBK), Payload: make([]byte, 33)}
+	csbk := &pluginv1.Burst{Source: 3009999, Destination: 91, Slot: 1, StreamId: 7, FrameType: pluginv1.FrameType_FRAME_TYPE_DATA_SYNC, DataTypeOrVoiceSequence: uint32(enums.DataTypeCSBK), Payload: make([]byte, 33)}
 	p.Handle(csbk)
 	p.Handle(call[len(call)-1])
 	if got := sent(); len(got) != 0 {

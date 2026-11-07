@@ -57,7 +57,7 @@ func (l rtpLog) take(n int) []uint16 {
 func TestAMoveRightAfterALateHandoverKeepsTheRTPSequence(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		const id, first, n = uint32(311860), 36, 6
+		const id, first, n = uint32(300860), 36, 6
 		fromB, fromC := rtpLog{seqs: make(chan uint16, n)}, rtpLog{seqs: make(chan uint16, n)}
 		b := &IPSCServer{clock: clock.Real(), pacer: newPacer(clock.Real(), fromB.send, nil), localID: 1}
 		t.Cleanup(b.pacer.stop)

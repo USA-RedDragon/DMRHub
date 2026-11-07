@@ -32,10 +32,10 @@ import (
 )
 
 // IPSC packets from a MOTOTRBO repeater: a group voice header and terminator
-// for TG 2 from 3120101.
+// for TG 2 from 3001201.
 const (
-	captureGroupHeader = "800004c313052f9be5000002020000430e0080dd32fe69dc34dd000000000100000a800a00600000000000022f9be50bbebf0011705d"
-	captureGroupTerm   = "800004c313052f9be5000002020000430e00805d332c69dc8b1d000000000002000a800a00600000000000022f9be504b1b000107011"
+	captureGroupHeader = "8000049433052dcb71000002020000430e0080dd32fe69dc34dd000000000100000a800a00600000000000022dcb7172c1450011705d"
+	captureGroupTerm   = "8000049433052dcb71000002020000430e00805d332c69dc8b1d000000000002000a800a00600000000000022dcb717dce4a00107011"
 )
 
 func mustHex(t *testing.T, s string) []byte {
@@ -70,8 +70,8 @@ func TestFullLCCodewordCaptureVectors(t *testing.T) {
 		header string
 		term   string
 	}{
-		{name: "group", lc: "0000000000022f9be5", header: "0bbebf", term: "04b1b0"},
-		{name: "private", lc: "0300002f9be52f9f67", header: "783e23", term: "77312c"},
+		{name: "group", lc: "0000000000022dcb71", header: "72c145", term: "7dce4a"},
+		{name: "private", lc: "0300002dcb712dcbd3", header: "c2e443", term: "cdeb4c"},
 	}
 	for _, tc := range tests {
 		var cw [12]byte
@@ -101,8 +101,8 @@ func TestTranslateToIPSCSynthesizedLCCodeword(t *testing.T) {
 		dt       enums.DataType
 		want     string
 	}{
-		{group: true, src: 0x2F9BE5, dst: 2, dt: enums.DataTypeVoiceLCHeader, want: "0000200000022f9be50f7631"},
-		{group: true, src: 0x2F9BE5, dst: 2, dt: enums.DataTypeTerminatorWithLC, want: "0000200000022f9be500793e"},
+		{group: true, src: 0x2DCB71, dst: 2, dt: enums.DataTypeVoiceLCHeader, want: "0000200000022dcb717609cb"},
+		{group: true, src: 0x2DCB71, dst: 2, dt: enums.DataTypeTerminatorWithLC, want: "0000200000022dcb717906c4"},
 		{group: false, src: 100, dst: 200, dt: enums.DataTypeVoiceLCHeader, want: "0300200000c8000064fa3725"},
 		{group: false, src: 100, dst: 200, dt: enums.DataTypeTerminatorWithLC, want: "0300200000c8000064f5382a"},
 	}
@@ -134,17 +134,17 @@ func decodeBPTCPayload(b [33]byte) ([12]byte, bool) {
 }
 
 // TestTranslateToIPSCDataHeaderVector checks the IPSC payload of an
-// unconfirmed data header from 3109999 to group 9 with 2 blocks to follow.
+// unconfirmed data header from 3009999 to group 9 with 2 blocks to follow.
 // dmrgo v0.0.1 BPTC(196,96) read rows 1-8 one column late and sent
-// 824a0000125ee8df04400309 for this burst.
+// 824a0000125bcb9f04419ae7 for this burst.
 func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
 	var burst [33]byte
-	copy(burst[:], mustHex(t, "0d808f50061720783104a2e15dadff57d75df5de6a8c1912214a614d47490c82cd"))
+	copy(burst[:], mustHex(t, "0de98db00e1729e81664ae015dadff57d75df5de6a3809aa21ea470dcbc98d81f9"))
 	pkt := models.Packet{
 		Signature:   "DMRD",
-		Src:         3109999,
+		Src:         3009999,
 		Dst:         9,
 		GroupCall:   true,
 		FrameType:   dmrconst.FrameDataSync,
@@ -156,12 +156,12 @@ func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 packet, got %d", len(out))
 	}
-	if got := hex.EncodeToString(out[0][38:50]); got != "82a50000092f746f82000184" {
-		t.Fatalf("header payload %s, want 82a50000092f746f82000184", got)
+	if got := hex.EncodeToString(out[0][38:50]); got != "82a50000092dedcf8200cd73" {
+		t.Fatalf("header payload %s, want 82a50000092dedcf8200cd73", got)
 	}
 	h := pdu.DataHeaderBytes(out[0][38:50])
 	target, source, ok := h.Addresses()
-	if !h.CRCOK() || !ok || target != 9 || source != 3109999 {
+	if !h.CRCOK() || !ok || target != 9 || source != 3009999 {
 		t.Fatalf("header CRC ok=%v addresses ok=%v target=%d source=%d", h.CRCOK(), ok, target, source)
 	}
 	if bf := out[0][46] & 0x7F; bf != 2 {
@@ -184,7 +184,7 @@ func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 func voiceLCPacket(lc [12]byte, dataType enums.DataType) models.Packet {
 	return models.Packet{
 		Signature:   "DMRD",
-		Src:         0x2F9BE5,
+		Src:         0x2DCB71,
 		Dst:         2,
 		Repeater:    3001,
 		GroupCall:   true,
@@ -224,7 +224,7 @@ func TestTranslateToIPSCKeepsServiceOptions(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
 	// Emergency + priority 3 with FID 0x10: a synthesized LC would lose these.
-	lc := lc12(t, "001083000002"+"2f9be5"+"000000")
+	lc := lc12(t, "001083000002"+"2dcb71"+"000000")
 	seal(t, &lc, enums.DataTypeVoiceLCHeader)
 	out := tr.TranslateToIPSC(voiceLCPacket(lc, enums.DataTypeVoiceLCHeader))
 	if !bytes.Equal(out[0][38:50], lc[:]) {
@@ -234,7 +234,7 @@ func TestTranslateToIPSCKeepsServiceOptions(t *testing.T) {
 
 func TestTranslateToIPSCSynthesizesLC(t *testing.T) {
 	t.Parallel()
-	good := lc12(t, "0000000000022f9be50bbebf")
+	good := lc12(t, "0000000000022dcb7172c145")
 	badParity := good
 	badParity[11] ^= 0x01
 	tests := []struct {
@@ -246,7 +246,7 @@ func TestTranslateToIPSCSynthesizesLC(t *testing.T) {
 		{name: "bad parity", lc: badParity},
 		// The parrot swaps src and dst without touching the burst.
 		{name: "routing changed", lc: good, pkt: func(p *models.Packet) {
-			p.Src, p.Dst, p.GroupCall = 2, 0x2F9BE5, false
+			p.Src, p.Dst, p.GroupCall = 2, 0x2DCB71, false
 		}},
 	}
 	for _, tc := range tests {
@@ -335,7 +335,7 @@ func TestTranslateToIPSCDataCarriesPayload(t *testing.T) {
 		pkt := voiceLCPacket(payload, dt)
 		dmrData := pkt.DMRData
 		// A voice LC cached earlier in the stream must not leak into data packets.
-		tr.TranslateToIPSC(voiceLCPacket(lc12(t, "0000000000022f9be50bbebf"), enums.DataTypeVoiceLCHeader))
+		tr.TranslateToIPSC(voiceLCPacket(lc12(t, "0000000000022dcb7172c145"), enums.DataTypeVoiceLCHeader))
 		out := tr.TranslateToIPSC(pkt)
 		if len(out) != 1 {
 			t.Fatalf("dtype %d: expected 1 packet, got %d", dt, len(out))

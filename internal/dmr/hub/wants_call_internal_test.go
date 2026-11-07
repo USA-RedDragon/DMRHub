@@ -50,18 +50,18 @@ func TestWantsCallKeepsPrivateCallsPrivate(t *testing.T) {
 func TestThroughRepeaterSendsTheCallsOfSysopRepeaters(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		user := &models.User{ID: 3109999, Repeaters: []models.Repeater{{
-			RepeaterConfiguration: models.RepeaterConfiguration{ID: 310999901},
-			OwnerID:               3109999,
+		user := &models.User{ID: 3009999, Repeaters: []models.Repeater{{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: 300999901},
+			OwnerID:               3009999,
 		}}}
 		private := func(ingress uint) *models.Call {
-			return &models.Call{GroupCall: false, SourceID: 3109998, DestinationID: 3109997, IngressID: ingress}
+			return &models.Call{GroupCall: false, SourceID: 3009998, DestinationID: 3009997, IngressID: ingress}
 		}
 
-		assert.False(t, wantsCall(user, private(310999901)), "a private call of others is not the user's own")
-		assert.True(t, throughRepeater(user, private(310999901), nil), "the call came in through the user's repeater")
-		assert.True(t, throughRepeater(user, private(310999902), []uint{310999902}), "the call came in through a co-sysop repeater")
-		assert.False(t, throughRepeater(user, private(310999903), []uint{310999902}), "the call came in through another repeater")
+		assert.False(t, wantsCall(user, private(300999901)), "a private call of others is not the user's own")
+		assert.True(t, throughRepeater(user, private(300999901), nil), "the call came in through the user's repeater")
+		assert.True(t, throughRepeater(user, private(300999902), []uint{300999902}), "the call came in through a co-sysop repeater")
+		assert.False(t, throughRepeater(user, private(300999903), []uint{300999902}), "the call came in through another repeater")
 		assert.False(t, throughRepeater(user, private(0), []uint{0}), "the call has no ingress repeater")
 	})
 }

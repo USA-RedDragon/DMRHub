@@ -158,7 +158,7 @@ func TestPrecedence(t *testing.T) {
 			})
 
 			l := boot(t, database, deployment{
-				file:  validDeployment + "dmr:\n  ipsc:\n    network-id: 222222\n  openbridge:\n    server-id: 2222\n  retention:\n    messages: 22\n",
+				file:  validDeployment + "dmr:\n  ipsc:\n    network-id: 300222\n  openbridge:\n    server-id: 2222\n  retention:\n    messages: 22\n",
 				env:   map[string]string{"DMR_OPENBRIDGE_SERVER_ID": "3333", "DMR_RETENTION_MESSAGES": "33"},
 				flags: []string{"--dmr.retention.messages=44"},
 			})
@@ -166,7 +166,7 @@ func TestPrecedence(t *testing.T) {
 			assert.Equal(t, "Saved", got.NetworkName, "saved over the default")
 			assert.Equal(t, 1, got.DMR.Retention.Bursts, "saved over the default")
 			assert.Zero(t, got.DMR.Retention.Transmissions, "the default without a save")
-			assert.Equal(t, uint32(222222), got.DMR.IPSC.NetworkID, "the file over the saved value")
+			assert.Equal(t, uint32(300222), got.DMR.IPSC.NetworkID, "the file over the saved value")
 			assert.Equal(t, uint32(3333), got.DMR.OpenBridge.ServerID, "the environment over the file")
 			assert.Equal(t, 44, got.DMR.Retention.Messages, "a flag over the environment")
 
@@ -197,7 +197,7 @@ func TestStatusNamesTheOrigin(t *testing.T) {
 	t.Parallel()
 	database := newDB(t, testutils.SQLiteMemoryBackend())
 	l := boot(t, database, deployment{
-		file:  validDeployment + "dmr:\n  ipsc:\n    network-id: 222222\n",
+		file:  validDeployment + "dmr:\n  ipsc:\n    network-id: 300222\n",
 		env:   map[string]string{"DMR_OPENBRIDGE_SERVER_ID": "3333", "DMR_RETENTION_MESSAGES": "33"},
 		flags: []string{"--dmr.retention.messages=44", "--dmr.public-address=dmr.example.org"},
 	})
@@ -304,7 +304,7 @@ func TestRemovingALockBringsBackTheSavedValue(t *testing.T) {
 func TestSaveRefusesWhatSetupDoesNotChange(t *testing.T) {
 	t.Parallel()
 	database := newDB(t, testutils.SQLiteMemoryBackend())
-	l := boot(t, database, deployment{file: validDeployment + "dmr:\n  ipsc:\n    network-id: 222222\n"})
+	l := boot(t, database, deployment{file: validDeployment + "dmr:\n  ipsc:\n    network-id: 300222\n"})
 	cases := []struct {
 		field  string
 		want   error

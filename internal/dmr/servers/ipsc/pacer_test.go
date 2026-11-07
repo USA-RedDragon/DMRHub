@@ -62,7 +62,7 @@ func TestPacerSpacesASlotAtTheBurstTime(t *testing.T) {
 		p := newPacer(clock.Real(), log.send, nil)
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		start := time.Now()
 		for range 6 {
 			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
@@ -86,12 +86,12 @@ func TestPacerNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 		p := newPacer(clock.Real(), log.send, nil)
 		defer p.stop()
 
-		busy := slotKey{peer: 311860, slot: false}
+		busy := slotKey{peer: 300860, slot: false}
 		for range 20 {
 			p.enqueue(busy, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 		}
 		<-log.got
-		for _, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
+		for _, k := range []slotKey{{peer: 300860, slot: true}, {peer: 990361, slot: false}} {
 			start := time.Now()
 			p.enqueue(k, 2, []byte{2}, false, models.Packet{}, nil, time.Time{})
 			for got := range log.got {
@@ -111,7 +111,7 @@ func TestPacerDoesNotFallBehindALiveStream(t *testing.T) {
 		p := newPacer(clock.Real(), log.send, nil)
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		var last time.Time
 		for range 20 {
 			time.Sleep(burstTime)
@@ -148,7 +148,7 @@ func TestPacerKeepsTheGridAfterALateBurst(t *testing.T) {
 		}, nil)
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		for range n {
 			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
 		}
@@ -178,7 +178,7 @@ func TestPacerQueuesEveryBurst(t *testing.T) {
 		defer p.stop()
 		defer close(release)
 
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		const n = 5000
 		for range n {
 			p.enqueue(k, 1, []byte{1}, false, models.Packet{}, nil, time.Time{})
@@ -208,7 +208,7 @@ func TestPacerQueuesASecondCallBehindTheFirst(t *testing.T) {
 		p := newPacer(clock.Real(), log.send, nil)
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
 		p.enqueue(k, 2, []byte{'B'}, false, models.Packet{}, nil, time.Time{})
 		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
@@ -230,7 +230,7 @@ func TestPacerStartsTheNextCallAfterALostTerminator(t *testing.T) {
 		p := newPacer(clock.Real(), log.send, nil)
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{}, nil, time.Time{})
 		<-log.got
 		start := time.Now()
@@ -258,7 +258,7 @@ func TestPacerDiscardsACallThatWaitedTooLong(t *testing.T) {
 		})
 		defer p.stop()
 
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		p.enqueue(k, 1, []byte{'a'}, false, models.Packet{StreamID: 1}, nil, time.Time{})
 		<-log.got
 		p.enqueue(k, 2, []byte{'B'}, false, models.Packet{StreamID: 2}, nil, time.Time{})

@@ -29,9 +29,9 @@ import {
   type TxFrame,
 } from '@/lib/txActivity';
 
-const RADIO = 3109999;
-const OTHER = 3109998;
-const REPEATER = 310999901;
+const RADIO = 3009999;
+const OTHER = 3009998;
+const REPEATER = 300999901;
 const radios = new Set([RADIO, OTHER]);
 const repeaters = new Set([REPEATER]);
 
@@ -139,11 +139,11 @@ describe('TxActivity', () => {
 
   it('blips only the radios and repeaters on the map', () => {
     const a = new TxActivity();
-    a.call(voice({ source_id: 3108888, repeater_id: 310888801 }), 1000);
+    a.call(voice({ source_id: 3008888, repeater_id: 300888801 }), 1000);
     expect(a.radios(radios, 1000)).toEqual({});
     expect(a.repeaters(repeaters, 1000)).toEqual({});
 
-    a.call(voice({ id: 10, source_id: 3108888 }), 1000);
+    a.call(voice({ id: 10, source_id: 3008888 }), 1000);
     expect(a.radios(radios, 1000)).toEqual({});
     expect(a.repeaters(repeaters, 1000)).toEqual({ [REPEATER]: 'loop' });
     expect(a.radios(new Set(), 1000)).toEqual({});

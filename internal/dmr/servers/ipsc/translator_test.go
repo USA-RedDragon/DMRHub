@@ -433,10 +433,10 @@ func TestTranslateToMMDVMKeepsARawBlockAfterTheEnd(t *testing.T) {
 	tr := newTestTranslator(t)
 	var streams []uint
 	for _, h := range []string{
-		"840004ce2e022f746f2f746f0100002c290080dd57932c935972000000000640000a800a006043a22f746f2f746f810029e300764646",
-		"840004ce2e022f746f2f746f0100002c2940805e57942c935b52000000000642000d804a006099a202000c7c2a20f62895890066c5a6f20fc616464d",
-		"840004ce2e022f746f2f746f0100002c2940805e57952c935d320000000013000000",
-		"840004ce2e022f746f2f746f0100002c2900805d57962c935f12000000001f400011800a00c42e3c2a3cb259b259198542ed82efea72e2fdcb784bf8fae4f000006c4643",
+		"840004977e022dedcf2dedcf0100002c290080dd57932c935972000000000640000a800a006043a22dedcf2dedcf81003cd400764646",
+		"840004977e022dedcf2dedcf0100002c2940805e57942c935b52000000000642000d804a006099a202000c7c2a20f62895890066c5a6f20fc616464d",
+		"840004977e022dedcf2dedcf0100002c2940805e57952c935d320000000013000000",
+		"840004977e022dedcf2dedcf0100002c2900805d57962c935f12000000001f400011800a00c42e3c2a3cb259b259198542ed82efea72e2fdcb784bf8fae4f000006c4643",
 	} {
 		p, err := hex.DecodeString(h)
 		if err != nil {
@@ -1027,7 +1027,7 @@ func FuzzTranslateToIPSC(f *testing.F) {
 	f.Fuzz(func(t *testing.T, sig string, seq, src, dst, repeater uint, slot, groupCall bool,
 		frameType, dtypeOrVSeq, streamID uint, d0, d1, d2 byte) {
 		t.Parallel()
-		tr := NewIPSCTranslator(311860)
+		tr := NewIPSCTranslator(300860)
 		var dmrData [33]byte
 		dmrData[0] = d0
 		dmrData[1] = d1
@@ -1053,7 +1053,7 @@ func FuzzTranslateToMMDVM(f *testing.F) {
 	// Build a seed IPSC voice header packet (54 bytes)
 	seed := make([]byte, 54)
 	seed[0] = 0x80 // GROUP_VOICE
-	binary.BigEndian.PutUint32(seed[1:5], 311860)
+	binary.BigEndian.PutUint32(seed[1:5], 300860)
 	// src (bytes 6-8)
 	seed[6] = 0x0F
 	seed[7] = 0x42
@@ -1073,7 +1073,7 @@ func FuzzTranslateToMMDVM(f *testing.F) {
 	// Voice burst (57 bytes)
 	burst := make([]byte, 57)
 	burst[0] = 0x80
-	binary.BigEndian.PutUint32(burst[1:5], 311860)
+	binary.BigEndian.PutUint32(burst[1:5], 300860)
 	burst[6] = 0x0F
 	burst[7] = 0x42
 	burst[8] = 0x41
@@ -1093,7 +1093,7 @@ func FuzzTranslateToMMDVM(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, packetType byte, data []byte) {
 		t.Parallel()
-		tr := NewIPSCTranslator(311860)
+		tr := NewIPSCTranslator(300860)
 		_ = tr.TranslateToMMDVM(packetType, data)
 	})
 }
@@ -1106,7 +1106,7 @@ func FuzzTranslatorRoundTrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, seq, src, dst, repeater uint,
 		slot, groupCall bool, frameType, dtypeOrVSeq, streamID uint) {
 		t.Parallel()
-		tr := NewIPSCTranslator(311860)
+		tr := NewIPSCTranslator(300860)
 		pkt := models.Packet{
 			Signature:   "DMRD",
 			Seq:         seq,

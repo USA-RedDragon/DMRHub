@@ -49,7 +49,7 @@ func TestHandOverEveryBurstOfASlowPeerMove(t *testing.T) {
 			keep, perSlot := hub.HandoverHistory(25 * time.Second)
 			return keep, perSlot, true
 		}
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		since := time.Now().Add(hub.MoveSlack)
 		time.Sleep(hub.MoveSlack + time.Millisecond)
 		const bursts = 100

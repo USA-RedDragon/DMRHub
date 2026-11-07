@@ -54,7 +54,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeer(t *testing.T) {
 				t.Parallel()
 				synctest.Test(t, func(t *testing.T) {
 					p, clock, log, _ := newHangPacer(t)
-					k := slotKey{peer: 311860, slot: true}
+					k := slotKey{peer: 300860, slot: true}
 					hearVoiceCall(p, k, true)
 					end := clock.Now()
 					clock.advance(after)
@@ -77,7 +77,7 @@ func TestPacerSendsDataAfterTheHangOfThePeer(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, clock, log, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		hearVoiceCall(p, k, true)
 		clock.advance(callHangHold)
 		p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
@@ -93,7 +93,7 @@ func TestPacerHoldsDataAfterAVoiceCallFromThePeerWithoutItsTerminator(t *testing
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, clock, log, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		hearVoiceCall(p, k, false)
 		last := clock.Now()
 		clock.advance(time.Second)
@@ -136,11 +136,11 @@ func TestPacerHangOfThePeerHoldsOnlyDataOnItsSlot(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, _, log, _ := newHangPacer(t)
-		held := slotKey{peer: 311860, slot: false}
+		held := slotKey{peer: 300860, slot: false}
 		hearVoiceCall(p, held, true)
 		p.enqueue(held, 2, []byte{'v'}, false, voiceBurst(2), nil, time.Time{})
 		assert.Equal(t, held, log.next(t, 100*time.Millisecond).key)
-		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
+		for i, k := range []slotKey{{peer: 300860, slot: true}, {peer: 990361, slot: false}} {
 			stream := uint(10 + i)
 			p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil, time.Time{})
 			assert.Equal(t, k, log.next(t, 100*time.Millisecond).key)
@@ -155,7 +155,7 @@ func TestHandOverCarriesTheCallHangOfThePeer(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, clock, _, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		hearVoiceCall(p, k, true)
 		clock.advance(time.Second)
 		_, _, hangs := p.handOver(k.peer, time.Now())

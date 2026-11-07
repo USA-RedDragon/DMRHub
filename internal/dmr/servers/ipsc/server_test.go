@@ -69,7 +69,7 @@ func await[T any](t *testing.T, ch <-chan T, what string) T {
 }
 
 func testConfig() *config.Config {
-	return &config.Config{DMR: config.DMR{IPSC: config.IPSC{NetworkID: 311860}}}
+	return &config.Config{DMR: config.DMR{IPSC: config.IPSC{NetworkID: 300860}}}
 }
 
 func mustDecodeHex(t *testing.T, s string) []byte {
@@ -495,7 +495,7 @@ func TestSendToRegisteredPeers(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 
-	data := voicePacket(311860)
+	data := voicePacket(300860)
 	s.sendPacketInternal(data)
 	for _, c := range []*net.UDPConn{c1, c2} {
 		got := readUDP(t, c)
@@ -518,7 +518,7 @@ func TestSendsAreNotHeld(t *testing.T) {
 	register(t, s, c, a, 101)
 
 	const n = 40
-	data := voicePacket(311860)
+	data := voicePacket(300860)
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
 		for range n {
@@ -634,7 +634,7 @@ func TestPeersWithOwnKeys(t *testing.T) {
 	}
 	expectNoUDP(t, cB)
 
-	data := voicePacket(311860)
+	data := voicePacket(300860)
 	s.sendPacketInternal(data)
 	for _, p := range []struct {
 		c   *net.UDPConn

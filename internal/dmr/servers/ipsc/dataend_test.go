@@ -38,7 +38,7 @@ import (
 const (
 	smsSource = 3003501
 	smsTarget = 3003502
-	smsPeer   = 311860
+	smsPeer   = 300860
 )
 
 func smsBursts(t *testing.T, body string) []layer2.RawBurst {

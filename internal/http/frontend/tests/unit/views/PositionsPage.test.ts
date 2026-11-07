@@ -85,7 +85,7 @@ const pos = (radio: number, minutesAgo: number, over: Partial<Position> = {}): P
 const shared = pos(3002198, 60, { shared: true, callsign: 'N8CALL' });
 
 const repeater = {
-  id: 310999901,
+  id: 300999901,
   callsign: 'N0CALL',
   latitude: 30.2669,
   longitude: -97.7729,
@@ -221,17 +221,17 @@ describe('PositionsPage', () => {
   it('lists the connected repeaters that report a position and pins them on the map', async () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
-    const row = wrapper.find('[data-test="repeater-310999901"]');
-    expect(row.text()).toContain('N0CALL · 310999901');
+    const row = wrapper.find('[data-test="repeater-300999901"]');
+    expect(row.text()).toContain('N0CALL · 300999901');
     expect(row.text()).toContain('30.2669, −97.7729');
     expect(row.text()).toContain('Zilker Park · Test repeater');
     expect(row.text()).toContain('2 hours ago');
-    expect(row.find('a').attributes('href')).toBe('/repeaters/310999901');
+    expect(row.find('a').attributes('href')).toBe('/repeaters/300999901');
     const map = wrapper.findComponent({ name: 'PositionsMap' });
     const pins = map.props('repeaters') as { id: number; title: string; latitude: number; longitude: number }[];
-    expect(pins.map((p) => [p.id, p.title, p.latitude, p.longitude])).toEqual([[310999901, 'N0CALL · 310999901', 30.2669, -97.7729]]);
+    expect(pins.map((p) => [p.id, p.title, p.latitude, p.longitude])).toEqual([[300999901, 'N0CALL · 300999901', 30.2669, -97.7729]]);
     await row.trigger('click');
-    expect(map.props('selectedRepeater')).toBe(310999901);
+    expect(map.props('selectedRepeater')).toBe(300999901);
     expect(map.props('selected')).toBeNull();
     await wrapper.find('[data-test="radio-3002068"]').trigger('click');
     expect(map.props('selectedRepeater')).toBeNull();
@@ -264,14 +264,14 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    const call = { id: 11, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901 };
+    const call = { id: 11, active: true, kind: 'voice', source_id: 3002068, repeater_id: 300999901 };
     send('/calls', call);
     send('/lastheard', call);
     await flushPromises();
     expect(map.props('blipRadios')).toEqual({ 3002068: 'loop' });
-    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+    expect(map.props('blipRepeaters')).toEqual({ 300999901: 'loop' });
     expect(wrapper.find('[data-test="radio-blip-3002068"]').classes()).toContain('tx-blip--loop');
-    expect(wrapper.find('[data-test="repeater-blip-310999901"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="repeater-blip-300999901"]').exists()).toBe(true);
 
     send('/lastheard', { ...call, active: false });
     await flushPromises();
@@ -285,7 +285,7 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/calls', { id: 12, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901 });
+    send('/calls', { id: 12, active: true, kind: 'voice', source_id: 3002068, repeater_id: 300999901 });
     await flushPromises();
     expect(map.props('blipRadios')).toEqual({ 3002068: 'loop' });
     await vi.advanceTimersByTimeAsync(4999);
@@ -300,10 +300,10 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/messages', { kind: 'position', position: pos(3002068, 0, { repeater_id: 310999901 }) });
+    send('/messages', { kind: 'position', position: pos(3002068, 0, { repeater_id: 300999901 }) });
     await flushPromises();
     expect(map.props('blipRadios')).toEqual({ 3002068: 'burst' });
-    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'burst' });
+    expect(map.props('blipRepeaters')).toEqual({ 300999901: 'burst' });
     await vi.advanceTimersByTimeAsync(1000);
     expect(map.props('blipRadios')).toEqual({});
   });
@@ -312,11 +312,11 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/calls', { id: 13, active: true, kind: 'voice', source_id: 3002099, repeater_id: 310999901 });
-    send('/lastheard', { id: 14, active: true, kind: 'voice', source_id: 3108888, repeater_id: 310888801 });
+    send('/calls', { id: 13, active: true, kind: 'voice', source_id: 3002099, repeater_id: 300999901 });
+    send('/lastheard', { id: 14, active: true, kind: 'voice', source_id: 3008888, repeater_id: 300888801 });
     await flushPromises();
     expect(map.props('blipRadios')).toEqual({});
-    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+    expect(map.props('blipRepeaters')).toEqual({ 300999901: 'loop' });
 
     send('/calls', { id: 15, active: true, kind: 'voice', source_id: 3002198, repeater_id: 0 });
     await flushPromises();
@@ -329,7 +329,7 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    const call = { id: 21, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 3002198 };
+    const call = { id: 21, active: true, kind: 'voice', source_id: 3002068, repeater_id: 300999901, group_call: false, is_to_user: true, destination_id: 3002198 };
     send('/calls', call);
     await flushPromises();
     const lines = map.props('lines') as { key: string; from: { id: number }; to: { id: number }; data: boolean }[];
@@ -340,15 +340,15 @@ describe('PositionsPage', () => {
   });
 
   it('draws a talkgroup call to the other repeaters that carry the talkgroup', async () => {
-    const far = { ...repeater, id: 310999903, longitude: -97.74, talkgroups: [3100] };
+    const far = { ...repeater, id: 300999903, longitude: -97.74, talkgroups: [3100] };
     serve(true, [{ ...repeater, talkgroups: [3100] }, far]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/lastheard', { id: 22, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901, group_call: true, is_to_talkgroup: true, to_talkgroup: { id: 3100 }, destination_id: 3100 });
+    send('/lastheard', { id: 22, active: true, kind: 'voice', source_id: 3002068, repeater_id: 300999901, group_call: true, is_to_talkgroup: true, to_talkgroup: { id: 3100 }, destination_id: 3100 });
     await flushPromises();
     const lines = map.props('lines') as { from: { kind: string; id: number }; to: { kind: string; id: number } }[];
-    expect(lines.map((l) => [l.from.kind, l.from.id, l.to.kind, l.to.id])).toEqual([['radio', 3002068, 'repeater', 310999903]]);
-    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+    expect(lines.map((l) => [l.from.kind, l.from.id, l.to.kind, l.to.id])).toEqual([['radio', 3002068, 'repeater', 300999903]]);
+    expect(map.props('blipRepeaters')).toEqual({ 300999901: 'loop' });
   });
 
   it('sends the dot of a data call to the receiver, rings it, then drops the line', async () => {
@@ -356,7 +356,7 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/calls', { id: 23, active: false, kind: 'data', sub_kind: 'sms', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 3002198 });
+    send('/calls', { id: 23, active: false, kind: 'data', sub_kind: 'sms', source_id: 3002068, repeater_id: 300999901, group_call: false, is_to_user: true, destination_id: 3002198 });
     await flushPromises();
     const lines = () => (map.props('lines') as { data: boolean; to: { id: number } }[]).map((l) => [l.to.id, l.data]);
     expect(lines()).toEqual([[3002198, true]]);
@@ -373,7 +373,7 @@ describe('PositionsPage', () => {
     serve(true, [repeater]);
     const wrapper = await mountPage();
     const map = wrapper.findComponent({ name: 'PositionsMap' });
-    send('/calls', { id: 24, active: false, kind: 'data', sub_kind: 'lrrp', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 5057 });
+    send('/calls', { id: 24, active: false, kind: 'data', sub_kind: 'lrrp', source_id: 3002068, repeater_id: 300999901, group_call: false, is_to_user: true, destination_id: 5057 });
     await flushPromises();
     expect(map.props('lines')).toEqual([]);
     expect(map.props('blipRadios')).toEqual({ 3002068: 'burst' });

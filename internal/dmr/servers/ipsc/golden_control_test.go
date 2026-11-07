@@ -28,20 +28,20 @@ import (
 	"testing"
 )
 
-// The control packets of a Motorola XPR 8400 (peer 0x0004CE2E) logging in to
+// The control packets of a Motorola XPR 8400 (peer 0x0004977E) logging in to
 // a master, captured on 2026-10-15 without their HMAC trailer
 // (dmrgo-rfcap ipsc-capture-20261015-1228.log). The replies are the octets
 // that DMRHub built by hand before it used dmrgo transport/ipsc, for master
-// 311860 (0x0004C234).
+// 300860 (0x0004973C).
 //
 //nolint:gochecknoglobals
 var xprControlGolden = []struct {
 	name, request, reply string
 }{
-	{"register", "900004ce2e6a0000805c04080400", "910004c2346a0000001d000104080400"},
-	{"peer list", "920004ce2e", "930004c234000b0004ce2e7f00000100016a"},
-	{"keepalive", "960004ce2e6a000080dc04020401", "970004c2346a0000001d04080400"},
-	{"wakeup", "850004ce2e000000010002", ""},
+	{"register", "900004977e6a0000805c04080400", "910004973c6a0000001d000104080400"},
+	{"peer list", "920004977e", "930004973c000b0004977e7f00000100016a"},
+	{"keepalive", "960004977e6a000080dc04020401", "970004973c6a0000001d04080400"},
+	{"wakeup", "850004977e000000010002", ""},
 }
 
 func TestXPRControlGolden(t *testing.T) {

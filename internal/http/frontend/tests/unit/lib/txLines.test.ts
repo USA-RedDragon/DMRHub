@@ -23,11 +23,11 @@ import { curvePath, MAX_LINES_PER_CALL, resolveLines, type TxPoint, type TxRepea
 
 const BLUE = '#2563eb';
 const RED = '#dc2626';
-const ALICE = 3109991;
-const BOB = 3109992;
-const NOPOS = 3109995;
-const RPT_A = 310999901;
-const RPT_B = 310999903;
+const ALICE = 3009991;
+const BOB = 3009992;
+const NOPOS = 3009995;
+const RPT_A = 300999901;
+const RPT_B = 300999903;
 const TG = 3100;
 
 const radios = new Map<number, TxPoint>([
@@ -90,7 +90,7 @@ describe('resolveLines', () => {
 
   it('draws no line when an end is not on the map', () => {
     expect(ends(privateCall({ destination_id: NOPOS }))).toEqual([]);
-    expect(ends(tgCall({ source_id: NOPOS, repeater_id: 310888801 }))).toEqual([]);
+    expect(ends(tgCall({ source_id: NOPOS, repeater_id: 300888801 }))).toEqual([]);
     expect(ends(tgCall({ to_talkgroup: { id: 9 }, destination_id: 9 }))).toEqual([]);
     expect(ends(tgCall(), radios, new Map([[RPT_A, repeaters.get(RPT_A)!]]))).toEqual([]);
     expect(ends(privateCall(), new Map([[ALICE, radios.get(ALICE)!]]))).toEqual([]);
@@ -117,11 +117,11 @@ describe('resolveLines', () => {
   it(`caps a talkgroup fan-out at ${MAX_LINES_PER_CALL} lines`, () => {
     const many = new Map<number, TxRepeaterPoint>();
     for (let i = 10; i > 0; i--) {
-      many.set(310999900 + i, repeater(-97.7 - i / 100, [TG]));
+      many.set(300999900 + i, repeater(-97.7 - i / 100, [TG]));
     }
-    const lines = resolveLines(tgCall({ repeater_id: 310999901 }), radios, many);
+    const lines = resolveLines(tgCall({ repeater_id: 300999901 }), radios, many);
     expect(lines).toHaveLength(MAX_LINES_PER_CALL);
-    expect(lines.map((l) => l.to.id)).toEqual([310999902, 310999903, 310999904, 310999905, 310999906, 310999907]);
+    expect(lines.map((l) => l.to.id)).toEqual([300999902, 300999903, 300999904, 300999905, 300999906, 300999907]);
     expect(new Set(lines.map((l) => l.key)).size).toBe(MAX_LINES_PER_CALL);
   });
 });

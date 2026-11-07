@@ -131,7 +131,7 @@ func TestPacerHoldsDataAndCSBKInTheCallHang(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
 				p, clock, log, _ := newHangPacer(t)
-				k := slotKey{peer: 311860, slot: true}
+				k := slotKey{peer: 300860, slot: true}
 				sendVoiceCall(p, k, 1, 'v')
 				var end hangSend
 				for range 3 {
@@ -158,7 +158,7 @@ func TestPacerHoldsDataAfterADataCall(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, _, log, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		p.enqueue(k, 1, []byte{'h'}, false, dataSync(1, enums.DataTypeDataHeader), nil, time.Time{})
 		for range 19 {
 			p.enqueue(k, 1, []byte{'b'}, false, dataSync(1, enums.DataTypeRate12), nil, time.Time{})
@@ -181,7 +181,7 @@ func TestPacerNeverHoldsVoice(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, clock, log, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		sendVoiceCall(p, k, 1, 'v')
 		for range 3 {
 			log.next(t, time.Second)
@@ -207,13 +207,13 @@ func TestPacerHoldNeverHoldsAnotherSlotOrPeer(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, _, log, _ := newHangPacer(t)
-		held := slotKey{peer: 311860, slot: false}
+		held := slotKey{peer: 300860, slot: false}
 		sendVoiceCall(p, held, 1, 'v')
 		for range 3 {
 			log.next(t, time.Second)
 		}
 		p.enqueue(held, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeDataHeader), nil, time.Time{})
-		for i, k := range []slotKey{{peer: 311860, slot: true}, {peer: 990361, slot: false}} {
+		for i, k := range []slotKey{{peer: 300860, slot: true}, {peer: 990361, slot: false}} {
 			stream := uint(10 + i)
 			p.enqueue(k, stream, []byte{'o'}, false, dataSync(stream, enums.DataTypeDataHeader), nil, time.Time{})
 			got := log.next(t, 100*time.Millisecond)
@@ -230,7 +230,7 @@ func TestPacerBoundsTheWaitingCalls(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		p, clock, log, discarded := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: false}
+		k := slotKey{peer: 300860, slot: false}
 		sendVoiceCall(p, k, 1, 'v')
 		for range 3 {
 			log.next(t, time.Second)
@@ -266,7 +266,7 @@ func TestHandOverCarriesTheCallHang(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		from, _, fromLog, _ := newHangPacer(t)
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		sendVoiceCall(from, k, 1, 'v')
 		for range 3 {
 			fromLog.next(t, time.Second)
@@ -298,9 +298,9 @@ func TestFinishHandoverHoldsForTheReportedHang(t *testing.T) {
 		require.NoError(t, err)
 		var r handoverReport
 		require.NoError(t, json.Unmarshal(b, &r))
-		s.finishHandover(311860, time.Now(), &r)
+		s.finishHandover(300860, time.Now(), &r)
 
-		k := slotKey{peer: 311860, slot: true}
+		k := slotKey{peer: 300860, slot: true}
 		p.enqueue(k, 2, []byte{'d'}, false, dataSync(2, enums.DataTypeCSBK), nil, time.Time{})
 		log.none(t, "a CSBK went out in the reported call hang")
 		clock.endHang()

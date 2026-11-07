@@ -52,7 +52,7 @@ func TestTheCallHangHoldComesFromTheConfig(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
 				p, log := configuredHangPacer(t, hold, dataHangHold)
-				k := slotKey{peer: 311860, slot: true}
+				k := slotKey{peer: 300860, slot: true}
 				sendVoiceCall(p, k, 1, 'v')
 				sent := receive(t, log, 3, time.Second)
 				end := sent[2]

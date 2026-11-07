@@ -77,7 +77,7 @@ func TestAPeerGetsItsCallsFromTheReplyToItsRegistration(t *testing.T) {
 	memdb.Use(t, &cfg)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
-	cfg.DMR.IPSC.NetworkID = 311860
+	cfg.DMR.IPSC.NetworkID = 300860
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	memdb.CloseAtCleanup(t, database)
@@ -167,7 +167,7 @@ func newRegisterRig(t *testing.T, id uint32) *registerRig {
 	memdb.Use(t, &cfg)
 	cfg.DMR.IPSC.Bind = "127.0.0.1"
 	cfg.DMR.IPSC.Port = 0
-	cfg.DMR.IPSC.NetworkID = 311860
+	cfg.DMR.IPSC.NetworkID = 300860
 	database, err := db.MakeDB(&cfg)
 	require.NoError(t, err)
 	memdb.CloseAtCleanup(t, database)

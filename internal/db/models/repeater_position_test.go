@@ -50,13 +50,13 @@ func dmrGatewayRPTC(id uint32, lat, lon float64, location bool) []byte {
 func TestDMRGatewayLocationSetsTheRPTCPosition(t *testing.T) {
 	t.Parallel()
 	var on models.RepeaterConfiguration
-	require.NoError(t, on.ParseConfig(dmrGatewayRPTC(310999901, 30.2669, -97.7729, true), "v", "c"))
+	require.NoError(t, on.ParseConfig(dmrGatewayRPTC(300999901, 30.2669, -97.7729, true), "v", "c"))
 	assert.InDelta(t, 30.2669, on.Latitude, 1e-4)
 	assert.InDelta(t, -97.7729, on.Longitude, 1e-4)
 	assert.Equal(t, "Zilker Park", on.Location)
 
 	var off models.RepeaterConfiguration
-	require.NoError(t, off.ParseConfig(dmrGatewayRPTC(310999901, 30.2669, -97.7729, false), "v", "c"))
+	require.NoError(t, off.ParseConfig(dmrGatewayRPTC(300999901, 30.2669, -97.7729, false), "v", "c"))
 	assert.Zero(t, off.Latitude)
 	assert.Zero(t, off.Longitude)
 	assert.Equal(t, "Zilker Park", off.Location)
@@ -66,19 +66,19 @@ func TestConnectedRepeaterPositionsListsOnlyConnectedRepeatersWithAPosition(t *t
 	t.Parallel()
 	db, cleanup := openDB(t)
 	defer cleanup()
-	require.NoError(t, db.Create(&models.User{ID: 3109999, Callsign: "N0CALL", Username: "owner", Approved: true}).Error)
-	require.NoError(t, db.Create(&models.User{ID: 3109998, Callsign: "N1CALL", Username: "other", Approved: true}).Error)
+	require.NoError(t, db.Create(&models.User{ID: 3009999, Callsign: "N0CALL", Username: "owner", Approved: true}).Error)
+	require.NoError(t, db.Create(&models.User{ID: 3009998, Callsign: "N1CALL", Username: "other", Approved: true}).Error)
 	now := time.Now()
 	seed := func(id, owner uint, lat, lon float64, ping time.Duration, kind string) {
 		r := models.Repeater{Type: kind, OwnerID: owner, Connected: now.Add(-time.Hour), LastPing: now.Add(-ping),
 			RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "N0CALL", Latitude: lat, Longitude: lon}}
 		require.NoError(t, db.Create(&r).Error)
 	}
-	seed(310999901, 3109999, 30.2669, -97.7729, 5*time.Second, models.RepeaterTypeMMDVM)
-	seed(310999902, 3109999, 0, 0, 5*time.Second, models.RepeaterTypeMMDVM)
-	seed(310999903, 3109999, 30.2669, -97.7729, 2*models.RepeaterOnline, models.RepeaterTypeMMDVM)
-	seed(310999904, 3109999, 30.2669, -97.7729, 5*time.Second, models.RepeaterTypeIPSC)
-	seed(310999801, 3109998, 0, -97.7729, 5*time.Second, models.RepeaterTypeMMDVM)
+	seed(300999901, 3009999, 30.2669, -97.7729, 5*time.Second, models.RepeaterTypeMMDVM)
+	seed(300999902, 3009999, 0, 0, 5*time.Second, models.RepeaterTypeMMDVM)
+	seed(300999903, 3009999, 30.2669, -97.7729, 2*models.RepeaterOnline, models.RepeaterTypeMMDVM)
+	seed(300999904, 3009999, 30.2669, -97.7729, 5*time.Second, models.RepeaterTypeIPSC)
+	seed(300999801, 3009998, 0, -97.7729, 5*time.Second, models.RepeaterTypeMMDVM)
 
 	ids := func(all bool, user uint) []uint {
 		rs, err := models.ConnectedRepeaterPositions(db, user, all, now)
@@ -89,9 +89,9 @@ func TestConnectedRepeaterPositionsListsOnlyConnectedRepeatersWithAPosition(t *t
 		}
 		return out
 	}
-	assert.Equal(t, []uint{310999901}, ids(false, 3109999))
-	assert.Equal(t, []uint{310999801}, ids(false, 3109998))
-	assert.Equal(t, []uint{310999801, 310999901}, ids(true, 3109999))
+	assert.Equal(t, []uint{300999901}, ids(false, 3009999))
+	assert.Equal(t, []uint{300999801}, ids(false, 3009998))
+	assert.Equal(t, []uint{300999801, 300999901}, ids(true, 3009999))
 }
 
 func TestARepeaterIsOnlineFromItsLastPingUntilItsSessionEnds(t *testing.T) {
@@ -126,22 +126,22 @@ func TestCosysopRepeaterIDsListsOnlyAcceptedInvites(t *testing.T) {
 	t.Parallel()
 	db, cleanup := openDB(t)
 	defer cleanup()
-	require.NoError(t, db.Create(&models.User{ID: 3109999, Callsign: "N0CALL", Username: "owner", Approved: true}).Error)
-	require.NoError(t, db.Create(&models.User{ID: 3109998, Callsign: "N1CALL", Username: "other", Approved: true}).Error)
+	require.NoError(t, db.Create(&models.User{ID: 3009999, Callsign: "N0CALL", Username: "owner", Approved: true}).Error)
+	require.NoError(t, db.Create(&models.User{ID: 3009998, Callsign: "N1CALL", Username: "other", Approved: true}).Error)
 	now := time.Now()
-	for _, id := range []uint{310999901, 310999902} {
-		require.NoError(t, db.Create(&models.Repeater{OwnerID: 3109999, RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "N0CALL"}}).Error)
-		_, err := models.InviteCosysop(db, id, 3109998, 3109999, now)
+	for _, id := range []uint{300999901, 300999902} {
+		require.NoError(t, db.Create(&models.Repeater{OwnerID: 3009999, RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "N0CALL"}}).Error)
+		_, err := models.InviteCosysop(db, id, 3009998, 3009999, now)
 		require.NoError(t, err)
 	}
-	ok, err := models.AnswerCosysopInvite(db, 310999901, 3109998, true, now)
+	ok, err := models.AnswerCosysopInvite(db, 300999901, 3009998, true, now)
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	ids, err := models.CosysopRepeaterIDs(db, 3109998)
+	ids, err := models.CosysopRepeaterIDs(db, 3009998)
 	require.NoError(t, err)
-	assert.Equal(t, []uint{310999901}, ids)
-	ids, err = models.CosysopRepeaterIDs(db, 3109999)
+	assert.Equal(t, []uint{300999901}, ids)
+	ids, err = models.CosysopRepeaterIDs(db, 3009999)
 	require.NoError(t, err)
 	assert.Empty(t, ids)
 }

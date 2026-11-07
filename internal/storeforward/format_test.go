@@ -43,8 +43,8 @@ import (
 )
 
 const (
-	sender    = 3109998
-	recipient = 3109999
+	sender    = 3009998
+	recipient = 3009999
 )
 
 type airText struct {

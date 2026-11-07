@@ -131,7 +131,7 @@ func handedVoice(seq int) models.Packet {
 func TestHandOverKeepsTheCallOnTime(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		const id, copies, live = uint32(311860), 9, 10
+		const id, copies, live = uint32(300860), 9, 10
 		log := newSendLog()
 		p := newPacer(clock.Real(), log.send, nil)
 		t.Cleanup(p.stop)
@@ -187,7 +187,7 @@ func reportOf(t *testing.T, seqs ...int) *handoverReport {
 func TestAnEarlyHandoverSendsWhatFollowsIt(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		const id = uint32(311860)
+		const id = uint32(300860)
 		got := make(chan uint16, 20)
 		p := newPacer(clock.Real(), func(_ slotKey, frame []byte) {
 			u, err := ipscwire.DecodeUser(frame)

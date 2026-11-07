@@ -61,8 +61,8 @@ const (
 	// n3call is a user who leaves the switch off.
 	n3call = 1000003
 	// n1Hotspot and n4Hotspot are the hotspots of N1CALL and N4CALL.
-	n1Hotspot = 311000101
-	n4Hotspot = 311000401
+	n1Hotspot = 300100101
+	n4Hotspot = 300100401
 	// passcode is the APRS-IS passcode of K0CALL, the login of the hub.
 	passcode = "14303"
 	hubWait  = time.Minute

@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const homeRepeaterID = 310999901
+const homeRepeaterID = 300999901
 
 func (r *dialectRig) homePosition(text string) {
 	const id = uint32(homeRepeaterID)

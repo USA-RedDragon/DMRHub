@@ -42,10 +42,10 @@ import (
 //
 // dmrgateway-master.txt: DMRGateway ee79d38 (r>m) logs in to a master (m>r)
 // with the password passw0rd and sends one superframe on slot 2 from
-// 3109999 to talkgroup 91.
+// 3009999 to talkgroup 91.
 //
 // hblink3-openbridge.txt: HBlink3 1db2730 (h>o) sends the same call on
-// slot 1 over an OpenBridge link with network ID 3129100 and the passphrase
+// slot 1 over an OpenBridge link with network ID 3009100 and the passphrase
 // passw0rd-longer-than-twenty.
 type capturePacket struct {
 	dir string
@@ -113,13 +113,13 @@ func assertSameCall(t *testing.T, want [][]byte, got []models.Packet, slot2 bool
 func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		const gatewayID = 0x3010AF
+		const gatewayID = 0x2DEDC6
 		capture := readCapture(t, "testdata/dmrgateway-master.txt")
 
-		stack.SeedUser(t, 3109999, "N6CALL")
+		stack.SeedUser(t, 3009999, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
-		stack.SeedMMDVMRepeater(t, gatewayID, 3109999, "passw0rd")
-		stack.SeedMMDVMRepeater(t, 100001, 3109999, testPassword)
+		stack.SeedMMDVMRepeater(t, gatewayID, 3009999, "passw0rd")
+		stack.SeedMMDVMRepeater(t, 100001, 3009999, testPassword)
 		stack.AssignTS2StaticTG(t, 100001, 91)
 		stack.StartServers(t)
 
@@ -198,15 +198,15 @@ func TestGoldenDMRGatewayLoginAndCall(t *testing.T) {
 func TestGoldenHBlink3OpenBridgeIngress(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		const networkID = 3129100
+		const networkID = 3009100
 		capture := readCapture(t, "testdata/hblink3-openbridge.txt")
 		require.Len(t, capture, 8)
 
-		stack.SeedUser(t, 3109999, "N6CALL")
+		stack.SeedUser(t, 3009999, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
-		stack.SeedMMDVMRepeater(t, 100001, 3109999, testPassword)
+		stack.SeedMMDVMRepeater(t, 100001, 3009999, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 91)
-		stack.SeedPeer(t, networkID, 3109999, "passw0rd-longer-than-twenty", "127.0.0.1", 0, true, false)
+		stack.SeedPeer(t, networkID, 3009999, "passw0rd-longer-than-twenty", "127.0.0.1", 0, true, false)
 		stack.SeedPeerRule(t, networkID, true, 91, 91)
 		stack.StartServers(t)
 
@@ -238,13 +238,13 @@ func TestGoldenHBlink3OpenBridgeIngress(t *testing.T) {
 func TestGoldenHBlink3OpenBridgeEgress(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
-		const networkID = 3129100
+		const networkID = 3009100
 		capture := readCapture(t, "testdata/hblink3-openbridge.txt")
 		require.Len(t, capture, 8)
 
-		stack.SeedUser(t, 3109999, "N6CALL")
+		stack.SeedUser(t, 3009999, "N6CALL")
 		stack.SeedTalkgroup(t, 91, "TG91")
-		stack.SeedMMDVMRepeater(t, 100001, 3109999, testPassword)
+		stack.SeedMMDVMRepeater(t, 100001, 3009999, testPassword)
 		stack.AssignTS1StaticTG(t, 100001, 91)
 		stack.StartServers(t)
 
@@ -253,8 +253,8 @@ func TestGoldenHBlink3OpenBridgeEgress(t *testing.T) {
 		defer func() { _ = peer.Close() }()
 		peerAddr, ok := peer.LocalAddr().(*net.UDPAddr)
 		require.True(t, ok)
-		stack.SeedPeer(t, networkID, 3109999, "passw0rd-longer-than-twenty", "127.0.0.1", peerAddr.Port, false, true)
-		stack.SeedPeerRule(t, networkID, false, 3109999, 3109999)
+		stack.SeedPeer(t, networkID, 3009999, "passw0rd-longer-than-twenty", "127.0.0.1", peerAddr.Port, false, true)
+		stack.SeedPeerRule(t, networkID, false, 3009999, 3009999)
 
 		mc := testutils.NewMMDVMClient(100001, "", testPassword)
 		defer mc.Close()

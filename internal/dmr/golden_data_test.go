@@ -40,14 +40,14 @@ import (
 )
 
 const (
-	anyTone      = 3109999
-	otherRadio   = 3109998
+	anyTone      = 3009999
+	otherRadio   = 3009998
 	anyToneRpt   = 100001
 	otherRpt     = 100002
 	goldenTG     = 9
-	goldenPeer   = 3129100
-	xprPeer      = 314926
-	testMaster   = 3149999
+	goldenPeer   = 3009100
+	xprPeer      = 300926
+	testMaster   = 3009990
 	gatewayRptID = 0x00beef01
 )
 
@@ -456,8 +456,8 @@ type appGolden struct {
 
 func appGoldens() []appGolden {
 	return []appGolden{
-		{name: "tms", sap: enums.SAPIPBasedPacketData, data: "4500003a000d00004011796b0c2f746f0c2f746e0fa70fa7002607f5001ca00081040d000a004d004f0054004f00200054004500530054000000"},
-		{name: "dmrtext", sap: enums.SAPIPBasedPacketData, data: "45000032000c00000111b8740c2f746f0c2f746e13981398001e942d000d000a44004d005200200054004500530054000000"},
+		{name: "tms", sap: enums.SAPIPBasedPacketData, data: "4500003a000d0000401186ae0c2dedcf0c2dedce0fa70fa700261538001ca00081040d000a004d004f0054004f00200054004500530054000000"},
+		{name: "dmrtext", sap: enums.SAPIPBasedPacketData, data: "45000032000c00000111c5b70c2dedcf0c2dedce13981398001ea170000d000a44004d005200200054004500530054000000"},
 		{name: "gps", sap: enums.SAPUDPIPHeaderCompression, data: "0001000000277e277e244750524d432c3230303033372e3030302c412c333431322e373330302c4e2c31303835302e303030302c452c302e30302c3132312e30302c3032313232352c2c2c412a36300d0a"},
 	}
 }

@@ -32,12 +32,12 @@ import (
 )
 
 const (
-	ownRepeater      = uint(310999901)
-	ownSilent        = uint(310999902)
-	ownGone          = uint(310999903)
-	otherRepeater    = uint(310999801)
-	cosysopRepeater  = uint(310999802)
-	ownClosed        = uint(310999904)
+	ownRepeater      = uint(300999901)
+	ownSilent        = uint(300999902)
+	ownGone          = uint(300999903)
+	otherRepeater    = uint(300999801)
+	cosysopRepeater  = uint(300999802)
+	ownClosed        = uint(300999904)
 	repeaterLat      = 30.2669
 	repeaterLon      = -97.7729
 	repeaterLocation = "Zilker Park"

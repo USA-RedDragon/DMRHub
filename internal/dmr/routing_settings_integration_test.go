@@ -41,7 +41,7 @@ import (
 // that the test changes while the hub runs.
 func routingStack(t *testing.T, stack *testutils.IntegrationStack, r config.Routing) *config.Current {
 	t.Helper()
-	cfg := *stack.Config
+	cfg := stack.Config()
 	cfg.DMR.Routing = r
 	cur := config.NewCurrent(&cfg)
 	stack.Hub.SetConfig(cur)

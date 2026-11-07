@@ -129,7 +129,7 @@ func TestLiveMMDVMBindFailure(t *testing.T) { //nolint:paralleltest // FreeUDPPo
 	l := testutils.SetupLiveStack(t)
 	mc, _ := seedLiveTraffic(t, l)
 	oldAddr := l.Addr(t, manager.MMDVM)
-	oldPort := l.Config.DMR.MMDVM.Port
+	oldPort := l.Config().DMR.MMDVM.Port
 
 	taken, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)

@@ -94,7 +94,7 @@ func TestModemHotspotCallsBothWays(t *testing.T) {
 		t.Cleanup(mm.Close)
 		require.NoError(t, mm.WaitReady(handshakeWait))
 
-		cfg := *stack.Config
+		cfg := stack.Config()
 		m := &cfg.DMR.Modem
 		m.Enabled, m.Port, m.RepeaterID, m.RXFrequency, m.TXFrequency = true, "/dev/fake-modem", 100001, 438800000, 438800000
 		opened := make(chan *modemtest.Fake, 4)

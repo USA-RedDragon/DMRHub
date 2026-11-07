@@ -55,7 +55,7 @@ func TestApplyTurnsTheModemOnRestartsItAndTurnsItOff(t *testing.T) {
 			opened <- modemtest.New(dev, 1)
 			return host, nil
 		}}
-	cfg := stack.Config
+	cfg := stack.Current.Get()
 	m := manager.New(manager.Deps{Hub: stack.Hub, DB: stack.DB, PubSub: stack.PubSub, KV: stack.KV, Version: "test", Commit: "test", ModemOptions: &opts})
 	require.NoError(t, m.Start(context.Background(), cfg))
 	t.Cleanup(func() { m.Stop(context.Background()) })

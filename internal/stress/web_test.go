@@ -53,7 +53,7 @@ func (r *rig) web(t *testing.T) *web {
 	gin.SetMode(gin.ReleaseMode)
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	router := dmrhttp.CreateRouter(context.Background(), r.stack.Config, r.stack.Hub, r.stack.DB, r.stack.PubSub, ready, nil, "stress", "stress", testutils.Websockets(t))
+	router := dmrhttp.CreateRouter(context.Background(), r.stack.Current.Get(), r.stack.Hub, r.stack.DB, r.stack.PubSub, ready, nil, "stress", "stress", testutils.Websockets(t))
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return &web{router: router, srv: srv}
@@ -71,7 +71,7 @@ func (w *web) account(t *testing.T, r *rig, id uint) testutils.CookieJar {
 // carry the calls of its radio and its repeater.
 func (w *web) owner(t *testing.T, r *rig, i int) testutils.CookieJar {
 	t.Helper()
-	hash, err := apiutils.HashPassword(testutils.TestPassword, r.stack.Config.PasswordSalt)
+	hash, err := apiutils.HashPassword(testutils.TestPassword, r.stack.Config().PasswordSalt)
 	require.NoError(t, err)
 	name := fmt.Sprintf("stress%d", i)
 	require.NoError(t, quiet(r.stack.DB).Model(&models.User{}).Where("id = ?", userID(i)).Updates(map[string]any{"password": hash, "username": name}).Error)

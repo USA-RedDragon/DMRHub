@@ -68,11 +68,12 @@ type LiveStack struct {
 // Manager runs, its Live and its router, with an admin session.
 type LiveReplica struct {
 	Hub     *hub.Hub
-	Config  *config.Config
 	Manager *manager.Manager
 	Live    *liveconfig.Live
 	Router  *gin.Engine
 	Admin   CookieJar
+	// Base is the config that its Live runs with before Boot.
+	Base config.Config
 }
 
 // LiveOptions change a replica of a LiveStack.
@@ -166,17 +167,19 @@ func setupLiveStack(t *testing.T, register bool, opts LiveOptions, backends []Ba
 	if register {
 		Register(t, stack.Hub, stack.KV)
 	}
-	cfg := stack.Config
-	cfg.Secret = "live-config-test-secret"
-	cfg.PasswordSalt = "live-config-test-salt"
-	cfg.HTTP.CanonicalHost = "http://localhost:3005"
+	stack.ChangeConfig(func(cfg *config.Config) {
+		cfg.Secret = "live-config-test-secret"
+		cfg.PasswordSalt = "live-config-test-salt"
+		cfg.HTTP.CanonicalHost = "http://localhost:3005"
+	})
+	cfg := stack.Config()
 
 	hash, err := utils.HashPassword(TestPassword, cfg.PasswordSalt)
 	require.NoError(t, err)
 	require.NoError(t, stack.DB.Create(&models.User{ID: 9999901, Callsign: "K4CALL", Username: "liveadmin", Password: hash, Approved: true, Admin: true, SuperAdmin: true}).Error)
 
 	l := &LiveStack{IntegrationStack: stack}
-	l.first = l.startReplica(t, stack.Hub, cfg, opts)
+	l.first = l.startReplica(t, stack.Hub, cfg, stack.Current, opts)
 	l.Manager, l.Live, l.Router, l.Admin = l.first.Manager, l.first.Live, l.first.Router, l.first.Admin
 	return l
 }
@@ -201,14 +204,13 @@ func (l *LiveStack) SpawnLiveReplica(t *testing.T, opts LiveOptions) *LiveReplic
 	})
 	holdWaits(t, h, l.bounded)
 
-	cfg := *l.first.Config
 	if opts.Locks == nil {
 		opts.Locks = liveconfig.Locks{}
 		for _, p := range []string{"dmr.mmdvm.port", "dmr.ipsc.port", "dmr.openbridge.port"} {
 			opts.Locks[p] = liveconfig.Lock{Source: liveconfig.SourceEnv}
 		}
 	}
-	return l.startReplica(t, h, &cfg, opts)
+	return l.startReplica(t, h, l.first.Base, nil, opts)
 }
 
 type managerApplier struct {
@@ -230,16 +232,21 @@ func pickServerPorts(cfg *config.Config, t *testing.T) {
 	cfg.DMR.OpenBridge.Port = FreeUDPPort(t)
 }
 
-func (l *LiveStack) startReplica(t *testing.T, h *hub.Hub, cfg *config.Config, opts LiveOptions) *LiveReplica {
+// startReplica starts a replica whose Live runs with base and stores its
+// config in cur; nil makes a new config.Current.
+func (l *LiveStack) startReplica(t *testing.T, h *hub.Hub, base config.Config, cur *config.Current, opts LiveOptions) *LiveReplica {
 	t.Helper()
 	var live *liveconfig.Live
 	var m *manager.Manager
+	var cfg *config.Config
 	for try := 1; ; try++ {
+		next := base
+		cfg = &next
 		pickServerPorts(cfg, t)
 		if opts.Change != nil {
 			opts.Change(cfg)
 		}
-		live = liveconfig.New(liveconfig.Options{Base: cfg, Locks: opts.Locks, DB: l.DB})
+		live = liveconfig.New(liveconfig.Options{Base: cfg, Locks: opts.Locks, DB: l.DB, Current: cur})
 		require.NoError(t, live.Boot(context.Background()))
 		h.SetConfig(live.Current())
 		m = manager.New(manager.Deps{Hub: h, DB: l.DB, PubSub: l.PubSub, KV: l.KV, Version: "test", Commit: "test"})
@@ -266,7 +273,7 @@ func (l *LiveStack) startReplica(t *testing.T, h *hub.Hub, cfg *config.Config, o
 	ready := &atomic.Bool{}
 	ready.Store(true)
 	router := internalhttp.CreateRouter(context.Background(), cfg, h, l.DB, l.PubSub, ready, nil, "test", "test", internalhttp.WithLiveConfig(live))
-	return &LiveReplica{Hub: h, Config: cfg, Manager: m, Live: live, Router: router, Admin: Login(t, router, "liveadmin")}
+	return &LiveReplica{Hub: h, Base: *cfg, Manager: m, Live: live, Router: router, Admin: Login(t, router, "liveadmin")}
 }
 
 // Addr returns the host:port of server k.

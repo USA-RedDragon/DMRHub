@@ -94,7 +94,7 @@ func startResponseNet(t *testing.T, stack *testutils.IntegrationStack, split boo
 
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	n.router = internalhttp.CreateRouter(context.Background(), stack.Config, stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef")
+	n.router = internalhttp.CreateRouter(context.Background(), stack.Current.Get(), stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef")
 	n.jar = testutils.Login(t, n.router, "admin2")
 
 	n.send(t, n.r2, respAnswerer, respSender, []layer2.RawBurst{respPreamble(t, respAnswerer, respSender)})

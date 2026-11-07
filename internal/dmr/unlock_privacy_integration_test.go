@@ -37,6 +37,7 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/airauth"
 	"github.com/USA-RedDragon/DMRHub/internal/clock"
+	"github.com/USA-RedDragon/DMRHub/internal/config"
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/hub"
@@ -236,8 +237,8 @@ func TestAnOnAirCodeReachesNoSink(t *testing.T) {
 			be.WrapKV = func(k kv.KV) kv.KV { return recordingKV{KV: k, s: own} }
 			be.WrapPubSub = func(p pubsub.PubSub) pubsub.PubSub { return recordingPubSub{PubSub: p, s: own} }
 			stack := testutils.SetupIntegrationStack(t, be)
-			stack.Config.Secret = "a-secret-of-fifteen"
-			stack.Hub.SetConfig(stack.Config)
+			stack.ChangeConfig(func(c *config.Config) { c.Secret = "a-secret-of-fifteen" })
+			stack.Hub.SetConfig(stack.Current)
 			tries := unlockTries{results: make(chan airauth.Result, 8)}
 			stack.Hub.SetUnlockReplies(tries)
 
@@ -319,7 +320,7 @@ func TestAnOnAirCodeReachesNoSink(t *testing.T) {
 
 			ready := &atomic.Bool{}
 			ready.Store(true)
-			router := internalhttp.CreateRouter(ctx, stack.Config, stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef", internalhttp.WithKV(stack.KV))
+			router := internalhttp.CreateRouter(ctx, stack.Current.Get(), stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef", internalhttp.WithKV(stack.KV))
 			admin := testutils.SeedAccount(t, stack.DB, 1000009, "N0ADMN", "n0admn")
 			require.NoError(t, stack.DB.Model(&models.User{}).Where("id = ?", admin.ID).Update("admin", true).Error)
 			jar := testutils.Login(t, router, "n0admn")

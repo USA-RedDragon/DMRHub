@@ -46,7 +46,7 @@ func TestRepeaterQuotaStopsAUserAtTheLimit(t *testing.T) { //nolint:paralleltest
 			code, _, raw := putSetting(t, l.First(), map[string]any{"dmr.repeater-quota": 2})
 			require.Equal(t, http.StatusOK, code, raw)
 
-			hash, err := utils.HashPassword(testutils.TestPassword, l.Config.PasswordSalt)
+			hash, err := utils.HashPassword(testutils.TestPassword, l.Config().PasswordSalt)
 			require.NoError(t, err)
 			require.NoError(t, l.DB.Create(&models.User{ID: 3002068, Callsign: "N6CALL", Username: "n6call", Password: hash, Approved: true}).Error)
 			user := testutils.Login(t, b.Router, "n6call")

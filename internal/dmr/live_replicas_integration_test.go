@@ -299,7 +299,8 @@ func TestLiveConfigReplicaTakesASaveItMissed(t *testing.T) { //nolint:parallelte
 			l := testutils.SetupLiveStack(t, be)
 			b := l.SpawnLiveReplica(t, testutils.LiveOptions{Every: 100 * time.Millisecond})
 
-			quiet := liveconfig.New(liveconfig.Options{Base: l.Config, DB: l.DB})
+			base := l.First().Base
+			quiet := liveconfig.New(liveconfig.Options{Base: &base, DB: l.DB})
 			require.NoError(t, quiet.Boot(context.Background()))
 			next := *quiet.Current().Get()
 			next.DMR.Retention.Bursts = 7
@@ -334,7 +335,7 @@ func TestLiveConfigSavesNoStartOnlySetting(t *testing.T) { //nolint:paralleltest
 	}
 	st := statusOf(t, a)
 	assert.True(t, st.Settings["secret"].StartOnly)
-	assert.NotContains(t, toJSON(t, st), l.Config.Secret, "the config API must not show a secret")
+	assert.NotContains(t, toJSON(t, st), l.Config().Secret, "the config API must not show a secret")
 }
 
 // TestLiveConfigNamesAReplicaThatDoesNotAnswer saves while the record of

@@ -65,7 +65,7 @@ func listenHub(t *testing.T, stack *testutils.IntegrationStack, change func(*con
 	t.Cleanup(c.Close)
 	require.NoError(t, c.WaitReady(handshakeWait))
 
-	cfg := *stack.Config
+	cfg := stack.Config()
 	if change != nil {
 		change(&cfg)
 	}

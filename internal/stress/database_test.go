@@ -73,8 +73,10 @@ func TestDatabase(t *testing.T) { //nolint:paralleltest
 	r.runLanes(ctx, s.Duration, m, s.Duty, 0, nil)
 
 	time.Sleep(s.Duration / 3)
-	r.stack.Config.DMR.Retention = config.Retention{Messages: 7, Transmissions: 7, Bursts: 7}
-	p := retention.NewPurger(r.stack.Config, r.stack.DB, r.stack.KV)
+	r.stack.ChangeConfig(func(c *config.Config) {
+		c.DMR.Retention = config.Retention{Messages: 7, Transmissions: 7, Bursts: 7}
+	})
+	p := retention.NewPurger(r.stack.Current, r.stack.DB, r.stack.KV)
 	t0 := time.Now()
 	out, err := p.Run(ctx, time.Now())
 	purge := time.Since(t0)

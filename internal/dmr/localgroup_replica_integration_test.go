@@ -56,7 +56,7 @@ func startLocalReplicas(t *testing.T, stack *testutils.IntegrationStack) *localR
 	stack.AssignTS2StaticTG(t, 100004, 1)
 	r := &localReplicas{stack: stack, second: stack.SpawnSecondReplica(t)}
 	r.hubs = []*hub.Hub{stack.Hub, r.second.Hub}
-	cfg := *stack.Config
+	cfg := stack.Config()
 	cfg.DMR.Routing = config.Routing{LocalTalkgroups: []uint{8, 9}, DisableDynamicLinks: true}
 	for _, h := range r.hubs {
 		h.SetConfig(cfg)

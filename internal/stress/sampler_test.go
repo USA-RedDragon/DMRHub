@@ -71,8 +71,8 @@ type sampler struct {
 
 func newSampler(stack *testutils.IntegrationStack, path string, logs *logCounter, extra func() map[string]float64) *sampler {
 	s := &sampler{stack: stack, path: path, start: time.Now(), extra: extra, logs: logs, stop: make(chan struct{}), done: make(chan struct{})}
-	if stack.Config.Redis.Enabled {
-		s.redis = redis.NewClient(&redis.Options{Addr: fmt.Sprintf("%s:%d", stack.Config.Redis.Host, stack.Config.Redis.Port)})
+	if cfg := stack.Config(); cfg.Redis.Enabled {
+		s.redis = redis.NewClient(&redis.Options{Addr: fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)})
 	}
 	for _, a := range []string{stack.MMDVMAddr, stack.IPSCAddr, stack.OpenBridgeAddr} {
 		if i := strings.LastIndexByte(a, ':'); i >= 0 {

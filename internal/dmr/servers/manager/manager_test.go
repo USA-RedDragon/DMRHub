@@ -83,13 +83,14 @@ func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest /
 	}()
 
 	received := 0
+	cfg := l.Config()
 	for i := range 5 {
-		next := *l.Config
+		next := cfg
 		next.DMR.MMDVM.Port = testutils.FreeUDPPort(t)
 		next.DMR.OpenBridge.Enabled = i%2 == 1
 		next.DMR.OpenBridge.Port = 0
 		require.Empty(t, l.Manager.Apply(&next))
-		*l.Config = next
+		cfg = next
 		mc.Close()
 		mc = testutils.NewMMDVMClient(100001, "", password)
 		require.NoError(t, mc.Connect(l.Addr(t, manager.MMDVM)))
@@ -100,10 +101,9 @@ func TestRestartsUnderTrafficLeakNothing(t *testing.T) { //nolint:paralleltest /
 	wg.Wait()
 	assert.Positive(t, received, "the MMDVM repeater must get the call between restarts")
 
-	next := *l.Config
+	next := cfg
 	next.DMR.OpenBridge.Enabled = true
 	require.Empty(t, l.Manager.Apply(&next))
-	*l.Config = next
 
 	var last testutils.Latest[map[string]int]
 	assert.Eventually(t, func() bool {
@@ -144,7 +144,7 @@ func TestStopEndsEveryServerAndApplyAfterStopDoesNothing(t *testing.T) {
 	for _, k := range []manager.Kind{manager.MMDVM, manager.IPSC, manager.OpenBridge} {
 		assert.Nil(t, l.Manager.Server(k), "%s", k)
 	}
-	next := *l.Config
+	next := l.Config()
 	next.DMR.MMDVM.WebTransport.Enabled = true
 	assert.Empty(t, l.Manager.Apply(&next))
 	assert.Nil(t, l.Manager.Server(manager.MMDVM))
@@ -169,7 +169,7 @@ func TestApplyTurnsWebTransportOnMovesItAndTurnsItOff(t *testing.T) {
 	l := testutils.SetupLiveStack(t)
 	require.Nil(t, webTransportAddr(t, l.Manager))
 
-	next := *l.Config
+	next := l.Config()
 	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true, Port: testutils.FreeUDPPort(t)}
 	require.Empty(t, l.Manager.Apply(&next))
 	require.NotNil(t, webTransportAddr(t, l.Manager), "turning WebTransport on starts its listener")
@@ -197,7 +197,7 @@ func TestApplyTurnsWebTransportOnMovesItAndTurnsItOff(t *testing.T) {
 func TestApplyRestartsMMDVMForNewAllowedOrigins(t *testing.T) {
 	t.Parallel()
 	l := testutils.SetupLiveStack(t)
-	next := *l.Config
+	next := l.Config()
 	next.DMR.MMDVM.WebTransport = config.MMDVMWebTransport{Enabled: true}
 	require.Empty(t, l.Manager.Apply(&next))
 	before := l.Manager.Server(manager.MMDVM)
@@ -228,7 +228,7 @@ func TestApplyRestartsIPSCForNewHangHolds(t *testing.T) {
 	before := l.Manager.Server(manager.IPSC)
 	require.NotNil(t, before)
 
-	same := *l.Config
+	same := l.Config()
 	require.Empty(t, l.Manager.Apply(&same))
 	assert.Same(t, before, l.Manager.Server(manager.IPSC), "the same settings restart the server")
 

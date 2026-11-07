@@ -109,7 +109,7 @@ func TestIPListsRefuseMMDVMOverIPv6(t *testing.T) {
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
 		stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
-		cfg := *stack.Config
+		cfg := stack.Config()
 		cfg.DMR.MMDVM.Bind = "::1"
 		cfg.DMR.MMDVM.Port = 0
 		cfg.DMR.MMDVM.WebTransport.Enabled = false

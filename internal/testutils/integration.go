@@ -50,7 +50,9 @@ import (
 // servers on ephemeral UDP ports, backed by a SQLite file and in-memory
 // pubsub and KV.
 type IntegrationStack struct {
-	Config           *config.Config
+	// Current holds the config of the stack, which the services that read
+	// a config.Source take. Change it with ChangeConfig.
+	Current          *config.Current
 	DB               *gorm.DB
 	Hub              *hub.Hub
 	PubSub           pubsub.PubSub
@@ -154,10 +156,11 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 		}
 	}
 
+	current := config.NewCurrent(&defConfig)
 	ct := calltracker.NewCallTracker(database, ps, kvStore)
 	store := messages.NewStore(database, kvStore)
 	pusher := messages.NewPusher(database, ps)
-	sf := storeforward.New(database, &defConfig, "test", storeforward.WithFlush(func() {
+	sf := storeforward.New(database, current, "test", storeforward.WithFlush(func() {
 		ct.Flush()
 		store.Flush()
 	}))
@@ -187,7 +190,7 @@ func SetupIntegrationStack(t *testing.T, backends ...Backend) *IntegrationStack 
 	require.NoError(t, err)
 
 	stack := &IntegrationStack{
-		Config:           &defConfig,
+		Current:          current,
 		DB:               database,
 		Hub:              h,
 		PubSub:           ps,
@@ -234,6 +237,21 @@ type Replica struct {
 	WebTransportAddr string
 }
 
+// Config returns a copy of the config that the stack runs with now.
+func (s *IntegrationStack) Config() config.Config {
+	return *s.Current.Get()
+}
+
+// ChangeConfig makes a copy of the config of the stack, changes the copy
+// with change and stores it in Current, as Setup does. The services that
+// read Current take the new config; the servers keep the one that they
+// were made with.
+func (s *IntegrationStack) ChangeConfig(change func(*config.Config)) {
+	next := s.Config()
+	change(&next)
+	s.Current.Set(&next)
+}
+
 // SpawnSecondReplica creates a second Hub with MMDVM, IPSC and OpenBridge
 // servers that share the same DB, pubsub, KV and hub options as the
 // original stack, simulating two replicas of the app. The servers listen on
@@ -267,7 +285,7 @@ func (s *IntegrationStack) spawnReplica(t *testing.T, register bool) (Replica, *
 		reg = Register(t, hub2, s.KV)
 	}
 
-	cfg2 := *s.Config
+	cfg2 := s.Config()
 	cfg2.DMR.MMDVM.Port = 0
 	cfg2.DMR.MMDVM.WebTransport.Port = 0
 	cfg2.DMR.IPSC.Port = 0
@@ -373,7 +391,7 @@ func (s *IntegrationStack) RestartMMDVM(t *testing.T, mode RestartMode) {
 
 	_, port, err := net.SplitHostPort(s.MMDVMAddr)
 	require.NoError(t, err)
-	cfg := *s.Config
+	cfg := s.Config()
 	cfg.DMR.MMDVM.Port, err = strconv.Atoi(port)
 	require.NoError(t, err)
 	m, err := mmdvm.MakeServer(&cfg, s.Hub, s.DB, s.PubSub, s.KV, "test", "test")

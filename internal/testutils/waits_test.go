@@ -49,7 +49,7 @@ func admittedOnASlowDatabase(t *testing.T, bounded bool) bool {
 	}
 	stack := testutils.SetupIntegrationStack(t, opts...)
 	stack.SeedUser(t, 1000001, "N0CALL")
-	cfg := *stack.Config
+	cfg := stack.Config()
 	cfg.DMR.Routing = config.Routing{Transmit: config.TransmitMembers}
 	stack.Hub.SetConfig(config.NewCurrent(&cfg))
 

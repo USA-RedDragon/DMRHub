@@ -122,7 +122,7 @@ func adminRouter(t *testing.T, stack *testutils.IntegrationStack) (*gin.Engine, 
 		Updates(map[string]any{"admin": true, "super_admin": true}).Error)
 	ready := &atomic.Bool{}
 	ready.Store(true)
-	cfg := *stack.Config
+	cfg := stack.Config()
 	cfg.DMR.DisableRadioIDValidation = true
 	cfg.AutoApprove = true
 	router := dmrhttp.CreateRouter(context.Background(), &cfg, stack.Hub, stack.DB, stack.PubSub, ready, nil, "test", "deadbeef")

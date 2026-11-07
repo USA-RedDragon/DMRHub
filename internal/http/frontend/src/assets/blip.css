@@ -60,3 +60,88 @@
     display: none;
   }
 }
+
+.tx-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tx-line {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.tx-line--voice {
+  stroke-width: 3;
+  stroke-dasharray: 2 10;
+  opacity: 0.9;
+  animation: tx-line-flow 350ms linear infinite;
+}
+
+.tx-line--data {
+  stroke-width: 2;
+  stroke-dasharray: 1 5;
+  opacity: 0.6;
+}
+
+.tx-line-enter-active,
+.tx-line-leave-active {
+  transition: opacity 400ms;
+}
+
+.tx-line-enter-from,
+.tx-line-leave-to {
+  opacity: 0;
+}
+
+@keyframes tx-line-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.tx-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--background);
+  border-radius: 9999px;
+  box-sizing: content-box;
+  offset-rotate: 0deg;
+  offset-distance: 100%;
+  opacity: 0;
+  pointer-events: none;
+  animation: tx-dot-travel 900ms ease-in-out;
+}
+
+@keyframes tx-dot-travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 1;
+  }
+  99.9% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tx-line--voice {
+    stroke-width: 2.5;
+    stroke-dasharray: none;
+    animation: none;
+  }
+
+  .tx-dot {
+    display: none;
+  }
+}

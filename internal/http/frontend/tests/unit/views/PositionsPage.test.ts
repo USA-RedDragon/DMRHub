@@ -35,7 +35,7 @@ vi.mock('@unhead/vue', () => ({
 vi.mock('@/components/map/PositionsMap.vue', () => ({
   default: {
     name: 'PositionsMap',
-    props: ['tracks', 'selected', 'repeaters', 'selectedRepeater', 'blipRadios', 'blipRepeaters'],
+    props: ['tracks', 'selected', 'repeaters', 'selectedRepeater', 'blipRadios', 'blipRepeaters', 'lines'],
     template: '<div data-test="map" />',
   },
 }));
@@ -323,5 +323,59 @@ describe('PositionsPage', () => {
     expect(map.props('blipRadios')).toEqual({ 3002198: 'loop' });
     await wrapper.find('[data-test="show-shared"]').setValue(false);
     expect(map.props('blipRadios')).toEqual({});
+  });
+
+  it('draws a line between the two radios of a private call while it is on the air', async () => {
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    const call = { id: 21, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 3002198 };
+    send('/calls', call);
+    await flushPromises();
+    const lines = map.props('lines') as { key: string; from: { id: number }; to: { id: number }; data: boolean }[];
+    expect(lines.map((l) => [l.from.id, l.to.id, l.data])).toEqual([[3002068, 3002198, false]]);
+    send('/calls', { ...call, active: false });
+    await flushPromises();
+    expect(map.props('lines')).toEqual([]);
+  });
+
+  it('draws a talkgroup call to the other repeaters that carry the talkgroup', async () => {
+    const far = { ...repeater, id: 310999903, longitude: -97.74, talkgroups: [3100] };
+    serve(true, [{ ...repeater, talkgroups: [3100] }, far]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/lastheard', { id: 22, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901, group_call: true, is_to_talkgroup: true, to_talkgroup: { id: 3100 }, destination_id: 3100 });
+    await flushPromises();
+    const lines = map.props('lines') as { from: { kind: string; id: number }; to: { kind: string; id: number } }[];
+    expect(lines.map((l) => [l.from.kind, l.from.id, l.to.kind, l.to.id])).toEqual([['radio', 3002068, 'repeater', 310999903]]);
+    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+  });
+
+  it('sends the dot of a data call to the receiver, rings it, then drops the line', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/calls', { id: 23, active: false, kind: 'data', sub_kind: 'sms', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 3002198 });
+    await flushPromises();
+    const lines = () => (map.props('lines') as { data: boolean; to: { id: number } }[]).map((l) => [l.to.id, l.data]);
+    expect(lines()).toEqual([[3002198, true]]);
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'burst' });
+    await vi.advanceTimersByTimeAsync(900);
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'burst', 3002198: 'burst' });
+    await vi.advanceTimersByTimeAsync(900);
+    expect(lines()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(map.props('blipRadios')).toEqual({});
+  });
+
+  it('rings only the sender of a data call to a radio that is not on the map', async () => {
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/calls', { id: 24, active: false, kind: 'data', sub_kind: 'lrrp', source_id: 3002068, repeater_id: 310999901, group_call: false, is_to_user: true, destination_id: 5057 });
+    await flushPromises();
+    expect(map.props('lines')).toEqual([]);
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'burst' });
   });
 });

@@ -29,7 +29,7 @@ const repeater = {
   last_ping_time: new Date().toISOString(),
 };
 
-function stubPositions(repeaters: (typeof repeater)[]) {
+function stubPositions(repeaters: (typeof repeater & { talkgroups?: number[] })[]) {
   cy.intercept('GET', '/api/v1/users/me/settings', { statusCode: 200, body: { sms_storage: false, share_positions: false } });
   cy.intercept('GET', '/api/v1/positions/radios', {
     statusCode: 200,
@@ -128,11 +128,12 @@ describe('Positions blips', () => {
     service_id: 5057,
   };
   const call = { id: 41, active: true, kind: 'voice', source_id: radio, repeater_id: repeater.id };
+  const far = { ...repeater, id: 310999903, callsign: 'N3CALL', latitude: 30.2500, longitude: -97.7475, location: 'South Congress', talkgroups: [3100] };
 
   beforeEach(() => {
     cy.stubCommonEndpoints();
     cy.login();
-    stubPositions([repeater]);
+    stubPositions([{ ...repeater, talkgroups: [3100] }, far]);
     cy.intercept('GET', '/api/v1/positions/radios', {
       statusCode: 200,
       body: {
@@ -173,5 +174,22 @@ describe('Positions blips', () => {
     cy.get(`[data-test="radio-blip-${radio}"]`).should('exist');
     cy.get('[data-test^="radio-blip-"]').should('have.length', 1);
     cy.get('[data-test^="repeater-blip-"]').should('have.length', 1);
+  });
+
+  it('draws lines on the map between the ends of a call', { browser: '!electron' }, () => {
+    cy.get('[data-test="tx-lines"]', { timeout: 30000 }).should('have.attr', 'data-ready', 'true');
+    const tg = { ...call, id: 45, group_call: true, is_to_talkgroup: true, to_talkgroup: { id: 3100 }, destination_id: 3100 };
+    emit('/ws/lastheard', tg);
+    cy.get(`[data-test="line-45:repeater:${far.id}"]`).should('have.class', 'tx-line--voice');
+    cy.get(`[data-test="blip-radio-${radio}"] .tx-blip`).should('have.class', 'tx-blip--loop');
+    cy.get(`[data-test="blip-repeater-${repeater.id}"] .tx-blip`).should('have.class', 'tx-blip--loop');
+    emit('/ws/lastheard', { ...tg, active: false });
+    cy.get(`[data-test="line-45:repeater:${far.id}"]`).should('not.exist');
+    cy.get(`[data-test="blip-radio-${radio}"]`).should('not.exist');
+
+    emit('/ws/calls', { ...call, id: 46, kind: 'data', sub_kind: 'sms', active: false, is_to_repeater: true, to_repeater: { id: far.id }, destination_id: far.id });
+    cy.get(`[data-test="line-46:repeater:${far.id}"]`).should('have.class', 'tx-line--data');
+    cy.get(`[data-test="repeater-blip-${far.id}"]`).should('have.class', 'tx-blip--burst');
+    cy.get(`[data-test="line-46:repeater:${far.id}"]`, { timeout: 4000 }).should('not.exist');
   });
 });

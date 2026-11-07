@@ -72,6 +72,7 @@ export type RepeaterPosition = {
   description: string;
   connected_time: string;
   last_ping_time: string;
+  talkgroups?: number[];
 };
 
 export type PositionRadioPut = Omit<PositionRadio, 'radio_id'>;

@@ -81,6 +81,7 @@
           :selected-repeater="selectedRepeater"
           :blip-radios="blipRadios"
           :blip-repeaters="blipRepeaters"
+          :lines="mapLines"
           @select="selectRadio"
           @select-repeater="selectRepeater"
         />
@@ -201,7 +202,8 @@ import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { BLIP_RINGS } from '@/lib/blip';
-import { isTxFrame, TxActivity } from '@/lib/txActivity';
+import { isDataFrame, isTxFrame, TxActivity } from '@/lib/txActivity';
+import { resolveLines, type TxLine, type TxPoint, type TxRepeaterPoint } from '@/lib/txLines';
 import {
   aprsName,
   formatAgo,
@@ -253,7 +255,9 @@ let sockets: { close(): void }[] = [];
 let clock: ReturnType<typeof setInterval> | null = null;
 const activity = new TxActivity();
 const txVersion = ref(0);
+let txNow = Date.now();
 let txTimer: ReturnType<typeof setTimeout> | null = null;
+let txTimerAt = 0;
 let alive = true;
 
 const latestOf = (radio: number): Position | null => {
@@ -333,29 +337,62 @@ const mapRepeaters = computed<MapRepeater[]>(() =>
   })),
 );
 
+const radioPoints = computed(() => {
+  const out = new Map<number, TxPoint>();
+  for (const t of mapTracks.value) {
+    const p = t.points[t.points.length - 1];
+    if (p) {
+      out.set(t.radio, { longitude: p.longitude, latitude: p.latitude, color: t.color });
+    }
+  }
+  return out;
+});
+
+const repeaterPoints = computed(
+  () =>
+    new Map<number, TxRepeaterPoint>(
+      repeaters.value.map((r) => [
+        r.id,
+        { longitude: r.longitude, latitude: r.latitude, color: REPEATER_COLOR, talkgroups: r.talkgroups ?? [] },
+      ]),
+    ),
+);
+
 const blipRadios = computed(() => {
   void txVersion.value;
-  return activity.radios(new Set(mapTracks.value.map((t) => t.radio)));
+  return activity.radios(new Set(radioPoints.value.keys()), txNow);
 });
 
 const blipRepeaters = computed(() => {
   void txVersion.value;
-  return activity.repeaters(new Set(repeaters.value.map((r) => r.id)));
+  return activity.repeaters(new Set(repeaterPoints.value.keys()), txNow);
+});
+
+const mapLines = computed<(TxLine & { data: boolean })[]>(() => {
+  void txVersion.value;
+  return activity
+    .active(txNow)
+    .flatMap((c) => resolveLines(c.frame, radioPoints.value, repeaterPoints.value).map((l) => ({ ...l, data: c.data })));
 });
 
 const onTxTimer = () => {
   txTimer = null;
-  if (activity.expire(Date.now())) {
+  txNow = Date.now();
+  if (activity.expire(txNow)) {
     txVersion.value++;
   }
   scheduleTx();
 };
 
 const scheduleTx = () => {
-  const at = activity.next();
-  if (txTimer !== null || at === null || !alive) {
+  const at = activity.next(txNow);
+  if (at === null || !alive || (txTimer !== null && txTimerAt <= at)) {
     return;
   }
+  if (txTimer !== null) {
+    clearTimeout(txTimer);
+  }
+  txTimerAt = at;
   txTimer = setTimeout(onTxTimer, Math.max(0, at - Date.now()));
 };
 
@@ -373,9 +410,12 @@ const onCallMessage = (event: MessageEvent) => {
   } catch {
     return;
   }
-  if (isTxFrame(frame)) {
-    txChanged(activity.call(frame, Date.now()));
+  if (!isTxFrame(frame)) {
+    return;
   }
+  txNow = Date.now();
+  const receivers = isDataFrame(frame) ? resolveLines(frame, radioPoints.value, repeaterPoints.value).map((l) => l.to) : [];
+  txChanged(activity.call(frame, txNow, receivers));
 };
 
 const selectRadio = (radio: number) => {
@@ -448,7 +488,8 @@ const onSocketMessage = (event: MessageEvent) => {
     return;
   }
   const p = frame.position;
-  txChanged(activity.position(p.radio_id, p.repeater_id, p.received_at, Date.now()));
+  txNow = Date.now();
+  txChanged(activity.position(p.radio_id, p.repeater_id, p.received_at, txNow));
   const track = tracks.value[p.radio_id] ?? [];
   if (track.some((x) => x.received_at === p.received_at)) {
     return;

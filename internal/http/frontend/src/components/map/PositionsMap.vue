@@ -21,6 +21,26 @@
 
 <template>
   <BaseMap class="h-full w-full" @ready="onReady">
+    <svg class="tx-lines" aria-hidden="true" data-test="tx-lines" :data-ready="map ? 'true' : 'false'">
+      <TransitionGroup name="tx-line" tag="g">
+        <path
+          v-for="l in linePaths"
+          :key="l.key"
+          :d="l.d"
+          class="tx-line"
+          :class="l.data ? 'tx-line--data' : 'tx-line--voice'"
+          :style="{ stroke: l.color }"
+          :data-test="`line-${l.key}`"
+        />
+      </TransitionGroup>
+    </svg>
+    <span
+      v-for="l in dataDots"
+      :key="l.key"
+      class="tx-dot"
+      :style="{ offsetPath: `path('${l.d}')`, background: l.color }"
+      aria-hidden="true"
+    />
     <div
       v-if="card"
       class="pointer-events-none absolute z-10 flex flex-col gap-0.5 whitespace-nowrap rounded-lg border bg-background px-3 py-2 text-[13px] shadow-md"
@@ -41,6 +61,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import BaseMap from '@/components/map/BaseMap.vue';
 import { blipElement, setBlipMode } from '@/lib/blip';
 import type { TxMode } from '@/lib/txActivity';
+import { curvePath, RADIO_PIN_RADIUS, REPEATER_PIN_RADIUS, type TxEnd, type TxLine } from '@/lib/txLines';
 import { formatAgo, formatCoordinates, type Position } from '@/services/positions';
 
 export type MapTrack = {
@@ -68,8 +89,9 @@ const props = withDefaults(
     selectedRepeater?: number | null;
     blipRadios?: Record<number, TxMode>;
     blipRepeaters?: Record<number, TxMode>;
+    lines?: (TxLine & { data: boolean })[];
   }>(),
-  { repeaters: () => [], selectedRepeater: null, blipRadios: () => ({}), blipRepeaters: () => ({}) },
+  { repeaters: () => [], selectedRepeater: null, blipRadios: () => ({}), blipRepeaters: () => ({}), lines: () => [] },
 );
 const emit = defineEmits<{ select: [radio: number]; selectRepeater: [id: number] }>();
 
@@ -78,8 +100,8 @@ const SOURCE_LATEST = 'positions-latest';
 const SOURCE_REPEATERS = 'positions-repeaters';
 const LAYER_REPEATER_HALO = 'positions-repeaters-halo';
 const CARD_ROOM = 260;
-const RADIO_PIN = 22;
-const REPEATER_PIN = 24;
+const RADIO_PIN = 2 * RADIO_PIN_RADIUS;
+const REPEATER_PIN = 2 * REPEATER_PIN_RADIUS;
 
 const map = shallowRef<MapLibre | null>(null);
 const moved = ref(0);
@@ -292,6 +314,25 @@ function onReady(m: MapLibre) {
 
 watch(() => [props.tracks, props.repeaters], refresh, { deep: true });
 watch(() => [props.tracks, props.repeaters, props.blipRadios, props.blipRepeaters], syncBlips, { deep: true });
+
+const pinRadius = (e: TxEnd) => (e.kind === 'radio' ? RADIO_PIN_RADIUS : REPEATER_PIN_RADIUS);
+
+const linePaths = computed(() => {
+  void moved.value;
+  const m = map.value;
+  if (!m || props.lines.length === 0) {
+    return [];
+  }
+  return props.lines
+    .map((l) => {
+      const a = m.project([l.from.longitude, l.from.latitude]);
+      const b = m.project([l.to.longitude, l.to.latitude]);
+      return { key: l.key, color: l.color, data: l.data, d: curvePath(a, b, pinRadius(l.from), pinRadius(l.to)) };
+    })
+    .filter((l) => l.d !== '');
+});
+
+const dataDots = computed(() => linePaths.value.filter((l) => l.data));
 
 const repeaterCard = () => {
   const m = map.value;

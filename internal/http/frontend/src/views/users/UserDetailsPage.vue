@@ -256,11 +256,6 @@ export default {
   },
   created() {},
   mounted() {
-    const userStore = useUserStore();
-    if (!userStore.loggedIn) {
-      this.$router.replace('/login');
-      return;
-    }
     const id = this.$route.params.id;
     if (id) {
       this.userID = Number(id);

@@ -35,10 +35,12 @@
 </template>
 
 <script setup lang="ts">
-import type { GeoJSONSource, Map as MapLibre, MapLayerMouseEvent } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MapLibre, MapLayerMouseEvent, Marker } from 'maplibre-gl';
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 
 import BaseMap from '@/components/map/BaseMap.vue';
+import { blipElement, setBlipMode } from '@/lib/blip';
+import type { TxMode } from '@/lib/txActivity';
 import { formatAgo, formatCoordinates, type Position } from '@/services/positions';
 
 export type MapTrack = {
@@ -59,8 +61,15 @@ export type MapRepeater = {
 };
 
 const props = withDefaults(
-  defineProps<{ tracks: MapTrack[]; selected: number | null; repeaters?: MapRepeater[]; selectedRepeater?: number | null }>(),
-  { repeaters: () => [], selectedRepeater: null },
+  defineProps<{
+    tracks: MapTrack[];
+    selected: number | null;
+    repeaters?: MapRepeater[];
+    selectedRepeater?: number | null;
+    blipRadios?: Record<number, TxMode>;
+    blipRepeaters?: Record<number, TxMode>;
+  }>(),
+  { repeaters: () => [], selectedRepeater: null, blipRadios: () => ({}), blipRepeaters: () => ({}) },
 );
 const emit = defineEmits<{ select: [radio: number]; selectRepeater: [id: number] }>();
 
@@ -69,10 +78,14 @@ const SOURCE_LATEST = 'positions-latest';
 const SOURCE_REPEATERS = 'positions-repeaters';
 const LAYER_REPEATER_HALO = 'positions-repeaters-halo';
 const CARD_ROOM = 260;
+const RADIO_PIN = 22;
+const REPEATER_PIN = 24;
 
 const map = shallowRef<MapLibre | null>(null);
 const moved = ref(0);
 let fitted = false;
+let makeMarker: ((el: HTMLElement) => Marker) | null = null;
+const blips = new Map<string, { marker: Marker; el: HTMLElement }>();
 
 const tracksData = () => ({
   type: 'FeatureCollection' as const,
@@ -207,8 +220,64 @@ const pointer = (m: MapLibre, on: boolean) => () => {
   m.getCanvas().style.cursor = on ? 'pointer' : '';
 };
 
+type Want = { at: [number, number]; color: string; mode: TxMode; size: number; test: string };
+
+function wantedBlips(): Map<string, Want> {
+  const want = new Map<string, Want>();
+  for (const t of props.tracks) {
+    const mode = props.blipRadios[t.radio];
+    const p = t.points[t.points.length - 1];
+    if (mode && p) {
+      want.set(`radio:${t.radio}`, { at: [p.longitude, p.latitude], color: t.color, mode, size: RADIO_PIN, test: `blip-radio-${t.radio}` });
+    }
+  }
+  for (const r of props.repeaters) {
+    const mode = props.blipRepeaters[r.id];
+    if (mode) {
+      want.set(`repeater:${r.id}`, { at: [r.longitude, r.latitude], color: r.color, mode, size: REPEATER_PIN, test: `blip-repeater-${r.id}` });
+    }
+  }
+  return want;
+}
+
+function syncBlips() {
+  const m = map.value;
+  if (!m || !makeMarker) {
+    return;
+  }
+  const want = wantedBlips();
+  for (const [key, b] of blips) {
+    if (!want.has(key)) {
+      b.marker.remove();
+      blips.delete(key);
+    }
+  }
+  for (const [key, w] of want) {
+    const have = blips.get(key);
+    if (have) {
+      setBlipMode(have.el, w.mode);
+      have.marker.setLngLat(w.at);
+      continue;
+    }
+    const el = blipElement(w.color, w.mode, w.size);
+    el.dataset.test = w.test;
+    blips.set(key, { marker: makeMarker(el).setLngLat(w.at).addTo(m), el });
+  }
+}
+
+function clearBlips() {
+  for (const b of blips.values()) {
+    b.marker.remove();
+  }
+  blips.clear();
+}
+
 function onReady(m: MapLibre) {
   map.value = m;
+  void import('maplibre-gl').then((lib) => {
+    makeMarker = (el) => new lib.Marker({ element: el, anchor: 'center' });
+    syncBlips();
+  });
   addLayers(m);
   m.on('styledata', onStyle);
   m.on('move', onMove);
@@ -222,6 +291,7 @@ function onReady(m: MapLibre) {
 }
 
 watch(() => [props.tracks, props.repeaters], refresh, { deep: true });
+watch(() => [props.tracks, props.repeaters, props.blipRadios, props.blipRepeaters], syncBlips, { deep: true });
 
 const repeaterCard = () => {
   const m = map.value;
@@ -268,6 +338,7 @@ const card = computed(() => {
 });
 
 onBeforeUnmount(() => {
+  clearBlips();
   map.value?.off('styledata', onStyle);
   map.value?.off('move', onMove);
   map.value = null;

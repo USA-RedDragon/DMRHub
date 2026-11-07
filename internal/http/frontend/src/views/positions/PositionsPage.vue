@@ -79,6 +79,8 @@
           :selected="selected"
           :repeaters="mapRepeaters"
           :selected-repeater="selectedRepeater"
+          :blip-radios="blipRadios"
+          :blip-repeaters="blipRepeaters"
           @select="selectRadio"
           @select-repeater="selectRepeater"
         />
@@ -102,9 +104,19 @@
             >
               <span
                 aria-hidden="true"
-                class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                class="relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
                 :style="row.tracking || row.shared ? { background: row.color } : { border: '2px solid #a1a1aa' }"
-              />
+              >
+                <span
+                  v-if="blipRadios[row.radio]"
+                  class="tx-blip absolute inset-0"
+                  :class="`tx-blip--${blipRadios[row.radio]}`"
+                  :style="{ '--blip-color': row.color }"
+                  :data-test="`radio-blip-${row.radio}`"
+                >
+                  <span v-for="i in BLIP_RINGS" :key="i" class="tx-blip__ring" />
+                </span>
+              </span>
               <div class="flex min-w-0 grow flex-col gap-0.5">
                 <div class="flex justify-between gap-2">
                   <b class="text-sm font-semibold">{{ row.title }}</b>
@@ -134,7 +146,17 @@
                 :data-test="`repeater-${r.id}`"
                 @click="selectRepeater(r.id)"
               >
-                <span aria-hidden="true" class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: REPEATER_COLOR }" />
+                <span aria-hidden="true" class="relative mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: REPEATER_COLOR }">
+                  <span
+                    v-if="blipRepeaters[r.id]"
+                    class="tx-blip absolute inset-0"
+                    :class="`tx-blip--${blipRepeaters[r.id]}`"
+                    :style="{ '--blip-color': REPEATER_COLOR }"
+                    :data-test="`repeater-blip-${r.id}`"
+                  >
+                    <span v-for="i in BLIP_RINGS" :key="i" class="tx-blip__ring" />
+                  </span>
+                </span>
                 <div class="flex min-w-0 grow flex-col gap-0.5">
                   <div class="flex justify-between gap-2">
                     <b class="text-sm font-semibold">{{ repeaterTitle(r) }}</b>
@@ -178,6 +200,8 @@ import PositionsMap, { type MapRepeater, type MapTrack } from '@/components/map/
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { BLIP_RINGS } from '@/lib/blip';
+import { isTxFrame, TxActivity } from '@/lib/txActivity';
 import {
   aprsName,
   formatAgo,
@@ -225,8 +249,11 @@ const selected = ref<number | null>(null);
 const repeaters = ref<RepeaterPosition[]>([]);
 const selectedRepeater = ref<number | null>(null);
 const now = ref(Date.now());
-let socket: { close(): void } | null = null;
+let sockets: { close(): void }[] = [];
 let clock: ReturnType<typeof setInterval> | null = null;
+const activity = new TxActivity();
+const txVersion = ref(0);
+let txTimer: ReturnType<typeof setTimeout> | null = null;
 let alive = true;
 
 const latestOf = (radio: number): Position | null => {
@@ -306,6 +333,51 @@ const mapRepeaters = computed<MapRepeater[]>(() =>
   })),
 );
 
+const blipRadios = computed(() => {
+  void txVersion.value;
+  return activity.radios(new Set(mapTracks.value.map((t) => t.radio)));
+});
+
+const blipRepeaters = computed(() => {
+  void txVersion.value;
+  return activity.repeaters(new Set(repeaters.value.map((r) => r.id)));
+});
+
+const onTxTimer = () => {
+  txTimer = null;
+  if (activity.expire(Date.now())) {
+    txVersion.value++;
+  }
+  scheduleTx();
+};
+
+const scheduleTx = () => {
+  const at = activity.next();
+  if (txTimer !== null || at === null || !alive) {
+    return;
+  }
+  txTimer = setTimeout(onTxTimer, Math.max(0, at - Date.now()));
+};
+
+const txChanged = (changed: boolean) => {
+  if (changed) {
+    txVersion.value++;
+  }
+  scheduleTx();
+};
+
+const onCallMessage = (event: MessageEvent) => {
+  let frame: unknown;
+  try {
+    frame = JSON.parse(event.data);
+  } catch {
+    return;
+  }
+  if (isTxFrame(frame)) {
+    txChanged(activity.call(frame, Date.now()));
+  }
+};
+
 const selectRadio = (radio: number) => {
   selected.value = radio;
   selectedRepeater.value = null;
@@ -376,6 +448,7 @@ const onSocketMessage = (event: MessageEvent) => {
     return;
   }
   const p = frame.position;
+  txChanged(activity.position(p.radio_id, p.repeater_id, p.received_at, Date.now()));
   const track = tracks.value[p.radio_id] ?? [];
   if (track.some((x) => x.received_at === p.received_at)) {
     return;
@@ -401,7 +474,11 @@ const load = async () => {
     now.value = Date.now();
     void loadRepeaters();
   }, 30000);
-  socket = ws.connect(getWebsocketURI() + '/messages', onSocketMessage);
+  sockets = [
+    ws.connect(getWebsocketURI() + '/messages', onSocketMessage),
+    ws.connect(getWebsocketURI() + '/calls', onCallMessage),
+    ws.connect(getWebsocketURI() + '/lastheard', onCallMessage),
+  ];
 };
 
 onMounted(load);
@@ -411,8 +488,11 @@ onUnmounted(() => {
   if (clock !== null) {
     clearInterval(clock);
   }
-  if (socket) {
-    socket.close();
+  if (txTimer !== null) {
+    clearTimeout(txTimer);
+  }
+  for (const s of sockets) {
+    s.close();
   }
 });
 </script>

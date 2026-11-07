@@ -35,26 +35,29 @@ vi.mock('@unhead/vue', () => ({
 vi.mock('@/components/map/PositionsMap.vue', () => ({
   default: {
     name: 'PositionsMap',
-    props: ['tracks', 'selected', 'repeaters', 'selectedRepeater'],
+    props: ['tracks', 'selected', 'repeaters', 'selectedRepeater', 'blipRadios', 'blipRepeaters'],
     template: '<div data-test="map" />',
   },
 }));
 
-const socket = vi.hoisted(() => ({
-  handler: null as null | ((event: { data: string }) => void),
-  url: '',
-  closed: false,
-}));
+type Handler = (event: { data: string }) => void;
+
+const sockets = vi.hoisted(() => new Map<string, { handler: (event: { data: string }) => void; closed: boolean }>());
 
 vi.mock('@/services/ws', () => ({
   default: {
     connect: (url: string, handler: (event: { data: string }) => void) => {
-      socket.url = url;
-      socket.handler = handler;
-      return { close: () => { socket.closed = true; } };
+      const s = { handler, closed: false };
+      sockets.set(url.slice(url.lastIndexOf('/')), s);
+      return { close: () => { s.closed = true; } };
     },
   },
 }));
+
+const send = (path: string, frame: unknown) => {
+  const handler: Handler = sockets.get(path)!.handler;
+  handler({ data: JSON.stringify(frame) });
+};
 
 import API from '@/services/API';
 import PositionsPage from '@/views/positions/PositionsPage.vue';
@@ -146,9 +149,8 @@ describe('PositionsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
-    socket.handler = null;
-    socket.url = '';
-    socket.closed = false;
+    sockets.clear();
+    vi.useRealTimers();
   });
 
   it('lists the users radios, tracked or not, then the shared ones', async () => {
@@ -167,7 +169,7 @@ describe('PositionsPage', () => {
     const map = wrapper.findComponent({ name: 'PositionsMap' });
     const tracks = map.props('tracks') as { radio: number; points: Position[] }[];
     expect(tracks.map((t) => [t.radio, t.points.length])).toEqual([[3002068, 2], [3002198, 1]]);
-    expect(socket.url).toMatch(/\/messages$/);
+    expect([...sockets.keys()].sort()).toEqual(['/calls', '/lastheard', '/messages']);
   });
 
   it('hides the shared radios when asked', async () => {
@@ -194,9 +196,9 @@ describe('PositionsPage', () => {
     serve();
     const wrapper = await mountPage();
     const fresh = pos(3002068, 0, { latitude: 30.3 });
-    socket.handler!({ data: JSON.stringify({ boxes: ['inbox'], message: { id: 1 } }) });
-    socket.handler!({ data: JSON.stringify({ kind: 'position', position: fresh }) });
-    socket.handler!({ data: JSON.stringify({ kind: 'position', position: fresh }) });
+    send('/messages', { boxes: ['inbox'], message: { id: 1 } });
+    send('/messages', { kind: 'position', position: fresh });
+    send('/messages', { kind: 'position', position: fresh });
     await flushPromises();
     const tracks = wrapper.findComponent({ name: 'PositionsMap' }).props('tracks') as { radio: number; points: Position[] }[];
     expect(tracks[0]!.points).toHaveLength(3);
@@ -248,13 +250,78 @@ describe('PositionsPage', () => {
     mockAPI.get.mockRejectedValue({ response: { status: 401 } });
     const wrapper = await mountPage();
     expect(wrapper.find('[data-test="positions-anon"]').exists()).toBe(true);
-    expect(socket.handler).toBeNull();
+    expect(sockets.size).toBe(0);
   });
 
   it('closes the socket when it leaves', async () => {
     serve();
     const wrapper = await mountPage();
     wrapper.unmount();
-    expect(socket.closed).toBe(true);
+    expect([...sockets.values()].every((s) => s.closed)).toBe(true);
+  });
+
+  it('blips a radio and the repeater it came in on while a call is on the air', async () => {
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    const call = { id: 11, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901 };
+    send('/calls', call);
+    send('/lastheard', call);
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'loop' });
+    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+    expect(wrapper.find('[data-test="radio-blip-3002068"]').classes()).toContain('tx-blip--loop');
+    expect(wrapper.find('[data-test="repeater-blip-310999901"]').exists()).toBe(true);
+
+    send('/lastheard', { ...call, active: false });
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({});
+    expect(map.props('blipRepeaters')).toEqual({});
+    expect(wrapper.find('[data-test="radio-blip-3002068"]').exists()).toBe(false);
+  });
+
+  it('stops a blip whose call never ends after the timeout', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/calls', { id: 12, active: true, kind: 'voice', source_id: 3002068, repeater_id: 310999901 });
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'loop' });
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'loop' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(map.props('blipRadios')).toEqual({});
+    expect(map.props('blipRepeaters')).toEqual({});
+  });
+
+  it('gives a pushed position one short blip', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/messages', { kind: 'position', position: pos(3002068, 0, { repeater_id: 310999901 }) });
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({ 3002068: 'burst' });
+    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'burst' });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(map.props('blipRadios')).toEqual({});
+  });
+
+  it('blips only the radios and repeaters on the map', async () => {
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    send('/calls', { id: 13, active: true, kind: 'voice', source_id: 3002099, repeater_id: 310999901 });
+    send('/lastheard', { id: 14, active: true, kind: 'voice', source_id: 3108888, repeater_id: 310888801 });
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({});
+    expect(map.props('blipRepeaters')).toEqual({ 310999901: 'loop' });
+
+    send('/calls', { id: 15, active: true, kind: 'voice', source_id: 3002198, repeater_id: 0 });
+    await flushPromises();
+    expect(map.props('blipRadios')).toEqual({ 3002198: 'loop' });
+    await wrapper.find('[data-test="show-shared"]').setValue(false);
+    expect(map.props('blipRadios')).toEqual({});
   });
 });

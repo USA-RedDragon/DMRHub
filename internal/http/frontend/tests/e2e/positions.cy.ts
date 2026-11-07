@@ -70,3 +70,108 @@ describe('Positions of repeaters', () => {
     cy.get('[data-test="repeaters"]').should('not.exist');
   });
 });
+
+type FakeSocket = { url: string; emit(frame: unknown): void };
+
+function fakeSockets(win: Cypress.AUTWindow & { fakeSockets?: FakeSocket[] }) {
+  const all: FakeSocket[] = [];
+  win.fakeSockets = all;
+  class Fake {
+    url: string;
+    listeners: Record<string, ((event: unknown) => void)[]> = {};
+    constructor(url: string) {
+      this.url = url;
+      all.push(this);
+      setTimeout(() => this.fire('open', {}), 0);
+    }
+    addEventListener(type: string, fn: (event: unknown) => void) {
+      (this.listeners[type] ??= []).push(fn);
+    }
+    fire(type: string, event: unknown) {
+      for (const fn of this.listeners[type] ?? []) {
+        fn(event);
+      }
+    }
+    emit(frame: unknown) {
+      this.fire('message', { data: JSON.stringify(frame) });
+    }
+    send() {}
+    close() {}
+  }
+  Object.defineProperty(win, 'WebSocket', { value: Fake });
+}
+
+function emit(path: string, frame: unknown) {
+  cy.window().then((win) => {
+    const socket = (win as unknown as { fakeSockets: FakeSocket[] }).fakeSockets.find((s) => s.url.endsWith(path));
+    expect(socket, path).to.exist;
+    socket!.emit(frame);
+  });
+}
+
+describe('Positions blips', () => {
+  const radio = 3109999;
+  const position = {
+    radio_id: radio,
+    shared: false,
+    latitude: 30.2665,
+    longitude: -97.7712,
+    format: 'lrrp',
+    accuracy_m: 10,
+    speed_mps: null,
+    heading_deg: null,
+    altitude_m: null,
+    fix_time: null,
+    received_at: new Date().toISOString(),
+    repeater_id: repeater.id,
+    slot: 2,
+    service_id: 5057,
+  };
+  const call = { id: 41, active: true, kind: 'voice', source_id: radio, repeater_id: repeater.id };
+
+  beforeEach(() => {
+    cy.stubCommonEndpoints();
+    cy.login();
+    stubPositions([repeater]);
+    cy.intercept('GET', '/api/v1/positions/radios', {
+      statusCode: 200,
+      body: {
+        radios: [{ radio_id: radio, tracking: true, interval_minutes: 10, retention_hours: 24, aprs: false, aprs_ssid: '', aprs_symbol: '', aprs_comment: '' }],
+        intervals: [5, 10, 15, 30, 60],
+        retention_hours: [24, 168, 720],
+        aprs: false,
+        callsign: 'N0CALL',
+      },
+    });
+    cy.intercept({ method: 'GET', pathname: '/api/v1/positions' }, { statusCode: 200, body: { positions: [position] } }).as('getPositions');
+    cy.intercept({ method: 'GET', pathname: `/api/v1/positions/${radio}` }, { statusCode: 200, body: { latest: position, track: [position] } });
+    cy.visit('/positions', { onBeforeLoad: fakeSockets });
+    cy.wait(['@getPositions', '@getRepeaters']);
+    cy.get(`[data-test="radio-${radio}"]`).should('exist');
+  });
+
+  it('blips the radio and its repeater while the call is on the air', () => {
+    emit('/ws/calls', call);
+    cy.get(`[data-test="radio-blip-${radio}"]`).should('have.class', 'tx-blip--loop');
+    cy.get(`[data-test="repeater-blip-${repeater.id}"]`).should('have.class', 'tx-blip--loop');
+    cy.get(`[data-test="radio-blip-${radio}"] .tx-blip__ring`).should('have.length', 3);
+
+    emit('/ws/lastheard', { ...call, active: false });
+    cy.get(`[data-test="radio-blip-${radio}"]`).should('not.exist');
+    cy.get(`[data-test="repeater-blip-${repeater.id}"]`).should('not.exist');
+  });
+
+  it('gives a data burst one blip that clears by itself', () => {
+    emit('/ws/calls', { ...call, id: 42, kind: 'data', active: false });
+    cy.get(`[data-test="radio-blip-${radio}"]`).should('have.class', 'tx-blip--burst');
+    cy.get(`[data-test="radio-blip-${radio}"]`, { timeout: 3000 }).should('not.exist');
+  });
+
+  it('ignores a call from a radio that is not on the map', () => {
+    emit('/ws/calls', { ...call, id: 43, source_id: 3108888, repeater_id: 310888801 });
+    emit('/ws/calls', { ...call, id: 44 });
+    cy.get(`[data-test="radio-blip-${radio}"]`).should('exist');
+    cy.get('[data-test^="radio-blip-"]').should('have.length', 1);
+    cy.get('[data-test^="repeater-blip-"]').should('have.length', 1);
+  });
+});

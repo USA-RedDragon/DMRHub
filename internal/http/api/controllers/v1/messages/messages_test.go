@@ -298,14 +298,20 @@ func TestStatsCountEachMessageOnceAndByDay(t *testing.T) {
 	since := e.storage(true)
 	self := e.msg(since.Add(time.Millisecond), owner, owner, false, "note to self")
 	require.NoError(t, e.db.Model(&self).Update("response", models.CallResponseNACK).Error)
+	before := time.Now().UTC().Format("2006-01-02")
 	s := e.stats()
+	after := time.Now().UTC().Format("2006-01-02")
 	assert.Equal(t, 1, s.Inbox)
 	assert.Equal(t, 1, s.Outbox)
 	assert.Equal(t, 1, s.NACK)
 	assert.Equal(t, map[string]int{"ip": 1}, s.ByFormat)
 	require.Len(t, s.ByDay, 7)
-	assert.Equal(t, time.Now().UTC().Format("2006-01-02"), s.ByDay[6].Day)
-	assert.Equal(t, 1, s.ByDay[6].Count)
+	assert.Contains(t, []string{before, after}, s.ByDay[6].Day, "the last day is today")
+	counts := map[string]int{}
+	for _, d := range s.ByDay {
+		counts[d.Day] = d.Count
+	}
+	assert.Equal(t, 1, counts[self.ReceivedAt.UTC().Format("2006-01-02")], "the message counts on the day it came")
 
 	w := testutils.Do(t, e.router, e.jar, http.MethodGet, "/api/v1/messages/stats?tz=America/Chicago", nil)
 	require.Equal(t, http.StatusOK, w.Code)

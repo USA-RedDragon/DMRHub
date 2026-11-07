@@ -64,6 +64,7 @@ func statusStack(t *testing.T, stack *testutils.IntegrationStack) (*testutils.MM
 	stack.AssignTS2StaticTG(t, statusRepeater, 3100)
 	stack.StartServers(t)
 	p := stack.Plugins(t).Run(t, "Status", []models.PluginRange{{First: status.ID, Last: status.ID}}, status.Serve)
+	stack.Plugins(t).WaitSubscribed(t, p.ID, (*pluginv1.Subscribe).GetTexts)
 	c := testutils.NewMMDVMClient(statusRepeater, "", testPassword)
 	require.NoError(t, c.Connect(stack.MMDVMAddr))
 	t.Cleanup(c.Close)

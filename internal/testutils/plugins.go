@@ -59,6 +59,10 @@ type Plugins struct {
 	db     *gorm.DB
 	ps     pubsub.PubSub
 	Server *plugins.Server
+
+	mu      sync.Mutex
+	subs    map[uint]*pluginv1.Subscribe
+	changed chan struct{}
 }
 
 // StartPlugins starts the plugin listener of router on loopback until the
@@ -70,10 +74,44 @@ func StartPlugins(t testing.TB, db *gorm.DB, ps pubsub.PubSub, router plugins.Ro
 	var cfg config.Config
 	cfg.Secret = pluginSecret
 	cfg.DMR.Plugins = config.Plugins{Enabled: true, Bind: "127.0.0.1", Port: 0}
+	p := &Plugins{cfg: &cfg, db: db, ps: ps, subs: map[uint]*pluginv1.Subscribe{}, changed: make(chan struct{})}
+	opts = append(opts, plugins.WithSubscribed(p.applied))
 	srv, err := plugins.Start(context.Background(), &cfg, db, ps, router, setPlugins, notify, opts...)
 	require.NoError(t, err)
 	t.Cleanup(srv.Stop)
-	return &Plugins{cfg: &cfg, db: db, ps: ps, Server: srv}
+	p.Server = srv
+	return p
+}
+
+func (p *Plugins) applied(plugin uint, sub *pluginv1.Subscribe) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.subs[plugin] = sub
+	close(p.changed)
+	p.changed = make(chan struct{})
+}
+
+// WaitSubscribed waits until the hub applied a Subscribe of plugin for
+// which want holds, so that the hub sends the plugin what it asked for
+// from then on. A plugin sends its Subscribe on its own after it connects,
+// so Run returns before the hub applies it.
+func (p *Plugins) WaitSubscribed(t testing.TB, plugin uint, want func(*pluginv1.Subscribe) bool) {
+	t.Helper()
+	wait, stop := context.WithTimeout(t.Context(), PluginConnectWait)
+	defer stop()
+	for {
+		p.mu.Lock()
+		sub, changed := p.subs[plugin], p.changed
+		p.mu.Unlock()
+		if sub != nil && want(sub) {
+			return
+		}
+		select {
+		case <-changed:
+		case <-wait.Done():
+			require.FailNow(t, "the hub did not apply the subscription of the plugin", "plugin %d, within %s", plugin, PluginConnectWait)
+		}
+	}
 }
 
 // Run adds the plugin name with ranges and runs serve on its connection,

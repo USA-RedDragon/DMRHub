@@ -106,6 +106,7 @@ type Service struct {
 	aprs      *APRS
 	aprsInbox bool
 	email     *Email
+	applied   func(plugin uint, sub *pluginv1.Subscribe)
 
 	mu       sync.Mutex
 	streams  map[*openStream]struct{}
@@ -126,6 +127,12 @@ type ServiceOption func(*Service)
 // time their heartbeats and handoffs, on c. Nil is the real clock.
 func WithClock(c clock.Clock) ServiceOption {
 	return func(s *Service) { s.clock = clock.Or(c) }
+}
+
+// WithSubscribed makes the service call f after it applies each Subscribe
+// of a plugin, from then on sending the plugin what sub asks for.
+func WithSubscribed(f func(plugin uint, sub *pluginv1.Subscribe)) ServiceOption {
+	return func(s *Service) { s.applied = f }
 }
 
 // NewService returns the plugin service. Bursts that plugins send go to
@@ -493,6 +500,9 @@ func (w *watcher) watch(ctx context.Context) {
 			w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Burst{Burst: ToBurst(&pkt)}})
 		case sub := <-w.subscribe:
 			w.setSubscribe(sub)
+			if w.s.applied != nil {
+				w.s.applied(w.p.ID, sub)
+			}
 		case pos := <-w.positions:
 			w.store(pos, current)
 		case b, ok := <-tracking:

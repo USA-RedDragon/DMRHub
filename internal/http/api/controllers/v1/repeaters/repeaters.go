@@ -412,6 +412,18 @@ func POSTRepeater(c *gin.Context) {
 			return
 		}
 
+		owner := user
+		if json.Owner != 0 && json.Owner != user.ID {
+			if !requesterIsAdmin(c, db) {
+				c.JSON(http.StatusForbidden, gin.H{errorKey: "Only an admin can enroll a repeater for another user"})
+				return
+			}
+			owner, ok = findAssignableOwner(c, db, json.Owner)
+			if !ok {
+				return
+			}
+		}
+
 		if over, err := overQuota(db, &user, config.DMR.RepeaterQuota); err != nil {
 			slog.Error("Error counting the repeaters of a user", "userID", user.ID, "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
@@ -425,8 +437,8 @@ func POSTRepeater(c *gin.Context) {
 		repeater.Type = json.Type
 		repeater.SimplexRepeater = json.SimplexRepeater
 		repeater.ID = json.RadioID
-		repeater.Owner = user
-		repeater.OwnerID = user.ID
+		repeater.Owner = owner
+		repeater.OwnerID = owner.ID
 
 		repeater.Password, err = newSecret(json.Type)
 		if err != nil {
@@ -442,7 +454,7 @@ func POSTRepeater(c *gin.Context) {
 					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Repeater ID is not valid"})
 					return
 				}
-				if !repeaterdb.ValidRepeaterCallsign(json.RadioID, user.Callsign) {
+				if !repeaterdb.ValidRepeaterCallsign(json.RadioID, owner.Callsign) {
 					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Repeater ID does not match assigned callsign"})
 					return
 				}
@@ -500,14 +512,12 @@ func POSTRepeater(c *gin.Context) {
 			}
 		case hotspotRegex.MatchString(fmt.Sprintf("%d", json.RadioID)):
 			if config.DMR.Checks().HotspotIDs {
-				// check that first 7 digits of hotspot ID match userID
-				userIDStr := fmt.Sprintf("%d", userID)
-				if !strings.HasPrefix(fmt.Sprintf("%d", json.RadioID), userIDStr) {
+				if !strings.HasPrefix(fmt.Sprintf("%d", json.RadioID), fmt.Sprintf("%d", owner.ID)) {
 					c.JSON(http.StatusBadRequest, gin.H{errorKey: "Hotspot ID must start with user ID"})
 					return
 				}
 			}
-			repeater.Callsign = user.Callsign
+			repeater.Callsign = owner.Callsign
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{errorKey: "RadioID is invalid"})
 			return

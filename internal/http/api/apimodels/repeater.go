@@ -25,10 +25,13 @@ import (
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 )
 
+// RepeaterPost enrolls a repeater. Owner is the user ID of the owner; 0 is
+// the requester. Only an admin can set another user.
 type RepeaterPost struct {
 	RadioID         uint   `json:"id" binding:"required"`
 	Type            string `json:"type"`
 	SimplexRepeater bool   `json:"simplex_repeater"`
+	Owner           uint   `json:"owner,omitempty"`
 }
 
 // RepeaterOwnerPost is the owner that an admin assigns to a repeater with

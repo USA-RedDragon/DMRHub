@@ -249,6 +249,7 @@ func v1(current configPkg.Source, group *gin.RouterGroup, userSuspension gin.Han
 	v1Positions.Use(middleware.RequireLogin(), userSuspension)
 	v1Positions.GET("", v1PositionsControllers.GETPositions)
 	v1Positions.GET("/radios", v1PositionsControllers.GETPositionRadios)
+	v1Positions.GET("/repeaters", v1PositionsControllers.GETRepeaterPositions)
 	v1Positions.PUT("/:id/settings", v1PositionsControllers.PUTPositionRadio)
 	v1Positions.GET("/:id", v1PositionsControllers.GETRadioPositions)
 	v1Positions.GET("/:id/track", v1PositionsControllers.GETTrack)

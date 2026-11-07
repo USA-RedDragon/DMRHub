@@ -114,3 +114,30 @@ type PositionPush struct {
 	Kind     string   `json:"kind"`
 	Position Position `json:"position"`
 }
+
+// RepeaterPosition is the position that a connected repeater reports.
+type RepeaterPosition struct {
+	ID          uint      `json:"id"`
+	Callsign    string    `json:"callsign"`
+	Latitude    float64   `json:"latitude"`
+	Longitude   float64   `json:"longitude"`
+	Height      uint16    `json:"height"`
+	Location    string    `json:"location"`
+	Description string    `json:"description"`
+	Connected   time.Time `json:"connected_time"`
+	LastPing    time.Time `json:"last_ping_time"`
+}
+
+// NewRepeaterPosition returns the API form of the position of r.
+func NewRepeaterPosition(r *models.Repeater) RepeaterPosition {
+	return RepeaterPosition{
+		ID: r.ID, Callsign: r.Callsign, Latitude: r.Latitude, Longitude: r.Longitude, Height: r.Height,
+		Location: r.Location, Description: r.Description, Connected: r.Connected, LastPing: r.LastPing,
+	}
+}
+
+// RepeaterPositionList is the positions of the connected repeaters that the
+// user sees.
+type RepeaterPositionList struct {
+	Repeaters []RepeaterPosition `json:"repeaters"`
+}

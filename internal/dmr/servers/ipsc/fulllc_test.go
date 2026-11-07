@@ -134,17 +134,17 @@ func decodeBPTCPayload(b [33]byte) ([12]byte, bool) {
 }
 
 // TestTranslateToIPSCDataHeaderVector checks the IPSC payload of an
-// unconfirmed data header from 3191868 to group 9 with 2 blocks to follow.
+// unconfirmed data header from 3109999 to group 9 with 2 blocks to follow.
 // dmrgo v0.0.1 BPTC(196,96) read rows 1-8 one column late and sent
-// 824a00001261787b0401a83b for this burst.
+// 824a0000125ee8df04400309 for this burst.
 func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 	t.Parallel()
 	tr := newTestTranslator(t)
 	var burst [33]byte
-	copy(burst[:], mustHex(t, "08dd874c11ff21001564cb21ddadff57d75df5de6a3818ea304a248d80080d809d"))
+	copy(burst[:], mustHex(t, "0d808f50061720783104a2e15dadff57d75df5de6a8c1912214a614d47490c82cd"))
 	pkt := models.Packet{
 		Signature:   "DMRD",
-		Src:         3191868,
+		Src:         3109999,
 		Dst:         9,
 		GroupCall:   true,
 		FrameType:   dmrconst.FrameDataSync,
@@ -156,12 +156,12 @@ func TestTranslateToIPSCDataHeaderVector(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 packet, got %d", len(out))
 	}
-	if got := hex.EncodeToString(out[0][38:50]); got != "82a500000930b43c8200d41d" {
-		t.Fatalf("header payload %s, want 82a500000930b43c8200d41d", got)
+	if got := hex.EncodeToString(out[0][38:50]); got != "82a50000092f746f82000184" {
+		t.Fatalf("header payload %s, want 82a50000092f746f82000184", got)
 	}
 	h := pdu.DataHeaderBytes(out[0][38:50])
 	target, source, ok := h.Addresses()
-	if !h.CRCOK() || !ok || target != 9 || source != 3191868 {
+	if !h.CRCOK() || !ok || target != 9 || source != 3109999 {
 		t.Fatalf("header CRC ok=%v addresses ok=%v target=%d source=%d", h.CRCOK(), ok, target, source)
 	}
 	if bf := out[0][46] & 0x7F; bf != 2 {

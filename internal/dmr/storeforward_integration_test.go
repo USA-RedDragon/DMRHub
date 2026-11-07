@@ -45,7 +45,7 @@ type sfNet struct {
 func newSFNet(t *testing.T, stack *testutils.IntegrationStack) *sfNet {
 	t.Helper()
 	stack.SeedUser(t, anyTone, "N6CALL")
-	stack.SeedUser(t, otherRadio, "KF5XYZ")
+	stack.SeedUser(t, otherRadio, "N1CALL")
 	stack.SeedMMDVMRepeater(t, anyToneRpt, anyTone, testPassword)
 	stack.SeedMMDVMRepeater(t, otherRpt, otherRadio, testPassword)
 	stack.StartServers(t)

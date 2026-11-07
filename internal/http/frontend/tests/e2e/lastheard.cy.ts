@@ -160,7 +160,7 @@ describe('Last Heard', () => {
         entry(300344201, 'slot_busy', 'K8CALL'),
         entry(300344202, 'slot_busy'),
         entry(300345510, 'no_ipsc_form'),
-        entry(300346001, 'fec_uncorrectable', 'KD5QRS'),
+        entry(300346001, 'fec_uncorrectable', 'K7CALL'),
       ];
       data.calls[2].undeliverable_scope = 'all';
       cy.intercept('GET', '/api/v1/lastheard*', { statusCode: 200, body: data }).as('getLastHeard');
@@ -177,7 +177,7 @@ describe('Last Heard', () => {
     cy.contains('[data-testid="undeliverable-details"] summary', 'Show the 6 repeaters').click();
     cy.contains('[data-testid="undeliverable-detail"]', 'Busy on that slot: W1XPR (990626), K3CALL (300344200), K8CALL (300344201), and 1 more').should('be.visible');
     cy.contains('[data-testid="undeliverable-detail"]', 'Could not carry this burst: 300345510').should('be.visible');
-    cy.contains('[data-testid="undeliverable-detail"]', 'Too damaged to repair: KD5QRS (300346001)').should('be.visible');
+    cy.contains('[data-testid="undeliverable-detail"]', 'Too damaged to repair: K7CALL (300346001)').should('be.visible');
     cy.contains('Stored sentence').should('not.exist');
     cy.contains('slot_busy').should('not.exist');
   });

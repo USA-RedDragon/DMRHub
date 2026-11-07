@@ -1,21 +1,21 @@
-# Talker alias (DMRA) and GPS (DMRG) packets for radio 3191868, as MMDVMHost 9384d683 writes them to DMRGateway (mmdvmhost)
+# Talker alias (DMRA) and GPS (DMRG) packets for radio 3109999, as MMDVMHost 9384d683 writes them to DMRGateway (mmdvmhost)
 # and as DMRGateway d751e20e forwards them to a master (dmrgateway). DMRGateway inserts its repeater ID, 00beef01 here, and
 # then writes the length of the MMDVMHost packet, so the 15-octet DMRA keeps 3 of the 7 data octets and the 14-octet DMRG
 # keeps 3 of the 7 position octets (DMRGateway DMRNetwork.cpp:314-352). The writers of both programs were compiled from
 # source and run on 2026-10-22 in the e2e interop lane:
 # /home/reddragon/.claude/jobs/a75b2a9e/tmp/e2e/iapps/gwgps/net_vectors.txt (NOTES.md in that directory has the method).
-# 7bit_KN4OQW is the 7-bit alias "KN4OQW" (header only), 7bit_call_name the 7-bit alias "KF5XYZ Jacob" (header and block 1),
-# utf16_KN4OQW the UTF-16 alias "KN4OQW" (header and block 1), and dallas a GPS position.
+# 7bit_N0CALL is the 7-bit alias "N0CALL" (header only), 7bit_call_name the 7-bit alias "N1CALL Alice" (header and block 1),
+# utf16_N0CALL the UTF-16 alias "N0CALL" (header and block 1), and dallas a GPS position.
 # Columns: the writer, the vector, the packet.
-mmdvmhost 7bit_KN4OQW 444d524130b43c000d2e7349f46b80
-dmrgateway 7bit_KN4OQW 444d524100beef0130b43c000d2e73
-mmdvmhost 7bit_call_name 444d524130b43c00192e335b166d20
-mmdvmhost 7bit_call_name 444d524130b43c0195871efc400000
-dmrgateway 7bit_call_name 444d524100beef0130b43c00192e33
-dmrgateway 7bit_call_name 444d524100beef0130b43c0195871e
-mmdvmhost utf16_KN4OQW 444d524130b43c00cc004b004e0034
-mmdvmhost utf16_KN4OQW 444d524130b43c01004f0051005700
-dmrgateway utf16_KN4OQW 444d524100beef0130b43c00cc004b
-dmrgateway utf16_KN4OQW 444d524100beef0130b43c01004f00
-mmdvmhost dallas 444d524730b43c0376554a2e9da2
-dmrgateway dallas 444d524700beef0130b43c037655
+mmdvmhost 7bit_N0CALL 444d52412f746f000d398438332600
+dmrgateway 7bit_N0CALL 444d524100beef012f746f000d3984
+mmdvmhost 7bit_call_name 444d52412f746f0019398c38332620
+mmdvmhost 7bit_call_name 444d52412f746f0183b34e3ca00000
+dmrgateway 7bit_call_name 444d524100beef012f746f0019398c
+dmrgateway 7bit_call_name 444d524100beef012f746f0183b34e
+mmdvmhost utf16_N0CALL 444d52412f746f00cc004e00300043
+mmdvmhost utf16_N0CALL 444d52412f746f010041004c004c00
+dmrgateway utf16_N0CALL 444d524100beef012f746f00cc004e
+dmrgateway utf16_N0CALL 444d524100beef012f746f01004100
+mmdvmhost dallas 444d52472f746f0376554a2e9da2
+dmrgateway dallas 444d524700beef012f746f037655

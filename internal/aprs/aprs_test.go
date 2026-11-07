@@ -47,7 +47,7 @@ func TestEveryLineGoesToTheToCall(t *testing.T) {
 	}
 	packets := []struct{ source, via, info string }{
 		{"N6CALL-9", "N6CALL", "!3016.03N/09744.62W>"},
-		{"DL1ABC-7", "DL0HB", "=5230.00N/01324.00E[ comment"},
+		{"DL1ABC-7", "N7CALL", "=5230.00N/01324.00E[ comment"},
 		{"N0CALL", "APZXYZ", "!0000.00N\\00000.00Wk"},
 	}
 	for _, c := range configs {
@@ -78,7 +78,7 @@ func TestNoConfigFieldNamesTheToCall(t *testing.T) {
 func TestLineRefusesInvalidCallsigns(t *testing.T) {
 	t.Parallel()
 	c := aprs.Config{Login: "K0CALL-10"}
-	for _, call := range []string{"", "n6call", "N6CALL-", "N6CALL-100", "N6CALL>APZXXX", "KI5,VMF", "N6CALL:X", "TOOLONGCALL"} {
+	for _, call := range []string{"", "n6call", "N6CALL-", "N6CALL-100", "N6CALL>APZXXX", "N0C,ALL", "N6CALL:X", "TOOLONGCALL"} {
 		_, err := c.Line(call, "N6CALL", "!")
 		assert.ErrorIs(t, err, aprs.ErrCallsign, call)
 	}
@@ -91,7 +91,7 @@ func TestLicensedCallsigns(t *testing.T) {
 	for _, call := range []string{"N6CALL", "N0CALL", "VK2ABC", "2E0ABC"} {
 		assert.True(t, aprs.Licensed(call), call)
 	}
-	for _, call := range []string{"", "GUEST", "123456", "N6CALL-9", "n6call", "KI5 VMF", "ABCDEFGHI1"} {
+	for _, call := range []string{"", "GUEST", "123456", "N6CALL-9", "n6call", "N0C ALL", "ABCDEFGHI1"} {
 		assert.False(t, aprs.Licensed(call), call)
 	}
 }

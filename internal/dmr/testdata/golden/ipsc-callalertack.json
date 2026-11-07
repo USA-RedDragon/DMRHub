@@ -3,8 +3,8 @@
   "transmissions": [
     {
       "kind": "csbk",
-      "source_id": 3191868,
-      "destination_id": 3140598,
+      "source_id": 3109999,
+      "destination_id": 3109998,
       "group_call": false,
       "sub_kind~": "call_alert",
       "time_slot": true

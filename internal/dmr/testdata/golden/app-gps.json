@@ -3,8 +3,8 @@
   "transmissions": [
     {
       "kind": "data",
-      "source_id": 3191868,
-      "destination_id": 3140598,
+      "source_id": 3109999,
+      "destination_id": 3109998,
       "group_call": false,
       "time_slot": true
     }
@@ -12,8 +12,8 @@
   "messages": [
     {
       "format": "data",
-      "source_id": 3191868,
-      "destination_id": 3140598,
+      "source_id": 3109999,
+      "destination_id": 3109998,
       "confirmed": false,
       "is_group": false,
       "text": ""

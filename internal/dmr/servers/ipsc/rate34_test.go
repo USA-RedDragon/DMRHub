@@ -34,7 +34,7 @@ import (
 // An XPR 8400 relayed a confirmed rate 3/4 block ("DMRGO TEST", DBSN 0)
 // from 3002068 to 3002068 as this IPSC packet. Octets 38-55 hold the 18
 // decoded octets rotated left by 2, so the DBSN and CRC-9 come last.
-const captureRate34 = "840004ce2eff30b43c30b43c0100007a9e40805ebcf232c2c0b0000000000840000d800a0090" +
+const captureRate34 = "840004ce2eff2dced42dced40100007a9e40805ebcf232c2c0b0000000000840000d800a0090" +
 	"444d52474f20544553540000a3ecda7c002e" + "007846d5"
 
 func TestTranslateToMMDVMRate34Capture(t *testing.T) {

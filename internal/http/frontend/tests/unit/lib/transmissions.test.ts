@@ -187,7 +187,7 @@ describe('undeliverableView', () => {
     const undeliverable = [
       entry(300345510, 'no_ipsc_form'),
       ...busy.slice(0, 20),
-      entry(300346001, 'fec_uncorrectable', 'KD5QRS'),
+      entry(300346001, 'fec_uncorrectable', 'K7CALL'),
       ...busy.slice(20),
       entry(300345511, 'no_ipsc_form'),
     ];
@@ -197,7 +197,7 @@ describe('undeliverableView', () => {
       details: [
         'Busy on that slot: W1XPR (990626), K3CALL (300344200), K8CALL (300344201), and 35 more',
         'Could not carry this burst: 300345510, 300345511',
-        'Too damaged to repair: KD5QRS (300346001)',
+        'Too damaged to repair: K7CALL (300346001)',
       ],
     });
   });

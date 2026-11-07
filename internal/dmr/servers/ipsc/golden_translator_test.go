@@ -77,7 +77,7 @@ func decodeUserT(t *testing.T, p []byte) ipscwire.User {
 	return u
 }
 
-// TestXPRVoiceCallToMMDVM replays a group voice call of an XPR 8400 (3191868
+// TestXPRVoiceCallToMMDVM replays a group voice call of an XPR 8400 (3109999
 // to talkgroup 9 on slot 2, color code 7) into the translator. The MMDVM
 // packets must carry each burst in its superframe position, with the AMBE
 // frames, the EMB (color code and PI) and the embedded data of the IPSC
@@ -109,7 +109,7 @@ func TestXPRVoiceCallToMMDVM(t *testing.T) {
 		t.Fatalf("last packet frame %d value %d, want a terminator", last.FrameType, last.DTypeOrVSeq)
 	}
 	for i, pkt := range out {
-		if pkt.Src != 3191868 || pkt.Dst != 9 || !pkt.GroupCall || !pkt.Slot || pkt.Seq != uint(i) {
+		if pkt.Src != 3109999 || pkt.Dst != 9 || !pkt.GroupCall || !pkt.Slot || pkt.Seq != uint(i) {
 			t.Fatalf("packet %d: %s", i, pkt.String())
 		}
 	}

@@ -48,11 +48,26 @@ export type MapTrack = {
   points: Position[];
 };
 
-const props = defineProps<{ tracks: MapTrack[]; selected: number | null }>();
-const emit = defineEmits<{ select: [radio: number] }>();
+export type MapRepeater = {
+  id: number;
+  color: string;
+  title: string;
+  latitude: number;
+  longitude: number;
+  location: string;
+  connected_time: string;
+};
+
+const props = withDefaults(
+  defineProps<{ tracks: MapTrack[]; selected: number | null; repeaters?: MapRepeater[]; selectedRepeater?: number | null }>(),
+  { repeaters: () => [], selectedRepeater: null },
+);
+const emit = defineEmits<{ select: [radio: number]; selectRepeater: [id: number] }>();
 
 const SOURCE_TRACKS = 'positions-tracks';
 const SOURCE_LATEST = 'positions-latest';
+const SOURCE_REPEATERS = 'positions-repeaters';
+const LAYER_REPEATER_HALO = 'positions-repeaters-halo';
 const CARD_ROOM = 260;
 
 const map = shallowRef<MapLibre | null>(null);
@@ -84,12 +99,39 @@ const latestData = () => ({
     }),
 });
 
+const repeatersData = () => ({
+  type: 'FeatureCollection' as const,
+  features: props.repeaters.map((r) => ({
+    type: 'Feature' as const,
+    properties: { repeater: r.id, color: r.color },
+    geometry: { type: 'Point' as const, coordinates: [r.longitude, r.latitude] },
+  })),
+});
+
 function addLayers(m: MapLibre) {
   if (m.getSource(SOURCE_TRACKS)) {
     return;
   }
   m.addSource(SOURCE_TRACKS, { type: 'geojson', data: tracksData() });
   m.addSource(SOURCE_LATEST, { type: 'geojson', data: latestData() });
+  m.addSource(SOURCE_REPEATERS, { type: 'geojson', data: repeatersData() });
+  m.addLayer({
+    id: LAYER_REPEATER_HALO,
+    type: 'circle',
+    source: SOURCE_REPEATERS,
+    paint: { 'circle-color': ['get', 'color'], 'circle-radius': 18, 'circle-opacity': 0.2 },
+  });
+  m.addLayer({
+    id: SOURCE_REPEATERS,
+    type: 'circle',
+    source: SOURCE_REPEATERS,
+    paint: {
+      'circle-color': ['get', 'color'],
+      'circle-radius': 9,
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 3,
+    },
+  });
   m.addLayer({
     id: SOURCE_TRACKS,
     type: 'line',
@@ -117,12 +159,13 @@ function refresh() {
   }
   (m.getSource(SOURCE_TRACKS) as GeoJSONSource | undefined)?.setData(tracksData());
   (m.getSource(SOURCE_LATEST) as GeoJSONSource | undefined)?.setData(latestData());
+  (m.getSource(SOURCE_REPEATERS) as GeoJSONSource | undefined)?.setData(repeatersData());
   fit();
 }
 
 function fit() {
   const m = map.value;
-  const points = props.tracks.flatMap((t) => t.points);
+  const points: { latitude: number; longitude: number }[] = [...props.tracks.flatMap((t) => t.points), ...props.repeaters];
   if (!m || fitted || points.length === 0) {
     return;
   }
@@ -153,25 +196,57 @@ const onClick = (e: MapLayerMouseEvent) => {
   }
 };
 
+const onRepeaterClick = (e: MapLayerMouseEvent) => {
+  const id = e.features?.[0]?.properties?.repeater;
+  if (typeof id === 'number') {
+    emit('selectRepeater', id);
+  }
+};
+
+const pointer = (m: MapLibre, on: boolean) => () => {
+  m.getCanvas().style.cursor = on ? 'pointer' : '';
+};
+
 function onReady(m: MapLibre) {
   map.value = m;
   addLayers(m);
   m.on('styledata', onStyle);
   m.on('move', onMove);
   m.on('click', SOURCE_LATEST, onClick);
-  m.on('mouseenter', SOURCE_LATEST, () => {
-    m.getCanvas().style.cursor = 'pointer';
-  });
-  m.on('mouseleave', SOURCE_LATEST, () => {
-    m.getCanvas().style.cursor = '';
-  });
+  m.on('click', SOURCE_REPEATERS, onRepeaterClick);
+  for (const layer of [SOURCE_LATEST, SOURCE_REPEATERS]) {
+    m.on('mouseenter', layer, pointer(m, true));
+    m.on('mouseleave', layer, pointer(m, false));
+  }
   fit();
 }
 
-watch(() => props.tracks, refresh, { deep: true });
+watch(() => [props.tracks, props.repeaters], refresh, { deep: true });
+
+const repeaterCard = () => {
+  const m = map.value;
+  const r = props.repeaters.find((x) => x.id === props.selectedRepeater);
+  if (!m || !r) {
+    return null;
+  }
+  const at = m.project([r.longitude, r.latitude]);
+  const width = m.getContainer().clientWidth;
+  return {
+    x: at.x,
+    y: at.y,
+    width,
+    left: at.x > width - CARD_ROOM,
+    title: r.title,
+    where: r.location ? `${formatCoordinates(r)} · ${r.location}` : formatCoordinates(r),
+    when: `Repeater · connected ${formatAgo(r.connected_time)}`,
+  };
+};
 
 const card = computed(() => {
   void moved.value;
+  if (props.selectedRepeater !== null) {
+    return repeaterCard();
+  }
   const m = map.value;
   const t = props.tracks.find((x) => x.radio === props.selected);
   const p = t?.points[t.points.length - 1];

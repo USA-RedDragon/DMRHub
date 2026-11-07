@@ -62,6 +62,18 @@ export type PositionRadios = {
   callsign: string;
 };
 
+export type RepeaterPosition = {
+  id: number;
+  callsign: string;
+  latitude: number;
+  longitude: number;
+  height: number;
+  location: string;
+  description: string;
+  connected_time: string;
+  last_ping_time: string;
+};
+
 export type PositionRadioPut = Omit<PositionRadio, 'radio_id'>;
 
 export type PositionPush = {
@@ -111,6 +123,11 @@ export async function getRadioPositions(radio: number, hours: number): Promise<R
 export async function getPositionRadios(): Promise<PositionRadios> {
   const res = await API.get('/positions/radios');
   return res.data;
+}
+
+export async function getRepeaterPositions(): Promise<RepeaterPosition[]> {
+  const res = await API.get('/positions/repeaters');
+  return res.data.repeaters ?? [];
 }
 
 export async function setPositionRadio(radio: number, body: PositionRadioPut): Promise<PositionRadio> {

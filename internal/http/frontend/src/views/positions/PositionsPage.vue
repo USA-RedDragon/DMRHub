@@ -74,7 +74,14 @@
 
     <div v-else-if="state === 'ready'" class="grid gap-6 lg:grid-cols-5">
       <div class="relative h-[55vh] min-h-[360px] overflow-hidden rounded-xl border lg:col-span-3 lg:h-[70vh]">
-        <PositionsMap :tracks="mapTracks" :selected="selected" @select="(r) => (selected = r)" />
+        <PositionsMap
+          :tracks="mapTracks"
+          :selected="selected"
+          :repeaters="mapRepeaters"
+          :selected-repeater="selectedRepeater"
+          @select="selectRadio"
+          @select-repeater="selectRepeater"
+        />
       </div>
       <Card class="lg:col-span-2">
         <CardHeader>
@@ -91,7 +98,7 @@
               class="flex cursor-pointer items-start gap-3 border-b py-3 last:border-b-0"
               :class="{ 'bg-muted/50': selected === row.radio }"
               :data-test="`radio-${row.radio}`"
-              @click="selected = row.radio"
+              @click="selectRadio(row.radio)"
             >
               <span
                 aria-hidden="true"
@@ -116,6 +123,32 @@
               </RouterLink>
             </li>
           </ul>
+          <div v-if="repeaters.length > 0" class="flex flex-col gap-1" data-test="repeaters">
+            <h3 class="text-sm font-semibold">Repeaters</h3>
+            <ul class="flex flex-col">
+              <li
+                v-for="r in repeaters"
+                :key="r.id"
+                class="flex cursor-pointer items-start gap-3 border-b py-3 last:border-b-0"
+                :class="{ 'bg-muted/50': selectedRepeater === r.id }"
+                :data-test="`repeater-${r.id}`"
+                @click="selectRepeater(r.id)"
+              >
+                <span aria-hidden="true" class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: REPEATER_COLOR }" />
+                <div class="flex min-w-0 grow flex-col gap-0.5">
+                  <div class="flex justify-between gap-2">
+                    <b class="text-sm font-semibold">{{ repeaterTitle(r) }}</b>
+                    <span class="text-[13px] text-muted-foreground">{{ formatAgo(r.connected_time, now) }}</span>
+                  </div>
+                  <span class="text-[13px] text-muted-foreground">{{ formatCoordinates(r) }}</span>
+                  <span v-if="repeaterPlace(r)" class="text-[13px] text-muted-foreground">{{ repeaterPlace(r) }}</span>
+                </div>
+                <RouterLink :to="`/repeaters/${r.id}`" class="text-[13px] text-primary underline-offset-4 hover:underline" @click.stop>
+                  Details
+                </RouterLink>
+              </li>
+            </ul>
+          </div>
           <div class="mt-auto flex items-center justify-between gap-3 border-t pt-4">
             <div class="flex flex-col gap-0.5">
               <span id="share-label" class="text-sm font-medium">Share my positions</span>
@@ -141,21 +174,24 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useHead } from '@unhead/vue';
 
-import PositionsMap, { type MapTrack } from '@/components/map/PositionsMap.vue';
+import PositionsMap, { type MapRepeater, type MapTrack } from '@/components/map/PositionsMap.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import {
   aprsName,
   formatAgo,
+  formatCoordinates,
   getPositionRadios,
   getPositions,
   getRadioPositions,
+  getRepeaterPositions,
   isPositionPush,
   summary,
   WINDOWS,
   type Position,
   type PositionRadios,
+  type RepeaterPosition,
 } from '@/services/positions';
 import { errorStatus, errorText, getSettings, setSharePositions } from '@/services/settings';
 import { getWebsocketURI } from '@/services/util';
@@ -165,6 +201,7 @@ useHead({ title: 'Positions' });
 
 const OWN_COLORS = ['#2563eb', '#ea580c', '#16a34a', '#9333ea', '#db2777', '#0891b2', '#ca8a04'];
 const SHARED_COLOR = '#52525b';
+const REPEATER_COLOR = '#dc2626';
 
 type Row = {
   radio: number;
@@ -185,6 +222,8 @@ const share = ref(false);
 const saving = ref(false);
 const shareError = ref('');
 const selected = ref<number | null>(null);
+const repeaters = ref<RepeaterPosition[]>([]);
+const selectedRepeater = ref<number | null>(null);
 const now = ref(Date.now());
 let socket: { close(): void } | null = null;
 let clock: ReturnType<typeof setInterval> | null = null;
@@ -251,6 +290,43 @@ const mapTracks = computed<MapTrack[]>(() =>
     })),
 );
 
+const repeaterTitle = (r: RepeaterPosition): string => `${r.callsign} · ${r.id}`;
+
+const repeaterPlace = (r: RepeaterPosition): string => [r.location, r.description].filter((s) => s !== '').join(' · ');
+
+const mapRepeaters = computed<MapRepeater[]>(() =>
+  repeaters.value.map((r) => ({
+    id: r.id,
+    color: REPEATER_COLOR,
+    title: repeaterTitle(r),
+    latitude: r.latitude,
+    longitude: r.longitude,
+    location: r.location,
+    connected_time: r.connected_time,
+  })),
+);
+
+const selectRadio = (radio: number) => {
+  selected.value = radio;
+  selectedRepeater.value = null;
+};
+
+const selectRepeater = (id: number) => {
+  selectedRepeater.value = id;
+  selected.value = null;
+};
+
+const loadRepeaters = async () => {
+  try {
+    repeaters.value = await getRepeaterPositions();
+  } catch {
+    repeaters.value = [];
+  }
+  if (selectedRepeater.value !== null && !repeaters.value.some((r) => r.id === selectedRepeater.value)) {
+    selectedRepeater.value = null;
+  }
+};
+
 const loadTracks = async () => {
   const latest = await getPositions(hours.value);
   const next: Record<number, Position[]> = {};
@@ -312,7 +388,7 @@ const load = async () => {
     const [r, settings] = await Promise.all([getPositionRadios(), getSettings()]);
     radios.value = r;
     share.value = !!settings.share_positions;
-    await loadTracks();
+    await Promise.all([loadTracks(), loadRepeaters()]);
   } catch (err) {
     state.value = errorStatus(err) === 401 ? 'anon' : 'error';
     return;
@@ -323,6 +399,7 @@ const load = async () => {
   state.value = 'ready';
   clock = setInterval(() => {
     now.value = Date.now();
+    void loadRepeaters();
   }, 30000);
   socket = ws.connect(getWebsocketURI() + '/messages', onSocketMessage);
 };

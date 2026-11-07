@@ -35,7 +35,7 @@ vi.mock('@unhead/vue', () => ({
 vi.mock('@/components/map/PositionsMap.vue', () => ({
   default: {
     name: 'PositionsMap',
-    props: ['tracks', 'selected'],
+    props: ['tracks', 'selected', 'repeaters', 'selectedRepeater'],
     template: '<div data-test="map" />',
   },
 }));
@@ -81,8 +81,23 @@ const pos = (radio: number, minutesAgo: number, over: Partial<Position> = {}): P
 
 const shared = pos(3002198, 60, { shared: true, callsign: 'N8CALL' });
 
-function serve(share = true) {
+const repeater = {
+  id: 310999901,
+  callsign: 'N0CALL',
+  latitude: 30.2669,
+  longitude: -97.7729,
+  height: 12,
+  location: 'Zilker Park',
+  description: 'Test repeater',
+  connected_time: new Date(Date.now() - 2 * 3600000).toISOString(),
+  last_ping_time: new Date().toISOString(),
+};
+
+function serve(share = true, repeaters: (typeof repeater)[] = []) {
   mockAPI.get.mockImplementation((url: string, opts?: { params?: { hours?: number } }) => {
+    if (url === '/positions/repeaters') {
+      return Promise.resolve({ data: { repeaters } });
+    }
     if (url === '/positions/radios') {
       return Promise.resolve({
         data: {
@@ -199,6 +214,34 @@ describe('PositionsPage', () => {
     await flushPromises();
     expect(mockAPI.put).toHaveBeenCalledWith('/users/me/settings/share-positions', { enabled: true });
     expect(wrapper.find('[data-test="radio-3002198"]').exists()).toBe(true);
+  });
+
+  it('lists the connected repeaters that report a position and pins them on the map', async () => {
+    serve(true, [repeater]);
+    const wrapper = await mountPage();
+    const row = wrapper.find('[data-test="repeater-310999901"]');
+    expect(row.text()).toContain('N0CALL · 310999901');
+    expect(row.text()).toContain('30.2669, −97.7729');
+    expect(row.text()).toContain('Zilker Park · Test repeater');
+    expect(row.text()).toContain('2 hours ago');
+    expect(row.find('a').attributes('href')).toBe('/repeaters/310999901');
+    const map = wrapper.findComponent({ name: 'PositionsMap' });
+    const pins = map.props('repeaters') as { id: number; title: string; latitude: number; longitude: number }[];
+    expect(pins.map((p) => [p.id, p.title, p.latitude, p.longitude])).toEqual([[310999901, 'N0CALL · 310999901', 30.2669, -97.7729]]);
+    await row.trigger('click');
+    expect(map.props('selectedRepeater')).toBe(310999901);
+    expect(map.props('selected')).toBeNull();
+    await wrapper.find('[data-test="radio-3002068"]').trigger('click');
+    expect(map.props('selectedRepeater')).toBeNull();
+    expect(map.props('selected')).toBe(3002068);
+  });
+
+  it('shows no repeater section when no repeater reports a position', async () => {
+    serve();
+    const wrapper = await mountPage();
+    expect(mockAPI.get).toHaveBeenCalledWith('/positions/repeaters');
+    expect(wrapper.find('[data-test="repeaters"]').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'PositionsMap' }).props('repeaters')).toEqual([]);
   });
 
   it('asks a visitor to log in', async () => {

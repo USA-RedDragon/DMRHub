@@ -56,6 +56,11 @@ func (r *dialectRig) row() *models.Repeater {
 // the positions, and a new login shows it again. A timeout ends a session
 // RepeaterOnline after its last ping, so only RPTCL needs the record of
 // the disconnect to leave at once; the record is kept for both.
+//
+// The ticker of the server reads the clock while Advance runs the beacon
+// at a minute after the login. The timeout case pings a second after the
+// login, so that the session times out only at the end of the advance and
+// the beacon goes out before it.
 func TestARepeaterLeavesThePositionsAtOnceWhenItsSessionEnds(t *testing.T) {
 	t.Parallel()
 	for name, end := range map[string]func(r *dialectRig, fake *clock.Fake, id uint32){
@@ -63,8 +68,12 @@ func TestARepeaterLeavesThePositionsAtOnceWhenItsSessionEnds(t *testing.T) {
 			r.control(dmrd.DialectMMDVM, dmrd.Control{Command: dmrd.CommandRPTCL, ID: id})
 			r.handled(r.s)
 		},
-		"timeout": func(r *dialectRig, fake *clock.Fake, _ uint32) {
-			fake.Advance(dmrdsession.TimeoutDefault + time.Second)
+		"timeout": func(r *dialectRig, fake *clock.Fake, id uint32) {
+			fake.Advance(time.Second)
+			r.ping(id)
+			r.expect(dmrd.DialectMMDVM, dmrd.CommandMSTPONG)
+			r.handled(r.s)
+			fake.Advance(dmrdsession.TimeoutDefault)
 			r.expect(dmrd.DialectMMDVM, dmrd.CommandRPTSBKN)
 			r.s.tick(context.Background())
 			r.handled(r.s)

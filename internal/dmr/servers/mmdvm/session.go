@@ -429,6 +429,10 @@ func (s *Server) run(ctx context.Context, now time.Duration, l *link, out []dmrd
 		case dmrdsession.OutputData:
 			s.data(ctx, o, l.heard)
 		case dmrdsession.OutputMessage:
+			if o.Command == dmrd.CommandRPTG {
+				s.homePosition(l, o)
+				continue
+			}
 			slog.Debug("Repeater message", "repeaterID", o.ID, "command", o.Command)
 		case dmrdsession.OutputPong:
 			s.ping(ctx, l)

@@ -301,3 +301,48 @@ describe('Owner repeater page', () => {
     cy.get('[data-test="cosysop-badge-990388"]').should('have.text', 'Co-sysop');
   });
 });
+
+describe('Enroll repeater owner', () => {
+  const me = (id: number, callsign: string, admin: boolean) => ({
+    id, callsign, username: callsign.toLowerCase(), admin, superAdmin: false,
+    approved: true, suspended: false, created_at: '2026-01-10T09:00:00Z', repeaters: [],
+  });
+  const users = [
+    { id: 9990001, callsign: 'N0CALL', username: 'n0call', approved: true, suspended: false },
+    { id: 9990002, callsign: 'N1CALL', username: 'n1call', approved: true, suspended: false },
+    { id: 9990003, callsign: 'N2CALL', username: 'n2call', approved: true, suspended: true },
+  ];
+
+  beforeEach(() => {
+    cy.stubCommonEndpoints();
+    cy.intercept('GET', '/api/v1/network/features', { statusCode: 200, body: { ipsc: false } });
+    cy.intercept('GET', '/api/v1/users?limit=none', { statusCode: 200, body: { total: users.length, users } }).as('users');
+  });
+
+  it('shows an admin the Owner field set to the admin and sends the picked owner', () => {
+    cy.intercept('GET', '/api/v1/users/me', { statusCode: 200, body: me(9990002, 'N1CALL', true) });
+    cy.intercept('POST', '/api/v1/repeaters', { statusCode: 200, body: { message: 'Repeater created', password: 'Ab3dE6gH9jK2' } }).as('enroll');
+    cy.visit('/repeaters/new');
+    cy.wait('@users');
+    cy.get('[data-test="owner-field"]').should('be.visible');
+    cy.get('[data-test="owner-user"]').should('have.length', 2);
+    cy.get('[data-test="owner-user"]').first().should('contain', 'N1CALL').find('input').should('be.checked');
+    cy.get('[data-test="owner-search"]').type('n0c');
+    cy.get('[data-test="owner-user"]').should('have.length', 1).find('input').check();
+    cy.get('#radioID').type('999000101');
+    cy.contains('button', 'Save').click();
+    cy.wait('@enroll').its('request.body').should('deep.equal', { id: 999000101, type: 'mmdvm', simplex_repeater: false, owner: 9990001 });
+  });
+
+  it('shows no Owner field to a user who is not an admin', () => {
+    cy.intercept('GET', '/api/v1/users/me', { statusCode: 200, body: me(9990002, 'N1CALL', false) });
+    cy.intercept('POST', '/api/v1/repeaters', { statusCode: 200, body: { message: 'Repeater created', password: 'Ab3dE6gH9jK2' } }).as('enroll');
+    cy.visit('/repeaters/new');
+    cy.get('#radioID').should('be.visible');
+    cy.get('[data-test="owner-field"]').should('not.exist');
+    cy.get('#radioID').type('999000201');
+    cy.contains('button', 'Save').click();
+    cy.wait('@enroll').its('request.body').should('not.have.property', 'owner');
+    cy.get('@users.all').should('have.length', 0);
+  });
+});

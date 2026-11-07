@@ -65,6 +65,19 @@
           </span>
           <br />
           <br />
+          <div v-if="isAdmin" class="field" data-test="owner-field">
+            <label class="field-label" for="owner-search">Owner</label>
+            <UserPicker
+              v-model="ownerID"
+              :users="ownerChoices"
+              name="owner"
+              label="Owner"
+              input-id="owner-search"
+              test-prefix="owner"
+            />
+            <small v-if="ownersError" class="p-error">{{ ownersError }}</small>
+          </div>
+          <br v-if="isAdmin" />
           <div class="field">
             <label class="checkbox-label">
               <input
@@ -96,9 +109,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input as ShadInput } from '@/components/ui/input';
+import UserPicker from '@/components/users/UserPicker.vue';
 import { keepSecret } from '@/lib/enroll';
+import { getAssignableUsers, type PickableUser } from '@/services/accounts';
 import API from '@/services/API';
-import { useSettingsStore } from '@/store';
+import { errorText } from '@/services/settings';
+import { useSettingsStore, useUserStore } from '@/store';
 
 import { useVuelidate } from '@vuelidate/core';
 import { required, numeric } from '@vuelidate/validators';
@@ -112,6 +128,7 @@ export default {
     CardHeader,
     CardTitle,
     ShadInput,
+    UserPicker,
   },
   head: {
     title: 'New Repeater',
@@ -128,6 +145,9 @@ export default {
       repeaterType: 'mmdvm',
       simplexRepeater: false,
       submitted: false,
+      owner: null as number | null,
+      owners: [] as PickableUser[],
+      ownersError: '',
     };
   },
   validations() {
@@ -138,7 +158,32 @@ export default {
       },
     };
   },
+  watch: {
+    isAdmin: {
+      immediate: true,
+      handler(admin: boolean) {
+        if (admin && this.owners.length === 0) {
+          void this.loadOwners();
+        }
+      },
+    },
+  },
   computed: {
+    isAdmin(): boolean {
+      return useUserStore().admin;
+    },
+    ownerID: {
+      get(): number | null {
+        return this.owner ?? (useUserStore().id || null);
+      },
+      set(id: number | null) {
+        this.owner = id;
+      },
+    },
+    ownerChoices(): PickableUser[] {
+      const me = useUserStore().id;
+      return [...this.owners].sort((a, b) => Number(b.id === me) - Number(a.id === me));
+    },
     repeaterTypes() {
       const settingsStore = useSettingsStore();
       const types = [
@@ -151,6 +196,14 @@ export default {
     },
   },
   methods: {
+    async loadOwners() {
+      try {
+        this.owners = await getAssignableUsers();
+        this.ownersError = '';
+      } catch (err) {
+        this.ownersError = errorText(err, 'Could not load the users.');
+      }
+    },
     handleRepeater(isFormValid: boolean) {
       this.submitted = true;
       if (!isFormValid) {
@@ -161,11 +214,15 @@ export default {
       if (!numericID) {
         return;
       }
-      API.post('/repeaters', {
+      const body: Record<string, unknown> = {
         id: numericID,
         type: this.repeaterType,
         simplex_repeater: this.simplexRepeater,
-      })
+      };
+      if (this.isAdmin && this.ownerID) {
+        body.owner = this.ownerID;
+      }
+      API.post('/repeaters', body)
         .then((res) => {
           if (!res.data) {
             this.$toast.add({

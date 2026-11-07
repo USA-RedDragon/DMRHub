@@ -31,16 +31,30 @@ vi.mock('@/services/API', () => ({
 import API from '@/services/API';
 import NewRepeaterPage from '@/views/repeaters/NewRepeaterPage.vue';
 import { takeSecret } from '@/lib/enroll';
+import { useUserStore } from '@/store';
 
 const mockAPI = API as unknown as { get: Mock; post: Mock };
 
-async function mountPage(features: Record<string, unknown>) {
-  mockAPI.get.mockResolvedValue({ data: features });
+const users = [
+  { id: 9990001, callsign: 'N0CALL', username: 'n0call', approved: true, suspended: false },
+  { id: 9990002, callsign: 'N1CALL', username: 'n1call', approved: true, suspended: false },
+  { id: 9990003, callsign: 'N2CALL', username: 'n2call', approved: true, suspended: true },
+];
+
+async function mountPage(features: Record<string, unknown>, me?: { id: number; admin: boolean }) {
+  mockAPI.get.mockImplementation((path: string) => Promise.resolve({ data: path.startsWith('/users') ? { total: users.length, users } : features }));
   const toast = { add: vi.fn() };
   const router = { push: vi.fn() };
+  const pinia = createPinia();
+  if (me) {
+    const store = useUserStore(pinia);
+    store.loggedIn = true;
+    store.id = me.id;
+    store.admin = me.admin;
+  }
   const wrapper = mount(NewRepeaterPage, {
     global: {
-      plugins: [createPinia()],
+      plugins: [pinia],
       mocks: { $toast: toast, $router: router },
     },
   });
@@ -93,5 +107,29 @@ describe('NewRepeaterPage', () => {
     await flushPromises();
     expect(toast.add).toHaveBeenCalledWith(expect.objectContaining({ detail: 'Error creating repeater' }));
     expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('shows no Owner field to a user who is not an admin', async () => {
+    const { wrapper } = await mountPage({ ipsc: false }, { id: 9990002, admin: false });
+    expect(wrapper.find('[data-test="owner-field"]').exists()).toBe(false);
+    expect(mockAPI.get).not.toHaveBeenCalledWith('/users?limit=none');
+  });
+
+  it('enrolls for the admin by default and for the user the admin picks', async () => {
+    mockAPI.post.mockResolvedValue({ data: { password: 'Ab3dE6gH9jK2' } });
+    const { wrapper } = await mountPage({ ipsc: false }, { id: 9990002, admin: true });
+    const rows = wrapper.findAll('[data-test="owner-user"]');
+    expect(rows.map((r) => r.find('b').text())).toEqual(['N1CALL', 'N0CALL']);
+    expect((rows[0]!.find('input').element as HTMLInputElement).checked).toBe(true);
+    await wrapper.find('input#radioID').setValue('999000201');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenLastCalledWith('/repeaters', { id: 999000201, type: 'mmdvm', simplex_repeater: false, owner: 9990002 });
+
+    await rows[1]!.find('input').setValue(true);
+    await wrapper.find('input#radioID').setValue('999000101');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenLastCalledWith('/repeaters', { id: 999000101, type: 'mmdvm', simplex_repeater: false, owner: 9990001 });
   });
 });

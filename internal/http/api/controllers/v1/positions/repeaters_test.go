@@ -110,3 +110,23 @@ func TestRepeaterPositionsNeedALogin(t *testing.T) {
 	e := newEnv(t)
 	assert.Equal(t, http.StatusUnauthorized, e.get(testutils.CookieJar{}, "/api/v1/positions/repeaters", nil))
 }
+
+func TestRepeaterPositionsListTheTalkgroupsEachRepeaterCarries(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.repeater(ownRepeater, owner, repeaterLat, repeaterLon, 5*time.Second)
+	for _, id := range []uint{3100, 3101, 3102} {
+		require.NoError(t, e.db.Create(&models.Talkgroup{ID: id, Name: "Test"}).Error)
+	}
+	var r models.Repeater
+	require.NoError(t, e.db.First(&r, ownRepeater).Error)
+	require.NoError(t, e.db.Model(&r).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: 3101}))
+	require.NoError(t, e.db.Model(&r).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: 3100}, &models.Talkgroup{ID: 3101}))
+	tg := uint(3102)
+	require.NoError(t, e.db.Model(&models.Repeater{}).Where("id = ?", ownRepeater).Update("ts1_dynamic_talkgroup_id", tg).Error)
+
+	var l apimodels.RepeaterPositionList
+	require.Equal(t, http.StatusOK, e.get(e.jar, "/api/v1/positions/repeaters", &l))
+	require.Len(t, l.Repeaters, 1)
+	assert.Equal(t, []uint{3100, 3101, 3102}, l.Repeaters[0].Talkgroups)
+}

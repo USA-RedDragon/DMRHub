@@ -48,7 +48,7 @@ func (p *Repeater) Online(now time.Time) bool {
 // DMRGateway sends it for a network with Location=0. With all false it
 // returns only the repeaters that userID owns or is a co-sysop of.
 func ConnectedRepeaterPositions(db *gorm.DB, userID uint, all bool, now time.Time) ([]Repeater, error) {
-	q := db.Model(&Repeater{}).
+	q := db.Model(&Repeater{}).Preload("TS1StaticTalkgroups").Preload("TS2StaticTalkgroups").
 		Where("type = ? AND last_ping > ? AND (latitude <> 0 OR longitude <> 0)", RepeaterTypeMMDVM, now.Add(-RepeaterOnline))
 	if !all {
 		q = q.Where("(owner_id = ? OR "+cosysopOf+")", userID, userID)

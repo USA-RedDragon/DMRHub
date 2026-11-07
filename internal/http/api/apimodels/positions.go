@@ -20,6 +20,7 @@
 package apimodels
 
 import (
+	"slices"
 	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
@@ -126,6 +127,9 @@ type RepeaterPosition struct {
 	Description string    `json:"description"`
 	Connected   time.Time `json:"connected_time"`
 	LastPing    time.Time `json:"last_ping_time"`
+	// Talkgroups lists the talkgroups that the repeater carries: the
+	// static talkgroups and the dynamic talkgroup of each timeslot.
+	Talkgroups []uint `json:"talkgroups"`
 }
 
 // NewRepeaterPosition returns the API form of the position of r.
@@ -133,7 +137,24 @@ func NewRepeaterPosition(r *models.Repeater) RepeaterPosition {
 	return RepeaterPosition{
 		ID: r.ID, Callsign: r.Callsign, Latitude: r.Latitude, Longitude: r.Longitude, Height: r.Height,
 		Location: r.Location, Description: r.Description, Connected: r.Connected, LastPing: r.LastPing,
+		Talkgroups: carriedTalkgroups(r),
 	}
+}
+
+func carriedTalkgroups(r *models.Repeater) []uint {
+	ids := make([]uint, 0, len(r.TS1StaticTalkgroups)+len(r.TS2StaticTalkgroups)+2)
+	for _, tgs := range [][]models.Talkgroup{r.TS1StaticTalkgroups, r.TS2StaticTalkgroups} {
+		for i := range tgs {
+			ids = append(ids, tgs[i].ID)
+		}
+	}
+	for _, id := range []*uint{r.TS1DynamicTalkgroupID, r.TS2DynamicTalkgroupID} {
+		if id != nil {
+			ids = append(ids, *id)
+		}
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids)
 }
 
 // RepeaterPositionList is the positions of the connected repeaters that the

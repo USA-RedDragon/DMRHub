@@ -36,6 +36,15 @@ describe('Feature Gating: IPSC & OpenBridge', () => {
       });
     });
 
+    it('anonymous user does NOT see OpenBridge Peers nav link', () => {
+      cy.visit('/');
+
+      cy.get('header nav.hidden.md\\:flex').within(() => {
+        cy.contains('Last Heard').should('be.visible');
+        cy.contains('OpenBridge Peers').should('not.exist');
+      });
+    });
+
     it('admin user sees Peers item in Admin dropdown', () => {
       cy.loginAsAdmin();
       cy.visit('/');

@@ -144,7 +144,7 @@
             </template>
 
             <!-- OpenBridge Peers -->
-            <template v-if="settingsStore.openBridgeEnabled">
+            <template v-if="userStore.loggedIn && settingsStore.openBridgeEnabled">
               <Separator class="my-1" />
               <router-link
                 to="/peers"
@@ -447,7 +447,7 @@
 
         <!-- OpenBridge Peers -->
         <router-link
-          v-if="settingsStore.openBridgeEnabled"
+          v-if="userStore.loggedIn && settingsStore.openBridgeEnabled"
           to="/peers"
           class="desktop-nav-link"
           :class="{ active: route.path === '/peers' }"

@@ -50,7 +50,7 @@
       </TableRow>
     </template>
   </DataTable>
-  <ResetPasswordDialog
+  <RequirePasswordChangeDialog
     v-if="resetting"
     v-model:open="resetOpen"
     :user-id="resetting.id"
@@ -74,7 +74,7 @@ import { useUserStore, useSettingsStore } from '@/store';
 import API from '@/services/API';
 import { buttonVariants } from '@/components/ui/button';
 import RelativeTimestamp from './RelativeTimestamp.vue';
-import ResetPasswordDialog from './users/ResetPasswordDialog.vue';
+import RequirePasswordChangeDialog from './users/RequirePasswordChangeDialog.vue';
 import { radioIDMismatch } from '@/services/radioid';
 import { resetOnAirCode } from '@/services/totp';
 
@@ -85,6 +85,7 @@ type UserRow = {
   approved: boolean;
   suspended: boolean;
   admin: boolean;
+  superAdmin?: boolean;
   repeaters: number;
   created_at: string | Date;
   editing: boolean;
@@ -99,7 +100,7 @@ export default {
   },
   components: {
     DataTable,
-    ResetPasswordDialog,
+    RequirePasswordChangeDialog,
     ShadButton,
     TableCell,
     TableRow,
@@ -336,7 +337,13 @@ export default {
         this.fetchData();
       }
     },
-    resetPassword(user: UserRow) {
+    mayRequirePasswordChange(user: UserRow) {
+      if (user.id === this.userStore.id) {
+        return false;
+      }
+      return this.userStore.superAdmin || (!user.admin && !user.superAdmin);
+    },
+    requirePasswordChange(user: UserRow) {
       this.resetting = user;
       this.resetOpen = true;
     },
@@ -456,8 +463,8 @@ export default {
               !user.editing
                 ? actionButton('Edit', () => this.editUser(user.id))
                 : actionButton('Save Changes', () => this.finishEditingUser(user)),
-              !user.editing && user.id !== this.userStore.id
-                ? actionButton('Reset password', () => this.resetPassword(user))
+              !user.editing && this.mayRequirePasswordChange(user)
+                ? actionButton('Require password change', () => this.requirePasswordChange(user))
                 : null,
               !user.editing && user.onAirCode
                 ? actionButton('Turn off on-air code', () => this.resetOnAirCode(user))

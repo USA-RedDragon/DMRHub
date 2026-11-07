@@ -31,7 +31,7 @@
         class="rounded-lg border border-yellow-500/50 bg-yellow-500/10 px-4 py-3 text-sm"
         data-test="password-must-change"
       >
-        An admin set a temporary password for you. Choose your own password to keep using DMRHub.
+        An admin asked you to choose a new password. Choose your own password to keep using DMRHub.
       </p>
       <form class="flex max-w-lg flex-col gap-4" novalidate @submit.prevent="submit">
         <div class="flex min-w-0 flex-col gap-1">

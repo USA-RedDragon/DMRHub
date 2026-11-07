@@ -154,4 +154,60 @@ describe('User Management', () => {
 
     cy.wait('@patchUser');
   });
+
+  it('requires a password change from the users table in two clicks', () => {
+    cy.intercept('GET', '/api/v1/users?page=*&limit=*', {
+      statusCode: 200,
+      fixture: 'users.json',
+    }).as('getUsers');
+    cy.intercept('POST', '/api/v1/users/7654321/require-password-change', {
+      statusCode: 200,
+      body: { message: 'The user must choose a new password' },
+    }).as('requireChange');
+
+    cy.visit('/admin/users');
+    cy.wait('@getUsers');
+
+    cy.contains('tr', 'W5TST').find('button').contains('Require password change').should('not.exist');
+    cy.contains('tr', 'N0CALL').find('button').contains('Require password change').click();
+    cy.get('[data-test="require-password-dialog"]').should('contain', 'Require a new password from N0CALL');
+    cy.get('[data-test="require-confirm"]').click();
+
+    cy.wait('@requireChange').its('request.body').should('deep.equal', { generate_password: false });
+    cy.get('[data-test="require-password-dialog"]').should('not.exist');
+    cy.contains('N0CALL must choose a new password when they next log in.').should('be.visible');
+  });
+
+  it('requires a password change with a generated password from the user details page', () => {
+    cy.intercept('GET', '/api/v1/users/7654321/profile', {
+      statusCode: 200,
+      body: {
+        id: 7654321, callsign: 'N0CALL', admin: false, superAdmin: false, approved: true,
+        repeaters: [], created_at: '2024-02-20T08:00:00Z',
+      },
+    }).as('getProfile');
+    cy.intercept('GET', '/api/v1/userdb/7654321', { statusCode: 404, body: {} });
+    cy.intercept('GET', '/api/v1/lastheard/user/7654321?*', {
+      statusCode: 200,
+      body: { total: 0, calls: [] },
+    });
+    cy.intercept('POST', '/api/v1/users/7654321/require-password-change', {
+      statusCode: 200,
+      body: { message: 'The user must choose a new password', password: 'Qm4tVx8rKp2Hw9Ns' },
+    }).as('requireChange');
+
+    cy.visit('/users/7654321');
+    cy.wait('@getProfile');
+
+    cy.get('[data-test="user-require-password"]').click();
+    cy.get('[data-test="require-generate"]').click();
+    cy.contains('Their current password stops working.').should('be.visible');
+    cy.get('[data-test="require-confirm"]').click();
+
+    cy.wait('@requireChange').its('request.body').should('deep.equal', { generate_password: true });
+    cy.get('#require-password').should('have.value', 'Qm4tVx8rKp2Hw9Ns');
+    cy.get('[data-test="require-password-dialog"]').should('contain', 'It will not be shown again.');
+    cy.get('[data-test="require-done"]').click();
+    cy.get('[data-test="require-password-dialog"]').should('not.exist');
+  });
 });

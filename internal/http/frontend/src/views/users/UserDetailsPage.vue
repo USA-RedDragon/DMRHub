@@ -69,6 +69,16 @@
                 :class="user.approved ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'">
                 {{ user.approved ? 'Approved' : 'Pending Approval' }}
               </span>
+              <ShadButton
+                v-if="mayRequirePasswordChange"
+                variant="outline"
+                size="sm"
+                type="button"
+                data-test="user-require-password"
+                @click="requireOpen = true"
+              >
+                Require password change
+              </ShadButton>
             </div>
           </div>
         </CardHeader>
@@ -176,6 +186,12 @@
           />
         </CardContent>
       </Card>
+      <RequirePasswordChangeDialog
+        v-if="mayRequirePasswordChange"
+        v-model:open="requireOpen"
+        :user-id="user.id"
+        :callsign="user.callsign"
+      />
     </template>
   </div>
 </template>
@@ -184,6 +200,8 @@
 import { RouterLink } from 'vue-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button as ShadButton } from '@/components/ui/button';
+import RequirePasswordChangeDialog from '@/components/users/RequirePasswordChangeDialog.vue';
 import { DataTable } from '@/components/ui/data-table';
 import TypeFilter from '@/components/TypeFilter.vue';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
@@ -212,6 +230,7 @@ type UserProfile = {
   id: number;
   callsign: string;
   admin: boolean;
+  superAdmin?: boolean;
   approved: boolean;
   repeaters: RepeaterRef[];
   created_at: string;
@@ -225,6 +244,8 @@ export default {
     CardHeader,
     CardTitle,
     Skeleton,
+    ShadButton,
+    RequirePasswordChangeDialog,
     DataTable,
     TypeFilter,
     RouterLink,
@@ -273,6 +294,7 @@ export default {
       socket: null as { close(): void } | null,
       now: Date.now(),
       timeInterval: null as ReturnType<typeof setInterval> | null,
+      requireOpen: false,
     };
   },
   watch: {
@@ -285,6 +307,13 @@ export default {
     },
   },
   computed: {
+    mayRequirePasswordChange(): boolean {
+      const me = useUserStore();
+      if (!this.user || !me.admin || this.user.id === me.id) {
+        return false;
+      }
+      return me.superAdmin || (!this.user.admin && !this.user.superAdmin);
+    },
     columns() {
       void this.now;
       return lastHeardColumns({ user: false });

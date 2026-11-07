@@ -30,13 +30,13 @@ const mustChangeError = {
   response: {
     status: 403,
     data: {
-      error: 'An admin set a temporary password for you. Choose your own password in Settings first.',
+      error: 'An admin asked you to choose a new password. Choose your own password in Settings first.',
       must_change_password: true,
     },
   },
 };
 
-const banner = 'An admin set a temporary password for you. Choose your own password to keep using DMRHub.';
+const banner = 'An admin asked you to choose a new password. Choose your own password to keep using DMRHub.';
 
 describe('a user with a temporary password', () => {
   beforeEach(() => {

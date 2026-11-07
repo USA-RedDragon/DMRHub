@@ -53,8 +53,14 @@ export async function resetPassword(token: string, password: string): Promise<vo
   await API.post('/auth/reset-password', { token, password });
 }
 
-export async function setUserPassword(id: number, password: string): Promise<void> {
-  await API.patch(`/users/${id}`, { password });
+/**
+ * Makes the user id choose a new password at their next login and logs them
+ * out everywhere. With generate, the user also gets a new random password,
+ * which only this answer holds.
+ */
+export async function requirePasswordChange(id: number, generate: boolean): Promise<string | undefined> {
+  const res = await API.post(`/users/${id}/require-password-change`, { generate_password: generate });
+  return res.data.password;
 }
 
 export async function setEmail(email: string): Promise<string> {

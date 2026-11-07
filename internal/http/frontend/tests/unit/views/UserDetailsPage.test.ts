@@ -63,4 +63,34 @@ describe('UserDetailsPage', () => {
     expect(wrapper.text()).toMatch(/Registered\s*3 days ago/);
     wrapper.unmount();
   });
+
+  it.each([
+    { name: 'an admin on a user', me: { id: 1000001, admin: true, superAdmin: false }, target: { admin: false, superAdmin: false }, shown: true },
+    { name: 'an admin on an admin', me: { id: 1000001, admin: true, superAdmin: false }, target: { admin: true, superAdmin: false }, shown: false },
+    { name: 'the System Admin on an admin', me: { id: 1000001, admin: true, superAdmin: true }, target: { admin: true, superAdmin: false }, shown: true },
+    { name: 'an admin on themselves', me: { id: 1000002, admin: true, superAdmin: true }, target: { admin: true, superAdmin: true }, shown: false },
+    { name: 'a user', me: { id: 1000001, admin: false, superAdmin: false }, target: { admin: false, superAdmin: false }, shown: false },
+  ])('shows Require password change to $name: $shown', async ({ me, target, shown }) => {
+    mockAPI.get.mockImplementation((url: string) => {
+      if (url.startsWith('/lastheard')) {
+        return Promise.resolve({ data: { calls: [], total: 0 } });
+      }
+      return Promise.resolve({
+        data: { id: 1000002, callsign: 'N1CALL', approved: true, repeaters: [], created_at: '2026-10-01T00:00:00Z', ...target },
+      });
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    Object.assign(useUserStore(), { loggedIn: true, ...me });
+    const wrapper = mount(UserDetailsPage, {
+      global: {
+        plugins: [pinia],
+        mocks: { $route: { params: { id: '1000002' } }, $toast: { add: vi.fn() } },
+        stubs: { RouterLink: true, RequirePasswordChangeDialog: true },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-test="user-require-password"]').exists()).toBe(shown);
+    wrapper.unmount();
+  });
 });

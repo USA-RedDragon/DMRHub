@@ -36,14 +36,15 @@ import (
 // sees the address of that socket and not the client's. When the backend
 // of a session drains, as Envoy Gateway marks a pod that is terminating,
 // the next packet of the client opens a new session, from a new socket, to
-// a backend that does not drain; the client first gets what the front
-// received of the old session until it passed that packet on to the new
-// backend, and nothing that the old backend sends after. The old backend
-// stamps what it sent after that time no earlier than the new backend
-// stamps the packet, so a handover from that time holds every packet that
-// the front drops, however late the machine runs the front. When a backend is removed, its sessions end, and the next
-// packet of each client opens a new one. Once a session ends, nothing more of
-// it reaches the client.
+// a backend that does not drain; the client first gets what the old
+// session received before the kernel sent that packet on to the new
+// backend, and nothing that came after, as Envoy swaps the session and
+// writes the packet in one callback of its event loop. The front tells the
+// two apart by the times that the kernel stamps, so no packet that the old
+// backend sent after the new backend got the moving packet reaches the
+// client, however late the machine runs the front. When a backend is
+// removed, its sessions end, and the next packet of each client opens a
+// new one. Once a session ends, nothing more of it reaches the client.
 type UDPFront struct {
 	conn *net.UDPConn
 	// marker marks the end of what a session that moves received.
@@ -78,6 +79,10 @@ type frontSession struct {
 	moved bool
 	done  chan struct{}
 	after <-chan struct{}
+	// cut is when the kernel sent the packet that moved the session on to
+	// the new backend, or zero when it did not tell, once cutSet closes.
+	cut    time.Time
+	cutSet chan struct{}
 }
 
 // NewUDPFront starts a UDPFront on a port of the loopback with no backend.
@@ -185,6 +190,7 @@ func (f *UDPFront) move(key string, s *frontSession) {
 	delete(f.sessions, key)
 	f.ended[key] = append(f.ended[key], time.Now())
 	s.moved = true
+	s.cutSet = make(chan struct{})
 	f.moving[s] = struct{}{}
 }
 
@@ -261,7 +267,7 @@ func (f *UDPFront) serve() {
 		}
 		s, old := f.sessionFor(client)
 		if s != nil {
-			_, _ = s.up.WriteToUDP(buf[:n], s.backend.addr)
+			f.forward(s, old, buf[:n])
 		}
 		if old != nil {
 			f.endMove(old)
@@ -290,6 +296,10 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) (*frontSession, *frontSession
 	if err != nil {
 		return nil, nil
 	}
+	stampRx(up)
+	if ok {
+		stampTx(up)
+	}
 	var old *frontSession
 	var after <-chan struct{}
 	if ok {
@@ -306,13 +316,46 @@ func (f *UDPFront) sessionFor(client *net.UDPAddr) (*frontSession, *frontSession
 	return s, old
 }
 
+// forward passes b on in the session s. When b moved the client from the
+// session old, it records when the kernel sent b as the cut of old.
+func (f *UDPFront) forward(s, old *frontSession, b []byte) {
+	if old == nil {
+		_, _ = s.up.WriteToUDP(b, s.backend.addr)
+		return
+	}
+	at, ok := sentAt(s.up, b, s.backend.addr)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if ok {
+		old.cut = at
+	}
+	close(old.cutSet)
+}
+
+// passes reports whether s passes on a packet that came at the time at,
+// as the kernel stamped it when stamped. The caller holds f.mu, which
+// passes may release while it waits for the cut of s.
+func (f *UDPFront) passes(s *frontSession, at time.Time, stamped bool) bool {
+	if f.sessions[s.client.String()] == s {
+		return true
+	}
+	if !s.moved {
+		return false
+	}
+	f.mu.Unlock()
+	<-s.cutSet
+	f.mu.Lock()
+	return !stamped || s.cut.IsZero() || at.Before(s.cut)
+}
+
 func (f *UDPFront) back(s *frontSession) {
 	defer f.wg.Done()
 	defer close(s.done)
 	marker := f.marker.LocalAddr().String()
 	buf := make([]byte, 65535)
+	oob := make([]byte, stampOOBLen)
 	for {
-		n, from, err := s.up.ReadFromUDP(buf)
+		n, from, at, stamped, err := readStamped(s.up, buf, oob)
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
 				return
@@ -329,7 +372,7 @@ func (f *UDPFront) back(s *frontSession) {
 			delete(f.moving, s)
 			_ = s.up.Close()
 		case s.backend.addr.String():
-			if s.moved || f.sessions[s.client.String()] == s {
+			if f.passes(s, at, stamped) {
 				_, _ = f.conn.WriteToUDP(buf[:n], s.client)
 			}
 		}

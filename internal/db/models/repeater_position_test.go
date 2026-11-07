@@ -121,3 +121,27 @@ func TestARepeaterIsOnlineFromItsLastPingUntilItsSessionEnds(t *testing.T) {
 		assert.Equal(t, tc.online, r.Online(now), name)
 	}
 }
+
+func TestCosysopRepeaterIDsListsOnlyAcceptedInvites(t *testing.T) {
+	t.Parallel()
+	db, cleanup := openDB(t)
+	defer cleanup()
+	require.NoError(t, db.Create(&models.User{ID: 3109999, Callsign: "N0CALL", Username: "owner", Approved: true}).Error)
+	require.NoError(t, db.Create(&models.User{ID: 3109998, Callsign: "N1CALL", Username: "other", Approved: true}).Error)
+	now := time.Now()
+	for _, id := range []uint{310999901, 310999902} {
+		require.NoError(t, db.Create(&models.Repeater{OwnerID: 3109999, RepeaterConfiguration: models.RepeaterConfiguration{ID: id, Callsign: "N0CALL"}}).Error)
+		_, err := models.InviteCosysop(db, id, 3109998, 3109999, now)
+		require.NoError(t, err)
+	}
+	ok, err := models.AnswerCosysopInvite(db, 310999901, 3109998, true, now)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	ids, err := models.CosysopRepeaterIDs(db, 3109998)
+	require.NoError(t, err)
+	assert.Equal(t, []uint{310999901}, ids)
+	ids, err = models.CosysopRepeaterIDs(db, 3109999)
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+}

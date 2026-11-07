@@ -46,3 +46,22 @@ func TestWantsCallKeepsPrivateCallsPrivate(t *testing.T) {
 		assert.False(t, wantsCall(user, &models.Call{GroupCall: true, DestinationID: 91}))
 	})
 }
+
+func TestThroughRepeaterSendsTheCallsOfSysopRepeaters(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		user := &models.User{ID: 3109999, Repeaters: []models.Repeater{{
+			RepeaterConfiguration: models.RepeaterConfiguration{ID: 310999901},
+			OwnerID:               3109999,
+		}}}
+		private := func(ingress uint) *models.Call {
+			return &models.Call{GroupCall: false, SourceID: 3109998, DestinationID: 3109997, IngressID: ingress}
+		}
+
+		assert.False(t, wantsCall(user, private(310999901)), "a private call of others is not the user's own")
+		assert.True(t, throughRepeater(user, private(310999901), nil), "the call came in through the user's repeater")
+		assert.True(t, throughRepeater(user, private(310999902), []uint{310999902}), "the call came in through a co-sysop repeater")
+		assert.False(t, throughRepeater(user, private(310999903), []uint{310999902}), "the call came in through another repeater")
+		assert.False(t, throughRepeater(user, private(0), []uint{0}), "the call has no ingress repeater")
+	})
+}

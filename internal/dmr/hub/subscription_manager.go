@@ -26,9 +26,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
@@ -514,6 +516,7 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 
 	pubsubChannel := subscription.Channel()
 	changesChannel := changes.Channel()
+	cosysop := cosysopRepeaters{db: h.db, userID: userID}
 
 	for {
 		select {
@@ -546,7 +549,7 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 				continue
 			}
 
-			if !wantsCall(&user, &call) {
+			if !wantsCall(&user, &call) && !throughRepeater(&user, &call, cosysop.of(h.clock.Now())) {
 				continue
 			}
 			if call.Kind == models.CallKindData || call.Kind == models.CallKindUDT {
@@ -570,6 +573,42 @@ func (h *Hub) ListenForWebsocket(ctx context.Context, userID uint) {
 			}
 		}
 	}
+}
+
+// cosysopRefresh is how long a calls websocket uses the list of the
+// repeaters that its user co-sysops before it reads the list again.
+const cosysopRefresh = 30 * time.Second
+
+// cosysopRepeaters is the list of the repeaters that a user co-sysops,
+// read again after cosysopRefresh.
+type cosysopRepeaters struct {
+	db     *gorm.DB
+	userID uint
+	ids    []uint
+	read   time.Time
+}
+
+func (c *cosysopRepeaters) of(now time.Time) []uint {
+	if !c.read.IsZero() && now.Sub(c.read) < cosysopRefresh {
+		return c.ids
+	}
+	ids, err := models.CosysopRepeaterIDs(c.db, c.userID)
+	if err != nil {
+		slog.Error("Error reading the co-sysop repeaters for websocket, keeping the old list", "userID", c.userID, "error", err)
+		return c.ids
+	}
+	c.ids, c.read = ids, now
+	return ids
+}
+
+// throughRepeater reports whether call came in through a repeater that
+// user owns or co-sysops. Such a user sees every call of that repeater on
+// the Last Heard of the repeater, so the calls websocket sends them too.
+func throughRepeater(user *models.User, call *models.Call, cosysop []uint) bool {
+	if call.IngressID == 0 {
+		return false
+	}
+	return ownsRepeater(user, call.IngressID) || slices.Contains(cosysop, call.IngressID)
 }
 
 func ownsRepeater(user *models.User, repeaterID uint) bool {

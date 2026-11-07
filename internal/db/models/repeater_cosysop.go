@@ -75,6 +75,17 @@ func IsRepeaterCosysop(db *gorm.DB, repeaterID, userID uint) (bool, error) {
 	return n > 0, nil
 }
 
+// CosysopRepeaterIDs lists the repeaters that the user accepted to be a
+// co-sysop of.
+func CosysopRepeaterIDs(db *gorm.DB, userID uint) ([]uint, error) {
+	var ids []uint
+	err := db.Model(&RepeaterCosysop{}).Where("user_id = ? AND accepted_at IS NOT NULL", userID).Pluck("repeater_id", &ids).Error
+	if err != nil {
+		return nil, fmt.Errorf("could not list the co-sysop repeaters of user %d: %w", userID, err)
+	}
+	return ids, nil
+}
+
 // InviteCosysop invites the user to be a co-sysop of the repeater, for
 // CosysopInviteLifetime after now. An expired invite of the user is
 // replaced.

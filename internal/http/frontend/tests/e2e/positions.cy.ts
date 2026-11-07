@@ -176,7 +176,7 @@ describe('Positions blips', () => {
     cy.get('[data-test^="repeater-blip-"]').should('have.length', 1);
   });
 
-  it('draws lines on the map between the ends of a call', { browser: '!electron' }, () => {
+  it('draws lines on the map between the ends of a call', () => {
     cy.get('[data-test="tx-lines"]', { timeout: 30000 }).should('have.attr', 'data-ready', 'true');
     const tg = { ...call, id: 45, group_call: true, is_to_talkgroup: true, to_talkgroup: { id: 3100 }, destination_id: 3100 };
     emit('/ws/lastheard', tg);

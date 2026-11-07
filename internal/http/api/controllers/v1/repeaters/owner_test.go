@@ -104,3 +104,21 @@ func TestAnAdminDeletesAnUnassignedRepeater(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, exists)
 }
+
+func TestAnAdminCannotAssignAnUnassignedRepeaterToASuspendedUser(t *testing.T) {
+	t.Parallel()
+	router, tdb, err := testutils.CreateTestDBRouter()
+	require.NoError(t, err)
+	defer tdb.CloseDB()
+	database := tdb.DB()
+	require.NoError(t, database.Create(&models.Repeater{RepeaterConfiguration: models.RepeaterConfiguration{ID: 990360}, Type: models.RepeaterTypeModem}).Error)
+	owner := testutils.SeedAccount(t, database, 9990001, "N0CALL", "n0call")
+	require.NoError(t, database.Model(&owner).Update("suspended", true).Error)
+	_, _, adminJar := testutils.LoginAdmin(t, router)
+	w := testutils.Do(t, router, adminJar, http.MethodPost, "/api/v1/repeaters/990360/owner", map[string]uint{"owner": owner.ID})
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "Owner is suspended")
+	r, err := models.FindRepeaterByID(database, 990360)
+	require.NoError(t, err)
+	require.Zero(t, r.OwnerID)
+}

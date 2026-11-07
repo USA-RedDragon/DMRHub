@@ -1084,14 +1084,8 @@ func POSTRepeaterOwner(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{errorKey: msgInvalidJSON})
 		return
 	}
-	var user models.User
-	if err := db.Select("id").First(&user, json.Owner).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner does not exist"})
-			return
-		}
-		slog.Error("Error finding the owner of a repeater", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+	user, ok := findAssignableOwner(c, db, json.Owner)
+	if !ok {
 		return
 	}
 	switch err := models.AssignRepeaterOwner(db, uint(id), user.ID); {
@@ -1111,6 +1105,29 @@ func POSTRepeaterOwner(c *gin.Context) {
 	}
 	publishOwnerChanged(c, user.ID)
 	c.JSON(http.StatusOK, gin.H{messageKey: "Owner assigned"})
+}
+
+// findAssignableOwner returns user id when an admin can make it the owner
+// of a repeater: the user exists, is approved and is not suspended. If not,
+// it writes the error response and returns false.
+func findAssignableOwner(c *gin.Context, db *gorm.DB, id uint) (models.User, bool) {
+	user, err := models.FindUserWithoutRepeaters(db, id)
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner does not exist"})
+		return user, false
+	case err != nil:
+		slog.Error("Error finding the owner of a repeater", "owner", id, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{errorKey: msgTryAgainLater})
+		return user, false
+	case !user.Approved:
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner is not approved"})
+		return user, false
+	case user.Suspended:
+		c.JSON(http.StatusBadRequest, gin.H{errorKey: "Owner is suspended"})
+		return user, false
+	}
+	return user, true
 }
 
 func requesterIsAdmin(c *gin.Context, db *gorm.DB) bool {

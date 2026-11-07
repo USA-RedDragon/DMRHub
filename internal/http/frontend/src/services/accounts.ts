@@ -48,6 +48,15 @@ export type MessageAccess = {
 
 export type MessageAccessQuery = { radioID?: number; admin?: number; page: number; limit: number };
 
+export type PickableUser = { id: number; callsign: string; username: string };
+
+/** The approved users that are not suspended: the users an admin can make the owner of a repeater. */
+export async function getAssignableUsers(): Promise<PickableUser[]> {
+  const res = await API.get('/users?limit=none');
+  const list = (res.data?.users ?? []) as (PickableUser & { approved: boolean; suspended: boolean })[];
+  return list.filter((u) => u.approved && !u.suspended).map((u) => ({ id: u.id, callsign: u.callsign, username: u.username }));
+}
+
 export async function getInvites(): Promise<Invite[]> {
   const res = await API.get('/admin/invites');
   return res.data.invites ?? [];

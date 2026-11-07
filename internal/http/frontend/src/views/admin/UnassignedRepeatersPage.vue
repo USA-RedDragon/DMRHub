@@ -77,28 +77,7 @@
       <DialogContent v-if="assigning" data-test="unassigned-dialog">
         <DialogTitle>Assign an owner to repeater {{ assigning.id }}</DialogTitle>
         <DialogDescription class="sr-only">Pick the owner</DialogDescription>
-        <ShadInput
-          v-model="query"
-          type="search"
-          placeholder="Callsign, username or DMR ID"
-          aria-label="Find a user"
-          data-test="unassigned-search"
-        />
-        <div class="max-h-56 overflow-y-auto rounded-md border border-border">
-          <p v-if="matches.length === 0" class="px-3 py-2.5 text-sm text-muted-foreground" data-test="unassigned-nomatch">No user matches</p>
-          <label
-            v-for="u in matches"
-            :key="u.id"
-            class="flex cursor-pointer items-center gap-2.5 border-b border-border px-3 py-2.5 last:border-b-0 hover:bg-accent"
-            data-test="unassigned-user"
-          >
-            <input v-model="picked" type="radio" name="owner" :value="u.id" class="size-4 accent-primary" />
-            <span class="flex flex-col">
-              <span><b class="font-mono">{{ u.callsign }}</b> {{ u.username }}</span>
-              <span class="font-mono text-xs text-muted-foreground tabular-nums">DMR ID {{ u.id }}</span>
-            </span>
-          </label>
-        </div>
+        <UserPicker v-model="picked" :users="users" label="Owner" test-prefix="unassigned" />
         <div class="flex flex-wrap justify-end gap-2">
           <ShadButton variant="outline" type="button" @click="assigning = null">Cancel</ShadButton>
           <ShadButton type="button" :disabled="busy || picked === null" data-test="unassigned-confirm" @click="assign">
@@ -111,16 +90,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useHead } from '@unhead/vue';
 import { format } from 'date-fns';
 import RelativeTimestamp from '@/components/RelativeTimestamp.vue';
+import UserPicker from '@/components/users/UserPicker.vue';
 import { Button as ShadButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { Input as ShadInput } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import API from '@/services/API';
+import { getAssignableUsers, type PickableUser } from '@/services/accounts';
 import {
   assignRepeaterOwner,
   frequencyLabel,
@@ -133,8 +112,6 @@ import { useAdminStore } from '@/store';
 
 useHead({ title: 'Unassigned Repeaters' });
 
-type Owner = { id: number; callsign: string; username: string };
-
 const adminStore = useAdminStore();
 const pageSize = 100;
 const repeaters = ref<UnassignedRepeater[]>([]);
@@ -142,9 +119,8 @@ const total = ref(0);
 const page = ref(1);
 const loaded = ref(false);
 const loadError = ref('');
-const users = ref<Owner[]>([]);
+const users = ref<PickableUser[]>([]);
 const assigning = ref<UnassignedRepeater | null>(null);
-const query = ref('');
 const picked = ref<number | null>(null);
 const busy = ref(false);
 const message = ref('');
@@ -152,14 +128,6 @@ const error = ref('');
 
 const shortDate = (value: string) => format(new Date(value), 'MMM d, yyyy');
 const seen = (value: string) => !!value && new Date(value).getUTCFullYear() > 1;
-
-const matches = computed(() => {
-  const q = query.value.trim().toLowerCase();
-  if (!q) {
-    return users.value;
-  }
-  return users.value.filter((u) => u.callsign.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || String(u.id).includes(q));
-});
 
 const load = async (to = 1) => {
   try {
@@ -178,9 +146,7 @@ const load = async (to = 1) => {
 
 const loadUsers = async () => {
   try {
-    const res = await API.get('/users?limit=none');
-    const list = (res.data?.users ?? []) as { id: number; callsign: string; username: string; approved: boolean; suspended: boolean }[];
-    users.value = list.filter((u) => u.approved && !u.suspended).map((u) => ({ id: u.id, callsign: u.callsign, username: u.username }));
+    users.value = await getAssignableUsers();
   } catch (err) {
     error.value = errorText(err, 'Could not load the users.');
   }
@@ -189,7 +155,6 @@ const loadUsers = async () => {
 const ask = (r: UnassignedRepeater) => {
   message.value = '';
   error.value = '';
-  query.value = '';
   picked.value = null;
   assigning.value = r;
   if (users.value.length === 0) {

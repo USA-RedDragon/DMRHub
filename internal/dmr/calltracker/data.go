@@ -334,6 +334,9 @@ func (s *shard) single(t *task, ch *channel, cls *class) {
 	}
 	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: cls.kind, sub: cls.sub}
 	r, ok := s.rows[key]
+	if !ok && cls.sub == subPreamble {
+		r, ok = s.resumePreambles(key, t, true)
+	}
 	if ok && (t.at.Sub(r.last) > controlHang || !sameCall(r, t, cls.sub == subPreamble)) {
 		s.finish(r, t.at)
 		ok = false
@@ -464,6 +467,9 @@ func (s *shard) adoptPreambles(ch *channel, t *task, cls *class, kind models.Cal
 	p := &t.p
 	key := singleKey{ch: ch.key, src: p.Src, dst: p.Dst, group: p.GroupCall, kind: models.CallKindCSBK, sub: subPreamble}
 	r, ok := s.rows[key]
+	if !ok {
+		r, ok = s.resumePreambles(key, t, cls != nil && cls.header)
+	}
 	if !ok || r.finished || t.at.Sub(r.last) > controlHang || !sameCall(r, t, cls != nil && cls.header) {
 		return nil
 	}
@@ -474,6 +480,20 @@ func (s *shard) adoptPreambles(ch *channel, t *task, cls *class, kind models.Cal
 	r.call.Kind, r.call.SubKind = kind, sub
 	r.call.FID, r.call.Opcode = nil, nil
 	return r
+}
+
+// resumePreambles reopens the row of preamble CSBKs at key that the sweep
+// ended for its hang, when the burst of t came within controlHang of the
+// last preamble and belongs to its call. A burst that the hub took late,
+// such as after a stall, still came in time, and the sweep does not see
+// it until the hub takes it.
+func (s *shard) resumePreambles(key singleKey, t *task, announced bool) (*row, bool) {
+	r, ok := s.ended[key]
+	if !ok || !r.hung || r.deleted || r.shared || t.at.Sub(r.last) > controlHang || !sameCall(r, t, announced) {
+		return nil, false
+	}
+	s.resume(key, r)
+	return r, true
 }
 
 // sameCall reports whether the burst of t belongs to the call of r: it is

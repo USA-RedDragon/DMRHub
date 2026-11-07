@@ -124,7 +124,7 @@ func isVoiceHeader(p *models.Packet) bool {
 	return p.FrameType == dmrconst.FrameDataSync && dmrconst.DataType(p.DTypeOrVSeq) == dmrconst.DTypeVoiceHead
 }
 
-func (s *shard) resume(k voiceKey, r *row) {
+func (s *shard) resume(k any, r *row) {
 	delete(s.ended, k)
 	r.finished, r.hung = false, false
 	r.call.Active = true

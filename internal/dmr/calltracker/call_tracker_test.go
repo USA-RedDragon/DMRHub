@@ -501,6 +501,41 @@ func TestTrackSMSWithPreambles(t *testing.T) {
 	})
 }
 
+// TestTrackSMSWithPreamblesTakenLate has the hub take the data of an SMS
+// after the sweep ended the row of its preambles for its hang, as after a
+// stall of the hub, though the data came right after them. The preambles
+// and the data must still make one row.
+func TestTrackSMSWithPreamblesTakenLate(t *testing.T) {
+	t.Parallel()
+	for name, sender := range map[string]func(*testing.T, *calltracker.CallTracker, uint, uint, bool, uint) *sender{
+		"repeater": newSender, "openbridge": newPeerSender,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				ct, database, _ := newTracker(t)
+
+				s := sender(t, ct, userB, userA, false, 7010)
+				s.data(preambles(t, 4)...)
+				s.at = time.Now()
+				time.Sleep(2 * time.Second)
+				ct.Flush()
+				ended := rows(t, database)
+				require.Len(t, ended, 1)
+				require.False(t, ended[0].Active, "the sweep ended the row of the preambles")
+
+				bursts := smsBursts(t, &sms.Text{Format: sms.FormatIP, Source: uint32(userB), Destination: uint32(userA), Body: []byte("TEST")})
+				s.data(bursts...)
+				calls := waitDone(t, ct, database, 1)
+				msg := calls[0]
+				assert.Equal(t, models.CallKindData, msg.Kind)
+				assert.Equal(t, "sms", msg.SubKind)
+				assert.Equal(t, uint(4+len(bursts)), msg.Bursts)
+			})
+		})
+	}
+}
+
 // TestTrackSMSWithPreamblesOnTheirOwnStreams sends the preambles and the SMS
 // that they announce as MMDVMHost does, with a new stream ID for each CSBK
 // and data header. They must make one row, as on one stream.

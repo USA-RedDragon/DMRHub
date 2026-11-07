@@ -1262,7 +1262,7 @@ type shard struct {
 	in       chan task
 	channels map[chanKey]*channel
 	rows     map[any]*row
-	ended    map[voiceKey]*row
+	ended    map[any]*row
 	waiting  map[*row]time.Time
 	streams  map[uint]*streamRows
 	aliases  map[sourceKey]*sourceState
@@ -1281,7 +1281,7 @@ func newShard(t *CallTracker, idx int) *shard {
 		in:       make(chan task, shardDepth),
 		channels: map[chanKey]*channel{},
 		rows:     map[any]*row{},
-		ended:    map[voiceKey]*row{},
+		ended:    map[any]*row{},
 		waiting:  map[*row]time.Time{},
 		streams:  map[uint]*streamRows{},
 		aliases:  map[sourceKey]*sourceState{},
@@ -1445,6 +1445,9 @@ func (s *shard) finish(r *row, at time.Time) {
 		delete(s.rows, r.key)
 	}
 	if k, ok := r.key.(voiceKey); ok {
+		s.ended[k] = r
+	}
+	if k, ok := r.key.(singleKey); ok && k.sub == subPreamble && r.hung {
 		s.ended[k] = r
 	}
 	if r.ch != nil && r.dataKey != nil && r.ch.data[*r.dataKey] == r {

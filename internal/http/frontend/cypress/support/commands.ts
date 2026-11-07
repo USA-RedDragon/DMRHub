@@ -68,6 +68,8 @@ Cypress.Commands.add('stubCommonEndpoints', () => {
   });
   // Stub WebSocket upgrade requests to prevent connection errors
   cy.intercept('GET', '/ws/*', { statusCode: 404 });
+  cy.intercept('https://tiles.squallar.app/**', { statusCode: 404 });
+  cy.intercept('GET', 'https://tiles.squallar.app/status/latest.json', { statusCode: 200, body: { key: 'e2e/basemap' } });
 });
 
 Cypress.Commands.add('login', () => {

@@ -607,6 +607,16 @@ export default {
     };
   },
   watch: {
+    loggedIn() {
+      if (!this.repeaterID) return;
+      if (this.cosysopsRetry !== null) {
+        clearTimeout(this.cosysopsRetry);
+        this.cosysopsRetry = null;
+      }
+      this.cosysopsDelay = COSYSOPS_RETRY_MS;
+      this.fetchCosysops();
+      this.fetchLocalGroups();
+    },
     filter: {
       deep: true,
       handler() {
@@ -679,7 +689,10 @@ export default {
       return this.localGroups.filter((g) => g.state === 'member' && g.slot === slot);
     },
     async fetchLocalGroups() {
-      if (!useUserStore().loggedIn) return;
+      if (!useUserStore().loggedIn) {
+        this.localGroups = [];
+        return;
+      }
       try {
         this.localGroups = await repeaterLocalGroups(this.repeaterID);
       } catch {

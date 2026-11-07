@@ -110,7 +110,7 @@ describe('RepeaterDetailsPage details', () => {
   });
 });
 
-async function asRole(role: string | null, userID: number, extra: Record<string, unknown> = {}) {
+async function asRole(role: string | null, userID: number, extra: Record<string, unknown> = {}, loggedIn = true) {
   mockAPI.get.mockImplementation((url: string) => {
     if (url.startsWith('/lastheard')) {
       return Promise.resolve({ data: { calls: [], total: 0 } });
@@ -133,7 +133,7 @@ async function asRole(role: string | null, userID: number, extra: Record<string,
   const pinia = createPinia();
   setActivePinia(pinia);
   const store = useUserStore();
-  store.loggedIn = true;
+  store.loggedIn = loggedIn;
   store.id = userID;
   const wrapper = mount(RepeaterDetailsPage, {
     global: {
@@ -149,6 +149,17 @@ async function asRole(role: string | null, userID: number, extra: Record<string,
 describe('RepeaterDetailsPage roles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('loads the role when the login of the user finishes after the page mounted', async () => {
+    const w = await asRole('owner', 3000001, {}, false);
+    expect(w.find('[data-test="codec-save"]').exists()).toBe(false);
+    expect(mockAPI.get.mock.calls.some(([u]) => String(u).endsWith('/cosysops'))).toBe(false);
+    useUserStore().loggedIn = true;
+    await flushPromises();
+    expect(w.find('[data-test="codec-save"]').exists()).toBe(true);
+    expect(w.find('[data-test="connect"]').exists()).toBe(true);
+    w.unmount();
   });
 
   it('lets a co-sysop edit the codec but not connect or see the password', async () => {

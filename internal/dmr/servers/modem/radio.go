@@ -321,9 +321,12 @@ func (r *radio) embedded(d *mmdvm.DMRData) {
 	default:
 		return
 	}
-	emb := d.Burst.EMB()
-	if emb.FEC.Uncorrectable || emb.ColorCode != colorCode(r.m) || !s.hasCall || !s.rf {
+	if !s.hasCall || !s.rf {
 		s.emb.Reset()
+		return
+	}
+	emb := d.Burst.EMB()
+	if emb.FEC.Uncorrectable || emb.ColorCode != colorCode(r.m) {
 		return
 	}
 	lc, _, done, err := s.emb.Add(d.Burst.EmbeddedData(), emb.LCSS)
@@ -451,6 +454,11 @@ func (r *radio) callStart(o *bs.Output) {
 	}
 	s := &r.slots[i]
 	s.call, s.hasCall, s.service, s.rf = o.Call, true, o.Service, o.From.RF
+	if o.Call.Origin == voice.OriginHeader {
+		s.emb.Header(o.Call.LC)
+	} else {
+		s.emb.Reset()
+	}
 	if o.From.RF {
 		s.stream, s.seq = newStream(), 0
 	}

@@ -51,12 +51,18 @@ func embeddedCall(t *testing.T) []timedBurst {
 	if err := gps.SetGPSInfo(pdu.FLCGPSInfo{Latitude: benchLat, Longitude: benchLon}); err != nil {
 		t.Fatal(err)
 	}
-	lcs = append(lcs, gps)
+	return embeddedCallFrom(t, benchRadio, append(lcs, gps))
+}
+
+// embeddedCallFrom returns the bursts of a group voice call from source
+// that sends lcs in the embedded LC of its superframes.
+func embeddedCallFrom(t *testing.T, source uint32, lcs []pdu.FullLinkControl) []timedBurst {
+	t.Helper()
 	var lcb pdu.LCBytes
 	if err := lcb.SetFLCO(enums.FLCOGroupVoiceChannelUser); err != nil {
 		t.Fatal(err)
 	}
-	if err := lcb.SetCall(true, benchTG, benchRadio); err != nil {
+	if err := lcb.SetCall(true, benchTG, source); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := layer2.NewVoiceTransmitter(&layer2.VoiceTransmitterOptions{
@@ -105,6 +111,48 @@ func embeddedCall(t *testing.T) []timedBurst {
 		n = (n + 1) % 6
 	}
 	return out
+}
+
+// voiceBurst returns the burst at position pos (0 for A) of superframe sf
+// of call.
+func voiceBurst(t *testing.T, call []timedBurst, sf, pos int) *layer2.RawBurst {
+	t.Helper()
+	i := 0
+	for j := range call {
+		if call[j].control&mmdvm.ControlDataSync != 0 {
+			continue
+		}
+		if i == sf*6+pos {
+			return &call[j].burst
+		}
+		i++
+	}
+	t.Fatalf("the call has no burst %d of superframe %d", pos, sf)
+	return nil
+}
+
+// flipEmbeddedBit flips one bit of the embedded signalling field of burst B
+// of superframe sf of call.
+func flipEmbeddedBit(t *testing.T, call []timedBurst, sf int) {
+	t.Helper()
+	b := voiceBurst(t, call, sf, 1)
+	d := b.EmbeddedData()
+	d[1] ^= 0x10
+	b.SetEmbeddedData(d)
+}
+
+// shortAlias returns the embedded LCs that carry a talker alias short
+// enough for its header block alone.
+func shortAlias(t *testing.T) []pdu.FullLinkControl {
+	t.Helper()
+	lcs, err := pdu.EncodeTalkerAlias("N0CALL", layer3.TalkerAliasISOEightBit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lcs) != 1 {
+		t.Fatalf("the alias takes %d blocks, want 1", len(lcs))
+	}
+	return lcs
 }
 
 func TestRFTalkerAliasAndGPSGoToTheHub(t *testing.T) {
@@ -158,5 +206,50 @@ func TestTalkerAliasOfACallTheHotspotDropsStaysOff(t *testing.T) {
 	b.run(time.Second)
 	if len(b.aliases) != 0 || len(b.positions) != 0 {
 		t.Fatalf("a TS1 call on a simplex hotspot sent %d alias blocks and %d positions", len(b.aliases), len(b.positions))
+	}
+}
+
+func TestACorrectedAliasBlockOfANewCallNeedsItsOwnConfirmation(t *testing.T) {
+	t.Parallel()
+	b := newBench(t, false, 1)
+	b.run(time.Second)
+	b.playRF(enums.Slot2, embeddedCallFrom(t, benchRadio, shortAlias(t)))
+	b.run(time.Second)
+	if len(b.aliases) != 1 {
+		t.Fatalf("the first call sent %d alias blocks, want 1", len(b.aliases))
+	}
+	second := embeddedCallFrom(t, benchRadio+1, shortAlias(t))
+	flipEmbeddedBit(t, second, 0)
+	b.playRF(enums.Slot2, second)
+	b.run(time.Second)
+	if len(b.aliases) != 1 {
+		t.Fatalf("a block with a corrected bit in a new call went to the hub: %+v", b.aliases[1:])
+	}
+}
+
+func TestABurstOfAnotherColorCodeKeepsTheAliasHistory(t *testing.T) {
+	t.Parallel()
+	alias := shortAlias(t)
+	var other pdu.FullLinkControl
+	if err := other.SetGPSInfo(pdu.FLCGPSInfo{Latitude: benchLat, Longitude: benchLon}); err != nil {
+		t.Fatal(err)
+	}
+	call := embeddedCallFrom(t, benchRadio, []pdu.FullLinkControl{alias[0], other, alias[0]})
+	bb := voiceBurst(t, call, 1, 1)
+	emb := bb.EMB()
+	emb.ColorCode = 2
+	if err := bb.SetEMB(emb); err != nil {
+		t.Fatal(err)
+	}
+	flipEmbeddedBit(t, call, 2)
+	b := newBench(t, false, 1)
+	b.run(time.Second)
+	b.playRF(enums.Slot2, call)
+	b.run(time.Second)
+	if len(b.aliases) != 2 {
+		t.Fatalf("the hub got %d alias blocks, want 2", len(b.aliases))
+	}
+	if len(b.positions) != 0 {
+		t.Fatalf("the hub got %d positions from a superframe with a burst of another color code", len(b.positions))
 	}
 }

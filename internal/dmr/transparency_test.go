@@ -104,6 +104,8 @@ func formatName(f sms.Format) string {
 		return "defined_data"
 	case sms.FormatHytera:
 		return "hytera"
+	case sms.FormatUDT:
+		return "udt"
 	}
 	return "data"
 }

@@ -107,6 +107,8 @@ func FormatOf(tpl *models.Message) (*Format, error) {
 		f.nul = len(p) >= 2 && p[len(p)-2] == 0 && p[len(p)-1] == 0
 		f.dgram.Payload = nil
 	case sms.FormatDefinedData, sms.FormatHytera:
+	case sms.FormatUDT:
+		return nil, ErrNoFormat
 	default:
 		return nil, ErrNoFormat
 	}

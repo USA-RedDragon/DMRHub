@@ -616,7 +616,7 @@ func classifyPayload(h *pdu.DataHeader, payload []byte) (sub, format string) {
 
 func smsFormat(f sms.Format) string {
 	switch f {
-	case sms.FormatTMS, sms.FormatIP, sms.FormatAnyTone, sms.FormatDefinedData, sms.FormatHytera:
+	case sms.FormatTMS, sms.FormatIP, sms.FormatAnyTone, sms.FormatDefinedData, sms.FormatHytera, sms.FormatUDT:
 		return SubKindName(f.String())
 	}
 	return "unknown"

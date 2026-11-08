@@ -627,6 +627,8 @@ func formatOf(f sms.Format) models.MessageFormat {
 		return models.MessageFormatDefinedData
 	case sms.FormatHytera:
 		return models.MessageFormatHytera
+	case sms.FormatUDT:
+		return models.MessageFormatUDT
 	}
 	return models.MessageFormatUnknown
 }

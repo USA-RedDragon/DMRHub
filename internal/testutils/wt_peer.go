@@ -21,7 +21,6 @@ package testutils
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -92,6 +91,8 @@ type WebTransportPeer struct {
 	heard   []Heard
 	notices []time.Time
 	moved   []time.Time
+	// resumeLate is how late the resume answer of a move takes effect.
+	resumeLate time.Duration
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -265,6 +266,13 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 		}
 		if err == nil && p.resume(ctx, sess, token) {
 			p.mu.Lock()
+			late := p.resumeLate
+			p.mu.Unlock()
+			select {
+			case <-p.done:
+			case <-time.After(late):
+			}
+			p.mu.Lock()
 			p.current, p.pending, p.stashed = sess, nil, nil
 			p.moves++
 			p.moved = append(p.moved, at)
@@ -341,9 +349,11 @@ func (p *WebTransportPeer) resume(ctx context.Context, sess *webtransport.Sessio
 
 // packet takes the datagram b of sess. The replica that the peer moves to
 // hands over all that the old one sent since the drain notice, in order,
-// so while a move goes on, the peer keeps the DMRD datagrams of the old
-// session aside, takes them only when the move fails, and drops the old session
-// once the move is done.
+// and the old one ends the session once the new one takes it over, so it
+// answers a ping that the peer sends it until the resume answer comes with
+// MSTNAK. So while a move goes on, the peer keeps all datagrams of the old
+// session aside, takes them only when the move fails, and drops the old
+// session once the move is done.
 func (p *WebTransportPeer) packet(sess *webtransport.Session, b []byte) {
 	at := time.Now()
 	p.mu.Lock()
@@ -352,7 +362,7 @@ func (p *WebTransportPeer) packet(sess *webtransport.Session, b []byte) {
 	case sess == p.pending:
 	case sess != p.current:
 		return
-	case p.pending != nil && bytes.HasPrefix(b, []byte("DMRD")):
+	case p.pending != nil:
 		p.stashed = append(p.stashed, stashedDatagram{at: at, b: append([]byte(nil), b...)})
 		return
 	}
@@ -442,6 +452,15 @@ func (p *WebTransportPeer) WaitReady(timeout time.Duration) error {
 	case <-time.After(timeout):
 		return ErrSessionPeerTimeout
 	}
+}
+
+// SetResumeLate makes the resume answer of each move take effect d after
+// it came, as on a starved machine: until then the peer sends on the old
+// session.
+func (p *WebTransportPeer) SetResumeLate(d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.resumeLate = d
 }
 
 // Downs returns how many times the session ended.

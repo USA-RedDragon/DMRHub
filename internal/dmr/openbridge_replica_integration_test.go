@@ -21,11 +21,14 @@ package dmr_test
 import (
 	"net"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
+	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
 	"github.com/stretchr/testify/assert"
@@ -218,4 +221,70 @@ func TestOpenBridgeEgressHandoverLosesNothing(t *testing.T) {
 		assert.Empty(t, lost, "bursts the peer never got")
 		assert.Empty(t, twice, "bursts the peer got more than once")
 	})
+}
+
+// peerNoticeDrop drops the peer change notices that are published while
+// on is set.
+type peerNoticeDrop struct {
+	pubsub.PubSub
+	on *atomic.Bool
+}
+
+func (p peerNoticeDrop) Publish(topic string, message []byte) error {
+	if topic == "hub:peers:changed" && p.on.Load() {
+		return nil
+	}
+	return p.PubSub.Publish(topic, message) //nolint:wrapcheck
+}
+
+// TestOpenBridgeLeaderSendsToAPeerItsTableLacks adds a peer on the first
+// replica while the replica that holds the egress lease has read its peers
+// and does not take the change notice, as when the notice is late. The
+// first replica routes a call to the new peer and hands it to the holder,
+// which must read its peers again and send the call, not drop it.
+func TestOpenBridgeLeaderSendsToAPeerItsTableLacks(t *testing.T) {
+	t.Parallel()
+	for _, be := range allBackends() {
+		t.Run(be.Name, func(t *testing.T) {
+			t.Parallel()
+			drop := &atomic.Bool{}
+			be.WrapPubSub = func(p pubsub.PubSub) pubsub.PubSub { return peerNoticeDrop{PubSub: p, on: drop} }
+			stack := testutils.SetupIntegrationStack(t, be)
+			stack.SeedUser(t, 1000001, "N0CALL")
+			stack.SeedTalkgroup(t, 1, "TG1")
+			stack.SeedMMDVMRepeater(t, 100001, 1000001, testPassword)
+			stack.AssignTS1StaticTG(t, 100001, 1)
+			second := stack.SpawnSecondReplica(t)
+			stack.StartServers(t)
+			waitFor(t, "the second replica holds the egress lease", second.OpenBridgeServer.IsEgressLeader)
+			require.False(t, stack.OpenBridgeServer.IsEgressLeader(), "the first replica must not send egress")
+			stack.SeedPeer(t, 500001, 1000001, obPassword(t), "127.0.0.1", 0, true, false)
+			stack.SeedPeerRule(t, 500001, true, 1, 1)
+
+			mc := testutils.NewMMDVMClient(100001, "", testPassword)
+			defer mc.Close()
+			require.NoError(t, mc.Connect(stack.MMDVMAddr))
+			require.NoError(t, mc.WaitReady(handshakeWait))
+			obcA := testutils.NewOpenBridgeClient(500001, obPassword(t))
+			defer obcA.Close()
+			require.NoError(t, obcA.Connect(second.OpenBridgeAddr))
+			require.NoError(t, obcA.SendGroupVoice(1000001, 1, 9201))
+			require.Len(t, append(receiveCall(mc, 1), mc.Drain(drainWait)...), 3, "the holder must have read its peers for a call of peer 500001")
+
+			obcB := testutils.NewOpenBridgeClient(500002, obPassword(t))
+			defer obcB.Close()
+			require.NoError(t, obcB.Connect(stack.OpenBridgeAddr))
+			addrB := obcB.LocalAddr()
+			drop.Store(true)
+			require.NoError(t, stack.DB.Create(&models.Peer{ID: 500002, OwnerID: 1000001, Password: obPassword(t), IP: addrB.IP.String(), Port: addrB.Port, Egress: true}).Error)
+			require.NoError(t, stack.DB.Create(&models.PeerRule{PeerID: 500002, Direction: false, Match: models.DefaultPeerRuleMatch(false), SubjectIDMin: 1000001, SubjectIDMax: 1000001}).Error)
+			stack.Hub.PeerChanged(500002)
+
+			obcA2 := testutils.NewOpenBridgeClient(500001, obPassword(t))
+			defer obcA2.Close()
+			require.NoError(t, obcA2.Connect(stack.OpenBridgeAddr))
+			require.NoError(t, obcA2.SendGroupVoice(1000001, 1, 9202))
+			assert.Len(t, append(testutils.Collect(obcB.ReceivedPackets(), deliverWait, callEnds(1)), obcB.Drain(drainWait)...), 3, "the new peer must get each packet of the call once")
+		})
+	}
 }

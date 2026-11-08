@@ -120,6 +120,9 @@ type Server struct {
 	versions *xsync.Map[uint, peerVersion]
 	pinged   *xsync.Map[uint, time.Time]
 	pings    chan peerPing
+	// reread holds, by peer, when sendNow last read the peers again
+	// because the table lacked that peer.
+	reread *xsync.Map[uint, time.Time]
 
 	egressOut  chan outMessage
 	eventsOut  chan outMessage
@@ -334,6 +337,7 @@ func MakeServer(config *config.Config, hub *hub.Hub, db *gorm.DB, pubsub pubsub.
 		quenched:      xsync.NewMap[quench, time.Time](),
 		versions:      xsync.NewMap[uint, peerVersion](),
 		pinged:        xsync.NewMap[uint, time.Time](),
+		reread:        xsync.NewMap[uint, time.Time](),
 		pings:         make(chan peerPing, pingQueueSize),
 		egressOut:     make(chan outMessage, outboxSize),
 		markers:       xsync.NewMap[string, chan struct{}](),
@@ -583,6 +587,9 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 	}
 	known, ok := table.byID[peerID]
 	if !ok {
+		known, ok = s.rereadPeer(peerID)
+	}
+	if !ok {
 		slog.Error("Error getting peer from DB", "peerID", peerID, "error", gorm.ErrRecordNotFound)
 		return
 	}
@@ -615,6 +622,31 @@ func (s *Server) sendNow(peerID uint, packet models.Packet, org origin) {
 	if err != nil {
 		slog.Error("Error sending packet", "error", err)
 	}
+}
+
+// rereadPeer reads the peers again for a peer that the table lacks, as
+// one that another replica added and routed to before this replica took
+// the change notice, at most once per lookup.TTL for each peer.
+func (s *Server) rereadPeer(peerID uint) (*knownPeer, bool) {
+	if s.peers == nil || s.reread == nil {
+		return nil, false
+	}
+	now := s.clock.Now()
+	if at, ok := s.reread.Load(peerID); ok && now.Sub(at) < lookup.TTL {
+		return nil, false
+	}
+	s.reread.Store(peerID, now)
+	s.peers.Reload(struct{}{})
+	table, err := s.peerTable()
+	if err != nil {
+		slog.Error("Error reading the peers again", "peerID", peerID, "error", err)
+		return nil, false
+	}
+	known, ok := table.byID[peerID]
+	if ok {
+		s.reread.Delete(peerID)
+	}
+	return known, ok
 }
 
 func (s *Server) ipList() *ipfilter.List {

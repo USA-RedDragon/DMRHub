@@ -105,7 +105,7 @@ func TestAPluginInsideDMRHubConnectsWithoutAToken(t *testing.T) {
 			t.Fatal("the burst did not reach the plugin")
 		}
 		cancel()
-		<-done
+		require.NoError(t, <-done)
 	})
 }
 

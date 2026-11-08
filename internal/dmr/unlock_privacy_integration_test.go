@@ -223,8 +223,7 @@ const (
 // and MMDVM paths cover the logs of the IPSC translator and of the MMDVM
 // server, and TestAnRFCallToAnOnAirCodeLeavesTheCodeOutOfTheLog covers the
 // logs of the modem. None may hold the code or the call ID that carries it.
-func TestAnOnAirCodeReachesNoSink(t *testing.T) {
-	t.Parallel()
+func TestAnOnAirCodeReachesNoSink(t *testing.T) { //nolint:paralleltest,tparallel // it swaps the default logger, which its backends share
 	shared := &sinks{}
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(shared, &slog.HandlerOptions{Level: slog.LevelDebug})))

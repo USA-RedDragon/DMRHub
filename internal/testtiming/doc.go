@@ -23,5 +23,7 @@
 // a port can fail on a loaded machine, so such a site is allowed only
 // where testdata/allowed.txt lists it with a reason. The list only
 // shrinks. A site in the func that synctest.Test runs does not count: in
-// its bubble the time is virtual.
+// its bubble the time is virtual. It also holds the check that no test
+// that runs in parallel changes the default logger of the process, which
+// would take the logs of the other tests.
 package testtiming

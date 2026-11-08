@@ -38,23 +38,24 @@ import (
 // notice, with no new login, and get every burst of the call once.
 func TestWebTransportMovesFromADrainingReplica(t *testing.T) {
 	t.Parallel()
-	testWebTransportMove(t, 0)
+	testWebTransportMove(t, false)
 }
 
 // TestWebTransportMoveWithALateResumeAnswer is
 // TestWebTransportMovesFromADrainingReplica with a resume answer that takes
-// effect a few pings late, as on a starved machine. The old replica ends
-// the session once the new one takes it over and answers those pings with
-// MSTNAK, which the browser hotspot must not take for the end of its
-// session.
+// effect only after the old session brought an MSTNAK, as on a starved
+// machine. The old replica ends the session once the new one takes it over
+// and answers a ping of the browser hotspot with MSTNAK, which the hotspot
+// must not take for the end of its session.
 func TestWebTransportMoveWithALateResumeAnswer(t *testing.T) {
 	t.Parallel()
-	testWebTransportMove(t, 600*time.Millisecond)
+	testWebTransportMove(t, true)
 }
 
 // testWebTransportMove moves a browser hotspot from a draining replica
-// mid-call, with the resume answer late by late.
-func testWebTransportMove(t *testing.T, late time.Duration) {
+// mid-call. With afterNAK, the hotspot takes the resume answer only after
+// the old session brought an MSTNAK.
+func testWebTransportMove(t *testing.T, afterNAK bool) {
 	t.Helper()
 	forAllBackendsWith(t, []testutils.Backend{testutils.WebTransportOn()}, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, 1000001, "N0CALL")
@@ -71,7 +72,7 @@ func testWebTransportMove(t *testing.T, late time.Duration) {
 		front.Add(t, stack.WebTransportAddr)
 		browser, err := testutils.NewWebTransportPeer(100004, testPassword)
 		require.NoError(t, err)
-		browser.SetResumeLate(late)
+		browser.SetResumeAfterOldNAK(afterNAK)
 		require.NoError(t, browser.Connect(front.Addr()))
 		t.Cleanup(browser.Close)
 		require.NoError(t, browser.WaitReady(handshakeWait))

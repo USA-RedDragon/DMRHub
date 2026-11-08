@@ -91,8 +91,10 @@ type WebTransportPeer struct {
 	heard   []Heard
 	notices []time.Time
 	moved   []time.Time
-	// resumeLate is how late the resume answer of a move takes effect.
-	resumeLate time.Duration
+	// resumeAfterNAK makes a move take its resume answer only after the
+	// old session brought an MSTNAK, and oldNAK carries that MSTNAK.
+	resumeAfterNAK bool
+	oldNAK         chan struct{}
 
 	ready    chan struct{}
 	upOnce   sync.Once
@@ -260,20 +262,25 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 		sess, err := p.dial(ctx)
 		if err == nil {
 			p.mu.Lock()
-			p.pending = sess
+			p.pending, p.oldNAK = sess, nil
+			if p.resumeAfterNAK {
+				p.oldNAK = make(chan struct{}, 1)
+			}
 			p.mu.Unlock()
 			p.serve(sess)
 		}
 		if err == nil && p.resume(ctx, sess, token) {
 			p.mu.Lock()
-			late := p.resumeLate
+			nak := p.oldNAK
 			p.mu.Unlock()
-			select {
-			case <-p.done:
-			case <-time.After(late):
+			if nak != nil {
+				select {
+				case <-p.done:
+				case <-nak:
+				}
 			}
 			p.mu.Lock()
-			p.current, p.pending, p.stashed = sess, nil, nil
+			p.current, p.pending, p.stashed, p.oldNAK = sess, nil, nil, nil
 			p.moves++
 			p.moved = append(p.moved, at)
 			p.mu.Unlock()
@@ -286,7 +293,7 @@ func (p *WebTransportPeer) move(old *webtransport.Session, token string) {
 		}
 		if sess != nil {
 			p.mu.Lock()
-			p.pending = nil
+			p.pending, p.oldNAK = nil, nil
 			for _, d := range p.stashed {
 				p.take(d.at, d.b)
 			}
@@ -363,6 +370,12 @@ func (p *WebTransportPeer) packet(sess *webtransport.Session, b []byte) {
 	case sess != p.current:
 		return
 	case p.pending != nil:
+		if p.oldNAK != nil && dmrd.Classify(b, dmrd.DialectMMDVM) == dmrd.CommandMSTNAK {
+			select {
+			case p.oldNAK <- struct{}{}:
+			default:
+			}
+		}
 		p.stashed = append(p.stashed, stashedDatagram{at: at, b: append([]byte(nil), b...)})
 		return
 	}
@@ -454,13 +467,14 @@ func (p *WebTransportPeer) WaitReady(timeout time.Duration) error {
 	}
 }
 
-// SetResumeLate makes the resume answer of each move take effect d after
-// it came, as on a starved machine: until then the peer sends on the old
-// session.
-func (p *WebTransportPeer) SetResumeLate(d time.Duration) {
+// SetResumeAfterOldNAK makes each move take its resume answer only after
+// the old session brought an MSTNAK, as on a starved machine where the
+// answer comes after the old replica ended the session and answered a ping
+// of the peer with MSTNAK. Until then the peer sends on the old session.
+func (p *WebTransportPeer) SetResumeAfterOldNAK(on bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.resumeLate = d
+	p.resumeAfterNAK = on
 }
 
 // Downs returns how many times the session ended.

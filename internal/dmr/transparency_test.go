@@ -805,7 +805,7 @@ func TestTransparencyNonVoiceDoesNotLink(t *testing.T) {
 		require.NoError(t, b.SendDMRD(makeGroupVoiceTermPacket(mxRadio, 93, 0xF004, false)))
 		require.NoError(t, b.SendDMRD(makeGroupVoicePacket(mxRadio, 94, 0xF005, true)))
 		require.NoError(t, b.SendDMRD(makeGroupVoiceTermPacket(mxRadio, 94, 0xF005, true)))
-		got := a.Drain(drainWait)
+		got := append(testutils.Collect(a.ReceivedPackets(), deliverWait, callEnds(94)), a.Drain(drainWait)...)
 		assert.Empty(t, ofCall(got, mxRadio, 93), "group data and a CSBK linked the repeater to talkgroup 93")
 		assert.NotEmpty(t, ofCall(got, mxRadio, 94), "voice did not link the repeater to talkgroup 94")
 	})

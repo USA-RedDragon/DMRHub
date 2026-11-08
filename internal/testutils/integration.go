@@ -23,7 +23,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/USA-RedDragon/DMRHub/internal/config"
@@ -73,6 +75,9 @@ type IntegrationStack struct {
 	plugins    *Plugins
 	hubOptions []hub.Option
 	bounded    bool
+
+	replicasMu sync.Mutex
+	replicas   []*hub.Hub
 }
 
 type lookupHolder interface {
@@ -256,7 +261,8 @@ func (s *IntegrationStack) ChangeConfig(change func(*config.Config)) {
 // servers that share the same DB, pubsub, KV and hub options as the
 // original stack, simulating two replicas of the app. The servers listen on
 // new ports and are started; repeater subscriptions are activated when
-// repeaters connect.
+// repeaters connect. From then on the seed helpers of the stack return
+// once the replica took the change.
 func (s *IntegrationStack) SpawnSecondReplica(t *testing.T) Replica {
 	t.Helper()
 	r, _ := s.spawnReplica(t, false)
@@ -311,6 +317,9 @@ func (s *IntegrationStack) spawnReplica(t *testing.T, register bool) (Replica, *
 		store2.Stop()
 	})
 	holdWaits(t, hub2, s.bounded, ipsc2, &ob2)
+	s.replicasMu.Lock()
+	s.replicas = append(s.replicas, hub2)
+	s.replicasMu.Unlock()
 
 	return Replica{
 		Hub:              hub2,
@@ -400,6 +409,46 @@ func (s *IntegrationStack) RestartMMDVM(t *testing.T, mode RestartMode) {
 	s.MMDVMServer = &m
 }
 
+// Change notices that the seed helpers wait for on the replicas.
+const (
+	userNotices      = "hub:users:changed"
+	talkgroupNotices = "hub:talkgroups:changed"
+	repeaterNotices  = "hub:repeaters:changed"
+	peerNotices      = "hub:peers:changed"
+	// noticeMarker is the ID of no user, talkgroup, repeater or peer.
+	noticeMarker = 4000000001
+)
+
+// awaitReplicas announces noticeMarker on topic and waits until each
+// replica that the stack spawned took it. A replica takes the notices of a
+// topic one at a time in order, so it then took every notice of topic that
+// came before, and the watchers that on adds ran for them.
+func (s *IntegrationStack) awaitReplicas(t *testing.T, topic string, on func(*hub.Hub, func(uint)) func()) {
+	t.Helper()
+	s.replicasMu.Lock()
+	hubs := slices.Clone(s.replicas)
+	s.replicasMu.Unlock()
+	if len(hubs) == 0 {
+		return
+	}
+	taken := make(chan struct{}, len(hubs))
+	for _, h := range hubs {
+		stop := on(h, func(id uint) {
+			if id != noticeMarker {
+				return
+			}
+			select {
+			case taken <- struct{}{}:
+			default:
+			}
+		})
+		defer stop()
+	}
+	require.NoError(t, s.PubSub.Publish(topic, []byte("testutils:"+strconv.Itoa(noticeMarker))))
+	got := Collect(taken, DeliveryWait, func(got []struct{}) bool { return len(got) == len(hubs) })
+	require.Len(t, got, len(hubs), "the replicas did not take the notices of %s", topic)
+}
+
 // StartServers starts the Hub and the MMDVM, IPSC, and OpenBridge servers.
 // Repeater subscriptions are activated lazily when repeaters connect
 // via the protocol handshake.
@@ -433,6 +482,7 @@ func (s *IntegrationStack) SeedUser(t *testing.T, id uint, callsign string) {
 	}).Error
 	require.NoError(t, err)
 	s.Hub.UserChanged(id)
+	s.awaitReplicas(t, userNotices, (*hub.Hub).OnUserChange)
 }
 
 // SeedTalkgroup creates a Talkgroup in the DB and tells the hub, as the
@@ -445,6 +495,7 @@ func (s *IntegrationStack) SeedTalkgroup(t *testing.T, id uint, name string) {
 	}).Error
 	require.NoError(t, err)
 	s.Hub.TalkgroupChanged(id)
+	s.awaitReplicas(t, talkgroupNotices, (*hub.Hub).OnTalkgroupChange)
 }
 
 // SeedMMDVMRepeater creates an MMDVM repeater in the DB and tells the
@@ -462,6 +513,7 @@ func (s *IntegrationStack) SeedMMDVMRepeater(t *testing.T, id uint, ownerID uint
 	}).Error
 	require.NoError(t, err)
 	s.Hub.ReloadRepeater(context.Background(), id)
+	s.awaitReplicas(t, repeaterNotices, (*hub.Hub).OnRepeaterChange)
 }
 
 // SeedIPSCRepeater creates an IPSC repeater in the DB and tells the
@@ -479,6 +531,7 @@ func (s *IntegrationStack) SeedIPSCRepeater(t *testing.T, id uint, ownerID uint,
 	}).Error
 	require.NoError(t, err)
 	s.Hub.ReloadRepeater(context.Background(), id)
+	s.awaitReplicas(t, repeaterNotices, (*hub.Hub).OnRepeaterChange)
 }
 
 // AssignTS1StaticTG adds a talkgroup to a repeater's TS1 static list and
@@ -489,6 +542,7 @@ func (s *IntegrationStack) AssignTS1StaticTG(t *testing.T, repeaterID, tgID uint
 	require.NoError(t, s.DB.First(&rpt, repeaterID).Error)
 	require.NoError(t, s.DB.Model(&rpt).Association("TS1StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
 	s.Hub.ReloadRepeater(context.Background(), repeaterID)
+	s.awaitReplicas(t, repeaterNotices, (*hub.Hub).OnRepeaterChange)
 }
 
 // AssignTS2StaticTG adds a talkgroup to a repeater's TS2 static list and
@@ -499,6 +553,7 @@ func (s *IntegrationStack) AssignTS2StaticTG(t *testing.T, repeaterID, tgID uint
 	require.NoError(t, s.DB.First(&rpt, repeaterID).Error)
 	require.NoError(t, s.DB.Model(&rpt).Association("TS2StaticTalkgroups").Append(&models.Talkgroup{ID: tgID}))
 	s.Hub.ReloadRepeater(context.Background(), repeaterID)
+	s.awaitReplicas(t, repeaterNotices, (*hub.Hub).OnRepeaterChange)
 }
 
 // SeedPeer creates an OpenBridge peer in the DB and tells the hub, as the
@@ -516,6 +571,7 @@ func (s *IntegrationStack) SeedPeer(t *testing.T, id uint, ownerID uint, passwor
 	}).Error
 	require.NoError(t, err)
 	s.Hub.PeerChanged(id)
+	s.awaitReplicas(t, peerNotices, (*hub.Hub).OnPeerChange)
 }
 
 // SetPeerPrivateCalls sets the private call switches of a peer in the DB
@@ -525,6 +581,7 @@ func (s *IntegrationStack) SetPeerPrivateCalls(t *testing.T, id uint, ingress bo
 	err := s.DB.Model(&models.Peer{ID: id}).Updates(map[string]any{"ingress_private": ingress, "egress_private": egress}).Error
 	require.NoError(t, err)
 	s.Hub.PeerChanged(id)
+	s.awaitReplicas(t, peerNotices, (*hub.Hub).OnPeerChange)
 }
 
 // SeedPeerRule creates a peer rule in the DB and tells the hub, as the API
@@ -547,4 +604,5 @@ func (s *IntegrationStack) SeedPeerRuleMatch(t *testing.T, peerID uint, directio
 	}).Error
 	require.NoError(t, err)
 	s.Hub.PeerChanged(peerID)
+	s.awaitReplicas(t, peerNotices, (*hub.Hub).OnPeerChange)
 }

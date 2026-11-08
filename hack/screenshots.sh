@@ -30,7 +30,8 @@
 # runs under pasta, which gives it the internet for the map tiles of the
 # Positions page and forwards no ports. In both, Chromium sees none of the
 # host's interfaces come and go, which would abort its requests with
-# ERR_NETWORK_CHANGED.
+# ERR_NETWORK_CHANGED. pasta starts the harness through /bin/sh because the
+# AppArmor profile of pasta on Ubuntu lets it run only programs in /usr/bin.
 set -euo pipefail
 
 dmrweb_commit=0df08f202083f46cb3af137934f7a25336864eb6
@@ -84,7 +85,7 @@ mkdir -p "$shots"
 run=("$work/screenshots" -hub "$work/DMRHub" -chromium "$chromium" -work "$work" -out "$shots" -list "$root/hack/screenshots/shots.yaml" -only "$only" -radio "$radio" -root "$root"
     -ext "${DMRHUB_SHOTS_EXT:-${XDG_CACHE_HOME:-$HOME/.cache}/dmrhub-ext}")
 unshare -r -n sh -c 'ip link set lo up && exec "$@"' sh "${run[@]}" -phase setup
-pasta --config-net --quiet -t none -u none -T none -U none -- "${run[@]}" -phase main
+pasta --config-net --quiet -t none -u none -T none -U none -- /bin/sh -c 'exec "$@"' sh "${run[@]}" -phase main
 
 if command -v oxipng > /dev/null; then
     oxipng -q -o max --strip safe "$shots"/*.png

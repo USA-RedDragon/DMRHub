@@ -414,10 +414,11 @@ func (s *Store) response(j *job) {
 	}
 	src, dst := j.rowDst, j.rowSrc
 	p := pendingResponse{Response: resp, At: j.at}
+	s.setPending(src, dst, p)
 	if row, prev, ok := s.answer(j, src, dst, resp); ok {
 		p.Answered, p.AnsweredAt, p.Prev = row.ID, row.ReceivedAt, prev
+		s.setPending(src, dst, p)
 	}
-	s.setPending(src, dst, p)
 }
 
 func (s *Store) answer(j *job, src, dst uint, resp models.CallResponse) (models.Message, models.CallResponse, bool) {

@@ -124,7 +124,7 @@ func TestOpenBridgeForgetsTheVersionOfARotatedPeer(t *testing.T) {
 
 		const stream = 9712
 		require.NoError(t, s.mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
-		got := dataOf(fresh.DrainBridges(drainWait), stream)
+		got := receiveStream(fresh, stream, 1)
 		if assert.Len(t, got, 1) {
 			assert.Equal(t, uint8(1), got[0].Version, "a rotation of the password keeps the version that the peer named before it")
 		}

@@ -83,6 +83,14 @@ func dataOf(bs []testutils.ReceivedBridge, stream uint32) []testutils.ReceivedBr
 	return out
 }
 
+// receiveStream reads the data packets that c gets until n of stream came,
+// bounded by deliverWait, and then for drainWait more, so that a packet
+// that comes twice counts twice, and returns those of stream.
+func receiveStream(c *testutils.OpenBridgeClient, stream uint32, n int) []testutils.ReceivedBridge {
+	got := c.ReceiveBridges(deliverWait, func(b []testutils.ReceivedBridge) bool { return len(dataOf(b, stream)) >= n })
+	return dataOf(append(got, c.DrainBridges(drainWait)...), stream)
+}
+
 // TestEnhancedOpenBridgePeersGetKeepalives checks that an enhanced peer
 // gets a BCKA, as FreeDMR's send_bcka sends every 10 s, and a version 1
 // peer gets none.

@@ -26,7 +26,6 @@ import (
 
 	"github.com/USA-RedDragon/DMRHub/internal/db/models"
 	"github.com/USA-RedDragon/DMRHub/internal/dmr/dmrconst"
-	"github.com/USA-RedDragon/DMRHub/internal/dmr/servers/openbridge"
 	"github.com/USA-RedDragon/DMRHub/internal/pubsub"
 	"github.com/USA-RedDragon/DMRHub/internal/testutils"
 	"github.com/USA-RedDragon/dmrgo/v2/transport/dmrd"
@@ -277,12 +276,10 @@ func TestOpenBridgeReplicaThatStartsLaterKnowsTheLinkVersion(t *testing.T) {
 		require.NoError(t, mc.WaitReady(handshakeWait))
 		require.NoError(t, stack.OpenBridgeServer.Stop(t.Context()))
 
-		var got []testutils.ReceivedBridge
-		stream := uint32(9652)
-		for start := time.Now(); len(got) == 0 && time.Since(start) < 3*openbridge.EgressLeaseTTL; stream++ {
-			require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, uint(stream), false)))
-			got = dataOf(s.peer.DrainBridges(100*time.Millisecond), stream)
-		}
+		waitFor(t, "the second replica takes the egress lease", second.OpenBridgeServer.IsEgressLeader)
+		const stream = 9652
+		require.NoError(t, mc.SendDMRD(makeGroupVoicePacket(conformUser, 1, stream, false)))
+		got := receiveStream(s.peer, stream, 1)
 		if assert.NotEmpty(t, got, "the second replica sends to the peer") {
 			assert.Equal(t, uint8(5), got[0].Version, "the second replica sends the version that the peer named")
 		}

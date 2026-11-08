@@ -125,7 +125,7 @@ func TestOpenBridgeEgressFromOneReplica(t *testing.T) {
 		for _, c := range []*testutils.MMDVMClient{r.on1, r.on2} {
 			stream++
 			require.NoError(t, c.SendDMRD(makeGroupVoicePacket(1000001, 1, uint(stream), false)))
-			got := dataOf(r.peer.DrainBridges(drainWait), stream)
+			got := receiveStream(r.peer, stream, 1)
 			if assert.Len(t, got, 1, "the peer gets the call once") {
 				assert.Equal(t, portOf(t, leaderAddr), got[0].From.Port, "from the replica that holds the lease")
 			}
@@ -160,7 +160,7 @@ func TestOpenBridgeQuenchAcrossReplicas(t *testing.T) {
 		leader, _, otherAddr := r.leader(t)
 
 		require.NoError(t, r.on1.SendDMRD(makeGroupVoicePacket(1000001, 1, 9801, false)))
-		require.Len(t, dataOf(r.peer.DrainBridges(drainWait), 9801), 1, "the peer gets the stream before the quench")
+		require.Len(t, receiveStream(r.peer, 9801, 1), 1, "the peer gets the stream before the quench")
 
 		require.NoError(t, r.peer.SendControlTo(otherAddr, dmrd.BridgeControl{Command: dmrd.CommandBCSQ, TalkGroup: 1, Stream: 9801}))
 		waitFor(t, "the holder of the lease gets the quench", func() bool { return leader.IsQuenched(500002, 9801) })
@@ -170,7 +170,7 @@ func TestOpenBridgeQuenchAcrossReplicas(t *testing.T) {
 		assert.Empty(t, dataOf(r.peer.DrainBridges(drainWait), 9801), "the quenched stream must not go to the peer")
 
 		require.NoError(t, r.on2.SendDMRD(makeGroupVoicePacket(1000001, 1, 9802, false)))
-		assert.Len(t, dataOf(r.peer.DrainBridges(drainWait), 9802), 1, "another stream still goes to the peer")
+		assert.Len(t, receiveStream(r.peer, 9802, 1), 1, "another stream still goes to the peer")
 	})
 }
 
@@ -205,7 +205,7 @@ func TestOpenBridgeEgressHandoverLosesNothing(t *testing.T) {
 		}
 		<-stopped
 		seen := map[uint8]int{}
-		for _, b := range dataOf(r.peer.DrainBridges(drainWait), stream) {
+		for _, b := range receiveStream(r.peer, stream, bursts) {
 			seen[b.Data.Seq]++
 		}
 		var lost, twice []int

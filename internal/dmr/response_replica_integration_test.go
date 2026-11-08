@@ -269,9 +269,10 @@ func TestResponseMatchesAcrossReplicas(t *testing.T) {
 				assert.Equal(t, models.CallResponseACK, ackCall.Response)
 				assert.Equal(t, "radio_check", checkCall.SubKind)
 				assert.Equal(t, models.CallResponseACK, checkCall.Response, "the row of the radio check has the answer")
-				var answers int64
-				require.NoError(t, stack.DB.Model(&models.Call{}).Where("stream_id = ?", answerStream).Count(&answers).Error)
-				assert.Zero(t, answers, "the answer makes no row of its own")
+				waitFor(t, "the row that the answer made of its own goes", func() bool {
+					var answers int64
+					return stack.DB.Model(&models.Call{}).Where("stream_id = ?", answerStream).Count(&answers).Error == nil && answers == 0
+				})
 
 				require.Eventually(t, func() bool {
 					var m models.Message

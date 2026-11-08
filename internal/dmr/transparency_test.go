@@ -46,6 +46,7 @@ const (
 	mxRadio        = 1000001
 	mxUser         = 1000002
 	mxDataUser     = 1000003
+	mxProbe        = 1000004
 	mxUnregistered = 3999999
 	mxTG           = 91
 	mxOtherTG      = 92
@@ -818,6 +819,7 @@ func TestTransparencyReplicas(t *testing.T) {
 	t.Parallel()
 	forAllBackends(t, func(t *testing.T, stack *testutils.IntegrationStack) {
 		stack.SeedUser(t, mxRadio, "N0CALL")
+		stack.SeedUser(t, mxProbe, "N4CALL")
 		stack.SeedTalkgroup(t, mxTG, "TG91")
 		stack.SeedMMDVMRepeater(t, mxSrcRpt, mxRadio, testPassword)
 		stack.SeedMMDVMRepeater(t, mxReplicaRpt, mxRadio, testPassword)
@@ -877,9 +879,11 @@ func TestTransparencyReplicas(t *testing.T) {
 	})
 }
 
-// awaitReplicaRoutes sends calls from src to mxTG, each on the next probe
-// stream, until each of to got one, so that both replicas route the
-// talkgroup to them, and then drains what they got.
+// awaitReplicaRoutes sends calls of mxProbe from src to mxTG, each on the
+// next probe stream, until each of to got one, so that both replicas route
+// the talkgroup to them, and then drains what they got. The probes come
+// from a radio of no case, so a probe that a target gets late is not taken
+// for a burst of a case.
 func awaitReplicaRoutes(t *testing.T, src *testutils.MMDVMClient, to replicaTargets) {
 	t.Helper()
 	probes := map[uint]bool{}
@@ -891,8 +895,8 @@ func awaitReplicaRoutes(t *testing.T, src *testutils.MMDVMClient, to replicaTarg
 		require.True(t, time.Now().Before(deadline), "the replicas did not route the talkgroup: MMDVM %v, OpenBridge %v, IPSC %v", mmdvmGot, obGot, ipscGot)
 		probes[stream] = true
 		last = stream
-		require.NoError(t, src.SendDMRD(makeGroupVoicePacket(mxRadio, mxTG, stream, false)))
-		require.NoError(t, src.SendDMRD(makeGroupVoiceTermPacket(mxRadio, mxTG, stream, false)))
+		require.NoError(t, src.SendDMRD(makeGroupVoicePacket(mxProbe, mxTG, stream, false)))
+		require.NoError(t, src.SendDMRD(makeGroupVoiceTermPacket(mxProbe, mxTG, stream, false)))
 		got := drainAll(300*time.Millisecond, to.mmdvm, to.ob)
 		mmdvmAll, obAll = append(mmdvmAll, got[0]...), append(obAll, got[1]...)
 		mmdvmGot = mmdvmGot || slices.ContainsFunc(got[0], func(p models.Packet) bool { return probes[p.StreamID] })
@@ -911,7 +915,7 @@ func awaitReplicaRoutes(t *testing.T, src *testutils.MMDVMClient, to replicaTarg
 			to.ipsc.Receive(deliverWait, func(got []testutils.IPSCBurst) bool { return ipscEnded+countEnds(got) >= want })
 		}
 	}()
-	lastEnd := []models.Packet{makeGroupVoiceTermPacket(mxRadio, mxTG, last, false)}
+	lastEnd := []models.Packet{makeGroupVoiceTermPacket(mxProbe, mxTG, last, false)}
 	drainUntil(func(out [][]models.Packet) bool {
 		return callsArrived(lastEnd)([][]models.Packet{append(mmdvmAll, out[0]...)}) && callsArrived(lastEnd)([][]models.Packet{append(obAll, out[1]...)})
 	}, to.mmdvm, to.ob)

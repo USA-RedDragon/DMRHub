@@ -44,6 +44,7 @@ message ConnectRequest {
     // A request that the hub answers with an Answer of the same id. The
     // hub ignores a request whose feature its Welcome does not list.
     Request request = 6;
+    LocationStatus location_status = 7;
   }
 }
 
@@ -259,6 +260,8 @@ message ConnectResponse {
     // An APRS message to one of the addresses that the plugin subscribed
     // to.
     APRSMessage aprs = 14;
+    LocationCommand location_command = 15;
+    LocationStatus location_status = 16;
   }
 }
 
@@ -289,6 +292,8 @@ enum Feature {
   FEATURE_EMAIL = 10;
   // PlayPrompt, and SendText with reply_to.
   FEATURE_PROMPT = 11;
+  // Manual location requests and subscription evidence for the built-in Locator.
+  FEATURE_LOCATION_SUBSCRIPTIONS = 12;
 }
 
 // Request is a request of a plugin that the hub answers with an Answer.
@@ -605,6 +610,32 @@ message Draining {}
 // Tracked is all the radios whose owners turned position tracking on.
 message Tracked {
   repeated Tracking radios = 1;
+}
+
+// LocationCommand asks the built-in Locator to perform an LRRP operation.
+message LocationCommand {
+  uint32 radio = 1;
+  string id = 2;
+  string action = 3;
+  int64 expires_at = 4;
+}
+
+// LocationStatus records evidence for one LRRP request. The hub sends
+// periodic snapshots back on reconnect so the Locator can reuse the ID.
+message LocationStatus {
+  uint32 radio = 1;
+  bytes request_id = 2;
+  uint32 service = 3;
+  uint32 interval_seconds = 4;
+  uint32 slot = 5;
+  uint32 color_code = 6;
+  string state = 7;
+  int64 sent_at = 8;
+  int64 acknowledged_at = 9;
+  int64 reported_at = 10;
+  string detail = 11;
+  // Set for a manual operation's outcome, empty for periodic snapshots.
+  string command_id = 12;
 }
 
 // Tracking is the position tracking of one radio.

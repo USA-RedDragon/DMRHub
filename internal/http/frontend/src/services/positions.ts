@@ -77,6 +77,37 @@ export type RepeaterPosition = {
 
 export type PositionRadioPut = Omit<PositionRadio, 'radio_id'>;
 
+export type LocationAction = 'subscribe' | 'once' | 'unsubscribe';
+
+export type LocationCommand = {
+  action: LocationAction;
+  state: string;
+  detail?: string;
+};
+
+export type SubscriptionStatus = {
+  available: boolean;
+  online: boolean;
+  state: string;
+  detail?: string;
+  request_id?: string;
+  service_id?: number;
+  sent_at_ms?: number;
+  interval_seconds?: number;
+  retry_at_ms?: number;
+  acknowledged_at_ms?: number;
+  reported_at_ms?: number;
+  command?: LocationCommand;
+};
+
+export async function getLocationSubscription(radio: number): Promise<SubscriptionStatus> {
+  return (await API.get(`/positions/${radio}/subscription`)).data;
+}
+
+export async function queueLocationCommand(radio: number, action: LocationAction): Promise<LocationCommand> {
+  return (await API.post(`/positions/${radio}/subscription`, { action })).data;
+}
+
 export type PositionPush = {
   kind: 'position';
   position: Position;

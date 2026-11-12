@@ -136,6 +136,8 @@ const (
 	Feature_FEATURE_EMAIL Feature = 10
 	// PlayPrompt, and SendText with reply_to.
 	Feature_FEATURE_PROMPT Feature = 11
+	// Manual location requests and subscription evidence for the built-in Locator.
+	Feature_FEATURE_LOCATION_SUBSCRIPTIONS Feature = 12
 )
 
 // Enum value maps for Feature.
@@ -153,20 +155,22 @@ var (
 		9:  "FEATURE_APRS_INBOX",
 		10: "FEATURE_EMAIL",
 		11: "FEATURE_PROMPT",
+		12: "FEATURE_LOCATION_SUBSCRIPTIONS",
 	}
 	Feature_value = map[string]int32{
-		"FEATURE_UNSPECIFIED": 0,
-		"FEATURE_STORE":       1,
-		"FEATURE_LOOKUP":      2,
-		"FEATURE_REPEATER":    3,
-		"FEATURE_HEARD":       4,
-		"FEATURE_TEXTS":       5,
-		"FEATURE_SEND_TEXT":   6,
-		"FEATURE_SWITCHES":    7,
-		"FEATURE_APRS":        8,
-		"FEATURE_APRS_INBOX":  9,
-		"FEATURE_EMAIL":       10,
-		"FEATURE_PROMPT":      11,
+		"FEATURE_UNSPECIFIED":            0,
+		"FEATURE_STORE":                  1,
+		"FEATURE_LOOKUP":                 2,
+		"FEATURE_REPEATER":               3,
+		"FEATURE_HEARD":                  4,
+		"FEATURE_TEXTS":                  5,
+		"FEATURE_SEND_TEXT":              6,
+		"FEATURE_SWITCHES":               7,
+		"FEATURE_APRS":                   8,
+		"FEATURE_APRS_INBOX":             9,
+		"FEATURE_EMAIL":                  10,
+		"FEATURE_PROMPT":                 11,
+		"FEATURE_LOCATION_SUBSCRIPTIONS": 12,
 	}
 )
 
@@ -347,6 +351,7 @@ type ConnectRequest struct {
 	//	*ConnectRequest_Hello
 	//	*ConnectRequest_Net
 	//	*ConnectRequest_Request
+	//	*ConnectRequest_LocationStatus
 	Message isConnectRequest_Message `protobuf_oneof:"message"`
 }
 
@@ -405,6 +410,13 @@ func (x *ConnectRequest) GetRequest() *Request {
 	return nil
 }
 
+func (x *ConnectRequest) GetLocationStatus() *LocationStatus {
+	if x, ok := x.GetMessage().(*ConnectRequest_LocationStatus); ok {
+		return x.LocationStatus
+	}
+	return nil
+}
+
 type isConnectRequest_Message interface {
 	isConnectRequest_Message()
 }
@@ -445,6 +457,10 @@ type ConnectRequest_Request struct {
 	Request *Request `protobuf:"bytes,6,opt,name=request,proto3,oneof"`
 }
 
+type ConnectRequest_LocationStatus struct {
+	LocationStatus *LocationStatus `protobuf:"bytes,7,opt,name=location_status,json=locationStatus,proto3,oneof"`
+}
+
 func (*ConnectRequest_Burst) isConnectRequest_Message() {}
 
 func (*ConnectRequest_Subscribe) isConnectRequest_Message() {}
@@ -456,6 +472,8 @@ func (*ConnectRequest_Hello) isConnectRequest_Message() {}
 func (*ConnectRequest_Net) isConnectRequest_Message() {}
 
 func (*ConnectRequest_Request) isConnectRequest_Message() {}
+
+func (*ConnectRequest_LocationStatus) isConnectRequest_Message() {}
 
 // Hello tells the hub who a plugin is, and what it asks for.
 type Hello struct {
@@ -1068,6 +1086,8 @@ type ConnectResponse struct {
 	//	*ConnectResponse_UserSwitches
 	//	*ConnectResponse_UserSwitch
 	//	*ConnectResponse_Aprs
+	//	*ConnectResponse_LocationCommand
+	//	*ConnectResponse_LocationStatus
 	Message isConnectResponse_Message `protobuf_oneof:"message"`
 }
 
@@ -1182,6 +1202,20 @@ func (x *ConnectResponse) GetAprs() *APRSMessage {
 	return nil
 }
 
+func (x *ConnectResponse) GetLocationCommand() *LocationCommand {
+	if x, ok := x.GetMessage().(*ConnectResponse_LocationCommand); ok {
+		return x.LocationCommand
+	}
+	return nil
+}
+
+func (x *ConnectResponse) GetLocationStatus() *LocationStatus {
+	if x, ok := x.GetMessage().(*ConnectResponse_LocationStatus); ok {
+		return x.LocationStatus
+	}
+	return nil
+}
+
 type isConnectResponse_Message interface {
 	isConnectResponse_Message()
 }
@@ -1262,6 +1296,14 @@ type ConnectResponse_Aprs struct {
 	Aprs *APRSMessage `protobuf:"bytes,14,opt,name=aprs,proto3,oneof"`
 }
 
+type ConnectResponse_LocationCommand struct {
+	LocationCommand *LocationCommand `protobuf:"bytes,15,opt,name=location_command,json=locationCommand,proto3,oneof"`
+}
+
+type ConnectResponse_LocationStatus struct {
+	LocationStatus *LocationStatus `protobuf:"bytes,16,opt,name=location_status,json=locationStatus,proto3,oneof"`
+}
+
 func (*ConnectResponse_Welcome) isConnectResponse_Message() {}
 
 func (*ConnectResponse_Burst) isConnectResponse_Message() {}
@@ -1289,6 +1331,10 @@ func (*ConnectResponse_UserSwitches) isConnectResponse_Message() {}
 func (*ConnectResponse_UserSwitch) isConnectResponse_Message() {}
 
 func (*ConnectResponse_Aprs) isConnectResponse_Message() {}
+
+func (*ConnectResponse_LocationCommand) isConnectResponse_Message() {}
+
+func (*ConnectResponse_LocationStatus) isConnectResponse_Message() {}
 
 // Request is a request of a plugin that the hub answers with an Answer.
 type Request struct {
@@ -2488,6 +2534,158 @@ func (x *Tracked) GetRadios() []*Tracking {
 	return nil
 }
 
+// LocationCommand asks the built-in Locator to perform an LRRP operation.
+type LocationCommand struct {
+	unknownFields []byte
+	Radio         uint32 `protobuf:"varint,1,opt,name=radio,proto3" json:"radio,omitempty"`
+	Id            string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Action        string `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
+	ExpiresAt     int64  `protobuf:"varint,4,opt,name=expires_at,json=expiresAt,proto3" json:"expiresAt,omitempty"`
+}
+
+func (x *LocationCommand) Reset() {
+	*x = LocationCommand{}
+}
+
+func (*LocationCommand) ProtoMessage() {}
+
+func (x *LocationCommand) GetRadio() uint32 {
+	if x != nil {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *LocationCommand) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *LocationCommand) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *LocationCommand) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+// LocationStatus records evidence for one LRRP request. The hub sends
+// periodic snapshots back on reconnect so the Locator can reuse the ID.
+type LocationStatus struct {
+	unknownFields   []byte
+	Radio           uint32 `protobuf:"varint,1,opt,name=radio,proto3" json:"radio,omitempty"`
+	RequestId       []byte `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"requestId,omitempty"`
+	Service         uint32 `protobuf:"varint,3,opt,name=service,proto3" json:"service,omitempty"`
+	IntervalSeconds uint32 `protobuf:"varint,4,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"intervalSeconds,omitempty"`
+	Slot            uint32 `protobuf:"varint,5,opt,name=slot,proto3" json:"slot,omitempty"`
+	ColorCode       uint32 `protobuf:"varint,6,opt,name=color_code,json=colorCode,proto3" json:"colorCode,omitempty"`
+	State           string `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	SentAt          int64  `protobuf:"varint,8,opt,name=sent_at,json=sentAt,proto3" json:"sentAt,omitempty"`
+	AcknowledgedAt  int64  `protobuf:"varint,9,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledgedAt,omitempty"`
+	ReportedAt      int64  `protobuf:"varint,10,opt,name=reported_at,json=reportedAt,proto3" json:"reportedAt,omitempty"`
+	Detail          string `protobuf:"bytes,11,opt,name=detail,proto3" json:"detail,omitempty"`
+	// Set for a manual operation's outcome, empty for periodic snapshots.
+	CommandId string `protobuf:"bytes,12,opt,name=command_id,json=commandId,proto3" json:"commandId,omitempty"`
+}
+
+func (x *LocationStatus) Reset() {
+	*x = LocationStatus{}
+}
+
+func (*LocationStatus) ProtoMessage() {}
+
+func (x *LocationStatus) GetRadio() uint32 {
+	if x != nil {
+		return x.Radio
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetRequestId() []byte {
+	if x != nil {
+		return x.RequestId
+	}
+	return nil
+}
+
+func (x *LocationStatus) GetService() uint32 {
+	if x != nil {
+		return x.Service
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetIntervalSeconds() uint32 {
+	if x != nil {
+		return x.IntervalSeconds
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetSlot() uint32 {
+	if x != nil {
+		return x.Slot
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetColorCode() uint32 {
+	if x != nil {
+		return x.ColorCode
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *LocationStatus) GetSentAt() int64 {
+	if x != nil {
+		return x.SentAt
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetAcknowledgedAt() int64 {
+	if x != nil {
+		return x.AcknowledgedAt
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetReportedAt() int64 {
+	if x != nil {
+		return x.ReportedAt
+	}
+	return 0
+}
+
+func (x *LocationStatus) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
+func (x *LocationStatus) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
 // Tracking is the position tracking of one radio.
 type Tracking struct {
 	unknownFields []byte
@@ -2882,6 +3080,19 @@ func (m *ConnectRequest_Request) CloneVT() *ConnectRequest_Request {
 }
 
 func (m *ConnectRequest_Request) CloneOneofVT() isConnectRequest_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectRequest_LocationStatus) CloneVT() *ConnectRequest_LocationStatus {
+	if m == nil {
+		return (*ConnectRequest_LocationStatus)(nil)
+	}
+	r := new(ConnectRequest_LocationStatus)
+	r.LocationStatus = protobuf_go_lite.CloneVTValue(m.LocationStatus)
+	return r
+}
+
+func (m *ConnectRequest_LocationStatus) CloneOneofVT() isConnectRequest_Message {
 	return m.CloneVT()
 }
 
@@ -3332,6 +3543,32 @@ func (m *ConnectResponse_Aprs) CloneVT() *ConnectResponse_Aprs {
 }
 
 func (m *ConnectResponse_Aprs) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_LocationCommand) CloneVT() *ConnectResponse_LocationCommand {
+	if m == nil {
+		return (*ConnectResponse_LocationCommand)(nil)
+	}
+	r := new(ConnectResponse_LocationCommand)
+	r.LocationCommand = protobuf_go_lite.CloneVTValue(m.LocationCommand)
+	return r
+}
+
+func (m *ConnectResponse_LocationCommand) CloneOneofVT() isConnectResponse_Message {
+	return m.CloneVT()
+}
+
+func (m *ConnectResponse_LocationStatus) CloneVT() *ConnectResponse_LocationStatus {
+	if m == nil {
+		return (*ConnectResponse_LocationStatus)(nil)
+	}
+	r := new(ConnectResponse_LocationStatus)
+	r.LocationStatus = protobuf_go_lite.CloneVTValue(m.LocationStatus)
+	return r
+}
+
+func (m *ConnectResponse_LocationStatus) CloneOneofVT() isConnectResponse_Message {
 	return m.CloneVT()
 }
 
@@ -4008,6 +4245,52 @@ func (m *Tracked) CloneMessageVT() protobuf_go_lite.CloneMessage {
 	return m.CloneVT()
 }
 
+func (m *LocationCommand) CloneVT() *LocationCommand {
+	if m == nil {
+		return (*LocationCommand)(nil)
+	}
+	r := new(LocationCommand)
+	r.Radio = m.Radio
+	r.Id = m.Id
+	r.Action = m.Action
+	r.ExpiresAt = m.ExpiresAt
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *LocationCommand) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
+func (m *LocationStatus) CloneVT() *LocationStatus {
+	if m == nil {
+		return (*LocationStatus)(nil)
+	}
+	r := new(LocationStatus)
+	r.Radio = m.Radio
+	r.Service = m.Service
+	r.IntervalSeconds = m.IntervalSeconds
+	r.Slot = m.Slot
+	r.ColorCode = m.ColorCode
+	r.State = m.State
+	r.SentAt = m.SentAt
+	r.AcknowledgedAt = m.AcknowledgedAt
+	r.ReportedAt = m.ReportedAt
+	r.Detail = m.Detail
+	r.CommandId = m.CommandId
+	r.RequestId = protobuf_go_lite.CloneBytes(m.RequestId)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = slices.Clone(m.unknownFields)
+	}
+	return r
+}
+
+func (m *LocationStatus) CloneMessageVT() protobuf_go_lite.CloneMessage {
+	return m.CloneVT()
+}
+
 func (m *Tracking) CloneVT() *Tracking {
 	if m == nil {
 		return (*Tracking)(nil)
@@ -4314,6 +4597,29 @@ func (m *ConnectRequest_Request) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
 		i--
 		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectRequest_LocationStatus) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectRequest_LocationStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LocationStatus != nil {
+		size, err := m.LocationStatus.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -5317,6 +5623,56 @@ func (m *ConnectResponse_Aprs) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
 		i--
 		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_LocationCommand) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_LocationCommand) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LocationCommand != nil {
+		size, err := m.LocationCommand.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x7a
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x7a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConnectResponse_LocationStatus) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConnectResponse_LocationStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LocationStatus != nil {
+		size, err := m.LocationStatus.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x82
+	} else {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -6893,6 +7249,150 @@ func (m *Tracked) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *LocationCommand) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LocationCommand) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LocationCommand) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if m.ExpiresAt != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.ExpiresAt))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Action) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Action)
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Id) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Id)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Radio != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LocationStatus) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LocationStatus) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LocationStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i = protobuf_go_lite.EncodeRawBytes(dAtA, i, m.unknownFields)
+	}
+	if len(m.CommandId) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.CommandId)
+		i--
+		dAtA[i] = 0x62
+	}
+	if len(m.Detail) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.Detail)
+		i--
+		dAtA[i] = 0x5a
+	}
+	if m.ReportedAt != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.ReportedAt))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.AcknowledgedAt != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.AcknowledgedAt))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.SentAt != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.SentAt))
+		i--
+		dAtA[i] = 0x40
+	}
+	if len(m.State) > 0 {
+		i = protobuf_go_lite.EncodeString(dAtA, i, m.State)
+		i--
+		dAtA[i] = 0x3a
+	}
+	if m.ColorCode != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.ColorCode))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Slot != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Slot))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.IntervalSeconds != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.IntervalSeconds))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Service != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Service))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.RequestId) > 0 {
+		i = protobuf_go_lite.EncodeBytes(dAtA, i, m.RequestId)
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Radio != 0 {
+		i = protobuf_go_lite.EncodeVarint(dAtA, i, uint64(m.Radio))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Tracking) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -7353,6 +7853,20 @@ func (m *ConnectRequest_Request) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ConnectRequest_LocationStatus) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LocationStatus != nil {
+		l = m.LocationStatus.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *Hello) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7761,6 +8275,34 @@ func (m *ConnectResponse_Aprs) SizeVT() (n int) {
 		n += protobuf_go_lite.SizeMessage(1, l)
 	} else {
 		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_LocationCommand) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LocationCommand != nil {
+		l = m.LocationCommand.SizeVT()
+		n += protobuf_go_lite.SizeMessage(1, l)
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *ConnectResponse_LocationStatus) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LocationStatus != nil {
+		l = m.LocationStatus.SizeVT()
+		n += protobuf_go_lite.SizeMessage(2, l)
+	} else {
+		n += 3
 	}
 	return n
 }
@@ -8334,6 +8876,42 @@ func (m *Tracked) SizeVT() (n int) {
 	return n
 }
 
+func (m *LocationCommand) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Id)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Action)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.ExpiresAt)
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *LocationStatus) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Radio)
+	n += protobuf_go_lite.SizeBytesNonEmpty(1, m.RequestId)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Service)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.IntervalSeconds)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.Slot)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.ColorCode)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.State)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.SentAt)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.AcknowledgedAt)
+	n += protobuf_go_lite.SizeVarintNonZero(1, m.ReportedAt)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.Detail)
+	n += protobuf_go_lite.SizeStringNonEmpty(1, m.CommandId)
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *Tracking) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8573,6 +9151,26 @@ func (m *ConnectRequest) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Message = &ConnectRequest_Request{Request: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocationStatus", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectRequest_LocationStatus); ok {
+				if err := oneof.LocationStatus.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LocationStatus{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectRequest_LocationStatus{LocationStatus: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -9822,6 +10420,46 @@ func (m *ConnectResponse) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Message = &ConnectResponse_Aprs{Aprs: v}
+			}
+			iNdEx = postIndex
+		case 15:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocationCommand", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_LocationCommand); ok {
+				if err := oneof.LocationCommand.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LocationCommand{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_LocationCommand{LocationCommand: v}
+			}
+			iNdEx = postIndex
+		case 16:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocationStatus", wireType)
+			}
+			msgStart, postIndex, err := protobuf_go_lite.DecodeLengthDelimited(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			if oneof, ok := m.Message.(*ConnectResponse_LocationStatus); ok {
+				if err := oneof.LocationStatus.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LocationStatus{}
+				if err := v.UnmarshalVT(dAtA[msgStart:postIndex]); err != nil {
+					return err
+				}
+				m.Message = &ConnectResponse_LocationStatus{LocationStatus: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -11903,6 +12541,238 @@ func (m *Tracked) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LocationCommand) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LocationCommand: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LocationCommand: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radio", wireType)
+			}
+			m.Radio = 0
+			m.Radio, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Id = v
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Action", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Action = v
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
+			}
+			m.ExpiresAt = 0
+			m.ExpiresAt, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protobuf_go_lite.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LocationStatus) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	var err error
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		wire, iNdEx, err = protobuf_go_lite.DecodeVarint(dAtA, iNdEx)
+		if err != nil {
+			return err
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LocationStatus: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LocationStatus: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Radio", wireType)
+			}
+			m.Radio = 0
+			m.Radio, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequestId", wireType)
+			}
+			m.RequestId, iNdEx, err = protobuf_go_lite.DecodeBytesAppend(m.RequestId, dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Service", wireType)
+			}
+			m.Service = 0
+			m.Service, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IntervalSeconds", wireType)
+			}
+			m.IntervalSeconds = 0
+			m.IntervalSeconds, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Slot", wireType)
+			}
+			m.Slot = 0
+			m.Slot, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ColorCode", wireType)
+			}
+			m.ColorCode = 0
+			m.ColorCode, iNdEx, err = protobuf_go_lite.DecodeVarintUint32(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.State = v
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SentAt", wireType)
+			}
+			m.SentAt = 0
+			m.SentAt, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AcknowledgedAt", wireType)
+			}
+			m.AcknowledgedAt = 0
+			m.AcknowledgedAt, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReportedAt", wireType)
+			}
+			m.ReportedAt = 0
+			m.ReportedAt, iNdEx, err = protobuf_go_lite.DecodeVarintInt64(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Detail", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.Detail = v
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CommandId", wireType)
+			}
+			var v string
+			v, iNdEx, err = protobuf_go_lite.DecodeString(dAtA, iNdEx)
+			if err != nil {
+				return err
+			}
+			m.CommandId = v
 		default:
 			iNdEx = preIndex
 			skippy, err := protobuf_go_lite.Skip(dAtA[iNdEx:])

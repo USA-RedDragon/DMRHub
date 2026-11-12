@@ -146,6 +146,7 @@
           </div>
         </CardContent>
       </Card>
+      <LocationSubscription v-if="trackingSaved" :radio="radio" />
     </form>
   </div>
 </template>
@@ -176,6 +177,7 @@ import {
   type PositionRadios,
 } from '@/services/positions';
 import { errorStatus, errorText } from '@/services/settings';
+import LocationSubscription from './LocationSubscription.vue';
 
 const route = useRoute();
 const radio = Number(route.params.id);
@@ -206,6 +208,7 @@ const form = reactive<PositionRadioPut>({
   aprs_comment: '',
 });
 const saving = ref(false);
+const trackingSaved = ref(false);
 const message = ref('');
 const failed = ref(false);
 
@@ -242,6 +245,7 @@ const save = async () => {
   failed.value = false;
   try {
     const s = await setPositionRadio(radio, { ...form });
+    trackingSaved.value = s.tracking;
     Object.assign(form, {
       tracking: s.tracking,
       interval_minutes: s.interval_minutes,
@@ -269,6 +273,7 @@ onMounted(async () => {
       return;
     }
     choices.value = { intervals: r.intervals, retention_hours: r.retention_hours, aprs: r.aprs, callsign: r.callsign };
+    trackingSaved.value = s.tracking;
     Object.assign(form, {
       tracking: s.tracking,
       interval_minutes: s.interval_minutes,

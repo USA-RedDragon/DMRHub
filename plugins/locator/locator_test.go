@@ -416,7 +416,7 @@ func TestANewIntervalSendsAStopAndARequestWithIt(t *testing.T) {
 		require.NotNil(t, got[3].lrrp)
 		assert.Equal(t, lrrp.DocumentTriggeredRequest, got[3].lrrp.Document)
 		assert.Equal(t, uint32(1800), got[3].lrrp.Request.Interval)
-		assert.NotEqual(t, req.Request.RequestID, got[3].lrrp.Request.RequestID)
+		assert.Equal(t, req.Request.RequestID, got[3].lrrp.Request.RequestID, "a lost stop must not create a second subscription")
 	})
 }
 

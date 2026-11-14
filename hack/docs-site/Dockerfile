@@ -6,7 +6,7 @@ ARG PREVIOUS_IMAGE=ghcr.io/usa-reddragon/dmrhub-docs:main
 
 FROM --platform=$BUILDPLATFORM ${PREVIOUS_IMAGE} AS previous
 
-FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:3f4d6b32e26703c6082839234f43769d5046b3ac7c910033911d1e71d8cd630a AS dmrgo-clone
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS dmrgo-clone
 ARG DMRGO_REF
 ARG SOURCES_RUN
 RUN apk add --no-cache git
@@ -16,7 +16,7 @@ RUN git clone --quiet --filter=blob:none --no-checkout https://github.com/USA-Re
 FROM scratch AS dmrgo
 COPY --from=dmrgo-clone /dmrgo /
 
-FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:3f4d6b32e26703c6082839234f43769d5046b3ac7c910033911d1e71d8cd630a AS hubgit-clone
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS hubgit-clone
 ARG SOURCES_RUN
 RUN apk add --no-cache git
 RUN git clone --quiet --bare --filter=blob:none https://github.com/USA-RedDragon/DMRHub.git /hub.git
@@ -24,7 +24,7 @@ RUN git clone --quiet --bare --filter=blob:none https://github.com/USA-RedDragon
 FROM scratch AS hubgit
 COPY --from=hubgit-clone /hub.git /
 
-FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:3f4d6b32e26703c6082839234f43769d5046b3ac7c910033911d1e71d8cd630a AS site
+FROM --platform=$BUILDPLATFORM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS site
 RUN apk add --no-cache git pandoc-cli python3 zstd
 COPY --from=dmrgo / /src/dmrgo
 COPY --from=hubgit / /src/hub.git
@@ -39,7 +39,7 @@ RUN --mount=type=bind,from=previous,target=/previous \
       /previous/site/docs/_shell /site/docs/_shell \
       /previous/site/docs/_assets /site/docs/_assets
 
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS server
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS server
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src

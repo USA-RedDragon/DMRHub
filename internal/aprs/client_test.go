@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const line = "N6CALL-9>APZDMH,K6CALL-R*,qAR,K0CALL-10:!3016.03N/09744.59W>"
+const line = "N6CALL-9>APDHUB,K6CALL-R*,qAR,K0CALL-10:!3016.03N/09744.59W>"
 
 func start(t *testing.T, srv *aprstest.Server, passcode string) (*aprs.Client, <-chan bool) {
 	t.Helper()

@@ -177,7 +177,7 @@ func TestTheGatewaySendsATrackedRadioUnderItsOwnersCallsign(t *testing.T) {
 	p.SpeedMPS, p.HeadingDeg = &speed, &heading
 	g.pusher.Push(p)
 	require.True(t, w.sent(t))
-	assert.Equal(t, []string{"N6CALL-9>APZDMH,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59W[045/008DMR 3002068"}, g.lines(1))
+	assert.Equal(t, []string{"N6CALL-9>APDHUB,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59W[045/008DMR 3002068"}, g.lines(1))
 }
 
 func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
@@ -189,7 +189,7 @@ func TestTheOwnersSymbolReplacesTheServices(t *testing.T) {
 	_, w := g.start()
 	g.pusher.Push(g.at(30.2672, -97.7431))
 	require.True(t, w.sent(t))
-	assert.Equal(t, []string{"N6CALL>APZDMH,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59Wb"}, g.lines(1))
+	assert.Equal(t, []string{"N6CALL>APDHUB,K6CALL*,qAR,K0CALL-10:!3016.03N/09744.59Wb"}, g.lines(1))
 }
 
 func TestAtMostOnePacketPerRadioEachMinuteAndOnlyWhenItMoved(t *testing.T) {
@@ -312,7 +312,7 @@ func TestOnlyTheReplicaWithTheLoginSendsAPluginsAPRSMessage(t *testing.T) {
 	require.NoError(t, positions.PublishMessage(g.ps, aprs.Message{Source: "N3CALL-7", Addressee: "N2CALL-9", Text: "Hello there", Number: "1"}))
 	assert.True(t, next(t, w.messages, "message"), "the replica with the lease sends")
 	assert.False(t, next(t, w2.messages, "message"), "the other replica sends nothing")
-	assert.Equal(t, []string{"N3CALL-7>APZDMH,TCPIP*::N2CALL-9 :Hello there{1"}, g.lines(1))
+	assert.Equal(t, []string{"N3CALL-7>APDHUB,TCPIP*::N2CALL-9 :Hello there{1"}, g.lines(1))
 }
 
 func TestTheReplicaThatIsLeftTakesOverTheLogin(t *testing.T) {

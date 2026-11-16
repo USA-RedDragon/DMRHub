@@ -34,7 +34,7 @@ func TestLine(t *testing.T) {
 	c := aprs.Config{Login: "K0CALL-10", Passcode: "12345", Server: "rotate.aprs2.net:14580"}
 	line, err := c.Line("N6CALL-9", "N6CALL", "!3016.03N/09744.62W>")
 	require.NoError(t, err)
-	assert.Equal(t, "N6CALL-9>APZDMH,N6CALL*,qAR,K0CALL-10:!3016.03N/09744.62W>", line)
+	assert.Equal(t, "N6CALL-9>APDHUB,N6CALL*,qAR,K0CALL-10:!3016.03N/09744.62W>", line)
 }
 
 func TestEveryLineGoesToTheToCall(t *testing.T) {
@@ -60,7 +60,7 @@ func TestEveryLineGoesToTheToCall(t *testing.T) {
 			require.NoError(t, err)
 			_, rest, _ := strings.Cut(line, ">")
 			dest, _, _ := strings.Cut(rest, ",")
-			assert.Equal(t, "APZDMH", dest, "%+v %+v", c, p)
+			assert.Equal(t, "APDHUB", dest, "%+v %+v", c, p)
 		}
 	}
 }

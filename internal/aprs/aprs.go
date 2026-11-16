@@ -28,10 +28,9 @@ import (
 )
 
 // ToCall is the destination of every packet DMRHub sends to APRS-IS. It
-// names the software, so every DMRHub instance sends the same one. APZDMH is
-// in the experimental APZ range until a tocall is assigned in the APRS
-// device ID list.
-const ToCall = "APZDMH"
+// names the software, so every DMRHub instance sends the same one. APDHUB is
+// DMRHub's entry in the APRS device ID list.
+const ToCall = "APDHUB"
 
 // Config is the APRS-IS login of a DMRHub instance.
 type Config struct {

@@ -270,7 +270,11 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 		return err
 	}
 	out := make(chan *pluginv1.ConnectResponse, sendQueue)
-	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p), Features: s.features()}}}
+	features := s.features()
+	if p.Builtin == "locator" {
+		features = append(features, pluginv1.Feature_FEATURE_LOCATION_SUBSCRIPTIONS)
+	}
+	out <- &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Welcome{Welcome: &pluginv1.Welcome{Name: p.Name, Ranges: rangesOf(&p), Features: features}}}
 	send := func(m *pluginv1.ConnectResponse) {
 		select {
 		case out <- m:
@@ -335,6 +339,12 @@ func (s *Service) Connect(stream pluginv1.PluginService_ConnectServer) error {
 	ranges <- p.Ranges
 	w := &watcher{
 		s: s, cancel: cancel, p: &p, session: session, kick: kick, in: in, changed: changed, send: send, ranges: ranges,
+		sendLocation: func(m *pluginv1.ConnectResponse) {
+			select {
+			case out <- m:
+			case <-ctx.Done():
+			}
+		},
 		handOver: func() {
 			select {
 			case out <- nil:
@@ -381,6 +391,9 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 		default:
 		}
 		switch m := msg.GetMessage().(type) {
+		case *pluginv1.ConnectRequest_LocationStatus:
+			w.storeLocation(m.LocationStatus, current)
+			continue
 		case *pluginv1.ConnectRequest_Subscribe:
 			select {
 			case <-w.subscribe:
@@ -417,14 +430,15 @@ func (s *Service) receive(ctx context.Context, cancel context.CancelCauseFunc, s
 
 // watcher follows one plugin's stream.
 type watcher struct {
-	s       *Service
-	cancel  context.CancelCauseFunc
-	p       *models.Plugin
-	session string
-	kick    pubsub.Subscription
-	in      pubsub.Subscription
-	changed pubsub.Subscription
-	send    func(*pluginv1.ConnectResponse)
+	s            *Service
+	cancel       context.CancelCauseFunc
+	p            *models.Plugin
+	session      string
+	kick         pubsub.Subscription
+	in           pubsub.Subscription
+	changed      pubsub.Subscription
+	send         func(*pluginv1.ConnectResponse)
+	sendLocation func(*pluginv1.ConnectResponse)
 	// handOver ends the stream after the messages queued for it.
 	handOver  func()
 	ranges    chan []models.PluginRange
@@ -462,12 +476,21 @@ func (w *watcher) watch(ctx context.Context) {
 	current := w.p.Ranges
 	heartbeat := w.s.clock.NewTicker(w.s.heartbeat)
 	defer heartbeat.Stop()
+	var locationTick <-chan time.Time
+	if w.p.Builtin == "locator" {
+		ticker := w.s.clock.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		defer w.finishLocationSession()
+		locationTick = ticker.C()
+	}
 	var handoff <-chan time.Time
 	for {
 		tracking, heard, feed := w.channels()
 		select {
 		case <-ctx.Done():
 			return
+		case <-locationTick:
+			w.dispatchLocations()
 		case <-heartbeat.C():
 			if err := models.NotePluginSeen(w.s.db, w.p.ID, w.session, w.s.clock.Now()); err != nil {
 				slog.Warn("Plugins: cannot note a heartbeat", "plugin", w.p.Name, "error", err)
@@ -571,6 +594,9 @@ func (w *watcher) setTracking(on bool) {
 	}
 	if w.tracking == nil {
 		w.tracking = w.s.pubsub.Subscribe(TrackingTopic)
+		if w.p.Builtin == "locator" {
+			w.restoreLocations()
+		}
 	}
 	radios, err := tracked(w.s.db)
 	if err != nil {
@@ -582,7 +608,12 @@ func (w *watcher) setTracking(on bool) {
 		known[r.GetRadio()] = w.heardOn[r.GetRadio()]
 	}
 	w.heardOn = known
-	w.send(&pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Tracked{Tracked: &pluginv1.Tracked{Radios: radios}}})
+	msg := &pluginv1.ConnectResponse{Message: &pluginv1.ConnectResponse_Tracked{Tracked: &pluginv1.Tracked{Radios: radios}}}
+	if w.p.Builtin == "locator" {
+		w.sendLocation(msg)
+	} else {
+		w.send(msg)
+	}
 }
 
 func (w *watcher) unsubscribe() {

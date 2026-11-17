@@ -517,6 +517,11 @@ func (c *Conn) SendPosition(p *pluginv1.Position) error {
 	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Position{Position: p}})
 }
 
+// SendLocationStatus sends LRRP evidence to the hub.
+func (c *Conn) SendLocationStatus(s *pluginv1.LocationStatus) error {
+	return c.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_LocationStatus{LocationStatus: s}})
+}
+
 func (c *Conn) send(m *pluginv1.ConnectRequest) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()

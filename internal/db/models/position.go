@@ -128,6 +128,12 @@ func SetPositionTracking(db *gorm.DB, userID, radioID uint, on bool, now time.Ti
 			s.Tracking, s.TrackingSince = true, &at
 		default:
 			s.Tracking, s.TrackingSince, s.APRS = false, nil, false
+			if err := tx.Delete(&LocationCommand{}, "radio_id = ?", radioID).Error; err != nil {
+				return fmt.Errorf("could not delete location command for %d: %w", radioID, err)
+			}
+			if err := tx.Delete(&LocationSubscription{}, "radio_id = ?", radioID).Error; err != nil {
+				return fmt.Errorf("could not delete location subscription for %d: %w", radioID, err)
+			}
 			if err := tx.Where("radio_id = ?", radioID).Delete(&Position{}).Error; err != nil {
 				return fmt.Errorf("could not delete the positions of %d: %w", radioID, err)
 			}

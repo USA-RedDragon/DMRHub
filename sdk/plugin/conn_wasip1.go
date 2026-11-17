@@ -115,6 +115,11 @@ func (c *Conn) SendPosition(p *pluginv1.Position) error {
 	return c.s.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_Position{Position: p}})
 }
 
+// SendLocationStatus sends LRRP evidence to the hub.
+func (c *Conn) SendLocationStatus(s *pluginv1.LocationStatus) error {
+	return c.s.send(&pluginv1.ConnectRequest{Message: &pluginv1.ConnectRequest_LocationStatus{LocationStatus: s}})
+}
+
 // Dial connects to address, as host:port, over TCP. A plugin inside
 // DMRHub reaches only the hosts that an admin allowed on its page, through
 // the hub.

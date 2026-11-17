@@ -77,23 +77,27 @@ type linkKey struct {
 }
 
 type link struct {
-	rx    *data.Receiver
-	tx    *data.Sender
-	queue []data.Message
-	slot  uint32
-	cc    enums.ColorCode
-	last  time.Time
-	free  time.Duration
+	rx     *data.Receiver
+	tx     *data.Sender
+	txSlot uint32
+	txCC   enums.ColorCode
+	queue  []data.Message
+	slot   uint32
+	cc     enums.ColorCode
+	last   time.Time
+	free   time.Duration
 }
 
 // request is the triggered location request that is open with a radio.
 type request struct {
-	id       []byte
-	service  uint32
-	interval time.Duration
-	sentAt   time.Time
-	slot     uint32
-	cc       enums.ColorCode
+	id            []byte
+	service       uint32
+	interval      time.Duration
+	sentAt        time.Time
+	slot          uint32
+	cc            enums.ColorCode
+	state, detail string
+	ack, reported time.Time
 }
 
 // radio is what the Locator knows of one radio.
@@ -112,6 +116,7 @@ type radio struct {
 	lastPos time.Time
 	retried bool
 	stopped time.Time
+	manual  *manualRequest
 	// registered is the link of an ARS registration that came while the
 	// radio was not tracked, so that tracking it starts the request.
 	registered *linkKey
@@ -121,6 +126,7 @@ type radio struct {
 type Locator struct {
 	send    func(*pluginv1.Burst) error
 	report  func(*pluginv1.Position) error
+	status  func(*pluginv1.LocationStatus) error
 	service uint32
 	clock   clock.Clock
 	epoch   time.Time
@@ -180,6 +186,9 @@ func Serve(ctx context.Context, conn *plugin.Conn) error {
 		return errNoIDs
 	}
 	l := newOn(clock.FromContext(ctx), conn.Send, conn.SendPosition, ranges[0].GetFirst())
+	if conn.Has(pluginv1.Feature_FEATURE_LOCATION_SUBSCRIPTIONS) {
+		l.status = conn.SendLocationStatus
+	}
 	defer l.Stop()
 	if err := conn.SubscribeTracking(true); err != nil {
 		return fmt.Errorf("cannot subscribe to tracking: %w", err)
@@ -198,6 +207,10 @@ func Serve(ctx context.Context, conn *plugin.Conn) error {
 			l.SetTracking(msg.Tracking)
 		case *pluginv1.ConnectResponse_Heard:
 			l.Heard(msg.Heard)
+		case *pluginv1.ConnectResponse_LocationCommand:
+			l.command(msg.LocationCommand)
+		case *pluginv1.ConnectResponse_LocationStatus:
+			l.restore(msg.LocationStatus)
 		case *pluginv1.ConnectResponse_Refusal:
 			slog.Warn("Locator: the hub refused a burst", "stream", msg.Refusal.GetStreamId(), "reason", msg.Refusal.GetReason())
 		case *pluginv1.ConnectResponse_Ranges:
@@ -274,12 +287,12 @@ func (l *Locator) SetTracking(t *pluginv1.Tracking) {
 func (l *Locator) track(t *pluginv1.Tracking) {
 	r := l.radio(t.GetRadio())
 	interval := time.Duration(t.GetIntervalSeconds()) * time.Second
-	changed := r.tracked && r.interval != interval
 	r.tracked, r.interval = true, interval
-	if changed && r.req != nil {
+	if r.req != nil && r.req.interval != interval && !r.req.suppressesRenewal() {
 		k, ln := l.requestLink(t.GetRadio(), r)
-		l.stopTracking(k, ln, r)
-		l.startTracking(k, ln, r)
+		l.sendStop(k, ln, r.req.id)
+		r.req.interval, r.retried = interval, false
+		l.restartTracking(k, ln, r)
 	}
 	if r.registered != nil {
 		k := *r.registered
@@ -292,6 +305,7 @@ func (l *Locator) track(t *pluginv1.Tracking) {
 
 func (l *Locator) untrack(id uint32, r *radio) {
 	r.tracked = false
+	r.manual = nil
 	if r.req != nil {
 		k, ln := l.requestLink(id, r)
 		l.stopTracking(k, ln, r)
@@ -407,16 +421,27 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 	if m.BadCRC {
 		return
 	}
+	var lr lrrp.Message
+	var decoded bool
 	if sap, ok := m.Header.SAP(); ok {
-		if d, err := ip.Decode(sap, m.Payload); err == nil && d.DestinationPort == ip.PortARS {
-			l.registration(k, ln, d.Payload)
-			return
+		if d, err := ip.Decode(sap, m.Payload); err == nil {
+			switch d.DestinationPort {
+			case ip.PortARS:
+				l.registration(k, ln, d.Payload)
+				return
+			case ip.PortLRRP:
+				decoded = lrrp.DecodeMessageInto(&lr, d.Payload) == nil
+			}
 		}
 	}
 	f, err := l.dec.Decode(&m.Header, m.Payload)
 	r := l.radio(k.radio)
-	if f.RequestIDLength > 0 {
+	if decoded && lr.Document == lrrp.DocumentTriggeredReport && f.RequestIDLength > 0 {
 		l.learnRequest(k, ln, r, f.RequestID[:f.RequestIDLength])
+	}
+	pos, posErr := positionOf(&f, k, ln)
+	if decoded && r.tracked {
+		l.observe(k, r, &lr, err == nil && posErr == nil)
 	}
 	if err != nil {
 		if !errors.Is(err, location.ErrNoFix) && !errors.Is(err, location.ErrNoPosition) {
@@ -427,11 +452,12 @@ func (l *Locator) deliver(k linkKey, ln *link, m *data.Message) {
 	if !r.tracked {
 		return
 	}
-	pos, err := positionOf(&f, k, ln)
-	if err != nil {
+	if posErr != nil {
 		return
 	}
-	r.lastPos, r.retried = l.clock.Now(), false
+	if !decoded || lr.Document == lrrp.DocumentUnsolicitedReport {
+		r.lastPos, r.retried = l.clock.Now(), false
+	}
 	if err := l.report(pos); err != nil {
 		slog.Warn("Locator: cannot report a position", "radio", k.radio, "error", err)
 	}
@@ -475,41 +501,39 @@ func (l *Locator) registration(k linkKey, ln *link, payload []byte) {
 		}
 		l.queue(k, ln, ip.PortARS, buf)
 		r.registered = nil
-		if r.tracked {
-			l.startTracking(k, ln, r)
-		} else {
+		if !r.tracked {
 			r.registered = &k
+		} else if !r.manual.periodicInFlight() {
+			if r.req == nil {
+				l.startTracking(k, ln, r)
+			} else if !r.req.suppressesRenewal() && r.req.service == k.service {
+				l.resendTracking(k, ln, r.req)
+			}
 		}
 	case ars.TypeDeviceDeregistration:
 		r.registered = nil
-		l.stopTracking(k, ln, r)
+		if r.req != nil && !r.req.suppressesRenewal() {
+			reqKey, reqLink := l.requestLink(k.radio, r)
+			l.stopTracking(reqKey, reqLink, r)
+			l.publish(&pluginv1.LocationStatus{Radio: k.radio, State: "configured"})
+		}
 	}
 }
 
 func (l *Locator) startTracking(k linkKey, ln *link, r *radio) {
-	l.reqID++
-	var rid [4]byte
-	binary.BigEndian.PutUint32(rid[:], l.reqID)
-	l.lrrp = lrrp.Message{Document: lrrp.DocumentTriggeredRequest}
-	q := &l.lrrp.Request
-	q.RequestID, q.HasRequestID = rid[:], true
-	q.Periodic = true
-	q.Interval, q.HasInterval = uint32(r.interval/time.Second), true //nolint:gosec // at most an hour
-	q.AccuracyAndTime, q.Speed, q.Direction = true, true, true
-	buf, err := l.lrrp.AppendBinary(nil)
-	if err != nil {
-		slog.Error("Locator: cannot build an LRRP request", "error", err)
-		return
-	}
-	l.queue(k, ln, ip.PortLRRP, buf)
-	r.req = &request{id: rid[:], service: k.service, interval: r.interval, sentAt: l.clock.Now(), slot: ln.slot, cc: ln.cc}
+	r.req = l.newRequest(k, ln, r.interval)
+	r.lastPos = time.Time{}
+	l.publishPeriodic(k.radio, r.req)
+	l.sendLocationRequest(k, ln, r.req, true)
 }
 
 func (l *Locator) stopTracking(k linkKey, ln *link, r *radio) {
 	if r.req == nil {
 		return
 	}
-	l.sendStop(k, ln, r.req.id)
+	if r.req.state != "stopped" {
+		l.sendStop(k, ln, r.req.id)
+	}
 	r.req = nil
 }
 
@@ -570,7 +594,8 @@ func (l *Locator) queue(k linkKey, ln *link, port ip.Port, payload []byte) {
 }
 
 func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
-	if ln.tx == nil {
+	if ln.tx == nil || (ln.tx.State() == data.SenderIdle && now >= ln.free && len(ln.queue) > 0 &&
+		(ln.txSlot != ln.slot || ln.txCC != ln.cc)) {
 		slot := enums.Slot1
 		if ln.slot == 2 {
 			slot = enums.Slot2
@@ -580,7 +605,7 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 			slog.Error("Locator: cannot make a data sender", "error", err)
 			return
 		}
-		ln.tx = tx
+		ln.tx, ln.txSlot, ln.txCC = tx, ln.slot, ln.cc
 	}
 	if ln.tx.State() == data.SenderIdle && len(ln.queue) > 0 && now >= ln.free {
 		m := ln.queue[0]
@@ -605,7 +630,7 @@ func (l *Locator) pump(k linkKey, ln *link, now time.Duration) {
 // sent data to, else from the Locator's first ID.
 func (l *Locator) askHeard() {
 	for id, r := range l.radios {
-		if !r.tracked || r.retried || r.heard.IsZero() || l.clock.Since(r.heard) > heardExpiry || (r.req == nil && (l.busy(id) || l.clock.Since(r.firstHeard) < heardGrace)) {
+		if !r.tracked || r.retried || r.req.suppressesRenewal() || r.manual.periodicInFlight() || r.heard.IsZero() || l.clock.Since(r.heard) > heardExpiry || (r.req == nil && (l.busy(id) || l.clock.Since(r.firstHeard) < heardGrace)) {
 			continue
 		}
 		if r.req != nil {
@@ -640,8 +665,12 @@ func (l *Locator) askHeard() {
 		ln.slot, ln.cc, ln.last = r.slot, r.cc, l.clock.Now()
 		r.retried = true
 		slog.Info("Locator: asking a tracked radio for its position", "radio", id)
-		l.stopTracking(k, ln, r)
-		l.startTracking(k, ln, r)
+		if r.req == nil {
+			l.startTracking(k, ln, r)
+		} else {
+			l.sendStop(k, ln, r.req.id)
+			l.restartTracking(k, ln, r)
+		}
 	}
 }
 
@@ -701,6 +730,9 @@ func (l *Locator) expire() {
 	now := l.now()
 	if l.clock.Since(l.checked) >= recheckEvery {
 		l.checked = l.clock.Now()
+		for id, r := range l.radios {
+			l.runManual(id, r)
+		}
 		l.askHeard()
 	}
 	for k, ln := range l.links {
@@ -769,6 +801,17 @@ func (l *Locator) next(now time.Duration) (time.Duration, bool) {
 	if t, due := l.askAt(); due {
 		soon(later(t, l.checked.Add(recheckEvery)).Sub(l.epoch))
 	}
+	for id, r := range l.radios {
+		if m := r.manual; m != nil && !m.done {
+			t := m.expires
+			if m.req == nil && !r.heard.IsZero() && l.clock.Since(r.heard) < manualRouteAge {
+				if ready := later(l.clock.Now(), l.settled(id)); ready.Before(t) {
+					t = ready
+				}
+			}
+			soon(later(t, l.checked.Add(recheckEvery)).Sub(l.epoch))
+		}
+	}
 	return at, ok
 }
 
@@ -777,7 +820,7 @@ func (l *Locator) askAt() (time.Time, bool) {
 	ok := false
 	now := l.clock.Now()
 	for id, r := range l.radios {
-		if !r.tracked || r.retried || r.heard.IsZero() {
+		if !r.tracked || r.retried || r.req.suppressesRenewal() || r.manual.periodicInFlight() || r.heard.IsZero() {
 			continue
 		}
 		t := now

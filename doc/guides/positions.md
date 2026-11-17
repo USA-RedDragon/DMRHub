@@ -63,3 +63,5 @@ On the settings page of a radio, use **Download the track** to save its position
 ## Turn off tracking
 
 On the settings page of the radio, turn off **Position tracking** and click **Save**. DMRHub tells the radio to stop reporting and deletes the positions it kept for that radio.
+
+With tracking on, the **LRRP subscription** card shows whether the radio accepted the periodic request and when DMRHub last received a matching report. Use **Send subscription** or **Resend subscription** to request periodic reports, or **Request position once** for a single fix. **Unsubscribe** asks the radio to stop a known periodic request and keeps the saved track. The card shows **Unsubscribed** after the radio acknowledges the stop.

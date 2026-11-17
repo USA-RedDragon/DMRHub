@@ -23,6 +23,7 @@ vi.mock('@/services/API', () => ({
   default: {
     get: vi.fn(),
     put: vi.fn(),
+    post: vi.fn(),
   },
 }));
 
@@ -40,7 +41,7 @@ vi.mock('vue-router', () => ({
 import API from '@/services/API';
 import RadioPositionsPage from '@/views/positions/RadioPositionsPage.vue';
 
-const mockAPI = API as unknown as { get: Mock; put: Mock };
+const mockAPI = API as unknown as { get: Mock; put: Mock; post: Mock };
 
 const setting = {
   radio_id: 3002068,
@@ -63,6 +64,9 @@ function serve(aprs = true) {
     if (url === '/positions/3002068') {
       const latest = { radio_id: 3002068, received_at: new Date(Date.now() - 4 * 60000).toISOString(), service_id: 5059 };
       return Promise.resolve({ data: { latest, track: [latest] } });
+    }
+    if (url === '/positions/3002068/subscription') {
+      return Promise.resolve({ data: { state: 'configured', available: true } });
     }
     return Promise.reject({ response: { status: 404 } });
   });
@@ -114,6 +118,27 @@ describe('RadioPositionsPage', () => {
     });
     expect(wrapper.find('[data-test="save-message"]').text()).toBe('Saved.');
     expect(wrapper.find('[data-test="aprs-status"]').text()).toBe('On, as N6CALL-7.');
+  });
+
+  it('shows a queued one-time request separately from periodic subscription state', async () => {
+    serve();
+    mockAPI.post.mockImplementation(() => {
+      const prior = mockAPI.get.getMockImplementation()!;
+      const command = { action: 'once', state: 'queued' };
+      mockAPI.get.mockImplementation((url: string) => url.endsWith('/subscription')
+        ? Promise.resolve({ data: { state: 'configured', available: true, command } })
+        : prior(url));
+      return Promise.resolve({ data: command });
+    });
+    const wrapper = await mountPage();
+    const button = wrapper.findAll('button').find((b) => b.text() === 'Request position once')!;
+    await button.trigger('click');
+    await flushPromises();
+    expect(mockAPI.post).toHaveBeenCalledWith('/positions/3002068/subscription', { action: 'once' });
+    expect(wrapper.get('[data-test="subscription-state"]').text()).toBe('Configured');
+    expect(wrapper.get('[role="status"]').text()).toContain('One-time request · Queued');
+    expect(button.attributes()).toHaveProperty('disabled');
+    expect(mockAPI.put).not.toHaveBeenCalled();
   });
 
   it('turns APRS-IS off with tracking', async () => {

@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
@@ -45,7 +45,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
-    uses: USA-RedDragon/reusable-actions/.github/workflows/docker-ci.yaml@c5ee15922a0ff4229b0f06a8d0551541b5cabfdc # v2.0.34
+    uses: USA-RedDragon/reusable-actions/.github/workflows/docker-ci.yaml@ff5d8c9d1d9fda2d1ca4cb4325987a429db9a85a # v2.0.39
     with:
       push: ${{ github.event_name != 'pull_request' }}
       image-name: usa-reddragon/dmrhub-docs
